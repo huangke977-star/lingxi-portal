@@ -32,6 +32,7 @@
 ```text
 lingxi-portal/
   .editorconfig
+  .dockerignore
   .env.example
   .gitattributes
   .gitignore
@@ -92,6 +93,7 @@ lingxi-portal/
 **文件：**
 - 创建：`package.json`
 - 创建：`pnpm-workspace.yaml`
+- 创建：`.dockerignore`
 - 创建：`.editorconfig`
 - 创建：`.gitattributes`
 - 修改：`.gitignore`
@@ -131,7 +133,40 @@ packages:
   - "apps/*"
 ```
 
-- [ ] **步骤 3：添加编辑器配置**
+- [ ] **步骤 3：添加 Docker 忽略配置**
+
+创建 `.dockerignore`：
+
+```dockerignore
+.git
+.gitignore
+.worktrees
+.superpowers
+
+node_modules
+**/node_modules
+
+.env
+.env.*
+!.env.example
+
+.next
+**/.next
+dist
+**/dist
+build
+coverage
+*.log
+*.tsbuildinfo
+
+.DS_Store
+Thumbs.db
+.turbo
+.cache
+uploads
+```
+
+- [ ] **步骤 4：添加编辑器配置**
 
 创建 `.editorconfig`：
 
@@ -150,7 +185,7 @@ trim_trailing_whitespace = true
 trim_trailing_whitespace = false
 ```
 
-- [ ] **步骤 4：添加 git attributes**
+- [ ] **步骤 5：添加 git attributes**
 
 创建 `.gitattributes`：
 
@@ -161,7 +196,7 @@ trim_trailing_whitespace = false
 *.ps1 text eol=crlf
 ```
 
-- [ ] **步骤 5：扩展 gitignore**
+- [ ] **步骤 6：扩展 gitignore**
 
 修改 `.gitignore`，确保包含：
 
@@ -201,7 +236,7 @@ Thumbs.db
 .cache/
 ```
 
-- [ ] **步骤 6：更新 README 的启动命令**
+- [ ] **步骤 7：更新 README 的启动命令**
 
 用以下内容替换 `README.md`：
 
@@ -236,7 +271,7 @@ pnpm dev
 - `docs/superpowers/specs/2026-07-09-personal-portal-design.md`
 ```
 
-- [ ] **步骤 7：验证工作区文件**
+- [ ] **步骤 8：验证工作区文件**
 
 运行：
 
@@ -246,10 +281,10 @@ git status --short
 
 预期：可以看到新增或修改的根目录文件。
 
-- [ ] **步骤 8：提交**
+- [ ] **步骤 9：提交**
 
 ```bash
-git add package.json pnpm-workspace.yaml .editorconfig .gitattributes .gitignore README.md
+git add package.json pnpm-workspace.yaml .dockerignore .editorconfig .gitattributes .gitignore README.md
 git commit -m "chore: set up workspace baseline"
 ```
 
@@ -421,6 +456,7 @@ git commit -m "chore: add database and redis infrastructure"
     "test": "jest --config test/jest-e2e.json --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
@@ -619,10 +655,13 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN corepack enable
+RUN corepack prepare pnpm@11.10.0 --activate
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+COPY --from=builder /app/apps/api/prisma.config.ts ./apps/api/prisma.config.ts
 EXPOSE 3001
 CMD ["node", "apps/api/dist/main.js"]
 ```
@@ -1438,6 +1477,8 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
+RUN corepack enable
+RUN corepack prepare pnpm@11.10.0 --activate
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder /app/apps/web/public ./apps/web/public
@@ -1497,9 +1538,30 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
 
 - [ ] **步骤 2：在 Compose 中添加后端和前端服务**
 
-修改 `docker-compose.yml`，在 `mysql` 和 `redis` 之外加入以下服务：
+修改 `docker-compose.yml`，在 `mysql` 和 `redis` 之外加入以下服务。MySQL 和 Redis 保持内部服务，不映射宿主机端口：
 
 ```yaml
+  api-bootstrap:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: lingxi-api-bootstrap
+    restart: "no"
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      REDIS_URL: redis://redis:6379
+    command: ["sh", "-c", "cd apps/api && pnpm prisma:deploy && pnpm prisma:seed"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -1521,10 +1583,8 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
     ports:
       - "${API_PORT:-3001}:3001"
     depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      api-bootstrap:
+        condition: service_completed_successfully
 
   web:
     build:

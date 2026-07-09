@@ -35,9 +35,9 @@ Copy-Item .env.example .env
 docker compose up -d --build
 ```
 
-MySQL and Redis are internal Compose dependencies and are not published to host ports. API and web are exposed through `API_PORT` and `WEB_PORT`.
+The `api-bootstrap` service runs Prisma migrations and role seed data before the API starts. MySQL and Redis are internal Compose dependencies and are not published to host ports. API and web are exposed through `API_PORT` and `WEB_PORT`.
 
-MySQL 和 Redis 只作为 Compose 内部依赖使用，不映射到宿主机端口。API 和 Web 通过 `API_PORT` 与 `WEB_PORT` 对外访问。
+`api-bootstrap` 服务会在 API 启动前执行 Prisma 迁移和角色种子数据。MySQL 和 Redis 只作为 Compose 内部依赖使用，不映射到宿主机端口。API 和 Web 通过 `API_PORT` 与 `WEB_PORT` 对外访问。
 
 ## 验证 / Verification
 

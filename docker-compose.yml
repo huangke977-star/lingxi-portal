@@ -29,6 +29,27 @@ services:
       timeout: 5s
       retries: 10
 
+  api-bootstrap:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: lingxi-api-bootstrap
+    restart: "no"
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      REDIS_URL: redis://redis:6379
+    command: ["sh", "-c", "cd apps/api && pnpm prisma:deploy && pnpm prisma:seed"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -50,10 +71,8 @@ services:
     ports:
       - "${API_PORT:-3001}:3001"
     depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      api-bootstrap:
+        condition: service_completed_successfully
 
   web:
     build:

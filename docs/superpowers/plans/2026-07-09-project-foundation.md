@@ -32,6 +32,7 @@ Create this structure:
 ```text
 lingxi-portal/
   .editorconfig
+  .dockerignore
   .env.example
   .gitattributes
   .gitignore
@@ -92,6 +93,7 @@ Responsibilities:
 **Files:**
 - Create: `package.json`
 - Create: `pnpm-workspace.yaml`
+- Create: `.dockerignore`
 - Create: `.editorconfig`
 - Create: `.gitattributes`
 - Modify: `.gitignore`
@@ -133,6 +135,39 @@ packages:
 
 - [ ] **Step 3: Add editor config**
 
+Create `.dockerignore`:
+
+```dockerignore
+.git
+.gitignore
+.worktrees
+.superpowers
+
+node_modules
+**/node_modules
+
+.env
+.env.*
+!.env.example
+
+.next
+**/.next
+dist
+**/dist
+build
+coverage
+*.log
+*.tsbuildinfo
+
+.DS_Store
+Thumbs.db
+.turbo
+.cache
+uploads
+```
+
+- [ ] **Step 4: Add editor config**
+
 Create `.editorconfig`:
 
 ```ini
@@ -150,7 +185,7 @@ trim_trailing_whitespace = true
 trim_trailing_whitespace = false
 ```
 
-- [ ] **Step 4: Add git attributes**
+- [ ] **Step 5: Add git attributes**
 
 Create `.gitattributes`:
 
@@ -161,7 +196,7 @@ Create `.gitattributes`:
 *.ps1 text eol=crlf
 ```
 
-- [ ] **Step 5: Extend gitignore**
+- [ ] **Step 6: Extend gitignore**
 
 Modify `.gitignore` so it contains:
 
@@ -201,7 +236,7 @@ Thumbs.db
 .cache/
 ```
 
-- [ ] **Step 6: Update README with setup commands**
+- [ ] **Step 7: Update README with setup commands**
 
 Replace `README.md` with:
 
@@ -236,7 +271,7 @@ pnpm dev
 - `docs/superpowers/specs/2026-07-09-personal-portal-design.md`
 ```
 
-- [ ] **Step 7: Verify workspace files**
+- [ ] **Step 8: Verify workspace files**
 
 Run:
 
@@ -246,10 +281,10 @@ git status --short
 
 Expected: new or modified root files are visible.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add package.json pnpm-workspace.yaml .editorconfig .gitattributes .gitignore README.md
+git add package.json pnpm-workspace.yaml .dockerignore .editorconfig .gitattributes .gitignore README.md
 git commit -m "chore: set up workspace baseline"
 ```
 
@@ -421,6 +456,7 @@ Create `apps/api/package.json`:
     "test": "jest --config test/jest-e2e.json --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
@@ -619,10 +655,13 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN corepack enable
+RUN corepack prepare pnpm@11.10.0 --activate
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+COPY --from=builder /app/apps/api/prisma.config.ts ./apps/api/prisma.config.ts
 EXPOSE 3001
 CMD ["node", "apps/api/dist/main.js"]
 ```
@@ -1438,6 +1477,8 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
+RUN corepack enable
+RUN corepack prepare pnpm@11.10.0 --activate
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder /app/apps/web/public ./apps/web/public
@@ -1497,9 +1538,30 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
 
 - [ ] **Step 2: Add backend and frontend services to Compose**
 
-Modify `docker-compose.yml` to include these services in addition to `mysql` and `redis`:
+Modify `docker-compose.yml` to include these services in addition to `mysql` and `redis`. MySQL and Redis remain internal services without host port mappings:
 
 ```yaml
+  api-bootstrap:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: lingxi-api-bootstrap
+    restart: "no"
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      REDIS_URL: redis://redis:6379
+    command: ["sh", "-c", "cd apps/api && pnpm prisma:deploy && pnpm prisma:seed"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -1521,10 +1583,8 @@ Modify `docker-compose.yml` to include these services in addition to `mysql` and
     ports:
       - "${API_PORT:-3001}:3001"
     depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      api-bootstrap:
+        condition: service_completed_successfully
 
   web:
     build:
