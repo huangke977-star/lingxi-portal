@@ -25,4 +25,4 @@ Thumbs.db
 # local tooling
 .turbo/
 .cache/
-
+.worktrees/
