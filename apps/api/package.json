@@ -16,12 +16,15 @@
     "prisma:seed:prod": "node dist/prisma/seed.js"
   },
   "dependencies": {
-    "@prisma/adapter-mariadb": "latest",
     "@nestjs/common": "latest",
     "@nestjs/core": "latest",
+    "@nestjs/jwt": "latest",
     "@nestjs/platform-express": "latest",
+    "@prisma/adapter-mariadb": "latest",
     "@prisma/client": "latest",
+    "bcryptjs": "latest",
     "dotenv": "latest",
+    "ioredis": "latest",
     "reflect-metadata": "latest",
     "rxjs": "latest"
   },

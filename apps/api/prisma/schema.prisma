@@ -7,6 +7,11 @@ datasource db {
   provider = "mysql"
 }
 
+enum UserStatus {
+  active
+  disabled
+}
+
 model Role {
   id        Int      @id @default(autoincrement())
   code      String   @unique @db.VarChar(64)
@@ -15,6 +20,24 @@ model Role {
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  users     User[]
 
   @@map("roles")
+}
+
+model User {
+  id           Int        @id @default(autoincrement())
+  username     String     @unique @db.VarChar(32)
+  email        String     @unique @db.VarChar(191)
+  passwordHash String     @map("password_hash") @db.VarChar(255)
+  roleId       Int        @map("role_id")
+  role         Role       @relation(fields: [roleId], references: [id])
+  isSuperAdmin Boolean    @default(false) @map("is_super_admin")
+  status       UserStatus @default(active)
+  lastLoginAt  DateTime?  @map("last_login_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  @@index([roleId])
+  @@map("users")
 }
