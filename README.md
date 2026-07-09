@@ -40,6 +40,34 @@ The auth phase needs these local variables in `.env`. Do not commit real secrets
 - `REFRESH_TOKEN_SECRET`
 - `REFRESH_TOKEN_EXPIRES_IN_DAYS`
 
+## 超级管理员初始化 / Super Admin Bootstrap
+
+先执行 Prisma 迁移和角色种子数据，再用环境变量创建第一个超级管理员账号。真实账号和密码只放在私有 `.env` 或服务器环境变量中，不要提交到仓库。
+
+Run Prisma migrations and role seed data first, then create the first super-admin account from environment variables. Keep real usernames and passwords only in private `.env` files or server environment variables; do not commit them.
+
+Required variables:
+
+- `ADMIN_USERNAME`
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+
+Local command:
+
+```bash
+pnpm --filter @lingxi/api admin:bootstrap
+```
+
+Docker command:
+
+```bash
+docker compose run --rm api sh -c "cd apps/api && pnpm admin:bootstrap"
+```
+
+The command is idempotent: if the username or email already exists, it updates that account to `isSuperAdmin=true`, assigns the `administrator` role, activates it, and replaces the password hash. It does not print the password.
+
+该命令是幂等的：如果用户名或邮箱已存在，会把该账号更新为 `isSuperAdmin=true`，分配 `administrator` 角色，启用账号，并替换密码哈希。命令不会打印密码。
+
 ## Docker 全栈 / Docker Stack
 
 ```bash
@@ -70,7 +98,11 @@ pnpm build
 - `docs/superpowers/specs/2026-07-09-personal-portal-design.md`
 - `docs/superpowers/specs/2026-07-09-auth-rbac-design.zh-CN.md`
 - `docs/superpowers/specs/2026-07-09-auth-rbac-design.md`
+- `docs/superpowers/specs/2026-07-09-admin-bootstrap-users-design.zh-CN.md`
+- `docs/superpowers/specs/2026-07-09-admin-bootstrap-users-design.md`
 - `docs/superpowers/plans/2026-07-09-project-foundation.zh-CN.md`
 - `docs/superpowers/plans/2026-07-09-project-foundation.md`
 - `docs/superpowers/plans/2026-07-09-auth-rbac-foundation.zh-CN.md`
 - `docs/superpowers/plans/2026-07-09-auth-rbac-foundation.md`
+- `docs/superpowers/plans/2026-07-09-admin-bootstrap-users.zh-CN.md`
+- `docs/superpowers/plans/2026-07-09-admin-bootstrap-users.md`
