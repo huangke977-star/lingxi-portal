@@ -1,0 +1,29 @@
+{
+  "name": "@lingxi/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css,md}\""
+  },
+  "dependencies": {
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "eslint": "latest",
+    "eslint-config-next": "latest",
+    "eslint-plugin-react-hooks": "latest",
+    "prettier": "latest",
+    "typescript": "latest",
+    "typescript-eslint": "latest"
+  }
+}

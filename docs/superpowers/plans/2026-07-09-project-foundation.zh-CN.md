@@ -702,6 +702,7 @@ allowBuilds:
   '@prisma/engines': true
   esbuild: true
   prisma: true
+  sharp: true
   unrs-resolver: true
 ```
 
@@ -1112,10 +1113,15 @@ git commit -m "feat(api): seed cultivation roles"
 - 创建：`apps/web/package.json`
 - 创建：`apps/web/next.config.ts`
 - 创建：`apps/web/tsconfig.json`
+- 创建：`apps/web/eslint.config.mjs`
 - 创建：`apps/web/Dockerfile`
+- 创建：`apps/web/next-env.d.ts`
+- 创建：`apps/web/public/.gitkeep`
 - 创建：`apps/web/src/app/layout.tsx`
+- 创建：`apps/web/src/app/globals.css`
 - 创建：`apps/web/src/app/page.tsx`
 - 创建：`apps/web/src/app/nav/page.tsx`
+- 创建：`apps/web/src/app/tools/page.tsx`
 - 创建：`apps/web/src/app/login/page.tsx`
 - 创建：`apps/web/src/app/register/page.tsx`
 - 创建：`apps/web/src/app/dashboard/page.tsx`
@@ -1140,7 +1146,7 @@ git commit -m "feat(api): seed cultivation roles"
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start --port 3000",
-    "lint": "next lint",
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,md}\""
   },
   "dependencies": {
@@ -1149,13 +1155,16 @@ git commit -m "feat(api): seed cultivation roles"
     "react-dom": "latest"
   },
   "devDependencies": {
+    "@eslint/js": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "eslint": "latest",
     "eslint-config-next": "latest",
+    "eslint-plugin-react-hooks": "latest",
     "prettier": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "typescript-eslint": "latest"
   }
 }
 ```
@@ -1190,16 +1199,44 @@ export default nextConfig;
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
   "exclude": ["node_modules"]
 }
+```
+
+创建 `apps/web/eslint.config.mjs`：
+
+```js
+import js from '@eslint/js';
+import reactHooks from 'eslint-plugin-react-hooks';
+import tseslint from 'typescript-eslint';
+
+export default [
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    plugins: {
+      'react-hooks': reactHooks,
+    },
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+    },
+  },
+];
 ```
 
 - [ ] **步骤 3：添加前端 API helper**
@@ -1245,7 +1282,7 @@ export default function RootLayout({
     <html lang="zh-CN">
       <body>
         <header>
-          <nav>
+          <nav aria-label="主导航">
             <Link href="/">灵犀门户</Link>
             <Link href="/nav">导航</Link>
             <Link href="/tools">工具</Link>
@@ -1337,6 +1374,19 @@ export default function NavPage() {
 }
 ```
 
+创建 `apps/web/src/app/tools/page.tsx`：
+
+```tsx
+export default function ToolsPage() {
+  return (
+    <section>
+      <h1>工具箱</h1>
+      <p>登录后可按角色查看可用工具。</p>
+    </section>
+  );
+}
+```
+
 创建 `apps/web/src/app/login/page.tsx`：
 
 ```tsx
@@ -1397,7 +1447,7 @@ export default function AdminPage() {
 FROM node:22-alpine AS deps
 WORKDIR /app
 RUN corepack enable
-COPY package.json pnpm-workspace.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json apps/web/package.json
 RUN pnpm install --filter @lingxi/web... --frozen-lockfile
 
@@ -1426,6 +1476,7 @@ CMD ["node", "apps/web/server.js"]
 
 ```bash
 pnpm install
+pnpm approve-builds --all
 ```
 
 预期：lockfile 更新并包含前端依赖。
