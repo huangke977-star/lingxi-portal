@@ -34,7 +34,7 @@
     "@types/supertest": "latest",
     "@typescript-eslint/eslint-plugin": "latest",
     "@typescript-eslint/parser": "latest",
-    "eslint": "latest",
+    "eslint": "9.39.4",
     "jest": "latest",
     "prettier": "latest",
     "prisma": "latest",

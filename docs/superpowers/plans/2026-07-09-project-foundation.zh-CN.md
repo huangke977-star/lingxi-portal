@@ -307,8 +307,6 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-    ports:
-      - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -322,8 +320,6 @@ services:
     container_name: lingxi-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -447,7 +443,7 @@ git commit -m "chore: add database and redis infrastructure"
     "@types/supertest": "latest",
     "@typescript-eslint/eslint-plugin": "latest",
     "@typescript-eslint/parser": "latest",
-    "eslint": "latest",
+    "eslint": "9.39.4",
     "jest": "latest",
     "prettier": "latest",
     "prisma": "latest",
@@ -1115,7 +1111,7 @@ git commit -m "feat(api): seed cultivation roles"
 - 创建：`apps/web/tsconfig.json`
 - 创建：`apps/web/eslint.config.mjs`
 - 创建：`apps/web/Dockerfile`
-- 创建：`apps/web/next-env.d.ts`
+- 修改：`.gitignore`
 - 创建：`apps/web/public/.gitkeep`
 - 创建：`apps/web/src/app/layout.tsx`
 - 创建：`apps/web/src/app/globals.css`
@@ -1155,19 +1151,18 @@ git commit -m "feat(api): seed cultivation roles"
     "react-dom": "latest"
   },
   "devDependencies": {
-    "@eslint/js": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "eslint": "latest",
+    "eslint": "9.39.4",
     "eslint-config-next": "latest",
-    "eslint-plugin-react-hooks": "latest",
     "prettier": "latest",
-    "typescript": "latest",
-    "typescript-eslint": "latest"
+    "typescript": "latest"
   }
 }
 ```
+
+确保 `.gitignore` 包含 `apps/web/next-env.d.ts`。该文件由 Next.js 生成和维护，不应该手写或提交。
 
 - [ ] **步骤 2：添加 Next.js 配置**
 
@@ -1214,29 +1209,10 @@ export default nextConfig;
 创建 `apps/web/eslint.config.mjs`：
 
 ```js
-import js from '@eslint/js';
-import reactHooks from 'eslint-plugin-react-hooks';
-import tseslint from 'typescript-eslint';
+import nextVitals from 'eslint-config-next/core-web-vitals';
+import nextTypescript from 'eslint-config-next/typescript';
 
-export default [
-  js.configs.recommended,
-  ...tseslint.configs.recommended,
-  {
-    files: ['src/**/*.{ts,tsx}'],
-    plugins: {
-      'react-hooks': reactHooks,
-    },
-    languageOptions: {
-      parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
-    rules: {
-      ...reactHooks.configs.recommended.rules,
-    },
-  },
-];
+export default [...nextVitals, ...nextTypescript];
 ```
 
 - [ ] **步骤 3：添加前端 API helper**
