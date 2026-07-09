@@ -788,9 +788,7 @@ export default defineConfig({
     seed: 'tsx prisma/seed.ts',
   },
   datasource: {
-    url:
-      process.env.DATABASE_URL ??
-      'mysql://lingxi:change-me-app-password@localhost:3306/lingxi_portal',
+    url: process.env.DATABASE_URL,
   },
 });
 ```
@@ -910,6 +908,10 @@ config({ path: '../../.env', quiet: true });
 function getDatabaseConfig() {
   const databaseUrl = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : null;
 
+  if (!databaseUrl && !process.env.MYSQL_PASSWORD) {
+    throw new Error('DATABASE_URL or MYSQL_PASSWORD must be configured before using Prisma.');
+  }
+
   return {
     host: process.env.MYSQL_HOST ?? databaseUrl?.hostname ?? 'localhost',
     port: Number(process.env.MYSQL_PORT ?? databaseUrl?.port ?? 3306),
@@ -934,21 +936,14 @@ export function createPrismaClient() {
 创建 `apps/api/src/prisma/prisma.service.ts`：
 
 ```ts
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '../generated/prisma/client';
 import { createPrismaAdapter } from './prisma-client.factory';
 
 @Injectable()
-export class PrismaService
-  extends PrismaClient
-  implements OnModuleInit, OnModuleDestroy
-{
+export class PrismaService extends PrismaClient implements OnModuleDestroy {
   constructor() {
     super({ adapter: createPrismaAdapter() });
-  }
-
-  async onModuleInit() {
-    await this.$connect();
   }
 
   async onModuleDestroy() {
@@ -1052,6 +1047,7 @@ const cultivationRoles = [
 
 describe('RolesController (e2e)', () => {
   let app: INestApplication;
+  const findMany = jest.fn().mockResolvedValue(cultivationRoles);
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -1060,7 +1056,7 @@ describe('RolesController (e2e)', () => {
       .overrideProvider(PrismaService)
       .useValue({
         role: {
-          findMany: jest.fn().mockResolvedValue(cultivationRoles),
+          findMany,
         },
         $connect: jest.fn(),
         $disconnect: jest.fn(),
@@ -1079,6 +1075,14 @@ describe('RolesController (e2e)', () => {
     const response = await request(app.getHttpServer()).get('/roles').expect(200);
 
     expect(response.body).toEqual(cultivationRoles);
+    expect(findMany).toHaveBeenCalledWith({
+      orderBy: { level: 'asc' },
+      select: {
+        code: true,
+        name: true,
+        level: true,
+      },
+    });
   });
 });
 ```

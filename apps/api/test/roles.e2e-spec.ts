@@ -18,6 +18,7 @@ const cultivationRoles = [
 
 describe('RolesController (e2e)', () => {
   let app: INestApplication;
+  const findMany = jest.fn().mockResolvedValue(cultivationRoles);
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -26,7 +27,7 @@ describe('RolesController (e2e)', () => {
       .overrideProvider(PrismaService)
       .useValue({
         role: {
-          findMany: jest.fn().mockResolvedValue(cultivationRoles),
+          findMany,
         },
         $connect: jest.fn(),
         $disconnect: jest.fn(),
@@ -45,5 +46,13 @@ describe('RolesController (e2e)', () => {
     const response = await request(app.getHttpServer()).get('/roles').expect(200);
 
     expect(response.body).toEqual(cultivationRoles);
+    expect(findMany).toHaveBeenCalledWith({
+      orderBy: { level: 'asc' },
+      select: {
+        code: true,
+        name: true,
+        level: true,
+      },
+    });
   });
 });

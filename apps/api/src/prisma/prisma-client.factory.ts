@@ -7,6 +7,10 @@ config({ path: '../../.env', quiet: true });
 function getDatabaseConfig() {
   const databaseUrl = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : null;
 
+  if (!databaseUrl && !process.env.MYSQL_PASSWORD) {
+    throw new Error('DATABASE_URL or MYSQL_PASSWORD must be configured before using Prisma.');
+  }
+
   return {
     host: process.env.MYSQL_HOST ?? databaseUrl?.hostname ?? 'localhost',
     port: Number(process.env.MYSQL_PORT ?? databaseUrl?.port ?? 3306),
