@@ -86,6 +86,15 @@ Set `NEXT_PUBLIC_API_BASE_URL` to the browser-reachable API URL before building 
 
 构建 Web 镜像前，要把 `NEXT_PUBLIC_API_BASE_URL` 设置为浏览器可访问的 API 地址，例如直接端口测试时使用 `http://5200918.xyz:3001`，后续接入反向代理时改为你的 API 路径。
 
+For small VPS deployments, prefer the production compose file. It pulls prebuilt images from GHCR and avoids building Docker images on the server.
+
+小型 VPS 部署建议使用生产 compose 文件。它从 GHCR 拉取预构建镜像，避免在服务器本机执行 Docker 构建。
+
+```bash
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
 ## 验证 / Verification
 
 ```bash

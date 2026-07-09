@@ -8,7 +8,7 @@ RUN pnpm install --filter @lingxi/web... --frozen-lockfile
 FROM node:22-alpine AS builder
 WORKDIR /app
 RUN corepack enable
-ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+ARG NEXT_PUBLIC_API_BASE_URL=auto
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules

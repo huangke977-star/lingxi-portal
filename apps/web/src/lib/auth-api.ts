@@ -1,4 +1,4 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
+const CONFIGURED_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'auto';
 
 export interface AuthRole {
   code: string;
@@ -66,7 +66,7 @@ export async function getMe(accessToken: string): Promise<AuthUser> {
 }
 
 export async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -79,6 +79,18 @@ export async function requestJson<T>(path: string, init: RequestInit = {}): Prom
   }
 
   return response.json() as Promise<T>;
+}
+
+function getBrowserApiBaseUrl(): string {
+  if (CONFIGURED_API_BASE_URL !== 'auto') {
+    return CONFIGURED_API_BASE_URL;
+  }
+
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:3001`;
+  }
+
+  return 'http://localhost:3001';
 }
 
 export async function readErrorMessage(response: Response): Promise<string> {
