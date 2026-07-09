@@ -1,4 +1,10 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
+
+export interface AuthRole {
+  code: string;
+  name: string;
+  level: number;
+}
 
 export interface AuthUser {
   id: number;
@@ -6,11 +12,7 @@ export interface AuthUser {
   email: string;
   status: 'active' | 'disabled';
   isSuperAdmin: boolean;
-  role: {
-    code: string;
-    name: string;
-    level: number;
-  };
+  role: AuthRole;
 }
 
 export interface AuthResponse {
@@ -63,7 +65,7 @@ export async function getMe(accessToken: string): Promise<AuthUser> {
   });
 }
 
-async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
@@ -79,7 +81,7 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
   return response.json() as Promise<T>;
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
+export async function readErrorMessage(response: Response): Promise<string> {
   const fallback = `请求失败，状态码 ${response.status}`;
 
   try {
