@@ -275,6 +275,7 @@ git commit -m "chore: set up workspace baseline"
 COMPOSE_PROJECT_NAME=lingxi_portal
 
 MYSQL_ROOT_PASSWORD=change-me-root-password
+MYSQL_HOST=localhost
 MYSQL_DATABASE=lingxi_portal
 MYSQL_USER=lingxi
 MYSQL_PASSWORD=change-me-app-password
@@ -606,6 +607,8 @@ RUN corepack enable
 COPY package.json pnpm-workspace.yaml ./
 COPY pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/package.json
+COPY apps/api/prisma/schema.prisma apps/api/prisma/schema.prisma
+COPY apps/api/prisma.config.ts apps/api/prisma.config.ts
 RUN pnpm install --filter @lingxi/api... --frozen-lockfile
 
 FROM node:22-alpine AS builder
@@ -614,17 +617,19 @@ RUN corepack enable
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY . .
+RUN pnpm --filter @lingxi/api prisma:generate
 RUN pnpm --filter @lingxi/api build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN corepack enable
-COPY --from=builder /app/apps/api/dist ./dist
-COPY --from=builder /app/apps/api/package.json ./package.json
-COPY --from=builder /app/apps/api/node_modules ./node_modules
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 EXPOSE 3001
-CMD ["node", "dist/main.js"]
+CMD ["node", "apps/api/dist/main.js"]
 ```
 
 - [ ] **步骤 5：添加健康检查 e2e 测试**
@@ -722,12 +727,21 @@ git commit -m "feat(api): add nest health scaffold"
 ### 任务 4：Prisma Schema 和角色种子数据
 
 **文件：**
+- 修改：`.env.example`
+- 修改：`.gitignore`
+- 修改：`apps/api/package.json`
+- 创建：`apps/api/prisma.config.ts`
 - 创建：`apps/api/prisma/schema.prisma`
+- 创建：`apps/api/prisma/migrations/20260709031500_init_roles/migration.sql`
+- 创建：`apps/api/prisma/migrations/migration_lock.toml`
 - 创建：`apps/api/prisma/seed.ts`
+- 创建：`apps/api/src/prisma/prisma-client.factory.ts`
+- 创建：`apps/api/src/prisma/prisma.service.ts`
 - 创建：`apps/api/src/roles/roles.module.ts`
 - 创建：`apps/api/src/roles/roles.service.ts`
 - 创建：`apps/api/src/roles/roles.controller.ts`
 - 修改：`apps/api/src/app.module.ts`
+- 修改：`apps/api/test/health.e2e-spec.ts`
 - 创建：`apps/api/test/roles.e2e-spec.ts`
 
 **接口：**
@@ -737,16 +751,60 @@ git commit -m "feat(api): add nest health scaffold"
 
 - [ ] **步骤 1：添加 Prisma schema**
 
+确保 `.env.example` 包含 `MYSQL_HOST=localhost`。
+
+确保 `.gitignore` 忽略生成的 Prisma Client 和意外编译出的 Prisma 配置文件：
+
+```gitignore
+apps/api/src/generated/prisma/
+apps/api/prisma.config.d.ts
+apps/api/prisma.config.js
+apps/api/prisma.config.js.map
+```
+
+确保 `apps/api/package.json` 包含这些运行时依赖：
+
+```json
+{
+  "dependencies": {
+    "@prisma/adapter-mariadb": "latest",
+    "dotenv": "latest"
+  }
+}
+```
+
+创建 `apps/api/prisma.config.ts`：
+
+```ts
+import { config } from 'dotenv';
+import { defineConfig } from 'prisma/config';
+
+config({ path: '../../.env', quiet: true });
+
+export default defineConfig({
+  schema: 'prisma/schema.prisma',
+  migrations: {
+    path: 'prisma/migrations',
+    seed: 'tsx prisma/seed.ts',
+  },
+  datasource: {
+    url:
+      process.env.DATABASE_URL ??
+      'mysql://lingxi:change-me-app-password@localhost:3306/lingxi_portal',
+  },
+});
+```
+
 创建 `apps/api/prisma/schema.prisma`：
 
 ```prisma
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
 }
 
 model Role {
@@ -767,9 +825,9 @@ model Role {
 创建 `apps/api/prisma/seed.ts`：
 
 ```ts
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../src/prisma/prisma-client.factory';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 const roles = [
   { code: 'qi_refining', name: '练气', level: 10, sortOrder: 10 },
@@ -840,15 +898,74 @@ pnpm --filter @lingxi/api prisma:seed
 
 - [ ] **步骤 6：添加角色模块**
 
+创建 `apps/api/src/prisma/prisma-client.factory.ts`：
+
+```ts
+import { PrismaMariaDb } from '@prisma/adapter-mariadb';
+import { config } from 'dotenv';
+import { PrismaClient } from '../generated/prisma/client';
+
+config({ path: '../../.env', quiet: true });
+
+function getDatabaseConfig() {
+  const databaseUrl = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : null;
+
+  return {
+    host: process.env.MYSQL_HOST ?? databaseUrl?.hostname ?? 'localhost',
+    port: Number(process.env.MYSQL_PORT ?? databaseUrl?.port ?? 3306),
+    user: process.env.MYSQL_USER ?? decodeURIComponent(databaseUrl?.username ?? 'lingxi'),
+    password: process.env.MYSQL_PASSWORD ?? decodeURIComponent(databaseUrl?.password ?? ''),
+    database:
+      process.env.MYSQL_DATABASE ??
+      decodeURIComponent(databaseUrl?.pathname.replace(/^\//, '') ?? 'lingxi_portal'),
+    connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT ?? 5),
+  };
+}
+
+export function createPrismaAdapter() {
+  return new PrismaMariaDb(getDatabaseConfig());
+}
+
+export function createPrismaClient() {
+  return new PrismaClient({ adapter: createPrismaAdapter() });
+}
+```
+
+创建 `apps/api/src/prisma/prisma.service.ts`：
+
+```ts
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { PrismaClient } from '../generated/prisma/client';
+import { createPrismaAdapter } from './prisma-client.factory';
+
+@Injectable()
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
+  constructor() {
+    super({ adapter: createPrismaAdapter() });
+  }
+
+  async onModuleInit() {
+    await this.$connect();
+  }
+
+  async onModuleDestroy() {
+    await this.$disconnect();
+  }
+}
+```
+
 创建 `apps/api/src/roles/roles.service.ts`：
 
 ```ts
 import { Injectable } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class RolesService {
-  private readonly prisma = new PrismaClient();
+  constructor(private readonly prisma: PrismaService) {}
 
   async listRoles() {
     return this.prisma.role.findMany({
@@ -884,12 +1001,13 @@ export class RolesController {
 
 ```ts
 import { Module } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import { RolesController } from './roles.controller';
 import { RolesService } from './roles.service';
 
 @Module({
   controllers: [RolesController],
-  providers: [RolesService],
+  providers: [PrismaService, RolesService],
 })
 export class RolesModule {}
 ```
@@ -907,6 +1025,8 @@ import { RolesModule } from './roles/roles.module';
 export class AppModule {}
 ```
 
+修改 `apps/api/test/health.e2e-spec.ts`，让健康检查测试在编译测试模块前用 no-op 的 `$connect` 和 `$disconnect` 覆盖 `PrismaService`。这样在 `AppModule` 引入 `RolesModule` 后，健康检查测试仍然不依赖运行中的数据库。
+
 - [ ] **步骤 7：添加角色 e2e 测试**
 
 创建 `apps/api/test/roles.e2e-spec.ts`：
@@ -916,6 +1036,19 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/prisma/prisma.service';
+
+const cultivationRoles = [
+  { code: 'qi_refining', name: '练气', level: 10 },
+  { code: 'foundation_building', name: '筑基', level: 20 },
+  { code: 'golden_core', name: '金丹', level: 30 },
+  { code: 'nascent_soul', name: '元婴', level: 40 },
+  { code: 'spirit_transformation', name: '化神', level: 50 },
+  { code: 'void_refining', name: '炼虚', level: 60 },
+  { code: 'body_integration', name: '合体', level: 70 },
+  { code: 'mahayana', name: '大乘', level: 80 },
+  { code: 'administrator', name: '管理员', level: 90 },
+];
 
 describe('RolesController (e2e)', () => {
   let app: INestApplication;
@@ -923,7 +1056,16 @@ describe('RolesController (e2e)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PrismaService)
+      .useValue({
+        role: {
+          findMany: jest.fn().mockResolvedValue(cultivationRoles),
+        },
+        $connect: jest.fn(),
+        $disconnect: jest.fn(),
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     await app.init();
@@ -936,17 +1078,7 @@ describe('RolesController (e2e)', () => {
   it('GET /roles returns seeded cultivation roles', async () => {
     const response = await request(app.getHttpServer()).get('/roles').expect(200);
 
-    expect(response.body).toEqual([
-      { code: 'qi_refining', name: '练气', level: 10 },
-      { code: 'foundation_building', name: '筑基', level: 20 },
-      { code: 'golden_core', name: '金丹', level: 30 },
-      { code: 'nascent_soul', name: '元婴', level: 40 },
-      { code: 'spirit_transformation', name: '化神', level: 50 },
-      { code: 'void_refining', name: '炼虚', level: 60 },
-      { code: 'body_integration', name: '合体', level: 70 },
-      { code: 'mahayana', name: '大乘', level: 80 },
-      { code: 'administrator', name: '管理员', level: 90 },
-    ]);
+    expect(response.body).toEqual(cultivationRoles);
   });
 });
 ```
@@ -964,7 +1096,7 @@ pnpm --filter @lingxi/api test -- roles.e2e-spec.ts
 - [ ] **步骤 9：提交**
 
 ```bash
-git add apps/api/prisma apps/api/src apps/api/test
+git add .env.example .gitignore apps/api/package.json apps/api/prisma.config.ts apps/api/prisma apps/api/src apps/api/test pnpm-lock.yaml
 git commit -m "feat(api): seed cultivation roles"
 ```
 
