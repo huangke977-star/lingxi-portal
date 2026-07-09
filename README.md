@@ -95,6 +95,22 @@ docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
+Production traffic should enter through Caddy:
+
+- Web: `https://5200918.xyz`
+- Login: `https://5200918.xyz/login`
+- API through reverse proxy: `https://5200918.xyz/api`
+
+生产流量应通过 Caddy 进入：
+
+- Web：`https://5200918.xyz`
+- 登录：`https://5200918.xyz/login`
+- API 反向代理：`https://5200918.xyz/api`
+
+After Caddy is verified, keep only TCP `80` and `443` open to the public. The app containers bind `3000` and `3001` to `127.0.0.1` only.
+
+Caddy 验证通过后，公网只保留 TCP `80` 和 `443`。应用容器的 `3000` 和 `3001` 只绑定到服务器本机 `127.0.0.1`。
+
 ## 验证 / Verification
 
 ```bash

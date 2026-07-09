@@ -87,7 +87,11 @@ function getBrowserApiBaseUrl(): string {
   }
 
   if (typeof window !== 'undefined') {
-    return `${window.location.protocol}//${window.location.hostname}:3001`;
+    if (window.location.port === '3000') {
+      return `${window.location.protocol}//${window.location.hostname}:3001`;
+    }
+
+    return `${window.location.origin}/api`;
   }
 
   return 'http://localhost:3001';
