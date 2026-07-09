@@ -14,10 +14,12 @@
     "prisma:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@prisma/adapter-mariadb": "latest",
     "@nestjs/common": "latest",
     "@nestjs/core": "latest",
     "@nestjs/platform-express": "latest",
     "@prisma/client": "latest",
+    "dotenv": "latest",
     "reflect-metadata": "latest",
     "rxjs": "latest"
   },
