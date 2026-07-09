@@ -392,6 +392,7 @@ git commit -m "chore: add database and redis infrastructure"
 - 创建：`apps/api/tsconfig.json`
 - 创建：`apps/api/tsconfig.build.json`
 - 创建：`apps/api/nest-cli.json`
+- 创建：`apps/api/eslint.config.mjs`
 - 创建：`apps/api/Dockerfile`
 - 创建：`apps/api/src/main.ts`
 - 创建：`apps/api/src/app.module.ts`
@@ -399,6 +400,7 @@ git commit -m "chore: add database and redis infrastructure"
 - 创建：`apps/api/src/health/health.controller.ts`
 - 创建：`apps/api/test/jest-e2e.json`
 - 创建：`apps/api/test/health.e2e-spec.ts`
+- 修改：`pnpm-workspace.yaml`
 
 **接口：**
 - 产出监听 `process.env.API_PORT || 3001` 的 API 应用。
@@ -420,7 +422,7 @@ git commit -m "chore: add database and redis infrastructure"
     "start": "node dist/main.js",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "test": "jest --config test/jest-e2e.json",
+    "test": "jest --config test/jest-e2e.json --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts"
@@ -434,12 +436,14 @@ git commit -m "chore: add database and redis infrastructure"
     "rxjs": "latest"
   },
   "devDependencies": {
+    "@eslint/js": "latest",
     "@nestjs/cli": "latest",
     "@nestjs/schematics": "latest",
     "@nestjs/testing": "latest",
     "@types/express": "latest",
     "@types/jest": "latest",
     "@types/node": "latest",
+    "@types/supertest": "latest",
     "@typescript-eslint/eslint-plugin": "latest",
     "@typescript-eslint/parser": "latest",
     "eslint": "latest",
@@ -452,7 +456,8 @@ git commit -m "chore: add database and redis infrastructure"
     "ts-loader": "latest",
     "ts-node": "latest",
     "tsx": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "typescript-eslint": "latest"
   }
 }
 ```
@@ -473,9 +478,9 @@ git commit -m "chore: add database and redis infrastructure"
     "target": "ES2022",
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./",
     "incremental": true,
     "strict": true,
+    "types": ["node", "jest"],
     "skipLibCheck": true
   }
 }
@@ -486,6 +491,9 @@ git commit -m "chore: add database and redis infrastructure"
 ```json
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src"
+  },
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }
 ```
@@ -501,6 +509,27 @@ git commit -m "chore: add database and redis infrastructure"
     "deleteOutDir": true
   }
 }
+```
+
+创建 `apps/api/eslint.config.mjs`：
+
+```js
+import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
+
+export default [
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    files: ['src/**/*.ts', 'test/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+];
 ```
 
 - [ ] **步骤 3：添加后端应用代码**
@@ -575,6 +604,7 @@ FROM node:22-alpine AS deps
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/package.json
 RUN pnpm install --filter @lingxi/api... --frozen-lockfile
 
@@ -655,9 +685,20 @@ describe('HealthController (e2e)', () => {
 
 ```bash
 pnpm install
+pnpm approve-builds --all
 ```
 
 预期：创建 `pnpm-lock.yaml`。
+
+如果 pnpm 把已批准的构建依赖写入 `pnpm-workspace.yaml`，保留生成的白名单，确保后续安装可以非交互执行：
+
+```yaml
+allowBuilds:
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+  unrs-resolver: true
+```
 
 - [ ] **步骤 7：运行后端健康检查测试**
 

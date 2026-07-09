@@ -392,6 +392,7 @@ git commit -m "chore: add database and redis infrastructure"
 - Create: `apps/api/tsconfig.json`
 - Create: `apps/api/tsconfig.build.json`
 - Create: `apps/api/nest-cli.json`
+- Create: `apps/api/eslint.config.mjs`
 - Create: `apps/api/Dockerfile`
 - Create: `apps/api/src/main.ts`
 - Create: `apps/api/src/app.module.ts`
@@ -399,6 +400,7 @@ git commit -m "chore: add database and redis infrastructure"
 - Create: `apps/api/src/health/health.controller.ts`
 - Create: `apps/api/test/jest-e2e.json`
 - Create: `apps/api/test/health.e2e-spec.ts`
+- Modify: `pnpm-workspace.yaml`
 
 **Interfaces:**
 - Produces API app listening on `process.env.API_PORT || 3001`.
@@ -420,7 +422,7 @@ Create `apps/api/package.json`:
     "start": "node dist/main.js",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "test": "jest --config test/jest-e2e.json",
+    "test": "jest --config test/jest-e2e.json --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts"
@@ -434,12 +436,14 @@ Create `apps/api/package.json`:
     "rxjs": "latest"
   },
   "devDependencies": {
+    "@eslint/js": "latest",
     "@nestjs/cli": "latest",
     "@nestjs/schematics": "latest",
     "@nestjs/testing": "latest",
     "@types/express": "latest",
     "@types/jest": "latest",
     "@types/node": "latest",
+    "@types/supertest": "latest",
     "@typescript-eslint/eslint-plugin": "latest",
     "@typescript-eslint/parser": "latest",
     "eslint": "latest",
@@ -452,7 +456,8 @@ Create `apps/api/package.json`:
     "ts-loader": "latest",
     "ts-node": "latest",
     "tsx": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "typescript-eslint": "latest"
   }
 }
 ```
@@ -473,9 +478,9 @@ Create `apps/api/tsconfig.json`:
     "target": "ES2022",
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./",
     "incremental": true,
     "strict": true,
+    "types": ["node", "jest"],
     "skipLibCheck": true
   }
 }
@@ -486,6 +491,9 @@ Create `apps/api/tsconfig.build.json`:
 ```json
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src"
+  },
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }
 ```
@@ -501,6 +509,27 @@ Create `apps/api/nest-cli.json`:
     "deleteOutDir": true
   }
 }
+```
+
+Create `apps/api/eslint.config.mjs`:
+
+```js
+import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
+
+export default [
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    files: ['src/**/*.ts', 'test/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+];
 ```
 
 - [ ] **Step 3: Add backend application code**
@@ -575,6 +604,7 @@ FROM node:22-alpine AS deps
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-workspace.yaml ./
+COPY pnpm-lock.yaml ./
 COPY apps/api/package.json apps/api/package.json
 RUN pnpm install --filter @lingxi/api... --frozen-lockfile
 
@@ -655,9 +685,20 @@ Run from repo root:
 
 ```bash
 pnpm install
+pnpm approve-builds --all
 ```
 
 Expected: `pnpm-lock.yaml` is created.
+
+If pnpm writes approved build dependencies into `pnpm-workspace.yaml`, keep the generated allow list so later installs remain non-interactive:
+
+```yaml
+allowBuilds:
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+  unrs-resolver: true
+```
 
 - [ ] **Step 7: Run backend health test**
 
