@@ -1534,6 +1534,11 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
     environment:
       API_PORT: ${API_PORT:-3001}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
@@ -1553,7 +1558,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
     container_name: lingxi-web
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3001}
+      NEXT_PUBLIC_API_BASE_URL: http://api:3001
     ports:
       - "${WEB_PORT:-3000}:3000"
     depends_on:
