@@ -2,18 +2,28 @@
 
 灵犀门户是一个个人门户平台项目。
 
-第一版目标：
+## 技术栈
 
-- 公开主页和公开导航
-- 开放注册和登录
-- 修仙等级角色权限
-- 登录后个人工作台
-- 导航、页面、工具、服务器入口管理
-- MySQL 持久化数据
-- Redis 处理会话、刷新令牌和限流
+- Frontend: Next.js + TypeScript
+- Backend: NestJS + TypeScript
+- Database: MySQL 8.4 LTS
+- ORM: Prisma
+- Session state: Redis
+- Deployment: Docker Compose
 
-设计文档：
+## 本地开发
+
+```bash
+pnpm install
+cp .env.example .env
+docker compose up -d mysql redis
+pnpm --filter @lingxi/api prisma:generate
+pnpm --filter @lingxi/api prisma:migrate
+pnpm --filter @lingxi/api prisma:seed
+pnpm dev
+```
+
+## 设计文档
 
 - `docs/superpowers/specs/2026-07-09-personal-portal-design.zh-CN.md`
 - `docs/superpowers/specs/2026-07-09-personal-portal-design.md`
-

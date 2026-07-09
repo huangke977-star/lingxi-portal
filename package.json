@@ -1,0 +1,14 @@
+{
+  "name": "lingxi-portal",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Lingxi Portal personal portal platform",
+  "packageManager": "pnpm@latest",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @lingxi/api --filter @lingxi/web dev",
+    "build": "pnpm --filter @lingxi/api build && pnpm --filter @lingxi/web build",
+    "lint": "pnpm --filter @lingxi/api lint && pnpm --filter @lingxi/web lint",
+    "test": "pnpm --filter @lingxi/api test",
+    "format": "pnpm --filter @lingxi/api format && pnpm --filter @lingxi/web format"
+  }
+}
