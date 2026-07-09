@@ -55,7 +55,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
       REDIS_URL: redis://redis:6379
-    command: ["sh", "-c", "cd apps/api && ../../node_modules/.bin/prisma migrate deploy && node dist/prisma/seed.js"]
+    command: ["sh", "-c", "cd apps/api && ./node_modules/.bin/prisma migrate deploy && node dist/prisma/seed.js"]
     depends_on:
       mysql:
         condition: service_healthy
