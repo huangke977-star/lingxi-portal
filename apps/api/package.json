@@ -23,6 +23,8 @@
     "@prisma/adapter-mariadb": "latest",
     "@prisma/client": "latest",
     "bcryptjs": "latest",
+    "class-transformer": "latest",
+    "class-validator": "latest",
     "dotenv": "latest",
     "ioredis": "latest",
     "reflect-metadata": "latest",

@@ -12,3 +12,14 @@ export interface AuthenticatedUser {
     level: number;
   };
 }
+
+export interface AuthResponse {
+  user: AuthenticatedUser;
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface AccessTokenPayload {
+  sub: number;
+  username: string;
+}
