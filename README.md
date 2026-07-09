@@ -61,7 +61,7 @@ pnpm --filter @lingxi/api admin:bootstrap
 Docker command:
 
 ```bash
-docker compose run --rm -e ADMIN_USERNAME -e ADMIN_EMAIL -e ADMIN_PASSWORD api sh -c "cd apps/api && pnpm admin:bootstrap:prod"
+docker compose run --rm -e ADMIN_USERNAME -e ADMIN_EMAIL -e ADMIN_PASSWORD api sh -c "node apps/api/dist/prisma/bootstrap-admin.js"
 ```
 
 The command is idempotent: if the username or email already exists, it updates that account to `isSuperAdmin=true`, assigns the `administrator` role, activates it, and replaces the password hash. It does not print the password.
