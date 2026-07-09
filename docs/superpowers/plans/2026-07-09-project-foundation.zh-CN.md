@@ -224,10 +224,9 @@ Thumbs.db
 ```bash
 pnpm install
 cp .env.example .env
-docker compose up -d mysql redis
 pnpm --filter @lingxi/api prisma:generate
-pnpm --filter @lingxi/api prisma:migrate
-pnpm --filter @lingxi/api prisma:seed
+pnpm --filter @lingxi/api test
+pnpm --filter @lingxi/web build
 pnpm dev
 ```
 
@@ -1653,10 +1652,9 @@ pnpm build
 ```bash
 pnpm install
 cp .env.example .env
-docker compose up -d mysql redis
 pnpm --filter @lingxi/api prisma:generate
-pnpm --filter @lingxi/api prisma:migrate
-pnpm --filter @lingxi/api prisma:seed
+pnpm --filter @lingxi/api test
+pnpm --filter @lingxi/web build
 pnpm dev
 ```
 ```
