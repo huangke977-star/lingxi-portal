@@ -111,7 +111,7 @@ lingxi-portal/
   "private": true,
   "version": "0.1.0",
   "description": "Lingxi Portal personal portal platform",
-  "packageManager": "pnpm@latest",
+  "packageManager": "pnpm@11.10.0",
   "scripts": {
     "dev": "pnpm --parallel --filter @lingxi/api --filter @lingxi/web dev",
     "build": "pnpm --filter @lingxi/api build && pnpm --filter @lingxi/web build",
