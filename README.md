@@ -39,6 +39,10 @@ The `api-bootstrap` service runs Prisma migrations and role seed data before the
 
 `api-bootstrap` 服务会在 API 启动前执行 Prisma 迁移和角色种子数据。MySQL 和 Redis 只作为 Compose 内部依赖使用，不映射到宿主机端口。API 和 Web 通过 `API_PORT` 与 `WEB_PORT` 对外访问。
 
+The localhost database URLs in `.env.example` are for host-native development. Docker Compose overrides them with internal service URLs.
+
+`.env.example` 中的 localhost 数据库地址用于宿主机本地开发；Docker Compose 会在容器内覆盖为内部服务地址。
+
 ## 验证 / Verification
 
 ```bash

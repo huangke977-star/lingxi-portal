@@ -450,14 +450,15 @@ Create `apps/api/package.json`:
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",
-    "start": "node dist/main.js",
+    "start": "node dist/src/main.js",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "jest --config test/jest-e2e.json --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:seed:prod": "node dist/prisma/seed.js"
   },
   "dependencies": {
     "@nestjs/common": "latest",
@@ -524,8 +525,9 @@ Create `apps/api/tsconfig.build.json`:
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": "./src"
+    "rootDir": "."
   },
+  "include": ["src/**/*.ts", "prisma/seed.ts"],
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }
 ```
@@ -662,8 +664,9 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 COPY --from=builder /app/apps/api/prisma.config.ts ./apps/api/prisma.config.ts
+COPY --from=builder /app/apps/api/src/generated ./apps/api/src/generated
 EXPOSE 3001
-CMD ["node", "apps/api/dist/main.js"]
+CMD ["node", "apps/api/dist/src/main.js"]
 ```
 
 - [ ] **Step 5: Add health endpoint e2e test**
@@ -1555,7 +1558,7 @@ Modify `docker-compose.yml` to include these services in addition to `mysql` and
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
       REDIS_URL: redis://redis:6379
-    command: ["sh", "-c", "cd apps/api && pnpm prisma:deploy && pnpm prisma:seed"]
+    command: ["sh", "-c", "cd apps/api && pnpm prisma:deploy && pnpm prisma:seed:prod"]
     depends_on:
       mysql:
         condition: service_healthy
@@ -1759,3 +1762,4 @@ Type consistency:
 - Role code used for default user role in later work is `qi_refining`.
 - API health shape is `{ status: string; service: string }`.
 - `/roles` returns objects with `code`, `name`, and `level`.
+

@@ -450,14 +450,15 @@ git commit -m "chore: add database and redis infrastructure"
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",
-    "start": "node dist/main.js",
+    "start": "node dist/src/main.js",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "test": "jest --config test/jest-e2e.json --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:seed:prod": "node dist/prisma/seed.js"
   },
   "dependencies": {
     "@nestjs/common": "latest",
@@ -524,8 +525,9 @@ git commit -m "chore: add database and redis infrastructure"
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": "./src"
+    "rootDir": "."
   },
+  "include": ["src/**/*.ts", "prisma/seed.ts"],
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }
 ```
@@ -662,8 +664,9 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 COPY --from=builder /app/apps/api/prisma.config.ts ./apps/api/prisma.config.ts
+COPY --from=builder /app/apps/api/src/generated ./apps/api/src/generated
 EXPOSE 3001
-CMD ["node", "apps/api/dist/main.js"]
+CMD ["node", "apps/api/dist/src/main.js"]
 ```
 
 - [ ] **步骤 5：添加健康检查 e2e 测试**
@@ -1555,7 +1558,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
       REDIS_URL: redis://redis:6379
-    command: ["sh", "-c", "cd apps/api && pnpm prisma:deploy && pnpm prisma:seed"]
+    command: ["sh", "-c", "cd apps/api && pnpm prisma:deploy && pnpm prisma:seed:prod"]
     depends_on:
       mysql:
         condition: service_healthy
@@ -1759,3 +1762,4 @@ git commit -m "docs: verify foundation workflow"
 - 后续新用户默认角色使用的角色 code 为 `qi_refining`。
 - API 健康检查返回结构为 `{ status: string; service: string }`。
 - `/roles` 返回包含 `code`、`name` 和 `level` 的对象。
+
