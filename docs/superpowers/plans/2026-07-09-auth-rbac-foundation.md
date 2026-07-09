@@ -61,7 +61,7 @@ apps/api/
       users.service.ts
   test/
     auth.e2e-spec.ts
-    permissions.spec.ts
+    permissions.e2e-spec.ts
 apps/web/
   src/
     app/
@@ -125,13 +125,7 @@ Add to `apps/api/package.json` dependencies:
 }
 ```
 
-Add to `apps/api/package.json` devDependencies:
-
-```json
-{
-  "@types/bcryptjs": "latest"
-}
-```
+No additional `bcryptjs` type package is needed because `bcryptjs` ships its own types.
 
 - [ ] **Step 3: Extend Prisma schema**
 
@@ -240,7 +234,7 @@ git commit -m "feat(api): add user auth schema"
 **Files:**
 - Create: `apps/api/src/auth/auth.types.ts`
 - Create: `apps/api/src/auth/permissions.ts`
-- Create: `apps/api/test/permissions.spec.ts`
+- Create: `apps/api/test/permissions.e2e-spec.ts`
 
 **Interfaces:**
 - Produces `AuthenticatedUser`.
@@ -248,7 +242,7 @@ git commit -m "feat(api): add user auth schema"
 
 - [ ] **Step 1: Write failing permission tests**
 
-Create `apps/api/test/permissions.spec.ts`:
+Create `apps/api/test/permissions.e2e-spec.ts`:
 
 ```ts
 import {
@@ -304,7 +298,7 @@ describe('permission helpers', () => {
 Run:
 
 ```bash
-pnpm --filter @lingxi/api test -- permissions.spec.ts
+pnpm --filter @lingxi/api test -- permissions.e2e-spec.ts
 ```
 
 Expected: FAIL because `../src/auth/permissions` does not exist.
@@ -357,7 +351,7 @@ export function canManageServerEntries(user: AuthenticatedUser): boolean {
 Run:
 
 ```bash
-pnpm --filter @lingxi/api test -- permissions.spec.ts
+pnpm --filter @lingxi/api test -- permissions.e2e-spec.ts
 ```
 
 Expected: PASS.
@@ -365,7 +359,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/api/src/auth/auth.types.ts apps/api/src/auth/permissions.ts apps/api/test/permissions.spec.ts
+git add apps/api/src/auth/auth.types.ts apps/api/src/auth/permissions.ts apps/api/test/permissions.e2e-spec.ts
 git commit -m "feat(api): add role permission helpers"
 ```
 

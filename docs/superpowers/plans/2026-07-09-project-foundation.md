@@ -323,7 +323,7 @@ WEB_PORT=3000
 NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
 
 JWT_ACCESS_SECRET=change-me-access-secret
-JWT_REFRESH_SECRET=change-me-refresh-secret
+REFRESH_TOKEN_SECRET=change-me-refresh-token-secret
 ```
 
 - [ ] **Step 2: Add Docker Compose**
@@ -1582,7 +1582,7 @@ Modify `docker-compose.yml` to include these services in addition to `mysql` and
       DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
     ports:
       - "${API_PORT:-3001}:3001"
     depends_on:
@@ -1762,4 +1762,3 @@ Type consistency:
 - Role code used for default user role in later work is `qi_refining`.
 - API health shape is `{ status: string; service: string }`.
 - `/roles` returns objects with `code`, `name`, and `level`.
-

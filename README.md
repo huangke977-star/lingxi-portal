@@ -29,6 +29,17 @@ Windows PowerShell can use:
 Copy-Item .env.example .env
 ```
 
+## 认证环境 / Auth Environment
+
+认证阶段需要在本地 `.env` 中配置这些变量。不要提交真实密钥。
+
+The auth phase needs these local variables in `.env`. Do not commit real secrets.
+
+- `JWT_ACCESS_SECRET`
+- `JWT_ACCESS_EXPIRES_IN`
+- `REFRESH_TOKEN_SECRET`
+- `REFRESH_TOKEN_EXPIRES_IN_DAYS`
+
 ## Docker 全栈 / Docker Stack
 
 ```bash
@@ -57,5 +68,9 @@ pnpm build
 
 - `docs/superpowers/specs/2026-07-09-personal-portal-design.zh-CN.md`
 - `docs/superpowers/specs/2026-07-09-personal-portal-design.md`
+- `docs/superpowers/specs/2026-07-09-auth-rbac-design.zh-CN.md`
+- `docs/superpowers/specs/2026-07-09-auth-rbac-design.md`
 - `docs/superpowers/plans/2026-07-09-project-foundation.zh-CN.md`
 - `docs/superpowers/plans/2026-07-09-project-foundation.md`
+- `docs/superpowers/plans/2026-07-09-auth-rbac-foundation.zh-CN.md`
+- `docs/superpowers/plans/2026-07-09-auth-rbac-foundation.md`

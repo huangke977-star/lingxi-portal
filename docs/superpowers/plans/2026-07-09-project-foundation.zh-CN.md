@@ -323,7 +323,7 @@ WEB_PORT=3000
 NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
 
 JWT_ACCESS_SECRET=change-me-access-secret
-JWT_REFRESH_SECRET=change-me-refresh-secret
+REFRESH_TOKEN_SECRET=change-me-refresh-token-secret
 ```
 
 - [ ] **步骤 2：添加 Docker Compose**
@@ -1582,7 +1582,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
       DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
     ports:
       - "${API_PORT:-3001}:3001"
     depends_on:
@@ -1762,4 +1762,3 @@ git commit -m "docs: verify foundation workflow"
 - 后续新用户默认角色使用的角色 code 为 `qi_refining`。
 - API 健康检查返回结构为 `{ status: string; service: string }`。
 - `/roles` 返回包含 `code`、`name` 和 `level` 的对象。
-

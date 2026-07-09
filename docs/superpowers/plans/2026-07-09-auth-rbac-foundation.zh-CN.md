@@ -61,7 +61,7 @@ apps/api/
       users.service.ts
   test/
     auth.e2e-spec.ts
-    permissions.spec.ts
+    permissions.e2e-spec.ts
 apps/web/
   src/
     app/
@@ -125,13 +125,7 @@ UserStatus 枚举：active, disabled。
 }
 ```
 
-在 `apps/api/package.json` devDependencies 中加入：
-
-```json
-{
-  "@types/bcryptjs": "latest"
-}
-```
+不需要额外添加 `bcryptjs` 类型包，因为 `bcryptjs` 已自带类型。
 
 - [ ] **步骤 3：扩展 Prisma schema**
 
@@ -240,7 +234,7 @@ git commit -m "feat(api): add user auth schema"
 **文件：**
 - 创建：`apps/api/src/auth/auth.types.ts`
 - 创建：`apps/api/src/auth/permissions.ts`
-- 创建：`apps/api/test/permissions.spec.ts`
+- 创建：`apps/api/test/permissions.e2e-spec.ts`
 
 **接口：**
 - 产出 `AuthenticatedUser`。
@@ -248,7 +242,7 @@ git commit -m "feat(api): add user auth schema"
 
 - [ ] **步骤 1：先写失败的权限测试**
 
-创建 `apps/api/test/permissions.spec.ts`：
+创建 `apps/api/test/permissions.e2e-spec.ts`：
 
 ```ts
 import {
@@ -304,7 +298,7 @@ describe('permission helpers', () => {
 运行：
 
 ```bash
-pnpm --filter @lingxi/api test -- permissions.spec.ts
+pnpm --filter @lingxi/api test -- permissions.e2e-spec.ts
 ```
 
 预期：失败，原因是 `../src/auth/permissions` 不存在。
@@ -357,7 +351,7 @@ export function canManageServerEntries(user: AuthenticatedUser): boolean {
 运行：
 
 ```bash
-pnpm --filter @lingxi/api test -- permissions.spec.ts
+pnpm --filter @lingxi/api test -- permissions.e2e-spec.ts
 ```
 
 预期：通过。
@@ -365,7 +359,7 @@ pnpm --filter @lingxi/api test -- permissions.spec.ts
 - [ ] **步骤 5：提交**
 
 ```bash
-git add apps/api/src/auth/auth.types.ts apps/api/src/auth/permissions.ts apps/api/test/permissions.spec.ts
+git add apps/api/src/auth/auth.types.ts apps/api/src/auth/permissions.ts apps/api/test/permissions.e2e-spec.ts
 git commit -m "feat(api): add role permission helpers"
 ```
 
