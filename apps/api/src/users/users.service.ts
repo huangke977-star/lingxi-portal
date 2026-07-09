@@ -1,4 +1,10 @@
-import { ForbiddenException, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, UserStatus } from '../auth/auth.types';
 
@@ -81,6 +87,44 @@ export class UsersService {
       where: { id },
       data: { lastLoginAt: new Date() },
     });
+  }
+
+  async listUsers(): Promise<AuthenticatedUser[]> {
+    const users = await this.prisma.user.findMany({
+      orderBy: { id: 'asc' },
+      select: this.userSelect(),
+    });
+
+    return users.map((user) => this.toAuthenticatedUser(user));
+  }
+
+  async assignRole(id: number, roleCode: string): Promise<AuthenticatedUser> {
+    const role = await this.prisma.role.findUnique({
+      where: { code: roleCode },
+      select: { id: true },
+    });
+
+    if (!role) {
+      throw new NotFoundException('Role not found.');
+    }
+
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: { roleId: role.id },
+      select: this.userSelect(),
+    });
+
+    return this.toAuthenticatedUser(user);
+  }
+
+  async setStatus(id: number, status: UserStatus): Promise<AuthenticatedUser> {
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: { status },
+      select: this.userSelect(),
+    });
+
+    return this.toAuthenticatedUser(user);
   }
 
   private userSelect() {
