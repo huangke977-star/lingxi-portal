@@ -31,7 +31,7 @@ describe('auth support services', () => {
         }),
       },
     };
-    const service = new UsersService(prisma as never);
+    const service = new UsersService(prisma as never, new PasswordService());
 
     await expect(service.findActiveById(2)).rejects.toBeInstanceOf(ForbiddenException);
   });

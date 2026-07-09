@@ -358,6 +358,12 @@ p {
   color: #8f2f23;
 }
 
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .table-action {
   min-width: 68px;
   min-height: 36px;
@@ -384,6 +390,47 @@ p {
   cursor: not-allowed;
   opacity: 0.58;
   transform: none;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(23, 23, 23, 0.36);
+  backdrop-filter: blur(8px);
+}
+
+.modal-panel {
+  display: grid;
+  width: min(100%, 480px);
+  gap: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 22px 70px rgba(23, 23, 23, 0.18);
+  padding: 24px;
+}
+
+.modal-heading {
+  display: grid;
+  gap: 8px;
+}
+
+.modal-heading h2 {
+  margin: 0;
+  font-size: 1.45rem;
+  letter-spacing: 0;
+}
+
+.modal-heading p {
+  font-size: 0.96rem;
+}
+
+.modal-form {
+  max-width: none;
 }
 
 @media (max-width: 720px) {

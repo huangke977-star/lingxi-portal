@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
-import { listAdminUsers, listRoles, updateUserRole, updateUserStatus } from '@/lib/admin-api';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { listAdminUsers, listRoles, updateUserPassword, updateUserRole, updateUserStatus } from '@/lib/admin-api';
 import { AuthRole, AuthUser, getMe } from '@/lib/auth-api';
 import { readAccessToken } from '@/lib/auth-storage';
 
@@ -22,6 +22,10 @@ export default function AdminPage() {
   const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [busyUserId, setBusyUserId] = useState<number | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<AuthUser | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordConfirmation, setPasswordConfirmation] = useState('');
+  const [isPasswordSaving, setIsPasswordSaving] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -111,6 +115,63 @@ export default function AdminPage() {
     } catch (statusError) {
       setError(statusError instanceof Error ? statusError.message : '状态更新失败。');
     } finally {
+      setBusyUserId(null);
+    }
+  }
+
+  function openPasswordDialog(user: AuthUser) {
+    setPasswordTarget(user);
+    setNewPassword('');
+    setPasswordConfirmation('');
+    setError('');
+    setNotice('');
+  }
+
+  function closePasswordDialog() {
+    if (isPasswordSaving) {
+      return;
+    }
+
+    setPasswordTarget(null);
+    setNewPassword('');
+    setPasswordConfirmation('');
+  }
+
+  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!accessToken || !passwordTarget) {
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setError('新密码至少需要 8 位。');
+      setNotice('');
+      return;
+    }
+
+    if (newPassword !== passwordConfirmation) {
+      setError('两次输入的密码不一致。');
+      setNotice('');
+      return;
+    }
+
+    setBusyUserId(passwordTarget.id);
+    setIsPasswordSaving(true);
+    setError('');
+    setNotice('');
+
+    try {
+      const updatedUser = await updateUserPassword(accessToken, passwordTarget.id, newPassword);
+      replaceUser(updatedUser);
+      setPasswordTarget(null);
+      setNewPassword('');
+      setPasswordConfirmation('');
+      setNotice(`已更新 ${updatedUser.username} 的密码。`);
+    } catch (passwordError) {
+      setError(passwordError instanceof Error ? passwordError.message : '密码更新失败。');
+    } finally {
+      setIsPasswordSaving(false);
       setBusyUserId(null);
     }
   }
@@ -218,14 +279,24 @@ export default function AdminPage() {
                     <span className={`status-badge ${user.status}`}>{STATUS_LABEL[user.status]}</span>
                   </td>
                   <td>
-                    <button
-                      className="table-action"
-                      disabled={isBusy}
-                      onClick={() => void handleStatusToggle(user)}
-                      type="button"
-                    >
-                      {isBusy ? '保存中' : user.status === 'active' ? '停用' : '启用'}
-                    </button>
+                    <div className="table-actions">
+                      <button
+                        className="table-action"
+                        disabled={isBusy}
+                        onClick={() => void handleStatusToggle(user)}
+                        type="button"
+                      >
+                        {isBusy ? '保存中' : user.status === 'active' ? '停用' : '启用'}
+                      </button>
+                      <button
+                        className="table-action"
+                        disabled={isBusy}
+                        onClick={() => openPasswordDialog(user)}
+                        type="button"
+                      >
+                        修改密码
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -233,6 +304,57 @@ export default function AdminPage() {
           </tbody>
         </table>
       </div>
+      {passwordTarget ? (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closePasswordDialog();
+            }
+          }}
+          role="presentation"
+        >
+          <div aria-labelledby="password-modal-title" aria-modal="true" className="modal-panel" role="dialog">
+            <div className="modal-heading">
+              <span className="eyebrow">Password</span>
+              <h2 id="password-modal-title">修改密码</h2>
+              <p>目标账号：{passwordTarget.username}</p>
+            </div>
+            <form className="form-stack modal-form" onSubmit={(event) => void handlePasswordSubmit(event)}>
+              <label>
+                新密码
+                <input
+                  autoComplete="new-password"
+                  disabled={isPasswordSaving}
+                  minLength={8}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  type="password"
+                  value={newPassword}
+                />
+              </label>
+              <label>
+                确认密码
+                <input
+                  autoComplete="new-password"
+                  disabled={isPasswordSaving}
+                  minLength={8}
+                  onChange={(event) => setPasswordConfirmation(event.target.value)}
+                  type="password"
+                  value={passwordConfirmation}
+                />
+              </label>
+              <div className="actions">
+                <button className="button" disabled={isPasswordSaving} type="submit">
+                  {isPasswordSaving ? '保存中' : '保存'}
+                </button>
+                <button className="button secondary" disabled={isPasswordSaving} onClick={closePasswordDialog} type="button">
+                  取消
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

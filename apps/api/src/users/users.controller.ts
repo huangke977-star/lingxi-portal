@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, ParseIntPipe, Patch, UseGuards } from '@n
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SuperAdminGuard } from '../auth/guards/super-admin.guard';
 import { AuthenticatedUser } from '../auth/auth.types';
+import { UpdateUserPasswordDto } from './dto/update-user-password.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UsersService } from './users.service';
@@ -24,5 +25,13 @@ export class UsersController {
   @Patch(':id/status')
   setStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserStatusDto): Promise<AuthenticatedUser> {
     return this.usersService.setStatus(id, dto.status);
+  }
+
+  @Patch(':id/password')
+  updatePassword(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateUserPasswordDto,
+  ): Promise<AuthenticatedUser> {
+    return this.usersService.updatePassword(id, dto.password);
   }
 }

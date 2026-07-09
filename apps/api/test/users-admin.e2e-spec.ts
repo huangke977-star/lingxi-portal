@@ -170,6 +170,45 @@ describe('admin user management (e2e)', () => {
     expect(state.users[1].status).toBe('disabled');
   });
 
+  it('allows super admin to update user passwords without returning password hashes', async () => {
+    const token = await tokenFor(1);
+    const previousHash = state.users[1].passwordHash;
+
+    const response = await request(app.getHttpServer())
+      .patch('/users/2/password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ password: 'NewSecret123!' })
+      .expect(200);
+
+    expect(state.users[1].passwordHash).not.toBe(previousHash);
+    expect(state.users[1].passwordHash).not.toBe('NewSecret123!');
+    expect(response.body).toMatchObject({
+      id: 2,
+      username: 'normal',
+    });
+    expect(response.body.passwordHash).toBeUndefined();
+  });
+
+  it('rejects non-super-admin users from updating user passwords', async () => {
+    const token = await tokenFor(2);
+
+    await request(app.getHttpServer())
+      .patch('/users/1/password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ password: 'OtherSecret123!' })
+      .expect(403);
+  });
+
+  it('rejects short password updates', async () => {
+    const token = await tokenFor(1);
+
+    await request(app.getHttpServer())
+      .patch('/users/2/password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ password: 'short' })
+      .expect(400);
+  });
+
   it('rejects non-super-admin users', async () => {
     const token = await tokenFor(2);
 

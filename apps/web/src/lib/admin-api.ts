@@ -35,3 +35,11 @@ export async function updateUserStatus(
     body: JSON.stringify({ status }),
   });
 }
+
+export async function updateUserPassword(accessToken: string, userId: number, password: string): Promise<AuthUser> {
+  return requestJson<AuthUser>(`/users/${userId}/password`, {
+    method: 'PATCH',
+    headers: authorizationHeader(accessToken),
+    body: JSON.stringify({ password }),
+  });
+}

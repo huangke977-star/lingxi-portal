@@ -5,8 +5,9 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser, UserStatus } from '../auth/auth.types';
+import { PasswordService } from '../auth/password.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 interface UserRecord {
   id: number;
@@ -24,7 +25,10 @@ interface UserRecord {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly passwordService: PasswordService,
+  ) {}
 
   async createUser(input: {
     username: string;
@@ -121,6 +125,17 @@ export class UsersService {
     const user = await this.prisma.user.update({
       where: { id },
       data: { status },
+      select: this.userSelect(),
+    });
+
+    return this.toAuthenticatedUser(user);
+  }
+
+  async updatePassword(id: number, password: string): Promise<AuthenticatedUser> {
+    const passwordHash = await this.passwordService.hashPassword(password);
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash },
       select: this.userSelect(),
     });
 
