@@ -14,7 +14,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:seed:prod": "node dist/prisma/seed.js",
-    "admin:bootstrap": "tsx prisma/bootstrap-admin.ts"
+    "admin:bootstrap": "tsx prisma/bootstrap-admin.ts",
+    "admin:bootstrap:prod": "node dist/prisma/bootstrap-admin.js"
   },
   "dependencies": {
     "@nestjs/common": "latest",
