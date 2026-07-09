@@ -80,10 +80,12 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3001}
     container_name: lingxi-web
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://api:3001
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3001}
     ports:
       - "${WEB_PORT:-3000}:3000"
     depends_on:

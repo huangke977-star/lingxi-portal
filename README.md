@@ -82,6 +82,10 @@ The localhost database URLs in `.env.example` are for host-native development. D
 
 `.env.example` 中的 localhost 数据库地址用于宿主机本地开发；Docker Compose 会在容器内覆盖为内部服务地址。
 
+Set `NEXT_PUBLIC_API_BASE_URL` to the browser-reachable API URL before building the web image, for example `http://5200918.xyz:3001` for direct port testing or your later reverse-proxy API path.
+
+构建 Web 镜像前，要把 `NEXT_PUBLIC_API_BASE_URL` 设置为浏览器可访问的 API 地址，例如直接端口测试时使用 `http://5200918.xyz:3001`，后续接入反向代理时改为你的 API 路径。
+
 ## 验证 / Verification
 
 ```bash
