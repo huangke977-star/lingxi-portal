@@ -18,6 +18,18 @@ const navItems = [
   { href: "/dashboard", label: "工作台" },
 ];
 
+const roleBadgeIcons: Record<string, string> = {
+  qi_refining: "气",
+  foundation_building: "基",
+  golden_core: "丹",
+  nascent_soul: "婴",
+  spirit_transformation: "神",
+  void_refining: "虚",
+  body_integration: "合",
+  mahayana: "乘",
+  administrator: "令",
+};
+
 export function TopNav() {
   const router = useRouter();
   const pathname = usePathname();
@@ -98,6 +110,17 @@ export function TopNav() {
     return user.username.trim().slice(0, 1).toUpperCase();
   }, [user]);
 
+  const roleBadge = useMemo(() => {
+    if (!user) {
+      return null;
+    }
+
+    return {
+      icon: roleBadgeIcons[user.role.code] ?? "阶",
+      tooltip: `${user.role.name}${user.isSuperAdmin ? " · 超级管理员" : ""} · 等级 ${user.role.level}`,
+    };
+  }, [user]);
+
   async function handleLogout() {
     if (isLoggingOut) {
       return;
@@ -166,19 +189,24 @@ export function TopNav() {
         <div className="account-zone">
           {isLoading ? <span className="login-chip">读取中</span> : null}
           {!isLoading && !user ? (
-            <Link className="login-chip" href="/login">
+            <Link className="login-chip login-chip-action" href="/login">
               登录
             </Link>
           ) : null}
-          {user ? (
+          {user && roleBadge ? (
             <>
-              <span
+              <button
+                aria-label={roleBadge.tooltip}
                 className="level-badge"
-                data-tooltip={`${user.role.name} · 等级 ${user.role.level}`}
-                title={`${user.role.name} · 等级 ${user.role.level}`}
+                data-role={user.role.code}
+                data-tooltip={roleBadge.tooltip}
+                title={roleBadge.tooltip}
+                type="button"
               >
-                {user.role.name}
-              </span>
+                <span aria-hidden="true" className="role-badge-icon">
+                  {roleBadge.icon}
+                </span>
+              </button>
               <div className="account-menu-wrap">
                 <button
                   aria-label={`${user.username} 的账户菜单`}
