@@ -246,7 +246,7 @@ body:has(.auth-page) .topbar {
 .brand-copy strong {
   overflow: hidden;
   font-size: 1rem;
-  font-weight: 820;
+  font-weight: 650;
   letter-spacing: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -271,7 +271,7 @@ body:has(.auth-page) .topbar {
   border-radius: 0;
   color: var(--muted-strong);
   font-size: 0.92rem;
-  font-weight: 720;
+  font-weight: 560;
   padding: 12px 0 13px;
   transition: color 160ms ease;
 }
@@ -324,7 +324,7 @@ body:has(.auth-page) .topbar {
   background: transparent;
   color: var(--foreground);
   font-size: 0.9rem;
-  font-weight: 760;
+  font-weight: 560;
   padding: 0 4px;
   transition:
     border-color 160ms ease,
@@ -445,7 +445,7 @@ body:has(.auth-page) .topbar {
   cursor: pointer;
   font: inherit;
   font-size: 0.92rem;
-  font-weight: 720;
+  font-weight: 560;
   padding: 0 10px;
   text-align: left;
   transition:
@@ -520,7 +520,7 @@ body:has(.auth-page) .topbar {
 .section-label {
   color: var(--accent-strong);
   font-size: 0.78rem;
-  font-weight: 820;
+  font-weight: 640;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -534,6 +534,7 @@ p {
 h1 {
   max-width: 780px;
   font-size: 2.5rem;
+  font-weight: 650;
   line-height: 1.05;
   letter-spacing: 0;
   text-wrap: balance;
@@ -542,6 +543,7 @@ h1 {
 
 h2 {
   font-size: 1.24rem;
+  font-weight: 650;
   line-height: 1.2;
   letter-spacing: 0;
 }
@@ -570,7 +572,7 @@ p {
   background: rgba(47, 111, 237, 0.92);
   color: #ffffff;
   cursor: pointer;
-  font-weight: 780;
+  font-weight: 620;
   padding: 0 16px;
   transition:
     background 160ms ease,
@@ -607,7 +609,7 @@ p {
   min-height: 32px;
   align-items: center;
   color: var(--muted-strong);
-  font-weight: 820;
+  font-weight: 620;
   padding: 0 0 3px;
   transition: color 160ms ease;
 }
@@ -686,11 +688,12 @@ p {
 .metric span {
   color: var(--muted);
   font-size: 0.82rem;
-  font-weight: 740;
+  font-weight: 560;
 }
 
 .metric strong {
   font-size: 1.32rem;
+  font-weight: 650;
   line-height: 1.15;
 }
 
@@ -738,7 +741,7 @@ a.entry-item:hover {
 .entry-main strong {
   overflow: hidden;
   color: var(--foreground);
-  font-weight: 800;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -758,7 +761,7 @@ a.entry-item:hover {
   align-items: center;
   border-radius: 999px;
   font-size: 0.8rem;
-  font-weight: 780;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
 }
@@ -821,7 +824,7 @@ a.entry-item:hover {
 .identity-list strong {
   min-width: 0;
   overflow-wrap: anywhere;
-  font-weight: 780;
+  font-weight: 620;
 }
 
 .profile-settings-grid {
@@ -899,7 +902,7 @@ a.entry-item:hover {
 
 .theme-option-copy strong {
   font-size: 1rem;
-  font-weight: 820;
+  font-weight: 650;
 }
 
 .theme-option-copy span {
@@ -913,7 +916,7 @@ a.entry-item:hover {
   background: var(--surface-strong);
   color: var(--accent-strong);
   font-size: 0.78rem;
-  font-weight: 820;
+  font-weight: 620;
   padding: 7px 9px;
 }
 
@@ -946,13 +949,13 @@ a.entry-item:hover {
 
 .theme-control-row strong {
   font-size: 0.96rem;
-  font-weight: 800;
+  font-weight: 650;
 }
 
 .theme-control-row small {
   color: var(--muted);
   font-size: 0.82rem;
-  font-weight: 720;
+  font-weight: 560;
 }
 
 .theme-control-row input[type="color"] {
@@ -995,12 +998,13 @@ a.entry-item:hover {
 .theme-preview span {
   color: var(--theme-preview-accent);
   font-size: 0.78rem;
-  font-weight: 820;
+  font-weight: 620;
   text-transform: uppercase;
 }
 
 .theme-preview strong {
   font-size: 1.35rem;
+  font-weight: 650;
 }
 
 .theme-preview p {
@@ -1054,7 +1058,7 @@ a.entry-item:hover {
   gap: 7px;
   color: var(--muted-strong);
   font-size: 0.92rem;
-  font-weight: 740;
+  font-weight: 600;
 }
 
 .form-stack input,
@@ -1108,7 +1112,7 @@ a.entry-item:hover {
   background: var(--surface-strong);
   color: var(--muted-strong);
   font-size: 0.84rem;
-  font-weight: 740;
+  font-weight: 600;
   padding: 8px 10px;
 }
 
@@ -1136,7 +1140,7 @@ a.entry-item:hover {
   background: var(--surface-soft);
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 620;
   letter-spacing: 0;
 }
 
@@ -1150,13 +1154,13 @@ a.entry-item:hover {
 }
 
 .user-cell strong {
-  font-weight: 780;
+  font-weight: 620;
 }
 
 .user-cell span {
   color: var(--accent-strong);
   font-size: 0.8rem;
-  font-weight: 780;
+  font-weight: 620;
 }
 
 .admin-table select {
@@ -1192,7 +1196,7 @@ a.entry-item:hover {
   color: var(--foreground);
   cursor: pointer;
   font-size: 0.88rem;
-  font-weight: 740;
+  font-weight: 600;
   padding: 0 10px;
   transition:
     border-color 160ms ease,
