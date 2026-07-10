@@ -294,14 +294,11 @@ body:has(.auth-page) .topbar {
 }
 
 .top-links a:hover,
-.mobile-menu a:hover,
-.top-links a.active,
-.mobile-menu a.active {
+.top-links a.active {
   color: var(--foreground);
 }
 
-.top-links a.active::after,
-.mobile-menu a.active::after {
+.top-links a.active::after {
   opacity: 1;
   transform: scaleX(1);
 }
@@ -1264,20 +1261,30 @@ a.entry-item:hover {
   }
 
   .topbar-inner {
-    grid-template-areas:
-      "brand account"
-      "menu .";
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px 10px;
-    min-height: 84px;
+    grid-template-areas: "brand menu account";
+    grid-template-columns: auto auto minmax(0, 1fr);
+    gap: 10px;
+    min-height: 42px;
   }
 
   .menu-toggle {
     display: inline-grid;
     justify-self: start;
-    width: 36px;
-    height: 32px;
-    margin-top: 2px;
+    width: 28px;
+    height: 28px;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .menu-toggle span {
+    width: 22px;
+    height: 2px;
+    background: rgba(31, 41, 55, 0.32);
+  }
+
+  .menu-toggle span + span {
+    margin-top: 3px;
   }
 
   .desktop-links {
@@ -1298,6 +1305,7 @@ a.entry-item:hover {
   }
 
   .account-zone {
+    justify-self: end;
     gap: 8px;
   }
 
@@ -1310,11 +1318,11 @@ a.entry-item:hover {
 
   .mobile-menu {
     position: absolute;
-    top: calc(100% + 8px);
+    top: calc(100% + 10px);
     left: 0;
     z-index: 45;
     display: grid;
-    width: min(260px, calc(100vw - 28px));
+    width: min(174px, calc(100vw - 28px));
     border: 0;
     border-radius: 8px;
     background: var(--surface-strong);
@@ -1337,7 +1345,18 @@ a.entry-item:hover {
 
   .mobile-menu a {
     min-height: 40px;
-    padding: 10px 0 11px;
+    border-radius: 7px;
+    padding: 10px 12px 11px;
+  }
+
+  .mobile-menu a::after {
+    display: none;
+  }
+
+  .mobile-menu a:hover,
+  .mobile-menu a.active {
+    background: color-mix(in srgb, var(--accent-soft) 62%, var(--surface-soft));
+    color: var(--accent-strong);
   }
 
   .content-shell {

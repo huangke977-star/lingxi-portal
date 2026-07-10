@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ThemeController } from "@/components/theme-controller";
 import { TopNav } from "@/components/top-nav";
+import "./misans.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
