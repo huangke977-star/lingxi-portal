@@ -14,7 +14,7 @@ const toolEntries = [
   {
     marker: 'VPS',
     title: '服务器入口',
-    description: '集中管理服务器面板、监控和内部入口。',
+    description: '记录服务器面板、监控和内部入口。',
     meta: '管理员',
   },
 ];
@@ -23,7 +23,7 @@ export default function ToolsPage() {
   return (
     <section className="page-shell">
       <header className="page-header">
-        <span className="eyebrow">Toolbox</span>
+        <span className="eyebrow">HLOVET Toolbox</span>
         <div className="title-row">
           <div>
             <h1>工具箱</h1>
@@ -33,7 +33,7 @@ export default function ToolsPage() {
         </div>
       </header>
 
-      <div className="entry-list">
+      <div className="entry-list card-grid">
         {toolEntries.map((tool) => (
           <div className="entry-item muted" key={tool.title}>
             <span className="entry-marker">{tool.marker}</span>

@@ -49,11 +49,11 @@ export default function DashboardPage() {
   return (
     <section className="page-shell">
       <header className="page-header">
-        <span className="eyebrow">Workspace</span>
+        <span className="eyebrow">HLOVET Space</span>
         <div className="title-row">
           <div>
-            <h1>个人工作台</h1>
-            <p>查看当前身份、角色境界和你可以进入的门户区域。</p>
+            <h1>个人空间</h1>
+            <p>查看当前身份、角色境界和可用的门户入口。</p>
           </div>
           <div className="actions">
             <button className="button secondary" disabled={isLoggingOut || !user} onClick={handleLogout} type="button">
@@ -91,7 +91,7 @@ export default function DashboardPage() {
           </div>
           <div className="entry-list compact">
             <Link className="entry-item" href="/nav">
-              <span className="entry-marker">航</span>
+              <span className="entry-marker">NAV</span>
               <span className="entry-main">
                 <strong>公开导航</strong>
                 <span>查看所有公开入口。</span>
@@ -99,23 +99,13 @@ export default function DashboardPage() {
               <span className="entry-meta">公开</span>
             </Link>
             <Link className="entry-item" href="/tools">
-              <span className="entry-marker">器</span>
+              <span className="entry-marker">KIT</span>
               <span className="entry-main">
                 <strong>工具箱</strong>
                 <span>按角色查看后续接入的工具。</span>
               </span>
               <span className="entry-meta">登录</span>
             </Link>
-            {user.isSuperAdmin ? (
-              <Link className="entry-item" href="/admin">
-                <span className="entry-marker">管</span>
-                <span className="entry-main">
-                  <strong>用户管理</strong>
-                  <span>维护角色、状态和密码。</span>
-                </span>
-                <span className="entry-meta">admin</span>
-              </Link>
-            ) : null}
           </div>
         </div>
       ) : null}

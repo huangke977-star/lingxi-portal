@@ -183,7 +183,7 @@ export default function AdminPage() {
   if (isLoading) {
     return (
       <section className="page-shell admin-shell">
-        <span className="eyebrow">Admin</span>
+        <span className="eyebrow">HLOVET Admin</span>
         <h1>用户管理</h1>
         <div className="status-row">
           <span className="status">正在读取权限</span>
@@ -195,7 +195,7 @@ export default function AdminPage() {
   if (!currentUser) {
     return (
       <section className="page-shell admin-shell">
-        <span className="eyebrow">Admin</span>
+        <span className="eyebrow">HLOVET Admin</span>
         <h1>无法进入管理后台</h1>
         <p>{error || '请重新登录后再访问。'}</p>
         <div className="actions">
@@ -210,7 +210,7 @@ export default function AdminPage() {
   if (currentUser && !currentUser.isSuperAdmin) {
     return (
       <section className="page-shell admin-shell">
-        <span className="eyebrow">Admin</span>
+        <span className="eyebrow">HLOVET Admin</span>
         <h1>无权访问</h1>
         <p>该页面仅超级管理员可查看。</p>
         <div className="actions">
@@ -225,7 +225,7 @@ export default function AdminPage() {
   return (
     <section className="page-shell admin-shell">
       <header className="page-header">
-        <span className="eyebrow">Admin</span>
+        <span className="eyebrow">HLOVET Admin</span>
         <div className="title-row">
           <div>
             <h1>用户管理</h1>

@@ -44,7 +44,7 @@ export default function RegisterPage() {
   return (
     <section className="auth-page">
       <div className="auth-copy">
-        <span className="eyebrow">Account</span>
+        <span className="eyebrow">HLOVET</span>
         <h1>创建账号</h1>
         <p>新账号默认进入练气角色，后续由超级管理员调整角色境界和可见菜单。</p>
         <div className="actions">

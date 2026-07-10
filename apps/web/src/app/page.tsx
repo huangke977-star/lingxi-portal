@@ -4,21 +4,21 @@ import { getApiHealth } from '@/lib/api';
 const portalEntries = [
   {
     href: '/dashboard',
-    marker: '工',
+    marker: 'ME',
     title: '个人工作台',
     description: '查看身份、角色境界和当前可进入区域。',
     meta: '登录后可用',
   },
   {
     href: '/nav',
-    marker: '航',
+    marker: 'NAV',
     title: '公开导航',
     description: '集中放置公开可访问的网站、项目和资料入口。',
     meta: '公开可见',
   },
   {
     href: '/tools',
-    marker: '器',
+    marker: 'KIT',
     title: '工具箱',
     description: '沉淀常用的小工具、脚本入口和后续自定义页面。',
     meta: '按角色开放',
@@ -30,16 +30,16 @@ export default async function HomePage() {
 
   return (
     <section className="page-shell">
-      <header className="page-header">
-        <span className="eyebrow">Lingxi Portal</span>
+      <header className="portal-hero">
+        <span className="eyebrow">HLOVET</span>
         <div className="title-row">
           <div>
-            <h1>入口、工具和权限的统一工作台</h1>
-            <p>把公开导航、个人工具、服务器入口和管理能力收拢到一个干净的门户里。</p>
+            <h1>轻量导航与工具入口</h1>
+            <p>把常用站点、个人工具和后续自定义页面收在一个浅色卡片门户里。</p>
           </div>
           <div className="actions">
             <Link className="button" href="/dashboard">
-              进入工作台
+              进入空间
             </Link>
             <Link className="button secondary" href="/nav">
               查看导航
@@ -64,13 +64,13 @@ export default async function HomePage() {
             <strong>练气</strong>
           </div>
           <div className="metric">
-            <span>管理模式</span>
-            <strong>RBAC</strong>
+            <span>风格</span>
+            <strong>Glass</strong>
           </div>
         </div>
       </div>
 
-      <div className="entry-list">
+      <div className="entry-list card-grid">
         {portalEntries.map((entry) => (
           <Link className="entry-item" href={entry.href} key={entry.href}>
             <span className="entry-marker">{entry.marker}</span>

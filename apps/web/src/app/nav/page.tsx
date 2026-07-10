@@ -3,7 +3,7 @@ const publicLinks = [
     href: 'https://github.com/huangke977-star/lingxi-portal',
     marker: 'Git',
     title: '项目仓库',
-    description: '灵犀门户的代码仓库和版本记录。',
+    description: 'HLOVET 的代码仓库和版本记录。',
     meta: 'GitHub',
   },
   {
@@ -26,7 +26,7 @@ export default function NavPage() {
   return (
     <section className="page-shell">
       <header className="page-header">
-        <span className="eyebrow">Public Navigation</span>
+        <span className="eyebrow">HLOVET Navigation</span>
         <div className="title-row">
           <div>
             <h1>公开导航</h1>
@@ -36,7 +36,7 @@ export default function NavPage() {
         </div>
       </header>
 
-      <div className="entry-list">
+      <div className="entry-list card-grid">
         {publicLinks.map((link) => (
           <a className="entry-item" href={link.href} key={link.href} rel="noreferrer" target="_blank">
             <span className="entry-marker">{link.marker}</span>

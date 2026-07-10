@@ -37,9 +37,9 @@ export default function LoginPage() {
   return (
     <section className="auth-page">
       <div className="auth-copy">
-        <span className="eyebrow">Account</span>
-        <h1>登录灵犀门户</h1>
-        <p>进入工作台后可以查看角色、导航、工具箱和你有权限访问的管理区域。</p>
+        <span className="eyebrow">HLOVET</span>
+        <h1>登录 HLOVET</h1>
+        <p>进入个人空间后可以查看角色、导航和工具箱。</p>
         <div className="actions">
           <Link className="button secondary" href="/nav">
             先看导航
