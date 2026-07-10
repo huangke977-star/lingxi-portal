@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AuthUser, getMe, logout } from '@/lib/auth-api';
 import {
   AUTH_STATE_CHANGE_EVENT,
@@ -20,6 +20,8 @@ const navItems = [
 
 export function TopNav() {
   const router = useRouter();
+  const pathname = usePathname();
+  const navRef = useRef<HTMLElement | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -62,6 +64,32 @@ export function TopNav() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!navRef.current?.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMenuOpen]);
+
   const avatarText = useMemo(() => {
     if (!user?.username) {
       return 'H';
@@ -95,9 +123,17 @@ export function TopNav() {
     setIsMenuOpen(false);
   }
 
+  function isActiveRoute(href: string) {
+    if (href === '/') {
+      return pathname === href;
+    }
+
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
   return (
     <header className="topbar">
-      <nav aria-label="主导航" className="topbar-inner">
+      <nav aria-label="主导航" className="topbar-inner" ref={navRef}>
         <button
           aria-expanded={isMenuOpen}
           aria-label={isMenuOpen ? '关闭菜单' : '打开菜单'}
@@ -118,7 +154,7 @@ export function TopNav() {
         </Link>
         <div className="top-links desktop-links">
           {navItems.map((item) => (
-            <Link href={item.href} key={item.href}>
+            <Link className={isActiveRoute(item.href) ? 'active' : undefined} href={item.href} key={item.href}>
               {item.label}
             </Link>
           ))}
@@ -161,7 +197,12 @@ export function TopNav() {
         </div>
         <div className={`mobile-menu ${isMenuOpen ? 'open' : ''}`}>
           {navItems.map((item) => (
-            <Link href={item.href} key={item.href} onClick={closeMobileMenu}>
+            <Link
+              className={isActiveRoute(item.href) ? 'active' : undefined}
+              href={item.href}
+              key={item.href}
+              onClick={closeMobileMenu}
+            >
               {item.label}
             </Link>
           ))}
