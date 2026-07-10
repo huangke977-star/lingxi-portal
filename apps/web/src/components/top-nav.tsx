@@ -23,6 +23,7 @@ export function TopNav() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -75,6 +76,7 @@ export function TopNav() {
     }
 
     setIsLoggingOut(true);
+    setIsMenuOpen(false);
     const refreshToken = readRefreshToken();
 
     try {
@@ -89,9 +91,24 @@ export function TopNav() {
     }
   }
 
+  function closeMobileMenu() {
+    setIsMenuOpen(false);
+  }
+
   return (
     <header className="topbar">
       <nav aria-label="主导航" className="topbar-inner">
+        <button
+          aria-expanded={isMenuOpen}
+          aria-label={isMenuOpen ? '关闭菜单' : '打开菜单'}
+          className="menu-toggle"
+          onClick={() => setIsMenuOpen((current) => !current)}
+          type="button"
+        >
+          <span />
+          <span />
+          <span />
+        </button>
         <Link className="brand" href="/">
           <span className="brand-mark">H</span>
           <span className="brand-copy">
@@ -99,7 +116,7 @@ export function TopNav() {
             <span>Personal Portal</span>
           </span>
         </Link>
-        <div className="top-links">
+        <div className="top-links desktop-links">
           {navItems.map((item) => (
             <Link href={item.href} key={item.href}>
               {item.label}
@@ -141,6 +158,13 @@ export function TopNav() {
               </div>
             </>
           ) : null}
+        </div>
+        <div className={`mobile-menu ${isMenuOpen ? 'open' : ''}`}>
+          {navItems.map((item) => (
+            <Link href={item.href} key={item.href} onClick={closeMobileMenu}>
+              {item.label}
+            </Link>
+          ))}
         </div>
       </nav>
     </header>

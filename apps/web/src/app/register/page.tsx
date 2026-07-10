@@ -43,18 +43,11 @@ export default function RegisterPage() {
 
   return (
     <section className="auth-page">
-      <div className="auth-copy">
-        <span className="eyebrow">HLOVET</span>
-        <h1>创建账号</h1>
-        <p>新账号默认进入练气角色，后续由超级管理员调整角色境界和可见菜单。</p>
-        <div className="actions">
-          <Link className="button secondary" href="/login">
-            已有账号
-          </Link>
-        </div>
-      </div>
       <div className="auth-panel">
-        <span className="section-label">开放注册</span>
+        <div className="auth-panel-head">
+          <span className="section-label">HLOVET</span>
+          <h1>创建账号</h1>
+        </div>
         <form className="form-stack" onSubmit={handleSubmit}>
           <label>
             <span>用户名</span>

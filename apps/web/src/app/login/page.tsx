@@ -36,18 +36,11 @@ export default function LoginPage() {
 
   return (
     <section className="auth-page">
-      <div className="auth-copy">
-        <span className="eyebrow">HLOVET</span>
-        <h1>登录 HLOVET</h1>
-        <p>进入个人空间后可以查看角色、导航和工具箱。</p>
-        <div className="actions">
-          <Link className="button secondary" href="/nav">
-            先看导航
-          </Link>
-        </div>
-      </div>
       <div className="auth-panel">
-        <span className="section-label">账号登录</span>
+        <div className="auth-panel-head">
+          <span className="section-label">HLOVET</span>
+          <h1>账号登录</h1>
+        </div>
         <form className="form-stack" onSubmit={handleSubmit}>
           <label>
             <span>账号或邮箱</span>
