@@ -1,25 +1,27 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
-import { AuthUser, getMe, logout } from '@/lib/auth-api';
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AuthUser, getMe, logout } from "@/lib/auth-api";
 import {
   AUTH_STATE_CHANGE_EVENT,
   clearAuthTokens,
   readAccessToken,
   readRefreshToken,
-} from '@/lib/auth-storage';
+} from "@/lib/auth-storage";
 
 const navItems = [
-  { href: '/', label: '首页' },
-  { href: '/nav', label: '导航' },
-  { href: '/tools', label: '工具' },
-  { href: '/dashboard', label: '工作台' },
+  { href: "/", label: "首页" },
+  { href: "/nav", label: "导航" },
+  { href: "/tools", label: "工具" },
+  { href: "/dashboard", label: "工作台" },
 ];
 
 export function TopNav() {
   const router = useRouter();
+  const pathname = usePathname();
+  const navRef = useRef<HTMLElement | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -62,9 +64,35 @@ export function TopNav() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!navRef.current?.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMenuOpen]);
+
   const avatarText = useMemo(() => {
     if (!user?.username) {
-      return 'H';
+      return "H";
     }
 
     return user.username.trim().slice(0, 1).toUpperCase();
@@ -87,7 +115,7 @@ export function TopNav() {
       clearAuthTokens();
       setUser(null);
       setIsLoggingOut(false);
-      router.push('/login');
+      router.push("/login");
     }
   }
 
@@ -95,12 +123,20 @@ export function TopNav() {
     setIsMenuOpen(false);
   }
 
+  function isActiveRoute(href: string) {
+    if (href === "/") {
+      return pathname === href;
+    }
+
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
   return (
     <header className="topbar">
-      <nav aria-label="主导航" className="topbar-inner">
+      <nav aria-label="主导航" className="topbar-inner" ref={navRef}>
         <button
           aria-expanded={isMenuOpen}
-          aria-label={isMenuOpen ? '关闭菜单' : '打开菜单'}
+          aria-label={isMenuOpen ? "关闭菜单" : "打开菜单"}
           className="menu-toggle"
           onClick={() => setIsMenuOpen((current) => !current)}
           type="button"
@@ -118,7 +154,11 @@ export function TopNav() {
         </Link>
         <div className="top-links desktop-links">
           {navItems.map((item) => (
-            <Link href={item.href} key={item.href}>
+            <Link
+              className={isActiveRoute(item.href) ? "active" : undefined}
+              href={item.href}
+              key={item.href}
+            >
               {item.label}
             </Link>
           ))}
@@ -140,7 +180,11 @@ export function TopNav() {
                 {user.role.name}
               </span>
               <div className="account-menu-wrap">
-                <button aria-label={`${user.username} 的账户菜单`} className="avatar-button" type="button">
+                <button
+                  aria-label={`${user.username} 的账户菜单`}
+                  className="avatar-button"
+                  type="button"
+                >
                   {avatarText}
                 </button>
                 <div className="account-menu">
@@ -148,20 +192,30 @@ export function TopNav() {
                     <strong>{user.username}</strong>
                     <span>{user.email}</span>
                   </div>
+                  <Link href="/profile">个人中心</Link>
                   <Link href="/dashboard">工作台</Link>
                   <Link href="/nav">导航</Link>
                   <Link href="/tools">工具箱</Link>
-                  <button disabled={isLoggingOut} onClick={() => void handleLogout()} type="button">
-                    {isLoggingOut ? '退出中' : '退出登录'}
+                  <button
+                    disabled={isLoggingOut}
+                    onClick={() => void handleLogout()}
+                    type="button"
+                  >
+                    {isLoggingOut ? "退出中" : "退出登录"}
                   </button>
                 </div>
               </div>
             </>
           ) : null}
         </div>
-        <div className={`mobile-menu ${isMenuOpen ? 'open' : ''}`}>
+        <div className={`mobile-menu ${isMenuOpen ? "open" : ""}`}>
           {navItems.map((item) => (
-            <Link href={item.href} key={item.href} onClick={closeMobileMenu}>
+            <Link
+              className={isActiveRoute(item.href) ? "active" : undefined}
+              href={item.href}
+              key={item.href}
+              onClick={closeMobileMenu}
+            >
               {item.label}
             </Link>
           ))}

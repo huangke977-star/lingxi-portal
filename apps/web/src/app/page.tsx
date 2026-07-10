@@ -1,27 +1,27 @@
-import Link from 'next/link';
-import { getApiHealth } from '@/lib/api';
+import Link from "next/link";
+import { getApiHealth } from "@/lib/api";
 
 const portalEntries = [
   {
-    href: '/dashboard',
-    marker: 'ME',
-    title: '个人工作台',
-    description: '查看身份、角色境界和当前可进入区域。',
-    meta: '登录后可用',
+    href: "/dashboard",
+    marker: "ME",
+    title: "个人工作台",
+    description: "查看身份、角色境界和当前可进入区域。",
+    meta: "登录后可用",
   },
   {
-    href: '/nav',
-    marker: 'NAV',
-    title: '公开导航',
-    description: '集中放置公开可访问的网站、项目和资料入口。',
-    meta: '公开可见',
+    href: "/nav",
+    marker: "NAV",
+    title: "公开导航",
+    description: "集中放置公开可访问的网站、项目和资料入口。",
+    meta: "公开可见",
   },
   {
-    href: '/tools',
-    marker: 'KIT',
-    title: '工具箱',
-    description: '沉淀常用的小工具、脚本入口和后续自定义页面。',
-    meta: '按角色开放',
+    href: "/tools",
+    marker: "KIT",
+    title: "工具箱",
+    description: "沉淀常用的小工具、脚本入口和后续自定义页面。",
+    meta: "按角色开放",
   },
 ];
 
@@ -38,10 +38,10 @@ export default async function HomePage() {
             <p>把常用站点、个人工具和后续自定义页面收在一个浅色卡片门户里。</p>
           </div>
           <div className="actions">
-            <Link className="button" href="/dashboard">
+            <Link className="text-action primary" href="/dashboard">
               进入空间
             </Link>
-            <Link className="button secondary" href="/nav">
+            <Link className="text-action" href="/nav">
               查看导航
             </Link>
           </div>
@@ -51,8 +51,12 @@ export default async function HomePage() {
       <div className="overview-grid">
         <div className="overview-panel">
           <span className="section-label">运行状态</span>
-          <strong>{health ? 'API 已连接' : 'API 未连接'}</strong>
-          <p>{health ? `${health.service} 返回 ${health.status}` : '后端服务暂时不可用，请稍后再试。'}</p>
+          <strong>{health ? "API 已连接" : "API 未连接"}</strong>
+          <p>
+            {health
+              ? `${health.service} 返回 ${health.status}`
+              : "后端服务暂时不可用，请稍后再试。"}
+          </p>
         </div>
         <div className="metric-grid">
           <div className="metric">
