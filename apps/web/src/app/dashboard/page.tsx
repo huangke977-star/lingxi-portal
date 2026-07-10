@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AuthUser, getMe, logout } from '@/lib/auth-api';
@@ -46,41 +47,78 @@ export default function DashboardPage() {
   }
 
   return (
-    <section>
-      <span className="eyebrow">Workspace</span>
-      <h1>个人工作台</h1>
-      <p>当前阶段先展示身份和角色，后续导航、页面和工具都会基于这里的权限判断。</p>
+    <section className="page-shell">
+      <header className="page-header">
+        <span className="eyebrow">Workspace</span>
+        <div className="title-row">
+          <div>
+            <h1>个人工作台</h1>
+            <p>查看当前身份、角色境界和你可以进入的门户区域。</p>
+          </div>
+          <div className="actions">
+            <button className="button secondary" disabled={isLoggingOut || !user} onClick={handleLogout} type="button">
+              {isLoggingOut ? '退出中' : '退出登录'}
+            </button>
+          </div>
+        </div>
+      </header>
+
       <div className="status-row">
         <span className="status">{isLoading ? '正在读取身份' : user ? '已登录' : '未登录'}</span>
       </div>
       {error ? <p className="message error">{error}</p> : null}
       {user ? (
-        <div className="identity-list">
-          <div>
-            <span>用户名</span>
+        <div className="workspace-grid">
+          <div className="profile-panel">
+            <span className="section-label">当前账号</span>
             <strong>{user.username}</strong>
+            <p>{user.email}</p>
+            <span className="realm-badge">{user.role.name}</span>
           </div>
-          <div>
-            <span>邮箱</span>
-            <strong>{user.email}</strong>
+          <div className="identity-list">
+            <div>
+              <span>角色等级</span>
+              <strong>{user.role.level}</strong>
+            </div>
+            <div>
+              <span>超级管理员</span>
+              <strong>{user.isSuperAdmin ? '是' : '否'}</strong>
+            </div>
+            <div>
+              <span>账号状态</span>
+              <strong>{user.status === 'active' ? '启用' : '停用'}</strong>
+            </div>
           </div>
-          <div>
-            <span>角色</span>
-            <strong>
-              {user.role.name} · {user.role.level}
-            </strong>
-          </div>
-          <div>
-            <span>超级管理员</span>
-            <strong>{user.isSuperAdmin ? '是' : '否'}</strong>
+          <div className="entry-list compact">
+            <Link className="entry-item" href="/nav">
+              <span className="entry-marker">航</span>
+              <span className="entry-main">
+                <strong>公开导航</strong>
+                <span>查看所有公开入口。</span>
+              </span>
+              <span className="entry-meta">公开</span>
+            </Link>
+            <Link className="entry-item" href="/tools">
+              <span className="entry-marker">器</span>
+              <span className="entry-main">
+                <strong>工具箱</strong>
+                <span>按角色查看后续接入的工具。</span>
+              </span>
+              <span className="entry-meta">登录</span>
+            </Link>
+            {user.isSuperAdmin ? (
+              <Link className="entry-item" href="/admin">
+                <span className="entry-marker">管</span>
+                <span className="entry-main">
+                  <strong>用户管理</strong>
+                  <span>维护角色、状态和密码。</span>
+                </span>
+                <span className="entry-meta">admin</span>
+              </Link>
+            ) : null}
           </div>
         </div>
       ) : null}
-      <div className="actions">
-        <button className="button secondary" disabled={isLoggingOut || !user} onClick={handleLogout} type="button">
-          {isLoggingOut ? '退出中' : '退出登录'}
-        </button>
-      </div>
     </section>
   );
 }

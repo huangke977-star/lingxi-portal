@@ -35,41 +35,49 @@ export default function LoginPage() {
   }
 
   return (
-    <section className="auth-shell">
-      <span className="eyebrow">Account</span>
-      <h1>登录</h1>
-      <p>使用你的账号进入个人工作台。</p>
-      <form className="form-stack" onSubmit={handleSubmit}>
-        <label>
-          <span>账号或邮箱</span>
-          <input
-            autoComplete="username"
-            name="account"
-            onChange={(event) => setAccount(event.target.value)}
-            value={account}
-          />
-        </label>
-        <label>
-          <span>密码</span>
-          <input
-            autoComplete="current-password"
-            name="password"
-            onChange={(event) => setPassword(event.target.value)}
-            type="password"
-            value={password}
-          />
-        </label>
-        {error ? <p className="message error">{error}</p> : null}
+    <section className="auth-page">
+      <div className="auth-copy">
+        <span className="eyebrow">Account</span>
+        <h1>登录灵犀门户</h1>
+        <p>进入工作台后可以查看角色、导航、工具箱和你有权限访问的管理区域。</p>
         <div className="actions">
-          <button className="button" disabled={isSubmitting} type="submit">
-            {isSubmitting ? '登录中' : '登录'}
-          </button>
+          <Link className="button secondary" href="/nav">
+            先看导航
+          </Link>
         </div>
-      </form>
-      <div className="actions">
-        <Link className="button secondary" href="/register">
-          注册
-        </Link>
+      </div>
+      <div className="auth-panel">
+        <span className="section-label">账号登录</span>
+        <form className="form-stack" onSubmit={handleSubmit}>
+          <label>
+            <span>账号或邮箱</span>
+            <input
+              autoComplete="username"
+              name="account"
+              onChange={(event) => setAccount(event.target.value)}
+              value={account}
+            />
+          </label>
+          <label>
+            <span>密码</span>
+            <input
+              autoComplete="current-password"
+              name="password"
+              onChange={(event) => setPassword(event.target.value)}
+              type="password"
+              value={password}
+            />
+          </label>
+          {error ? <p className="message error">{error}</p> : null}
+          <div className="actions">
+            <button className="button" disabled={isSubmitting} type="submit">
+              {isSubmitting ? '登录中' : '登录'}
+            </button>
+            <Link className="button secondary" href="/register">
+              注册账号
+            </Link>
+          </div>
+        </form>
       </div>
     </section>
   );

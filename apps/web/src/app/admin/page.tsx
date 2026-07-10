@@ -182,7 +182,7 @@ export default function AdminPage() {
 
   if (isLoading) {
     return (
-      <section className="admin-shell">
+      <section className="page-shell admin-shell">
         <span className="eyebrow">Admin</span>
         <h1>用户管理</h1>
         <div className="status-row">
@@ -194,7 +194,7 @@ export default function AdminPage() {
 
   if (!currentUser) {
     return (
-      <section className="admin-shell">
+      <section className="page-shell admin-shell">
         <span className="eyebrow">Admin</span>
         <h1>无法进入管理后台</h1>
         <p>{error || '请重新登录后再访问。'}</p>
@@ -209,7 +209,7 @@ export default function AdminPage() {
 
   if (currentUser && !currentUser.isSuperAdmin) {
     return (
-      <section className="admin-shell">
+      <section className="page-shell admin-shell">
         <span className="eyebrow">Admin</span>
         <h1>无权访问</h1>
         <p>该页面仅超级管理员可查看。</p>
@@ -223,18 +223,20 @@ export default function AdminPage() {
   }
 
   return (
-    <section className="admin-shell">
-      <span className="eyebrow">Admin</span>
-      <div className="admin-heading">
-        <div>
-          <h1>用户管理</h1>
-          <p>维护账号角色和启用状态。</p>
+    <section className="page-shell admin-shell">
+      <header className="page-header">
+        <span className="eyebrow">Admin</span>
+        <div className="title-row">
+          <div>
+            <h1>用户管理</h1>
+            <p>维护账号角色、启用状态和密码重置。</p>
+          </div>
+          <div className="admin-summary" aria-label="用户概览">
+            <span>{users.length} 个账号</span>
+            <span>{enabledCount} 个启用</span>
+          </div>
         </div>
-        <div className="admin-summary" aria-label="用户概览">
-          <span>{users.length} 个账号</span>
-          <span>{enabledCount} 个启用</span>
-        </div>
-      </div>
+      </header>
       {error ? <p className="message error">{error}</p> : null}
       {notice ? <p className="message success">{notice}</p> : null}
       <div className="admin-table-wrap">

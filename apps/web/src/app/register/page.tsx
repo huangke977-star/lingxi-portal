@@ -42,62 +42,70 @@ export default function RegisterPage() {
   }
 
   return (
-    <section className="auth-shell">
-      <span className="eyebrow">Account</span>
-      <h1>注册</h1>
-      <p>新账号默认进入练气角色。</p>
-      <form className="form-stack" onSubmit={handleSubmit}>
-        <label>
-          <span>用户名</span>
-          <input
-            autoComplete="username"
-            maxLength={32}
-            name="username"
-            onChange={(event) => setUsername(event.target.value)}
-            value={username}
-          />
-        </label>
-        <label>
-          <span>邮箱</span>
-          <input
-            autoComplete="email"
-            name="email"
-            onChange={(event) => setEmail(event.target.value)}
-            type="email"
-            value={email}
-          />
-        </label>
-        <label>
-          <span>密码</span>
-          <input
-            autoComplete="new-password"
-            name="password"
-            onChange={(event) => setPassword(event.target.value)}
-            type="password"
-            value={password}
-          />
-        </label>
-        <label>
-          <span>确认密码</span>
-          <input
-            autoComplete="new-password"
-            name="confirmation"
-            onChange={(event) => setConfirmation(event.target.value)}
-            type="password"
-            value={confirmation}
-          />
-        </label>
-        {error ? <p className="message error">{error}</p> : null}
+    <section className="auth-page">
+      <div className="auth-copy">
+        <span className="eyebrow">Account</span>
+        <h1>创建账号</h1>
+        <p>新账号默认进入练气角色，后续由超级管理员调整角色境界和可见菜单。</p>
         <div className="actions">
-          <button className="button" disabled={isSubmitting} type="submit">
-            {isSubmitting ? '注册中' : '注册'}
-          </button>
+          <Link className="button secondary" href="/login">
+            已有账号
+          </Link>
         </div>
-      </form>
-      <div className="actions">
-        <Link className="button secondary" href="/login">
-          返回登录
-        </Link>
+      </div>
+      <div className="auth-panel">
+        <span className="section-label">开放注册</span>
+        <form className="form-stack" onSubmit={handleSubmit}>
+          <label>
+            <span>用户名</span>
+            <input
+              autoComplete="username"
+              maxLength={32}
+              name="username"
+              onChange={(event) => setUsername(event.target.value)}
+              value={username}
+            />
+          </label>
+          <label>
+            <span>邮箱</span>
+            <input
+              autoComplete="email"
+              name="email"
+              onChange={(event) => setEmail(event.target.value)}
+              type="email"
+              value={email}
+            />
+          </label>
+          <label>
+            <span>密码</span>
+            <input
+              autoComplete="new-password"
+              name="password"
+              onChange={(event) => setPassword(event.target.value)}
+              type="password"
+              value={password}
+            />
+          </label>
+          <label>
+            <span>确认密码</span>
+            <input
+              autoComplete="new-password"
+              name="confirmation"
+              onChange={(event) => setConfirmation(event.target.value)}
+              type="password"
+              value={confirmation}
+            />
+          </label>
+          {error ? <p className="message error">{error}</p> : null}
+          <div className="actions">
+            <button className="button" disabled={isSubmitting} type="submit">
+              {isSubmitting ? '注册中' : '注册'}
+            </button>
+            <Link className="button secondary" href="/login">
+              返回登录
+            </Link>
+          </div>
+        </form>
       </div>
     </section>
   );
