@@ -38,10 +38,10 @@ export default async function HomePage() {
             <p>把常用站点、个人工具和后续自定义页面收在一个浅色卡片门户里。</p>
           </div>
           <div className="actions">
-            <Link className="text-action primary" href="/dashboard">
+            <Link className="button" href="/dashboard">
               进入空间
             </Link>
-            <Link className="text-action" href="/nav">
+            <Link className="button secondary" href="/nav">
               查看导航
             </Link>
           </div>
