@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import { login } from '@/lib/auth-api';
 import { saveAuthTokens } from '@/lib/auth-storage';
 
@@ -12,6 +12,19 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isLeavingRef = useRef(false);
+
+  function handleCancel() {
+    isLeavingRef.current = true;
+    const returnTo = new URLSearchParams(window.location.search).get('from');
+
+    if (returnTo?.startsWith('/') && !returnTo.startsWith('//') && returnTo !== '/login') {
+      router.push(returnTo);
+      return;
+    }
+
+    router.push('/');
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -25,18 +38,33 @@ export default function LoginPage() {
     setIsSubmitting(true);
     try {
       const response = await login({ account, password });
+      if (isLeavingRef.current) {
+        return;
+      }
+
       saveAuthTokens(response);
       router.push('/dashboard');
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : '登录失败，请稍后重试。');
+      if (!isLeavingRef.current) {
+        setError(loginError instanceof Error ? loginError.message : '登录失败，请稍后重试。');
+      }
     } finally {
-      setIsSubmitting(false);
+      if (!isLeavingRef.current) {
+        setIsSubmitting(false);
+      }
     }
   }
 
   return (
     <section className="auth-page">
       <div className="auth-panel">
+        <button
+          aria-label="返回上一页"
+          className="auth-close"
+          onClick={handleCancel}
+          title="返回上一页"
+          type="button"
+        />
         <div className="auth-panel-head">
           <span className="section-label">HLOVET</span>
           <h1>账号登录</h1>

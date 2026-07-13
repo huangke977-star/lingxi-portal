@@ -189,7 +189,10 @@ export function TopNav() {
         <div className="account-zone">
           {isLoading ? <span className="login-chip">读取中</span> : null}
           {!isLoading && !user ? (
-            <Link className="login-chip login-chip-action" href="/login">
+            <Link
+              className="login-chip login-chip-action"
+              href={`/login?from=${encodeURIComponent(pathname)}`}
+            >
               登录
             </Link>
           ) : null}
