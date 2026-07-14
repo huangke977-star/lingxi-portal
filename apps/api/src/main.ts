@@ -10,6 +10,11 @@ async function bootstrap() {
       .map((origin) => origin.trim())
       .filter(Boolean),
   );
+  const siteDomain = process.env.SITE_DOMAIN?.trim();
+  if (siteDomain) {
+    configuredOrigins.add(`https://${siteDomain}`);
+    configuredOrigins.add(`http://${siteDomain}`);
+  }
   const localPreviewOrigins = new Set(['http://localhost:3000', 'http://127.0.0.1:3000']);
 
   app.useGlobalPipes(
@@ -25,7 +30,7 @@ async function bootstrap() {
         return;
       }
 
-      callback(new Error(`Origin ${origin} is not allowed by CORS.`), false);
+      callback(null, false);
     },
     credentials: true,
   });
