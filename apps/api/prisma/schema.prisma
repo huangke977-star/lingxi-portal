@@ -47,6 +47,7 @@ model User {
   avatarStoredName String?           @unique @map("avatar_stored_name") @db.VarChar(255)
   avatarMimeType   String?           @map("avatar_mime_type") @db.VarChar(64)
   avatarSizeBytes  Int?              @map("avatar_size_bytes")
+  profileBio       String            @default("我懒，我不写") @map("profile_bio") @db.VarChar(180)
   lastLoginAt      DateTime?         @map("last_login_at")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")

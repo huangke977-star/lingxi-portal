@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -12,6 +12,7 @@ import {
   getMe,
   resolveApiUrl,
   updateMyAppearance,
+  updateMyProfile,
   uploadMyAvatar,
 } from "@/lib/auth-api";
 import {
@@ -38,19 +39,19 @@ type AppearanceColorKey =
 const AVATAR_MAX_FILE_SIZE = 2 * 1024 * 1024;
 
 const roleIcons: Record<string, string> = {
-  qi_refining: "I",
-  foundation_building: "II",
-  golden_core: "III",
-  nascent_soul: "IV",
-  spirit_transformation: "V",
-  void_refining: "VI",
-  body_integration: "VII",
-  mahayana: "VIII",
-  administrator: "A",
+  qi_refining: "气",
+  foundation_building: "基",
+  golden_core: "丹",
+  nascent_soul: "婴",
+  spirit_transformation: "神",
+  void_refining: "虚",
+  body_integration: "合",
+  mahayana: "乘",
+  administrator: "管",
 };
 
 const levelRoadmap = [
-  { code: "qi_refining", name: "练气", level: 10, status: "登录自动获取" },
+  { code: "qi_refining", name: "练气", level: 10, status: "注册自动获取" },
   { code: "foundation_building", name: "筑基", level: 20, status: "未开放" },
   { code: "golden_core", name: "金丹", level: 30, status: "未开放" },
   { code: "nascent_soul", name: "元婴", level: 40, status: "未开放" },
@@ -67,7 +68,11 @@ export default function ProfilePage() {
   const [notice, setNotice] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingAppearance, setIsSavingAppearance] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isLevelInfoOpen, setIsLevelInfoOpen] = useState(false);
+  const [profileBioDraft, setProfileBioDraft] = useState("");
+  const [now, setNow] = useState(() => Date.now());
   const [preference, setPreference] = useState<ThemePreference>(() =>
     readThemePreference(),
   );
@@ -83,6 +88,7 @@ export default function ProfilePage() {
       .then((currentUser) => {
         const accountPreference = normalizeThemePreference(currentUser.appearance);
         setUser(currentUser);
+        setProfileBioDraft(currentUser.profileBio);
         setPreference(accountPreference);
         writeThemePreference(accountPreference);
       })
@@ -95,6 +101,20 @@ export default function ProfilePage() {
         setIsLoading(false);
       });
   }, [router]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setNotice(""), 2600);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   const normalizedPreference = useMemo(
     () => normalizeThemePreference(preference),
@@ -193,9 +213,43 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const token = readAccessToken();
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+
+    const nextBio = profileBioDraft.trim();
+    if (!nextBio) {
+      setError("个人介绍不能为空。");
+      setNotice("");
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setError("");
+    setNotice("");
+    try {
+      const updatedUser = await updateMyProfile(token, { profileBio: nextBio });
+      setUser(updatedUser);
+      setProfileBioDraft(updatedUser.profileBio);
+      window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
+      setNotice("个人介绍已保存。");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "个人介绍保存失败。");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  }
+
   const roleIcon = user ? roleIcons[user.role.code] ?? "R" : "R";
   const avatarInitial = user?.username.trim().slice(0, 1).toUpperCase() ?? "H";
   const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
+  const joinedAt = user?.createdAt ? new Date(user.createdAt) : null;
+  const joinedAtText = joinedAt ? formatJoinedAt(joinedAt) : "";
+  const memberDurationText = joinedAt ? formatDuration(now - joinedAt.getTime()) : "";
 
   const previewStyle = {
     "--theme-preview-accent": customAccent,
@@ -236,19 +290,20 @@ export default function ProfilePage() {
         </div>
       </header>
 
-      <div className="status-row">
-        <span className="status">
-          {isLoading ? "正在读取身份" : user ? "已登录" : "未登录"}
-        </span>
-        {isSavingAppearance ? <span className="status">保存中</span> : null}
-      </div>
+      {isLoading || isSavingAppearance || isSavingProfile ? (
+        <div className="status-row compact-status-row">
+          {isLoading ? <span className="status">正在读取身份</span> : null}
+          {isSavingAppearance ? <span className="status">外观保存中</span> : null}
+          {isSavingProfile ? <span className="status">资料保存中</span> : null}
+        </div>
+      ) : null}
       {error ? <p className="message error">{error}</p> : null}
-      {notice ? <p className="message success">{notice}</p> : null}
+      {notice ? <p className="profile-toast">{notice}</p> : null}
 
       {user ? (
         <div className="profile-settings-grid">
           <section className="profile-panel account-card">
-            <div className="account-profile-row">
+            <div className="account-profile-row account-profile-hero">
               <label className="avatar-uploader">
                 <input
                   accept="image/jpeg,image/png,image/webp"
@@ -267,37 +322,89 @@ export default function ProfilePage() {
               </label>
 
               <div className="account-profile-copy">
-                <span className="section-label">当前账号</span>
                 <strong>{user.username}</strong>
                 <p>{user.email}</p>
-                <span className="role-chip">
-                  <span aria-hidden="true">{roleIcon}</span>
-                  {user.role.name}
-                </span>
+                <div className="account-role-line">
+                  <span
+                    aria-label={`当前角色：${user.role.name}`}
+                    className="role-glyph"
+                    title={user.role.name}
+                  >
+                    {roleIcon}
+                  </span>
+                  <span>{user.role.name}</span>
+                  <button
+                    aria-expanded={isLevelInfoOpen}
+                    className="level-help-trigger"
+                    onClick={() => setIsLevelInfoOpen((current) => !current)}
+                    type="button"
+                  >
+                    等级说明
+                  </button>
+                </div>
               </div>
             </div>
+
+            <dl className="account-metrics">
+              <div>
+                <dt>来到 HLOVET</dt>
+                <dd>{joinedAtText}</dd>
+              </div>
+              <div>
+                <dt>相伴时长</dt>
+                <dd>{memberDurationText}</dd>
+              </div>
+            </dl>
+
+            <div className="account-bio-card">
+              <span className="section-label">个人介绍</span>
+              <p>{user.profileBio}</p>
+            </div>
+
+            {isLevelInfoOpen ? (
+              <div className="level-popover" role="dialog" aria-label="账号等级说明">
+                <div className="panel-heading">
+                  <span className="section-label">账号等级</span>
+                  <strong>角色说明</strong>
+                </div>
+                <div className="level-roadmap">
+                  {levelRoadmap.map((role) => {
+                    const isCurrent = user.role.code === role.code;
+                    return (
+                      <div className={isCurrent ? "current" : ""} key={role.code}>
+                        <span className="level-icon">{roleIcons[role.code]}</span>
+                        <span>
+                          <strong>{role.name}</strong>
+                          <small>Lv.{role.level}</small>
+                        </span>
+                        <em>{isCurrent ? "当前等级" : role.status}</em>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </section>
 
-          <section className="profile-panel level-panel">
+          <section className="profile-panel profile-bio-panel">
             <div className="panel-heading">
-              <span className="section-label">账号等级</span>
-              <strong>角色说明</strong>
+              <span className="section-label">Profile</span>
+              <strong>个人介绍</strong>
             </div>
-            <div className="level-roadmap">
-              {levelRoadmap.map((role) => {
-                const isCurrent = user.role.code === role.code;
-                return (
-                  <div className={isCurrent ? "current" : ""} key={role.code}>
-                    <span className="level-icon">{roleIcons[role.code]}</span>
-                    <span>
-                      <strong>{role.name}</strong>
-                      <small>Lv.{role.level}</small>
-                    </span>
-                    <em>{isCurrent ? "当前等级" : role.status}</em>
-                  </div>
-                );
-              })}
-            </div>
+            <form className="profile-bio-form" onSubmit={handleProfileSubmit}>
+              <textarea
+                maxLength={180}
+                onChange={(event) => setProfileBioDraft(event.target.value)}
+                placeholder="写一句别人能看到的介绍。"
+                value={profileBioDraft}
+              />
+              <div className="profile-bio-actions">
+                <span>{profileBioDraft.trim().length}/180</span>
+                <button disabled={isSavingProfile} type="submit">
+                  {isSavingProfile ? "保存中" : "保存介绍"}
+                </button>
+              </div>
+            </form>
           </section>
 
           <section className="profile-panel theme-panel">
@@ -431,9 +538,17 @@ export default function ProfilePage() {
 
               <div className="theme-preview" style={previewStyle}>
                 <div className="theme-preview-scene" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
+                  <div className="preview-mini-nav">
+                    <i />
+                    <i />
+                    <i />
+                  </div>
+                  <div className="preview-mini-hero">
+                    <span />
+                    <strong />
+                  </div>
+                  <div className="preview-mini-card" />
+                  <div className="preview-mini-card small" />
                 </div>
                 <span>Preview</span>
                 <strong>HLOVET</strong>
@@ -452,6 +567,26 @@ function hexToRgbString(value: string): string {
   return [0, 2, 4]
     .map((index) => Number.parseInt(hexValue.slice(index, index + 2), 16))
     .join(", ");
+}
+
+function formatJoinedAt(value: Date): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
+}
+
+function formatDuration(value: number): string {
+  const totalSeconds = Math.max(0, Math.floor(value / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${days}天 ${hours}小时 ${minutes}分 ${seconds}秒`;
 }
 
 function toAppearancePayload(preference: ThemePreference): AuthAppearance {

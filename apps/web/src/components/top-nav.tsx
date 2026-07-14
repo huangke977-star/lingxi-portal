@@ -21,15 +21,15 @@ const navItems = [
 ];
 
 const roleBadgeIcons: Record<string, string> = {
-  qi_refining: "I",
-  foundation_building: "II",
-  golden_core: "III",
-  nascent_soul: "IV",
-  spirit_transformation: "V",
-  void_refining: "VI",
-  body_integration: "VII",
-  mahayana: "VIII",
-  administrator: "A",
+  qi_refining: "气",
+  foundation_building: "基",
+  golden_core: "丹",
+  nascent_soul: "婴",
+  spirit_transformation: "神",
+  void_refining: "虚",
+  body_integration: "合",
+  mahayana: "乘",
+  administrator: "管",
 };
 
 export function TopNav() {

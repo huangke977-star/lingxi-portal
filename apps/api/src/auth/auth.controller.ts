@@ -17,6 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { createReadStream } from 'node:fs';
 import { UsersService, AVATAR_MAX_FILE_SIZE_BYTES } from '../users/users.service';
 import { UpdateUserAppearanceDto } from '../users/dto/update-user-appearance.dto';
+import { UpdateUserProfileDto } from '../users/dto/update-user-profile.dto';
 import { AuthService } from './auth.service';
 import { AuthResponse, AuthenticatedUser } from './auth.types';
 import { CurrentUser } from './current-user.decorator';
@@ -69,6 +70,12 @@ export class AuthController {
     @Body() dto: UpdateUserAppearanceDto,
   ): Promise<AuthenticatedUser> {
     return this.usersService.updateOwnAppearance(user.id, dto);
+  }
+
+  @Patch('me/profile')
+  @UseGuards(JwtAuthGuard)
+  updateProfile(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateUserProfileDto): Promise<AuthenticatedUser> {
+    return this.usersService.updateOwnProfile(user.id, dto);
   }
 
   @Post('me/avatar')

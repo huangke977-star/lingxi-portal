@@ -13,7 +13,9 @@ interface StoredUser {
   roleId: number;
   isSuperAdmin: boolean;
   status: 'active' | 'disabled';
+  profileBio: string;
   lastLoginAt: Date | null;
+  createdAt: Date;
 }
 
 const roles = [
@@ -30,6 +32,19 @@ function createPrismaMock() {
     passwordHash: user.passwordHash,
     status: user.status,
     isSuperAdmin: user.isSuperAdmin,
+    appearanceThemeId: 'sakura-mist',
+    customAccent: '#db2777',
+    customSurface: '#ffffff',
+    customForeground: '#2b2530',
+    customMuted: '#665867',
+    cardAlpha: 52,
+    glassBlur: 22,
+    glassTint: '#fff3f6',
+    glassTintAlpha: 72,
+    avatarStoredName: null,
+    avatarMimeType: null,
+    profileBio: user.profileBio,
+    createdAt: user.createdAt,
     role: roles.find((role) => role.id === user.roleId) ?? roles[0],
   });
 
@@ -51,6 +66,7 @@ function createPrismaMock() {
               email: string;
               passwordHash: string;
               roleId: number;
+              profileBio?: string;
             };
           }) => {
             const user: StoredUser = {
@@ -61,7 +77,9 @@ function createPrismaMock() {
               roleId: data.roleId,
               isSuperAdmin: false,
               status: 'active',
+              profileBio: data.profileBio ?? '我懒，我不写',
               lastLoginAt: null,
+              createdAt: new Date('2026-07-14T00:00:00.000Z'),
             };
             users.push(user);
             return withRole(user);
@@ -193,6 +211,8 @@ describe('AuthController (e2e)', () => {
       isSuperAdmin: false,
       role: { code: 'qi_refining', name: '练气', level: 10 },
     });
+    expect(response.body.user.profileBio).toEqual(expect.any(String));
+    expect(response.body.user.createdAt).toEqual(expect.any(String));
     expect(response.body.accessToken).toEqual(expect.any(String));
     expect(response.body.refreshToken).toEqual(expect.any(String));
     expect(response.body.user.passwordHash).toBeUndefined();
@@ -281,8 +301,23 @@ describe('AuthController (e2e)', () => {
 
     expect(response.body).toMatchObject({
       username: 'me_user',
+      profileBio: expect.any(String),
       role: { code: 'qi_refining', name: '练气', level: 10 },
     });
+  });
+
+  it('updates current user profile bio', async () => {
+    const registered = await register('bio_user', 'bio@example.com').expect(200);
+    const accessToken = registered.body.accessToken as string;
+
+    const response = await request(app.getHttpServer())
+      .patch('/auth/me/profile')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ profileBio: '我就喜欢这个范。' })
+      .expect(200);
+
+    expect(response.body.profileBio).toBe('我就喜欢这个范。');
+    expect(prismaState.users.find((item) => item.username === 'bio_user')?.profileBio).toBe('我就喜欢这个范。');
   });
 
   it('rejects disabled users during login and refresh', async () => {

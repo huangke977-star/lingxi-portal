@@ -14,7 +14,9 @@ interface StoredUser {
   roleId: number;
   isSuperAdmin: boolean;
   status: 'active' | 'disabled';
+  profileBio: string;
   lastLoginAt: Date | null;
+  createdAt: Date;
 }
 
 const roles = [
@@ -33,7 +35,9 @@ function createPrismaMock() {
       roleId: 9,
       isSuperAdmin: true,
       status: 'active',
+      profileBio: '我懒，我不写',
       lastLoginAt: null,
+      createdAt: new Date('2026-07-14T00:00:00.000Z'),
     },
     {
       id: 2,
@@ -43,7 +47,9 @@ function createPrismaMock() {
       roleId: 1,
       isSuperAdmin: false,
       status: 'active',
+      profileBio: '我高冷，我不写。',
       lastLoginAt: null,
+      createdAt: new Date('2026-07-14T00:00:00.000Z'),
     },
   ];
   const withRole = (user: StoredUser) => ({
@@ -53,6 +59,19 @@ function createPrismaMock() {
     passwordHash: user.passwordHash,
     status: user.status,
     isSuperAdmin: user.isSuperAdmin,
+    appearanceThemeId: 'sakura-mist',
+    customAccent: '#db2777',
+    customSurface: '#ffffff',
+    customForeground: '#2b2530',
+    customMuted: '#665867',
+    cardAlpha: 52,
+    glassBlur: 22,
+    glassTint: '#fff3f6',
+    glassTintAlpha: 72,
+    avatarStoredName: null,
+    avatarMimeType: null,
+    profileBio: user.profileBio,
+    createdAt: user.createdAt,
     role: roles.find((role) => role.id === user.roleId) ?? roles[0],
   });
 

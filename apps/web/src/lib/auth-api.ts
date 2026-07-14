@@ -27,6 +27,8 @@ export interface AuthUser {
   status: 'active' | 'disabled';
   isSuperAdmin: boolean;
   avatarUrl: string | null;
+  profileBio: string;
+  createdAt: string;
   appearance: AuthAppearance;
   role: AuthRole;
 }
@@ -88,6 +90,16 @@ export async function updateMyAppearance(accessToken: string, appearance: AuthAp
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify(appearance),
+  });
+}
+
+export async function updateMyProfile(accessToken: string, input: { profileBio: string }): Promise<AuthUser> {
+  return requestJson<AuthUser>('/auth/me/profile', {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(input),
   });
 }
 

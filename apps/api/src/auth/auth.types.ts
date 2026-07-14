@@ -19,6 +19,8 @@ export interface AuthenticatedUser {
   status: UserStatus;
   isSuperAdmin: boolean;
   avatarUrl: string | null;
+  profileBio: string;
+  createdAt: Date;
   appearance: UserAppearancePreference;
   role: {
     code: string;

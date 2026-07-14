@@ -12,7 +12,9 @@ import { basename, extname, join, resolve } from 'node:path';
 import { AuthenticatedUser, UserStatus } from '../auth/auth.types';
 import { PasswordService } from '../auth/password.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { FALLBACK_PROFILE_BIO, pickDefaultProfileBio } from './default-profile-bios';
 import { UpdateUserAppearanceDto } from './dto/update-user-appearance.dto';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 
 export const AVATAR_MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
 
@@ -36,6 +38,8 @@ interface UserRecord {
   avatarMimeType: string | null;
   avatarOriginalName?: string | null;
   avatarSizeBytes?: number | null;
+  profileBio: string | null;
+  createdAt: Date;
   role: {
     code: string;
     name: string;
@@ -111,6 +115,7 @@ export class UsersService {
         email: input.email.trim().toLowerCase(),
         passwordHash: input.passwordHash,
         roleId: role.id,
+        profileBio: pickDefaultProfileBio(),
       },
       select: this.userWithPasswordSelect(),
     });
@@ -223,6 +228,16 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
+  async updateOwnProfile(id: number, profile: UpdateUserProfileDto): Promise<AuthenticatedUser> {
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: { profileBio: profile.profileBio },
+      select: this.userSelect(),
+    });
+
+    return this.toAuthenticatedUser(user);
+  }
+
   async updateOwnAvatar(id: number, file: UploadedAvatarFile | undefined): Promise<AuthenticatedUser> {
     if (!file) {
       throw new BadRequestException('An avatar image file is required.');
@@ -301,6 +316,8 @@ export class UsersService {
       glassTintAlpha: true,
       avatarStoredName: true,
       avatarMimeType: true,
+      profileBio: true,
+      createdAt: true,
       role: {
         select: {
           code: true,
@@ -326,6 +343,8 @@ export class UsersService {
       status: user.status as UserStatus,
       isSuperAdmin: user.isSuperAdmin,
       avatarUrl: user.avatarStoredName ? `/auth/avatars/${user.avatarStoredName}` : null,
+      profileBio: user.profileBio?.trim() || FALLBACK_PROFILE_BIO,
+      createdAt: user.createdAt,
       appearance: {
         themeId: user.appearanceThemeId,
         customAccent: user.customAccent,
