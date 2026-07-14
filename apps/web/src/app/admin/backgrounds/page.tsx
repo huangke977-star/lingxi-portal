@@ -12,8 +12,8 @@ import {
   resolveBackgroundUrl,
   uploadBackgrounds,
 } from '@/lib/background-api';
-import { AuthUser, getMe } from '@/lib/auth-api';
-import { readAccessToken } from '@/lib/auth-storage';
+import { AuthUser, getMe, isAuthExpiredError } from '@/lib/auth-api';
+import { clearAuthTokens, readAccessToken } from '@/lib/auth-storage';
 
 const MAX_FILE_SIZE = 30 * 1024 * 1024;
 const MAX_FILES_PER_UPLOAD = 20;
@@ -58,6 +58,12 @@ export default function BackgroundManagementPage() {
           setBackgrounds(nextBackgrounds);
         }
       } catch (loadError) {
+        if (isAuthExpiredError(loadError)) {
+          clearAuthTokens();
+          router.replace('/');
+          return;
+        }
+
         if (isMounted) {
           setError(loadError instanceof Error ? loadError.message : '无法读取背景图片。');
         }

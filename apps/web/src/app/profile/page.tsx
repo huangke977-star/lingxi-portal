@@ -6,10 +6,12 @@ import type { CSSProperties, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { RoleSymbol } from "@/components/role-symbol";
 import {
   AuthAppearance,
   AuthUser,
   getMe,
+  isAuthExpiredError,
   resolveApiUrl,
   updateMyAppearance,
   updateMyProfile,
@@ -17,6 +19,7 @@ import {
 } from "@/lib/auth-api";
 import {
   AUTH_STATE_CHANGE_EVENT,
+  clearAuthTokens,
   readAccessToken,
 } from "@/lib/auth-storage";
 import {
@@ -37,18 +40,6 @@ type AppearanceColorKey =
   | "glassTint";
 
 const AVATAR_MAX_FILE_SIZE = 2 * 1024 * 1024;
-
-const roleIcons: Record<string, string> = {
-  qi_refining: "气",
-  foundation_building: "基",
-  golden_core: "丹",
-  nascent_soul: "婴",
-  spirit_transformation: "神",
-  void_refining: "虚",
-  body_integration: "合",
-  mahayana: "乘",
-  administrator: "管",
-};
 
 const levelRoadmap = [
   { code: "qi_refining", name: "练气", level: 10, status: "注册自动获取" },
@@ -93,6 +84,12 @@ export default function ProfilePage() {
         writeThemePreference(accountPreference);
       })
       .catch((loadError) => {
+        if (isAuthExpiredError(loadError)) {
+          clearAuthTokens();
+          router.replace("/");
+          return;
+        }
+
         setError(
           loadError instanceof Error ? loadError.message : "无法获取当前用户。",
         );
@@ -115,6 +112,21 @@ export default function ProfilePage() {
     const timer = window.setTimeout(() => setNotice(""), 2600);
     return () => window.clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (!isLevelInfoOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsLevelInfoOpen(false);
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isLevelInfoOpen]);
 
   const normalizedPreference = useMemo(
     () => normalizeThemePreference(preference),
@@ -244,7 +256,6 @@ export default function ProfilePage() {
     }
   }
 
-  const roleIcon = user ? roleIcons[user.role.code] ?? "R" : "R";
   const avatarInitial = user?.username.trim().slice(0, 1).toUpperCase() ?? "H";
   const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
   const joinedAt = user?.createdAt ? new Date(user.createdAt) : null;
@@ -304,7 +315,11 @@ export default function ProfilePage() {
         <div className="profile-settings-grid">
           <section className="profile-panel account-card">
             <div className="account-profile-row account-profile-hero">
-              <label className="avatar-uploader">
+              <label
+                aria-label={isUploadingAvatar ? "头像上传中" : "更换头像"}
+                className="avatar-uploader"
+                title={isUploadingAvatar ? "头像上传中" : "更换头像"}
+              >
                 <input
                   accept="image/jpeg,image/png,image/webp"
                   disabled={isUploadingAvatar}
@@ -318,28 +333,21 @@ export default function ProfilePage() {
                     avatarInitial
                   )}
                 </span>
-                <span>{isUploadingAvatar ? "上传中" : "更换头像"}</span>
               </label>
 
               <div className="account-profile-copy">
                 <strong>{user.username}</strong>
                 <p>{user.email}</p>
-                <div className="account-role-line">
-                  <span
-                    aria-label={`当前角色：${user.role.name}`}
-                    className="role-glyph"
-                    title={user.role.name}
-                  >
-                    {roleIcon}
-                  </span>
+                <div className="account-role-tag">
                   <span>{user.role.name}</span>
                   <button
                     aria-expanded={isLevelInfoOpen}
+                    aria-label="查看账号等级说明"
                     className="level-help-trigger"
                     onClick={() => setIsLevelInfoOpen((current) => !current)}
                     type="button"
                   >
-                    等级说明
+                    ?
                   </button>
                 </div>
               </div>
@@ -356,38 +364,54 @@ export default function ProfilePage() {
               </div>
             </dl>
 
-            <div className="account-bio-card">
-              <span className="section-label">个人介绍</span>
-              <p>{user.profileBio}</p>
-            </div>
-
             {isLevelInfoOpen ? (
-              <div className="level-popover" role="dialog" aria-label="账号等级说明">
-                <div className="panel-heading">
-                  <span className="section-label">账号等级</span>
-                  <strong>角色说明</strong>
-                </div>
-                <div className="level-roadmap">
-                  {levelRoadmap.map((role) => {
-                    const isCurrent = user.role.code === role.code;
-                    return (
-                      <div className={isCurrent ? "current" : ""} key={role.code}>
-                        <span className="level-icon">{roleIcons[role.code]}</span>
-                        <span>
-                          <strong>{role.name}</strong>
-                          <small>Lv.{role.level}</small>
-                        </span>
-                        <em>{isCurrent ? "当前等级" : role.status}</em>
-                      </div>
-                    );
-                  })}
+              <div
+                className="level-modal-backdrop"
+                onClick={() => setIsLevelInfoOpen(false)}
+                role="presentation"
+              >
+                <div
+                  aria-label="账号等级说明"
+                  className="level-modal"
+                  onClick={(event) => event.stopPropagation()}
+                  role="dialog"
+                >
+                  <div className="panel-heading level-modal-heading">
+                    <span className="section-label">账号等级</span>
+                    <strong>角色说明</strong>
+                    <button
+                      aria-label="关闭账号等级说明"
+                      className="level-modal-close"
+                      onClick={() => setIsLevelInfoOpen(false)}
+                      type="button"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="level-roadmap">
+                    {levelRoadmap.map((role) => {
+                      const isCurrent = user.role.code === role.code;
+                      return (
+                        <div className={isCurrent ? "current" : ""} key={role.code}>
+                          <span className="level-icon">
+                            <RoleSymbol code={role.code} />
+                          </span>
+                          <span>
+                            <strong>{role.name}</strong>
+                            <small>Lv.{role.level}</small>
+                          </span>
+                          <em>{isCurrent ? "当前等级" : role.status}</em>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             ) : null}
           </section>
 
           <section className="profile-panel profile-bio-panel">
-            <div className="panel-heading">
+            <div className="panel-heading profile-bio-heading">
               <span className="section-label">Profile</span>
               <strong>个人介绍</strong>
             </div>

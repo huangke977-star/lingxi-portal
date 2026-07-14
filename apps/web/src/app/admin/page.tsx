@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { listAdminUsers, listRoles, updateUserPassword, updateUserRole, updateUserStatus } from '@/lib/admin-api';
-import { AuthRole, AuthUser, getMe } from '@/lib/auth-api';
-import { readAccessToken } from '@/lib/auth-storage';
+import { AuthRole, AuthUser, getMe, isAuthExpiredError } from '@/lib/auth-api';
+import { clearAuthTokens, readAccessToken } from '@/lib/auth-storage';
 
 const STATUS_LABEL: Record<AuthUser['status'], string> = {
   active: '启用',
@@ -59,6 +59,12 @@ export default function AdminPage() {
         setUsers(nextUsers);
         setRoles(nextRoles);
       } catch (loadError) {
+        if (isAuthExpiredError(loadError)) {
+          clearAuthTokens();
+          router.replace('/');
+          return;
+        }
+
         if (isMounted) {
           setError(loadError instanceof Error ? loadError.message : '无法读取管理数据。');
         }

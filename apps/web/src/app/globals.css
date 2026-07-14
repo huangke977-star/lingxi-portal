@@ -236,6 +236,18 @@ body:has(.auth-page) .topbar {
   box-shadow: 0 10px 24px rgba(16, 32, 51, 0.16);
 }
 
+.brand-logo-mark {
+  overflow: hidden;
+  background: transparent;
+  box-shadow: 0 10px 24px rgba(16, 32, 51, 0.14);
+}
+
+.brand-logo-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .brand-copy {
   display: grid;
   min-width: 0;
@@ -398,9 +410,8 @@ body:has(.auth-page) .topbar {
 }
 
 .role-badge-icon {
-  font-size: 1rem;
-  font-weight: 720;
-  line-height: 1;
+  width: 20px;
+  height: 20px;
 }
 
 .level-badge::after {
@@ -956,11 +967,8 @@ a.entry-item:hover {
 .avatar-uploader {
   display: grid;
   justify-items: center;
-  gap: 9px;
   color: var(--accent-strong);
   cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 620;
 }
 
 .avatar-uploader input {
@@ -1016,17 +1024,19 @@ a.entry-item:hover {
   white-space: nowrap;
 }
 
-.account-role-line {
+.account-role-tag {
   display: inline-flex;
   width: fit-content;
   align-items: center;
-  gap: 9px;
-  color: var(--muted-strong);
+  gap: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-soft) 68%, var(--surface-soft));
+  color: var(--accent-strong);
   font-size: 0.86rem;
-  font-weight: 620;
+  font-weight: 650;
+  padding: 7px 9px 7px 11px;
 }
 
-.role-glyph,
 .level-icon {
   display: inline-grid;
   min-width: 22px;
@@ -1039,13 +1049,19 @@ a.entry-item:hover {
 }
 
 .level-help-trigger {
-  border: 0;
-  background: transparent;
+  display: inline-grid;
+  width: 19px;
+  height: 19px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-strong) 76%, transparent);
   color: var(--accent-strong);
   cursor: pointer;
   font: inherit;
-  font-size: 0.82rem;
-  font-weight: 650;
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1;
   padding: 0;
 }
 
@@ -1056,8 +1072,7 @@ a.entry-item:hover {
   margin: 6px 0 0;
 }
 
-.account-metrics div,
-.account-bio-card {
+.account-metrics div {
   display: grid;
   gap: 6px;
   border-radius: 8px;
@@ -1079,33 +1094,19 @@ a.entry-item:hover {
   line-height: 1.35;
 }
 
-.account-bio-card {
-  margin-top: 2px;
-}
-
-.account-bio-card p {
-  color: var(--foreground);
-  font-size: 0.98rem;
-  line-height: 1.75;
-}
-
-.level-popover {
-  position: absolute;
-  top: calc(100% - 12px);
-  left: 22px;
-  z-index: 20;
-  display: grid;
-  width: min(420px, calc(100vw - 56px));
-  gap: 14px;
-  border-radius: 8px;
-  background: var(--surface-strong);
-  box-shadow: var(--shadow-hover);
-  padding: 18px;
-  backdrop-filter: var(--glass-blur);
-}
-
 .profile-bio-panel {
   min-height: 268px;
+}
+
+.profile-bio-heading {
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  justify-content: start;
+  column-gap: 10px;
+}
+
+.profile-bio-heading strong {
+  font-size: 1.35rem;
 }
 
 .profile-bio-form {
@@ -1157,6 +1158,61 @@ a.entry-item:hover {
 .profile-bio-actions button:disabled {
   cursor: not-allowed;
   opacity: 0.56;
+}
+
+.level-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 27, 38, 0.28);
+  padding: 24px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.level-modal {
+  display: grid;
+  width: min(460px, 100%);
+  max-height: min(720px, calc(100svh - 48px));
+  gap: 14px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--surface-strong);
+  box-shadow: 0 28px 78px rgba(19, 31, 49, 0.28);
+  padding: 20px;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.level-modal-heading {
+  position: relative;
+  padding-right: 34px;
+}
+
+.level-modal-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.role-symbol {
+  display: block;
+  width: 1em;
+  height: 1em;
 }
 
 .level-panel {
@@ -2271,11 +2327,6 @@ a.entry-item:hover {
 
   .account-metrics {
     grid-template-columns: 1fr;
-  }
-
-  .level-popover {
-    position: static;
-    width: 100%;
   }
 
   .overview-grid {

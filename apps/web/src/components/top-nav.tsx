@@ -5,6 +5,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { RoleSymbol } from "@/components/role-symbol";
 import { AuthUser, getMe, logout, resolveApiUrl } from "@/lib/auth-api";
 import {
   AUTH_STATE_CHANGE_EVENT,
@@ -19,18 +20,6 @@ const navItems = [
   { href: "/tools", label: "工具" },
   { href: "/dashboard", label: "工作台" },
 ];
-
-const roleBadgeIcons: Record<string, string> = {
-  qi_refining: "气",
-  foundation_building: "基",
-  golden_core: "丹",
-  nascent_soul: "婴",
-  spirit_transformation: "神",
-  void_refining: "虚",
-  body_integration: "合",
-  mahayana: "乘",
-  administrator: "管",
-};
 
 export function TopNav() {
   const router = useRouter();
@@ -118,7 +107,7 @@ export function TopNav() {
     }
 
     return {
-      icon: roleBadgeIcons[user.role.code] ?? "R",
+      code: user.role.code,
       tooltip: user.role.name,
     };
   }, [user]);
@@ -173,7 +162,9 @@ export function TopNav() {
           <span />
         </button>
         <Link className="brand" href="/">
-          <span className="brand-mark">H</span>
+          <span className="brand-mark brand-logo-mark">
+            <img alt="" src="/favicon.svg" />
+          </span>
           <span className="brand-copy">
             <strong>HLOVET</strong>
             <span>Personal Portal</span>
@@ -210,9 +201,7 @@ export function TopNav() {
                 title={roleBadge.tooltip}
                 type="button"
               >
-                <span aria-hidden="true" className="role-badge-icon">
-                  {roleBadge.icon}
-                </span>
+                <RoleSymbol className="role-badge-icon" code={roleBadge.code} />
               </button>
               <div className="account-menu-wrap">
                 <button

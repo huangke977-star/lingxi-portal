@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="192" viewBox="0 0 720 192" role="img" aria-label="HLOVET logo">
+  <defs>
+    <linearGradient id="tk-bg" x1="34" y1="20" x2="166" y2="172" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f172a" />
+      <stop offset="0.55" stop-color="#12324a" />
+      <stop offset="1" stop-color="#0e7490" />
+    </linearGradient>
+    <linearGradient id="tk-accent" x1="50" y1="151" x2="150" y2="151" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22d3ee" />
+      <stop offset="1" stop-color="#a7f3d0" />
+    </linearGradient>
+    <filter id="tk-shadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#020617" flood-opacity="0.22" />
+    </filter>
+  </defs>
+  <g>
+    <rect x="20" y="16" width="160" height="160" rx="34" fill="url(#tk-bg)" />
+    <path d="M48 46h104c7 0 13 6 13 13v67c0 7-6 13-13 13H48c-7 0-13-6-13-13V59c0-7 6-13 13-13Z" fill="#ffffff" opacity="0.055" />
+    <g filter="url(#tk-shadow)">
+      <rect x="45.5" y="55.5" width="55.5" height="15.5" rx="5.5" fill="#f8fafc" />
+      <rect x="65.5" y="55.5" width="15.5" height="82.5" rx="5.5" fill="#f8fafc" />
+      <rect x="108.5" y="55.5" width="15.5" height="82.5" rx="5.5" fill="#f8fafc" />
+      <path d="M124 95 151 55.5h18l-30.5 41.2L170.5 138h-19.5L124 101.8Z" fill="#f8fafc" />
+    </g>
+    <rect x="47.5" y="144" width="105" height="6.5" rx="3.25" fill="url(#tk-accent)" />
+    <circle cx="152.5" cy="144" r="3.5" fill="#f8fafc" opacity="0.92" />
+  </g>
+  <text x="216" y="124" fill="#0f172a" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="92" font-weight="800" letter-spacing="0">TK</text>
+  <rect x="216" y="144" width="116" height="8" rx="4" fill="#0e7490" />
+</svg>

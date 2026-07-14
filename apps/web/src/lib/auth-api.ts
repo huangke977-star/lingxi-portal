@@ -43,6 +43,20 @@ interface ApiErrorBody {
   message?: string | string[];
 }
 
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
+}
+
+export function isAuthExpiredError(error: unknown): boolean {
+  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
+}
+
 export async function login(input: { account: string; password: string }): Promise<AuthResponse> {
   return requestJson<AuthResponse>('/auth/login', {
     method: 'POST',
@@ -130,7 +144,7 @@ export async function requestJson<T>(path: string, init: RequestInit = {}): Prom
   });
 
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
+    throw new ApiRequestError(await readErrorMessage(response), response.status);
   }
 
   return response.json() as Promise<T>;

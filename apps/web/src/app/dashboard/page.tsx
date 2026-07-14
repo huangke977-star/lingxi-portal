@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { AuthUser, getMe, logout } from '@/lib/auth-api';
+import { AuthUser, getMe, isAuthExpiredError, logout } from '@/lib/auth-api';
 import { clearAuthTokens, readAccessToken, readRefreshToken } from '@/lib/auth-storage';
 
 export default function DashboardPage() {
@@ -25,6 +25,12 @@ export default function DashboardPage() {
         setUser(currentUser);
       })
       .catch((loadError) => {
+        if (isAuthExpiredError(loadError)) {
+          clearAuthTokens();
+          router.replace('/');
+          return;
+        }
+
         setError(loadError instanceof Error ? loadError.message : '无法获取当前用户。');
       })
       .finally(() => {
