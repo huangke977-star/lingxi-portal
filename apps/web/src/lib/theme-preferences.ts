@@ -27,11 +27,22 @@ export type ThemeId = RecommendedThemeId | "custom";
 
 export interface ThemePreference {
   customAccent?: string;
+  customForeground?: string;
+  customMuted?: string;
+  customSurface?: string;
+  cardAlpha?: number;
   customCardAlpha?: number;
+  glassBlur?: number;
   themeId: ThemeId;
 }
 
 export const defaultThemePreference: ThemePreference = {
+  cardAlpha: 52,
+  customAccent: "#db2777",
+  customForeground: "#2b2530",
+  customMuted: "#665867",
+  customSurface: "#ffffff",
+  glassBlur: 22,
   themeId: "sakura-mist",
 };
 
@@ -83,10 +94,46 @@ export function applyThemePreference(preference: ThemePreference) {
   root.style.removeProperty("--custom-accent");
   root.style.removeProperty("--custom-accent-strong");
   root.style.removeProperty("--custom-accent-soft");
-  root.style.removeProperty("--custom-card-alpha");
+  root.style.removeProperty("--custom-foreground");
+  root.style.removeProperty("--custom-muted");
+  root.style.removeProperty("--custom-muted-strong");
   root.style.removeProperty("--surface");
   root.style.removeProperty("--surface-strong");
   root.style.removeProperty("--surface-soft");
+  root.style.removeProperty("--foreground");
+  root.style.removeProperty("--muted");
+  root.style.removeProperty("--muted-strong");
+  root.style.removeProperty("--line");
+  root.style.removeProperty("--line-strong");
+  root.style.removeProperty("--control-line");
+
+  const cardAlpha = normalizeCardAlpha(normalizedPreference.cardAlpha ?? 52);
+  const glassBlur = normalizeGlassBlur(normalizedPreference.glassBlur ?? 22);
+  const surface = normalizeHexColor(
+    normalizedPreference.themeId === "custom"
+      ? (normalizedPreference.customSurface ?? "#ffffff")
+      : "#ffffff",
+    "#ffffff",
+  );
+  const surfaceRgb = hexToRgb(surface);
+
+  root.style.setProperty("--glass-blur", `blur(${glassBlur}px) saturate(138%)`);
+  root.style.setProperty(
+    "--portal-bg-blur",
+    `${Math.max(12, Math.round(glassBlur * 0.92))}px`,
+  );
+  root.style.setProperty(
+    "--surface",
+    `rgba(${surfaceRgb}, ${cardAlpha / 100})`,
+  );
+  root.style.setProperty(
+    "--surface-strong",
+    `rgba(${surfaceRgb}, ${Math.min(0.88, (cardAlpha + 10) / 100)})`,
+  );
+  root.style.setProperty(
+    "--surface-soft",
+    `rgba(${surfaceRgb}, ${Math.max(0.2, (cardAlpha - 14) / 100)})`,
+  );
 
   if (normalizedPreference.themeId !== "custom") {
     return;
@@ -94,51 +141,63 @@ export function applyThemePreference(preference: ThemePreference) {
 
   const accent = normalizeHexColor(
     normalizedPreference.customAccent ?? "#db2777",
+    "#db2777",
   );
-  const cardAlpha = normalizeCardAlpha(
-    normalizedPreference.customCardAlpha ?? 52,
+  const foreground = normalizeHexColor(
+    normalizedPreference.customForeground ?? "#2b2530",
+    "#2b2530",
+  );
+  const muted = normalizeHexColor(
+    normalizedPreference.customMuted ?? "#665867",
+    "#665867",
   );
   const accentRgb = hexToRgb(accent);
+  const mutedRgb = hexToRgb(muted);
   const accentStrong = darkenHex(accent, 0.22);
+  const mutedStrong = darkenHex(muted, 0.18);
 
   root.style.setProperty("--custom-accent", accent);
   root.style.setProperty("--custom-accent-strong", accentStrong);
   root.style.setProperty("--custom-accent-soft", `rgba(${accentRgb}, 0.12)`);
-  root.style.setProperty("--custom-card-alpha", `${cardAlpha / 100}`);
-  root.style.setProperty(
-    "--surface",
-    `rgba(255, 255, 255, ${cardAlpha / 100})`,
-  );
-  root.style.setProperty(
-    "--surface-strong",
-    `rgba(255, 255, 255, ${(cardAlpha + 8) / 100})`,
-  );
-  root.style.setProperty(
-    "--surface-soft",
-    `rgba(255, 255, 255, ${(cardAlpha - 12) / 100})`,
-  );
+  root.style.setProperty("--foreground", foreground);
+  root.style.setProperty("--muted", muted);
+  root.style.setProperty("--muted-strong", mutedStrong);
+  root.style.setProperty("--line", `rgba(${mutedRgb}, 0.16)`);
+  root.style.setProperty("--line-strong", `rgba(${mutedRgb}, 0.24)`);
+  root.style.setProperty("--control-line", `rgba(${mutedRgb}, 0.16)`);
 }
 
 export function normalizeThemePreference(
   preference: Partial<ThemePreference>,
 ): ThemePreference {
-  if (preference.themeId === "custom") {
-    return {
-      customAccent: normalizeHexColor(preference.customAccent ?? "#db2777"),
-      customCardAlpha: normalizeCardAlpha(preference.customCardAlpha ?? 52),
-      themeId: "custom",
-    };
-  }
-
-  const themeId = portalThemes.some((theme) => theme.id === preference.themeId)
+  const themeId =
+    preference.themeId === "custom"
+      ? "custom"
+      : portalThemes.some((theme) => theme.id === preference.themeId)
     ? (preference.themeId as RecommendedThemeId)
     : defaultThemePreference.themeId;
 
-  return { themeId };
+  return {
+    cardAlpha: normalizeCardAlpha(
+      preference.cardAlpha ?? preference.customCardAlpha ?? 52,
+    ),
+    customAccent: normalizeHexColor(preference.customAccent ?? "#db2777", "#db2777"),
+    customForeground: normalizeHexColor(
+      preference.customForeground ?? "#2b2530",
+      "#2b2530",
+    ),
+    customMuted: normalizeHexColor(preference.customMuted ?? "#665867", "#665867"),
+    customSurface: normalizeHexColor(
+      preference.customSurface ?? "#ffffff",
+      "#ffffff",
+    ),
+    glassBlur: normalizeGlassBlur(preference.glassBlur ?? 22),
+    themeId,
+  };
 }
 
-function normalizeHexColor(value: string): string {
-  return /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#db2777";
+function normalizeHexColor(value: string, fallback: string): string {
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
 }
 
 function normalizeCardAlpha(value: number): number {
@@ -149,15 +208,23 @@ function normalizeCardAlpha(value: number): number {
   return Math.min(76, Math.max(38, Math.round(value)));
 }
 
+function normalizeGlassBlur(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 22;
+  }
+
+  return Math.min(36, Math.max(12, Math.round(value)));
+}
+
 function hexToRgb(value: string): string {
-  const hexValue = normalizeHexColor(value).slice(1);
+  const hexValue = normalizeHexColor(value, "#db2777").slice(1);
   return [0, 2, 4]
     .map((index) => Number.parseInt(hexValue.slice(index, index + 2), 16))
     .join(", ");
 }
 
 function darkenHex(value: string, amount: number): string {
-  const hexValue = normalizeHexColor(value).slice(1);
+  const hexValue = normalizeHexColor(value, "#db2777").slice(1);
   const channels = [0, 2, 4].map((index) => {
     const channel = Number.parseInt(hexValue.slice(index, index + 2), 16);
     return Math.max(0, Math.min(255, Math.round(channel * (1 - amount))));

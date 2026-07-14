@@ -183,7 +183,7 @@ describe('background image management (e2e)', () => {
     await request(app.getHttpServer())
       .post('/backgrounds')
       .set('Authorization', `Bearer ${token}`)
-      .attach('file', onePixelPng, { filename: 'background.png', contentType: 'image/png' })
+      .attach('files', onePixelPng, { filename: 'background.png', contentType: 'image/png' })
       .expect(403);
   });
 
@@ -192,51 +192,49 @@ describe('background image management (e2e)', () => {
     await request(app.getHttpServer())
       .post('/backgrounds')
       .set('Authorization', `Bearer ${token}`)
-      .attach('file', Buffer.from('not-an-image'), { filename: 'background.png', contentType: 'image/png' })
+      .attach('files', Buffer.from('not-an-image'), { filename: 'background.png', contentType: 'image/png' })
       .expect(400);
     expect(state.backgrounds).toHaveLength(0);
   });
 
   it('uploads, serves, activates, and physically deletes managed backgrounds', async () => {
     const token = await tokenFor(1);
-    const firstUpload = await request(app.getHttpServer())
+    const uploadResponse = await request(app.getHttpServer())
       .post('/backgrounds')
       .set('Authorization', `Bearer ${token}`)
-      .attach('file', onePixelPng, { filename: 'first.png', contentType: 'image/png' })
+      .attach('files', onePixelPng, { filename: 'first.png', contentType: 'image/png' })
+      .attach('files', onePixelPng, { filename: 'second.png', contentType: 'image/png' })
       .expect(201);
-    const secondUpload = await request(app.getHttpServer())
-      .post('/backgrounds')
-      .set('Authorization', `Bearer ${token}`)
-      .attach('file', onePixelPng, { filename: 'second.png', contentType: 'image/png' })
-      .expect(201);
+    const [firstUpload, secondUpload] = uploadResponse.body;
 
-    expect(firstUpload.body.url).toMatch(/^\/backgrounds\/files\/[0-9a-f-]{36}\.png$/);
-    const firstStoredName = String(firstUpload.body.url).split('/').at(-1);
+    expect(uploadResponse.body).toHaveLength(2);
+    expect(firstUpload.url).toMatch(/^\/backgrounds\/files\/[0-9a-f-]{36}\.png$/);
+    const firstStoredName = String(firstUpload.url).split('/').at(-1);
     expect(await readFile(join(uploadDirectory, firstStoredName as string))).toEqual(onePixelPng);
 
     await request(app.getHttpServer())
-      .patch(`/backgrounds/${firstUpload.body.id}/activate`)
+      .patch(`/backgrounds/${firstUpload.id}/activate`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     await request(app.getHttpServer())
-      .patch(`/backgrounds/${secondUpload.body.id}/activate`)
+      .patch(`/backgrounds/${secondUpload.id}/activate`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
     expect(state.backgrounds.filter((background) => background.isActive)).toHaveLength(1);
-    expect(state.backgrounds.find((background) => background.isActive)?.id).toBe(secondUpload.body.id);
+    expect(state.backgrounds.find((background) => background.isActive)?.id).toBe(secondUpload.id);
 
     const activeResponse = await request(app.getHttpServer()).get('/backgrounds/active').expect(200);
-    expect(activeResponse.body.background.id).toBe(secondUpload.body.id);
+    expect(activeResponse.body.background.id).toBe(secondUpload.id);
 
-    await request(app.getHttpServer()).get(firstUpload.body.url).expect(200).expect('Content-Type', /image\/png/);
+    await request(app.getHttpServer()).get(firstUpload.url).expect(200).expect('Content-Type', /image\/png/);
     await request(app.getHttpServer())
-      .delete(`/backgrounds/${secondUpload.body.id}`)
+      .delete(`/backgrounds/${secondUpload.id}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
-    expect(state.backgrounds.some((background) => background.id === secondUpload.body.id)).toBe(false);
-    await expect(readFile(join(uploadDirectory, String(secondUpload.body.url).split('/').at(-1) as string))).rejects.toMatchObject({
+    expect(state.backgrounds.some((background) => background.id === secondUpload.id)).toBe(false);
+    await expect(readFile(join(uploadDirectory, String(secondUpload.url).split('/').at(-1) as string))).rejects.toMatchObject({
       code: 'ENOENT',
     });
     await request(app.getHttpServer()).get('/backgrounds/active').expect(200, { background: null });

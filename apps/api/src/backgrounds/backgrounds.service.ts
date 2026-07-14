@@ -10,6 +10,9 @@ import { basename, extname, join, resolve } from 'node:path';
 import { PrismaService } from '../prisma/prisma.service';
 import { BackgroundImageResponse, UploadedBackgroundFile } from './backgrounds.types';
 
+export const BACKGROUND_MAX_FILE_SIZE_BYTES = 30 * 1024 * 1024;
+export const BACKGROUND_MAX_FILES_PER_UPLOAD = 20;
+
 interface BackgroundRecord {
   id: number;
   originalName: string;
@@ -91,32 +94,58 @@ export class BackgroundsService {
     return backgrounds.map((background) => this.toResponse(background));
   }
 
-  async upload(file: UploadedBackgroundFile | undefined, uploadedById: number): Promise<BackgroundImageResponse> {
-    if (!file) {
-      throw new BadRequestException('A background image file is required.');
+  async uploadMany(files: UploadedBackgroundFile[] | undefined, uploadedById: number): Promise<BackgroundImageResponse[]> {
+    if (!files?.length) {
+      throw new BadRequestException('At least one background image file is required.');
     }
 
-    const format = this.validateFile(file);
-    const storedName = `${randomUUID()}${format.extension}`;
-    const filePath = this.resolveStoredPath(storedName);
+    if (files.length > BACKGROUND_MAX_FILES_PER_UPLOAD) {
+      throw new BadRequestException(`At most ${BACKGROUND_MAX_FILES_PER_UPLOAD} images can be uploaded at once.`);
+    }
+
+    const preparedFiles = files.map((file) => {
+      const format = this.validateFile(file);
+      const storedName = `${randomUUID()}${format.extension}`;
+      return {
+        file,
+        filePath: this.resolveStoredPath(storedName),
+        format,
+        storedName,
+      };
+    });
+
     await mkdir(this.uploadDirectory, { recursive: true });
-    await writeFile(filePath, file.buffer, { flag: 'wx' });
+    const writtenFilePaths: string[] = [];
 
     try {
-      const background = await this.prisma.backgroundImage.create({
-        data: {
-          originalName: basename(file.originalname).slice(0, 255),
-          storedName,
-          mimeType: format.mimeType,
-          sizeBytes: file.size,
-          uploadedById,
-        },
-        select: this.backgroundSelect(),
+      for (const preparedFile of preparedFiles) {
+        await writeFile(preparedFile.filePath, preparedFile.file.buffer, { flag: 'wx' });
+        writtenFilePaths.push(preparedFile.filePath);
+      }
+
+      const backgrounds = await this.prisma.$transaction(async (transaction) => {
+        const createdBackgrounds: BackgroundRecord[] = [];
+
+        for (const preparedFile of preparedFiles) {
+          const background = await transaction.backgroundImage.create({
+            data: {
+              originalName: basename(preparedFile.file.originalname).slice(0, 255),
+              storedName: preparedFile.storedName,
+              mimeType: preparedFile.format.mimeType,
+              sizeBytes: preparedFile.file.size,
+              uploadedById,
+            },
+            select: this.backgroundSelect(),
+          });
+          createdBackgrounds.push(background);
+        }
+
+        return createdBackgrounds;
       });
 
-      return this.toResponse(background);
+      return backgrounds.map((background) => this.toResponse(background));
     } catch (error) {
-      await unlink(filePath).catch(() => undefined);
+      await Promise.all(writtenFilePaths.map((filePath) => unlink(filePath).catch(() => undefined)));
       throw error;
     }
   }

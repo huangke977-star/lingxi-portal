@@ -10,19 +10,20 @@ import {
   ManagedBackground,
   notifyBackgroundChange,
   resolveBackgroundUrl,
-  uploadBackground,
+  uploadBackgrounds,
 } from '@/lib/background-api';
 import { AuthUser, getMe } from '@/lib/auth-api';
 import { readAccessToken } from '@/lib/auth-storage';
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_FILE_SIZE = 30 * 1024 * 1024;
+const MAX_FILES_PER_UPLOAD = 20;
 
 export default function BackgroundManagementPage() {
   const router = useRouter();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [backgrounds, setBackgrounds] = useState<ManagedBackground[]>([]);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -75,14 +76,21 @@ export default function BackgroundManagementPage() {
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!accessToken || !selectedFile) {
-      setError('请选择一张背景图片。');
+    if (!accessToken || selectedFiles.length === 0) {
+      setError('请选择背景图片。');
       setNotice('');
       return;
     }
 
-    if (selectedFile.size > MAX_FILE_SIZE) {
-      setError('图片大小不能超过 10 MB。');
+    if (selectedFiles.length > MAX_FILES_PER_UPLOAD) {
+      setError(`一次最多上传 ${MAX_FILES_PER_UPLOAD} 张图片。`);
+      setNotice('');
+      return;
+    }
+
+    const oversizedFile = selectedFiles.find((file) => file.size > MAX_FILE_SIZE);
+    if (oversizedFile) {
+      setError(`${oversizedFile.name} 超过 30 MB。`);
       setNotice('');
       return;
     }
@@ -91,10 +99,10 @@ export default function BackgroundManagementPage() {
     setError('');
     setNotice('');
     try {
-      const background = await uploadBackground(accessToken, selectedFile);
-      setBackgrounds((current) => [background, ...current]);
-      setSelectedFile(null);
-      setNotice('图片已上传，可设为全站背景。');
+      const uploadedBackgrounds = await uploadBackgrounds(accessToken, selectedFiles);
+      setBackgrounds((current) => [...uploadedBackgrounds, ...current]);
+      setSelectedFiles([]);
+      setNotice(`${uploadedBackgrounds.length} 张图片已上传，可设为全站背景。`);
       const input = document.getElementById('background-file') as HTMLInputElement | null;
       if (input) {
         input.value = '';
@@ -219,7 +227,7 @@ export default function BackgroundManagementPage() {
         <div>
           <span className="section-label">上传图片</span>
           <h2>添加全站背景</h2>
-          <p>支持 JPEG、PNG、WebP、AVIF，单张不超过 10 MB。</p>
+          <p>支持 JPEG、PNG、WebP、AVIF，单张不超过 30 MB。</p>
         </div>
         <div className="background-upload-controls">
           <label className="background-file-picker" htmlFor="background-file">
@@ -227,12 +235,13 @@ export default function BackgroundManagementPage() {
               accept="image/jpeg,image/png,image/webp,image/avif"
               disabled={isUploading}
               id="background-file"
-              onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+              multiple
+              onChange={(event) => setSelectedFiles(Array.from(event.target.files ?? []))}
               type="file"
             />
-            <span>{selectedFile?.name ?? '选择图片'}</span>
+            <span>{formatSelectedFiles(selectedFiles)}</span>
           </label>
-          <button className="button" disabled={isUploading || !selectedFile} type="submit">
+          <button className="button" disabled={isUploading || selectedFiles.length === 0} type="submit">
             {isUploading ? '上传中' : '上传'}
           </button>
         </div>
@@ -309,6 +318,18 @@ function formatFileSize(bytes: number): string {
     return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   }
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatSelectedFiles(files: File[]): string {
+  if (files.length === 0) {
+    return '选择图片';
+  }
+
+  if (files.length === 1) {
+    return files[0].name;
+  }
+
+  return `已选择 ${files.length} 张图片`;
 }
 
 function formatDate(value: string): string {

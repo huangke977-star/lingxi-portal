@@ -224,6 +224,9 @@ export function TopNav() {
                     <span>{user.email}</span>
                   </div>
                   <Link href="/profile">个人中心</Link>
+                  {user.isSuperAdmin ? (
+                    <Link href="/admin/backgrounds">背景管理</Link>
+                  ) : null}
                   <Link href="/dashboard">工作台</Link>
                   <Link href="/nav">导航</Link>
                   <Link href="/tools">工具箱</Link>

@@ -35,11 +35,13 @@ export async function listBackgrounds(accessToken: string): Promise<ManagedBackg
   });
 }
 
-export async function uploadBackground(accessToken: string, file: File): Promise<ManagedBackground> {
+export async function uploadBackgrounds(accessToken: string, files: File[]): Promise<ManagedBackground[]> {
   const body = new FormData();
-  body.append('file', file);
+  for (const file of files) {
+    body.append('files', file);
+  }
 
-  return requestJson<ManagedBackground>('/backgrounds', {
+  return requestJson<ManagedBackground[]>('/backgrounds', {
     method: 'POST',
     headers: authorizationHeader(accessToken),
     body,

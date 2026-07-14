@@ -8,17 +8,21 @@ import {
   Patch,
   Post,
   StreamableFile,
-  UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { createReadStream } from 'node:fs';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SuperAdminGuard } from '../auth/guards/super-admin.guard';
-import { BackgroundsService } from './backgrounds.service';
+import {
+  BACKGROUND_MAX_FILE_SIZE_BYTES,
+  BACKGROUND_MAX_FILES_PER_UPLOAD,
+  BackgroundsService,
+} from './backgrounds.service';
 import { BackgroundImageResponse, UploadedBackgroundFile } from './backgrounds.types';
 
 @Controller('backgrounds')
@@ -45,12 +49,16 @@ export class BackgroundsController {
 
   @Post()
   @UseGuards(JwtAuthGuard, SuperAdminGuard)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
+  @UseInterceptors(
+    FilesInterceptor('files', BACKGROUND_MAX_FILES_PER_UPLOAD, {
+      limits: { fileSize: BACKGROUND_MAX_FILE_SIZE_BYTES, files: BACKGROUND_MAX_FILES_PER_UPLOAD },
+    }),
+  )
   upload(
-    @UploadedFile() file: UploadedBackgroundFile | undefined,
+    @UploadedFiles() files: UploadedBackgroundFile[] | undefined,
     @CurrentUser() user: AuthenticatedUser,
-  ): Promise<BackgroundImageResponse> {
-    return this.backgroundsService.upload(file, user.id);
+  ): Promise<BackgroundImageResponse[]> {
+    return this.backgroundsService.uploadMany(files, user.id);
   }
 
   @Patch(':id/activate')

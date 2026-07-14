@@ -7,12 +7,20 @@ import { useEffect, useMemo, useState } from "react";
 import { AuthUser, getMe } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
 import {
+  defaultThemePreference,
+  normalizeThemePreference,
   portalThemes,
   readThemePreference,
   RecommendedThemeId,
   ThemePreference,
   writeThemePreference,
 } from "@/lib/theme-preferences";
+
+type CustomColorKey =
+  | "customAccent"
+  | "customSurface"
+  | "customForeground"
+  | "customMuted";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -44,46 +52,65 @@ export default function ProfilePage() {
       });
   }, [router]);
 
-  const activeRecommendedTheme = useMemo(() => {
-    return (
-      portalThemes.find((theme) => theme.id === preference.themeId) ??
-      portalThemes[0]
-    );
-  }, [preference.themeId]);
+  const normalizedPreference = useMemo(
+    () => normalizeThemePreference(preference),
+    [preference],
+  );
 
   const customAccent =
-    preference.themeId === "custom"
-      ? (preference.customAccent ?? "#db2777")
-      : activeRecommendedTheme.swatches[2];
-  const customCardAlpha =
-    preference.themeId === "custom" ? (preference.customCardAlpha ?? 52) : 52;
+    normalizedPreference.customAccent ?? defaultThemePreference.customAccent!;
+  const customSurface =
+    normalizedPreference.customSurface ?? defaultThemePreference.customSurface!;
+  const customForeground =
+    normalizedPreference.customForeground ??
+    defaultThemePreference.customForeground!;
+  const customMuted =
+    normalizedPreference.customMuted ?? defaultThemePreference.customMuted!;
+  const cardAlpha =
+    normalizedPreference.cardAlpha ?? defaultThemePreference.cardAlpha!;
+  const glassBlur =
+    normalizedPreference.glassBlur ?? defaultThemePreference.glassBlur!;
 
-  function selectRecommendedTheme(themeId: RecommendedThemeId) {
-    const nextPreference: ThemePreference = { themeId };
+  function commitPreference(partialPreference: Partial<ThemePreference>) {
+    const nextPreference = normalizeThemePreference({
+      ...normalizedPreference,
+      ...partialPreference,
+    });
     setPreference(nextPreference);
     writeThemePreference(nextPreference);
   }
 
-  function updateCustomTheme(
-    partialPreference:
-      | Pick<ThemePreference, "customAccent">
-      | Pick<ThemePreference, "customCardAlpha">,
-  ) {
-    const nextPreference: ThemePreference = {
-      customAccent,
-      customCardAlpha,
-      themeId: "custom",
-      ...partialPreference,
-    };
+  function selectRecommendedTheme(themeId: RecommendedThemeId) {
+    commitPreference({ themeId });
+  }
 
-    setPreference(nextPreference);
-    writeThemePreference(nextPreference);
+  function selectCustomTheme() {
+    commitPreference({ themeId: "custom" });
+  }
+
+  function updateCustomColor(key: CustomColorKey, value: string) {
+    commitPreference({ [key]: value, themeId: "custom" });
   }
 
   const previewStyle = {
     "--theme-preview-accent": customAccent,
-    "--theme-preview-alpha": customCardAlpha / 100,
+    "--theme-preview-alpha": cardAlpha / 100,
+    "--theme-preview-blur": `${glassBlur}px`,
+    "--theme-preview-foreground": customForeground,
+    "--theme-preview-muted": customMuted,
+    "--theme-preview-surface-rgb": hexToRgbString(customSurface),
   } as CSSProperties;
+
+  const customColorControls: Array<{
+    key: CustomColorKey;
+    label: string;
+    value: string;
+  }> = [
+    { key: "customAccent", label: "强调色", value: customAccent },
+    { key: "customSurface", label: "卡片底色", value: customSurface },
+    { key: "customForeground", label: "主文字", value: customForeground },
+    { key: "customMuted", label: "辅助文字", value: customMuted },
+  ];
 
   return (
     <section className="page-shell profile-page">
@@ -136,7 +163,7 @@ export default function ProfilePage() {
           <section className="profile-panel theme-panel">
             <div className="panel-heading">
               <span className="section-label">主题外观</span>
-              <strong>推荐主题</strong>
+              <strong>外观设置</strong>
               <p>
                 主题会立即应用到当前浏览器。后续如果要跨设备同步，可以再接入账号级保存。
               </p>
@@ -144,7 +171,7 @@ export default function ProfilePage() {
 
             <div className="theme-grid">
               {portalThemes.map((theme) => {
-                const isActive = preference.themeId === theme.id;
+                const isActive = normalizedPreference.themeId === theme.id;
 
                 return (
                   <button
@@ -169,51 +196,85 @@ export default function ProfilePage() {
                   </button>
                 );
               })}
+              <button
+                aria-pressed={normalizedPreference.themeId === "custom"}
+                className={`theme-option custom-theme-option ${
+                  normalizedPreference.themeId === "custom" ? "active" : ""
+                }`}
+                onClick={selectCustomTheme}
+                type="button"
+              >
+                <span className="theme-swatches" aria-hidden="true">
+                  {[customSurface, customForeground, customMuted, customAccent].map(
+                    (swatch) => (
+                      <span key={swatch} style={{ background: swatch }} />
+                    ),
+                  )}
+                </span>
+                <span className="theme-option-copy">
+                  <strong>自定义配色</strong>
+                  <span>使用下方颜色组件组合自己的主题。</span>
+                </span>
+                {normalizedPreference.themeId === "custom" ? (
+                  <span className="theme-selected">当前</span>
+                ) : null}
+              </button>
             </div>
-          </section>
 
-          <section className="profile-panel theme-panel custom-theme-panel">
-            <div className="panel-heading">
-              <span className="section-label">自定义</span>
-              <strong>颜色与透明度</strong>
-              <p>适合在推荐主题的基础上微调主色和卡片通透感。</p>
-            </div>
-
-            <div className="custom-theme-grid">
+            <div className="appearance-settings-grid">
               <div className="theme-control-list">
-                <label className="theme-control-row">
+                <label className="theme-control-row range-row">
                   <span>
-                    <strong>主色</strong>
-                    <small>{customAccent}</small>
+                    <strong>卡片透明度</strong>
+                    <small>{cardAlpha}%</small>
                   </span>
                   <input
-                    aria-label="自定义主题主色"
+                    aria-label="卡片透明度"
+                    max={76}
+                    min={38}
                     onChange={(event) =>
-                      updateCustomTheme({ customAccent: event.target.value })
+                      commitPreference({ cardAlpha: Number(event.target.value) })
                     }
-                    type="color"
-                    value={customAccent}
+                    type="range"
+                    value={cardAlpha}
                   />
                 </label>
 
                 <label className="theme-control-row range-row">
                   <span>
-                    <strong>卡片透明度</strong>
-                    <small>{customCardAlpha}%</small>
+                    <strong>磨砂程度</strong>
+                    <small>{glassBlur}px</small>
                   </span>
                   <input
-                    aria-label="自定义卡片透明度"
-                    max={76}
-                    min={38}
+                    aria-label="磨砂程度"
+                    max={36}
+                    min={12}
                     onChange={(event) =>
-                      updateCustomTheme({
-                        customCardAlpha: Number(event.target.value),
-                      })
+                      commitPreference({ glassBlur: Number(event.target.value) })
                     }
                     type="range"
-                    value={customCardAlpha}
+                    value={glassBlur}
                   />
                 </label>
+              </div>
+
+              <div className="theme-control-list color-control-list">
+                {customColorControls.map((control) => (
+                  <label className="theme-control-row" key={control.key}>
+                    <span>
+                      <strong>{control.label}</strong>
+                      <small>{control.value}</small>
+                    </span>
+                    <input
+                      aria-label={`自定义${control.label}`}
+                      onChange={(event) =>
+                        updateCustomColor(control.key, event.target.value)
+                      }
+                      type="color"
+                      value={control.value}
+                    />
+                  </label>
+                ))}
               </div>
 
               <div className="theme-preview" style={previewStyle}>
@@ -229,4 +290,11 @@ export default function ProfilePage() {
       ) : null}
     </section>
   );
+}
+
+function hexToRgbString(value: string): string {
+  const hexValue = /^#[0-9a-fA-F]{6}$/.test(value) ? value.slice(1) : "ffffff";
+  return [0, 2, 4]
+    .map((index) => Number.parseInt(hexValue.slice(index, index + 2), 16))
+    .join(", ");
 }

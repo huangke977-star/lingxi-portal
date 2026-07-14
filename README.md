@@ -70,12 +70,13 @@ The command is idempotent: if the username or email already exists, it updates t
 
 ## 全站背景管理 / Global Background Management
 
-超级管理员可以通过 `/admin/backgrounds` 上传、切换和永久删除全站背景图片。当前选中的图片对所有用户生效，个人主题只控制配色和卡片透明度。删除正在使用的图片后，门户会恢复内置默认背景。
+超级管理员可以通过头像菜单或 `/admin/backgrounds` 上传、切换和永久删除全站背景图片。当前选中的图片对所有用户生效，个人主题只控制配色、卡片透明度和磨砂程度。删除正在使用的图片后，门户会恢复内置默认背景。
 
-Super administrators can upload, activate, and permanently delete global background images at `/admin/backgrounds`. The selected image applies to every user, while personal themes only control colors and card transparency. Deleting the active upload restores the bundled default background.
+Super administrators can upload, activate, and permanently delete global background images from the avatar menu or `/admin/backgrounds`. The selected image applies to every user, while personal themes only control colors, card transparency, and glass blur. Deleting the active upload restores the bundled default background.
 
 - Accepted formats: JPEG, PNG, WebP, AVIF
-- Maximum size: 10 MB per image
+- Maximum size: 30 MB per image
+- Batch upload: up to 20 images at once
 - Metadata: MySQL `background_images` table
 - File storage: `background_uploads` Docker volume mounted at `/app/uploads/backgrounds`
 - Public delivery: `/api/backgrounds/files/:storedName`
