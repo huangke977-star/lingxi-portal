@@ -231,9 +231,14 @@ export default function AdminPage() {
             <h1>用户管理</h1>
             <p>维护账号角色、启用状态和密码重置。</p>
           </div>
-          <div className="admin-summary" aria-label="用户概览">
-            <span>{users.length} 个账号</span>
-            <span>{enabledCount} 个启用</span>
+          <div className="admin-header-tools">
+            <Link className="text-action primary" href="/admin/backgrounds">
+              背景管理
+            </Link>
+            <div className="admin-summary" aria-label="用户概览">
+              <span>{users.length} 个账号</span>
+              <span>{enabledCount} 个启用</span>
+            </div>
           </div>
         </div>
       </header>

@@ -102,8 +102,11 @@ services:
       JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
       REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
       REFRESH_TOKEN_EXPIRES_IN_DAYS: ${REFRESH_TOKEN_EXPIRES_IN_DAYS:-30}
+      BACKGROUND_UPLOAD_DIR: /app/uploads/backgrounds
     ports:
       - "127.0.0.1:${API_PORT:-3001}:3001"
+    volumes:
+      - background_uploads:/app/uploads/backgrounds
     depends_on:
       api-bootstrap:
         condition: service_completed_successfully
@@ -128,3 +131,4 @@ volumes:
   caddy_config:
   mysql_data:
   redis_data:
+  background_uploads:

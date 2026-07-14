@@ -66,12 +66,16 @@ export async function getMe(accessToken: string): Promise<AuthUser> {
 }
 
 export async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData;
+
+  if (!isFormData && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
   const response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...init.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -81,7 +85,7 @@ export async function requestJson<T>(path: string, init: RequestInit = {}): Prom
   return response.json() as Promise<T>;
 }
 
-function getBrowserApiBaseUrl(): string {
+export function getBrowserApiBaseUrl(): string {
   if (CONFIGURED_API_BASE_URL !== 'auto') {
     return CONFIGURED_API_BASE_URL;
   }
@@ -95,6 +99,14 @@ function getBrowserApiBaseUrl(): string {
   }
 
   return 'http://localhost:3001';
+}
+
+export function resolveApiUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  return `${getBrowserApiBaseUrl()}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
 export async function readErrorMessage(response: Response): Promise<string> {

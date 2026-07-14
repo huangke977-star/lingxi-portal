@@ -68,6 +68,22 @@ The command is idempotent: if the username or email already exists, it updates t
 
 该命令是幂等的：如果用户名或邮箱已存在，会把该账号更新为 `isSuperAdmin=true`，分配 `administrator` 角色，启用账号，并替换密码哈希。命令不会打印密码。
 
+## 全站背景管理 / Global Background Management
+
+超级管理员可以通过 `/admin/backgrounds` 上传、切换和永久删除全站背景图片。当前选中的图片对所有用户生效，个人主题只控制配色和卡片透明度。删除正在使用的图片后，门户会恢复内置默认背景。
+
+Super administrators can upload, activate, and permanently delete global background images at `/admin/backgrounds`. The selected image applies to every user, while personal themes only control colors and card transparency. Deleting the active upload restores the bundled default background.
+
+- Accepted formats: JPEG, PNG, WebP, AVIF
+- Maximum size: 10 MB per image
+- Metadata: MySQL `background_images` table
+- File storage: `background_uploads` Docker volume mounted at `/app/uploads/backgrounds`
+- Public delivery: `/api/backgrounds/files/:storedName`
+
+The API validates the declared MIME type, file extension, and binary image signature. Stored filenames are randomized. Deleting an image removes both its database record and physical file.
+
+API 会同时校验 MIME 类型、扩展名和图片二进制签名，磁盘文件名使用随机值。删除图片时会同时删除数据库记录和真实磁盘文件。
+
 ## Docker 全栈 / Docker Stack
 
 ```bash
@@ -81,6 +97,10 @@ The `api-bootstrap` service runs Prisma migrations and role seed data before the
 The localhost database URLs in `.env.example` are for host-native development. Docker Compose overrides them with internal service URLs.
 
 `.env.example` 中的 localhost 数据库地址用于宿主机本地开发；Docker Compose 会在容器内覆盖为内部服务地址。
+
+The named `background_uploads` volume survives normal container recreation. Do not run `docker compose down -v` unless you intentionally want to remove uploaded backgrounds together with the other named volumes.
+
+命名卷 `background_uploads` 会在普通容器重建后继续保留。除非你确认要连同其他命名卷一起删除已上传背景，否则不要执行 `docker compose down -v`。
 
 Set `NEXT_PUBLIC_API_BASE_URL` to the browser-reachable API URL before building the web image, for example `http://5200918.xyz:3001` for direct port testing or your later reverse-proxy API path.
 
@@ -135,3 +155,5 @@ pnpm build
 - `docs/superpowers/plans/2026-07-09-auth-rbac-foundation.md`
 - `docs/superpowers/plans/2026-07-09-admin-bootstrap-users.zh-CN.md`
 - `docs/superpowers/plans/2026-07-09-admin-bootstrap-users.md`
+- `docs/superpowers/specs/2026-07-13-global-background-management.zh-CN.md`
+- `docs/superpowers/specs/2026-07-13-global-background-management.md`

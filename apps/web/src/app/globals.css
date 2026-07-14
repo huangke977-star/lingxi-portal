@@ -57,7 +57,6 @@ html[data-portal-theme="cloud-blue"] {
   --accent: #0284c7;
   --accent-strong: #0369a1;
   --accent-soft: rgba(2, 132, 199, 0.12);
-  --portal-bg-image: url("/images/hlovet-cloud-blue.jpeg");
   --portal-bg-brightness: 1.08;
   --portal-bg-contrast: 0.92;
   --portal-bg-saturation: 0.72;
@@ -78,7 +77,6 @@ html[data-portal-theme="night-purple"] {
   --accent: #6d5bd0;
   --accent-strong: #5545af;
   --accent-soft: rgba(109, 91, 208, 0.13);
-  --portal-bg-image: url("/images/hlovet-city-lights.jpg");
   --portal-bg-brightness: 1.16;
   --portal-bg-contrast: 0.82;
   --portal-bg-saturation: 0.56;
@@ -92,7 +90,6 @@ html[data-portal-theme="custom"] {
   --accent: var(--custom-accent, #db2777);
   --accent-strong: var(--custom-accent-strong, #be185d);
   --accent-soft: var(--custom-accent-soft, rgba(219, 39, 119, 0.12));
-  --portal-bg-image: url("/images/hlovet-sakura-mist.webp");
 }
 
 * {
@@ -681,7 +678,11 @@ p {
   display: inline-flex;
   min-height: 32px;
   align-items: center;
+  border: 0;
+  background: transparent;
   color: var(--muted-strong);
+  cursor: pointer;
+  font: inherit;
   font-weight: 620;
   padding: 0 0 3px;
   transition: color 160ms ease;
@@ -706,6 +707,15 @@ p {
 .text-action:hover,
 .text-action.primary {
   color: var(--accent-strong);
+}
+
+.text-action.danger-text {
+  color: var(--danger);
+}
+
+.text-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .text-action:hover::after,
@@ -1224,6 +1234,12 @@ a.entry-item:hover {
   gap: 20px;
 }
 
+.admin-header-tools {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
 .admin-summary {
   display: flex;
   flex-wrap: wrap;
@@ -1243,6 +1259,216 @@ a.entry-item:hover {
 .admin-table-wrap {
   width: 100%;
   overflow-x: auto;
+}
+
+.background-admin-shell {
+  padding-bottom: 20px;
+}
+
+.background-upload-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: var(--glass-blur);
+  padding: 22px;
+}
+
+.background-upload-panel > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.background-upload-panel p {
+  font-size: 0.9rem;
+}
+
+.background-upload-controls {
+  display: flex;
+  flex: 0 1 520px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.background-file-picker {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
+}
+
+.background-file-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.background-file-picker span {
+  width: 100%;
+  min-height: 42px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--muted-strong);
+  font-size: 0.9rem;
+  line-height: 42px;
+  padding: 0 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.background-file-picker:hover span,
+.background-file-picker:focus-within span {
+  background: color-mix(in srgb, var(--surface-strong) 78%, var(--accent-soft));
+  color: var(--accent-strong);
+}
+
+.background-list-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 8px 2px 0;
+}
+
+.background-list-heading > div {
+  display: grid;
+  gap: 6px;
+}
+
+.background-current-state,
+.background-active-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 620;
+}
+
+.background-current-state {
+  background: var(--surface-strong);
+  color: var(--muted-strong);
+  padding: 8px 10px;
+}
+
+.background-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.background-card {
+  overflow: hidden;
+  min-width: 0;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: var(--glass-blur);
+  transition:
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.background-card:hover {
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-hover);
+}
+
+.background-card.active {
+  background: color-mix(in srgb, var(--surface-strong) 84%, var(--accent-soft));
+}
+
+.background-preview {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background-color: var(--surface-soft);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.background-active-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 8px 20px rgba(37, 37, 52, 0.14);
+  color: var(--accent-strong);
+  padding: 7px 9px;
+  backdrop-filter: blur(12px);
+}
+
+.background-card-body {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+}
+
+.background-card-copy {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.background-card-copy strong {
+  overflow: hidden;
+  font-weight: 640;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-card-copy span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-card-actions {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.background-card-actions .danger-text:only-child {
+  margin-left: auto;
+}
+
+.background-empty-state {
+  display: grid;
+  min-height: 220px;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+  backdrop-filter: var(--glass-blur);
+}
+
+.background-empty-state strong {
+  font-size: 1.08rem;
+}
+
+.background-empty-state p {
+  font-size: 0.9rem;
 }
 
 .admin-table {
@@ -1375,6 +1601,10 @@ a.entry-item:hover {
 @media (max-width: 1100px) {
   .entry-list.card-grid,
   .theme-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .background-gallery {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1803,12 +2033,51 @@ a.entry-item:hover {
     justify-content: flex-start;
   }
 
+  .admin-header-tools {
+    justify-items: start;
+  }
+
+  .background-upload-panel,
+  .background-list-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .background-upload-controls {
+    flex: 0 1 auto;
+    justify-content: stretch;
+  }
+
+  .background-current-state {
+    align-self: flex-start;
+  }
+
   .auth-page {
     padding: 16px;
   }
 
   .auth-panel {
     padding: 22px;
+  }
+}
+
+@media (max-width: 620px) {
+  .background-gallery {
+    grid-template-columns: 1fr;
+  }
+
+  .background-upload-panel {
+    padding: 18px;
+  }
+
+  .background-upload-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .background-file-picker,
+  .background-upload-controls .button {
+    width: 100%;
   }
 }
 
