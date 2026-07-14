@@ -85,6 +85,12 @@ The API validates the declared MIME type, file extension, and binary image signa
 
 API 会同时校验 MIME 类型、扩展名和图片二进制签名，磁盘文件名使用随机值。删除图片时会同时删除数据库记录和真实磁盘文件。
 
+## 账号外观与头像 / Account Appearance And Avatar
+
+用户可以在 `/profile` 保存账号级外观设置，包括主题、卡片透明度、磨砂程度、磨砂颜色、磨砂透明度和自定义配色。头像支持 JPEG、PNG、WebP，单张最大 2 MB，文件存储在 `avatar_uploads` Docker 命名卷中。
+
+Users can save account-level appearance settings at `/profile`, including theme, card transparency, glass blur, glass tint, glass tint opacity, and custom colors. Avatars support JPEG, PNG, and WebP up to 2 MB per file, stored in the `avatar_uploads` Docker named volume.
+
 ## Docker 全栈 / Docker Stack
 
 ```bash
@@ -102,6 +108,10 @@ The localhost database URLs in `.env.example` are for host-native development. D
 The named `background_uploads` volume survives normal container recreation. Do not run `docker compose down -v` unless you intentionally want to remove uploaded backgrounds together with the other named volumes.
 
 命名卷 `background_uploads` 会在普通容器重建后继续保留。除非你确认要连同其他命名卷一起删除已上传背景，否则不要执行 `docker compose down -v`。
+
+The named `avatar_uploads` volume stores user avatars and should also be preserved during deployment.
+
+命名卷 `avatar_uploads` 保存用户头像，部署时同样需要保留。
 
 Set `NEXT_PUBLIC_API_BASE_URL` to the browser-reachable API URL before building the web image, for example `http://5200918.xyz:3001` for direct port testing or your later reverse-proxy API path.
 
@@ -158,3 +168,5 @@ pnpm build
 - `docs/superpowers/plans/2026-07-09-admin-bootstrap-users.md`
 - `docs/superpowers/specs/2026-07-13-global-background-management.zh-CN.md`
 - `docs/superpowers/specs/2026-07-13-global-background-management.md`
+- `docs/superpowers/specs/2026-07-14-account-appearance-profile.zh-CN.md`
+- `docs/superpowers/specs/2026-07-14-account-appearance-profile.md`

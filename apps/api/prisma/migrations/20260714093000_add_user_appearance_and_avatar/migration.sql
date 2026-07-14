@@ -1,0 +1,15 @@
+ALTER TABLE `users`
+  ADD COLUMN `appearance_theme_id` VARCHAR(64) NOT NULL DEFAULT 'sakura-mist',
+  ADD COLUMN `custom_accent` VARCHAR(7) NOT NULL DEFAULT '#db2777',
+  ADD COLUMN `custom_surface` VARCHAR(7) NOT NULL DEFAULT '#ffffff',
+  ADD COLUMN `custom_foreground` VARCHAR(7) NOT NULL DEFAULT '#2b2530',
+  ADD COLUMN `custom_muted` VARCHAR(7) NOT NULL DEFAULT '#665867',
+  ADD COLUMN `card_alpha` INTEGER NOT NULL DEFAULT 52,
+  ADD COLUMN `glass_blur` INTEGER NOT NULL DEFAULT 22,
+  ADD COLUMN `glass_tint` VARCHAR(7) NOT NULL DEFAULT '#fff3f6',
+  ADD COLUMN `glass_tint_alpha` INTEGER NOT NULL DEFAULT 72,
+  ADD COLUMN `avatar_original_name` VARCHAR(255) NULL,
+  ADD COLUMN `avatar_stored_name` VARCHAR(255) NULL,
+  ADD COLUMN `avatar_mime_type` VARCHAR(64) NULL,
+  ADD COLUMN `avatar_size_bytes` INTEGER NULL,
+  ADD UNIQUE INDEX `users_avatar_stored_name_key`(`avatar_stored_name`);

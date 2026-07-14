@@ -1,4 +1,22 @@
-import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Req,
+  StreamableFile,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { createReadStream } from 'node:fs';
+import { UsersService, AVATAR_MAX_FILE_SIZE_BYTES } from '../users/users.service';
+import { UpdateUserAppearanceDto } from '../users/dto/update-user-appearance.dto';
 import { AuthService } from './auth.service';
 import { AuthResponse, AuthenticatedUser } from './auth.types';
 import { CurrentUser } from './current-user.decorator';
@@ -9,7 +27,10 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @Post('register')
   @HttpCode(200)
@@ -39,5 +60,31 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser() user: AuthenticatedUser): AuthenticatedUser {
     return this.authService.me(user);
+  }
+
+  @Patch('me/appearance')
+  @UseGuards(JwtAuthGuard)
+  updateAppearance(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateUserAppearanceDto,
+  ): Promise<AuthenticatedUser> {
+    return this.usersService.updateOwnAppearance(user.id, dto);
+  }
+
+  @Post('me/avatar')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: AVATAR_MAX_FILE_SIZE_BYTES, files: 1 } }))
+  uploadAvatar(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: { buffer: Buffer; mimetype: string; originalname: string; size: number } | undefined,
+  ): Promise<AuthenticatedUser> {
+    return this.usersService.updateOwnAvatar(user.id, file);
+  }
+
+  @Get('avatars/:storedName')
+  @Header('Cache-Control', 'public, max-age=31536000, immutable')
+  async getAvatar(@Param('storedName') storedName: string): Promise<StreamableFile> {
+    const file = await this.usersService.getAvatarFile(storedName);
+    return new StreamableFile(createReadStream(file.filePath), { type: file.mimeType });
   }
 }

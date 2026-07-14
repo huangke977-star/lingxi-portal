@@ -1,11 +1,23 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { AuthUser, getMe } from "@/lib/auth-api";
-import { readAccessToken } from "@/lib/auth-storage";
+import {
+  AuthAppearance,
+  AuthUser,
+  getMe,
+  resolveApiUrl,
+  updateMyAppearance,
+  uploadMyAvatar,
+} from "@/lib/auth-api";
+import {
+  AUTH_STATE_CHANGE_EVENT,
+  readAccessToken,
+} from "@/lib/auth-storage";
 import {
   defaultThemePreference,
   normalizeThemePreference,
@@ -16,31 +28,63 @@ import {
   writeThemePreference,
 } from "@/lib/theme-preferences";
 
-type CustomColorKey =
+type AppearanceColorKey =
   | "customAccent"
   | "customSurface"
   | "customForeground"
-  | "customMuted";
+  | "customMuted"
+  | "glassTint";
+
+const AVATAR_MAX_FILE_SIZE = 2 * 1024 * 1024;
+
+const roleIcons: Record<string, string> = {
+  qi_refining: "I",
+  foundation_building: "II",
+  golden_core: "III",
+  nascent_soul: "IV",
+  spirit_transformation: "V",
+  void_refining: "VI",
+  body_integration: "VII",
+  mahayana: "VIII",
+  administrator: "A",
+};
+
+const levelRoadmap = [
+  { code: "qi_refining", name: "练气", level: 10, status: "登录自动获取" },
+  { code: "foundation_building", name: "筑基", level: 20, status: "未开放" },
+  { code: "golden_core", name: "金丹", level: 30, status: "未开放" },
+  { code: "nascent_soul", name: "元婴", level: 40, status: "未开放" },
+  { code: "spirit_transformation", name: "化神", level: 50, status: "未开放" },
+  { code: "void_refining", name: "炼虚", level: 60, status: "未开放" },
+  { code: "body_integration", name: "合体", level: 70, status: "未开放" },
+  { code: "mahayana", name: "大乘", level: 80, status: "未开放" },
+];
 
 export default function ProfilePage() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isSavingAppearance, setIsSavingAppearance] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [preference, setPreference] = useState<ThemePreference>(() =>
     readThemePreference(),
   );
 
   useEffect(() => {
-    const accessToken = readAccessToken();
-    if (!accessToken) {
+    const token = readAccessToken();
+    if (!token) {
       router.replace("/login");
       return;
     }
 
-    getMe(accessToken)
+    getMe(token)
       .then((currentUser) => {
+        const accountPreference = normalizeThemePreference(currentUser.appearance);
         setUser(currentUser);
+        setPreference(accountPreference);
+        writeThemePreference(accountPreference);
       })
       .catch((loadError) => {
         setError(
@@ -70,39 +114,102 @@ export default function ProfilePage() {
     normalizedPreference.cardAlpha ?? defaultThemePreference.cardAlpha!;
   const glassBlur =
     normalizedPreference.glassBlur ?? defaultThemePreference.glassBlur!;
+  const glassTint =
+    normalizedPreference.glassTint ?? defaultThemePreference.glassTint!;
+  const glassTintAlpha =
+    normalizedPreference.glassTintAlpha ??
+    defaultThemePreference.glassTintAlpha!;
 
-  function commitPreference(partialPreference: Partial<ThemePreference>) {
+  async function commitPreference(partialPreference: Partial<ThemePreference>) {
+    const token = readAccessToken();
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+
     const nextPreference = normalizeThemePreference({
       ...normalizedPreference,
       ...partialPreference,
     });
+
     setPreference(nextPreference);
     writeThemePreference(nextPreference);
+    setIsSavingAppearance(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const updatedUser = await updateMyAppearance(token, toAppearancePayload(nextPreference));
+      setUser(updatedUser);
+      setNotice("外观设置已保存。");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "外观设置保存失败。");
+    } finally {
+      setIsSavingAppearance(false);
+    }
   }
 
   function selectRecommendedTheme(themeId: RecommendedThemeId) {
-    commitPreference({ themeId });
+    void commitPreference({ themeId });
   }
 
   function selectCustomTheme() {
-    commitPreference({ themeId: "custom" });
+    void commitPreference({ themeId: "custom" });
   }
 
-  function updateCustomColor(key: CustomColorKey, value: string) {
-    commitPreference({ [key]: value, themeId: "custom" });
+  function updateAppearanceColor(key: AppearanceColorKey, value: string) {
+    void commitPreference(
+      key === "glassTint" ? { glassTint: value } : { [key]: value, themeId: "custom" },
+    );
   }
+
+  async function handleAvatarChange(file: File | undefined) {
+    const token = readAccessToken();
+    if (!token || !file) {
+      if (!token) {
+        router.replace("/login");
+      }
+      return;
+    }
+
+    if (file.size > AVATAR_MAX_FILE_SIZE) {
+      setError("头像图片不能超过 2 MB。");
+      setNotice("");
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    setError("");
+    setNotice("");
+    try {
+      const updatedUser = await uploadMyAvatar(token, file);
+      setUser(updatedUser);
+      window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
+      setNotice("头像已更新。");
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "头像上传失败。");
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  }
+
+  const roleIcon = user ? roleIcons[user.role.code] ?? "R" : "R";
+  const avatarInitial = user?.username.trim().slice(0, 1).toUpperCase() ?? "H";
+  const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
 
   const previewStyle = {
     "--theme-preview-accent": customAccent,
     "--theme-preview-alpha": cardAlpha / 100,
     "--theme-preview-blur": `${glassBlur}px`,
     "--theme-preview-foreground": customForeground,
+    "--theme-preview-glass": glassTint,
+    "--theme-preview-glass-alpha": glassTintAlpha / 100,
     "--theme-preview-muted": customMuted,
     "--theme-preview-surface-rgb": hexToRgbString(customSurface),
   } as CSSProperties;
 
-  const customColorControls: Array<{
-    key: CustomColorKey;
+  const colorControls: Array<{
+    key: AppearanceColorKey;
     label: string;
     value: string;
   }> = [
@@ -110,6 +217,7 @@ export default function ProfilePage() {
     { key: "customSurface", label: "卡片底色", value: customSurface },
     { key: "customForeground", label: "主文字", value: customForeground },
     { key: "customMuted", label: "辅助文字", value: customMuted },
+    { key: "glassTint", label: "磨砂颜色", value: glassTint },
   ];
 
   return (
@@ -119,7 +227,6 @@ export default function ProfilePage() {
         <div className="title-row">
           <div>
             <h1>个人中心</h1>
-            <p>管理当前账号信息，并选择自己喜欢的门户主题。</p>
           </div>
           <div className="actions">
             <Link className="text-action" href="/dashboard">
@@ -133,40 +240,70 @@ export default function ProfilePage() {
         <span className="status">
           {isLoading ? "正在读取身份" : user ? "已登录" : "未登录"}
         </span>
+        {isSavingAppearance ? <span className="status">保存中</span> : null}
       </div>
       {error ? <p className="message error">{error}</p> : null}
+      {notice ? <p className="message success">{notice}</p> : null}
 
       {user ? (
         <div className="profile-settings-grid">
-          <div className="profile-panel account-card">
-            <span className="section-label">当前账号</span>
-            <strong>{user.username}</strong>
-            <p>{user.email}</p>
-            <span className="realm-badge">{user.role.name}</span>
-          </div>
+          <section className="profile-panel account-card">
+            <div className="account-profile-row">
+              <label className="avatar-uploader">
+                <input
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={isUploadingAvatar}
+                  onChange={(event) => void handleAvatarChange(event.target.files?.[0])}
+                  type="file"
+                />
+                <span className="profile-avatar">
+                  {avatarUrl ? (
+                    <img alt={`${user.username} 的头像`} src={avatarUrl} />
+                  ) : (
+                    avatarInitial
+                  )}
+                </span>
+                <span>{isUploadingAvatar ? "上传中" : "更换头像"}</span>
+              </label>
 
-          <div className="identity-list account-facts">
-            <div>
-              <span>角色等级</span>
-              <strong>{user.role.level}</strong>
+              <div className="account-profile-copy">
+                <span className="section-label">当前账号</span>
+                <strong>{user.username}</strong>
+                <p>{user.email}</p>
+                <span className="role-chip">
+                  <span aria-hidden="true">{roleIcon}</span>
+                  {user.role.name}
+                </span>
+              </div>
             </div>
-            <div>
-              <span>超级管理员</span>
-              <strong>{user.isSuperAdmin ? "是" : "否"}</strong>
+          </section>
+
+          <section className="profile-panel level-panel">
+            <div className="panel-heading">
+              <span className="section-label">账号等级</span>
+              <strong>角色说明</strong>
             </div>
-            <div>
-              <span>账号状态</span>
-              <strong>{user.status === "active" ? "启用" : "停用"}</strong>
+            <div className="level-roadmap">
+              {levelRoadmap.map((role) => {
+                const isCurrent = user.role.code === role.code;
+                return (
+                  <div className={isCurrent ? "current" : ""} key={role.code}>
+                    <span className="level-icon">{roleIcons[role.code]}</span>
+                    <span>
+                      <strong>{role.name}</strong>
+                      <small>Lv.{role.level}</small>
+                    </span>
+                    <em>{isCurrent ? "当前等级" : role.status}</em>
+                  </div>
+                );
+              })}
             </div>
-          </div>
+          </section>
 
           <section className="profile-panel theme-panel">
             <div className="panel-heading">
               <span className="section-label">主题外观</span>
               <strong>外观设置</strong>
-              <p>
-                主题会立即应用到当前浏览器。后续如果要跨设备同步，可以再接入账号级保存。
-              </p>
             </div>
 
             <div className="theme-grid">
@@ -190,9 +327,7 @@ export default function ProfilePage() {
                       <strong>{theme.name}</strong>
                       <span>{theme.description}</span>
                     </span>
-                    {isActive ? (
-                      <span className="theme-selected">当前</span>
-                    ) : null}
+                    {isActive ? <span className="theme-selected">当前</span> : null}
                   </button>
                 );
               })}
@@ -213,7 +348,7 @@ export default function ProfilePage() {
                 </span>
                 <span className="theme-option-copy">
                   <strong>自定义配色</strong>
-                  <span>使用下方颜色组件组合自己的主题。</span>
+                  <span>使用下方颜色组合自己的主题。</span>
                 </span>
                 {normalizedPreference.themeId === "custom" ? (
                   <span className="theme-selected">当前</span>
@@ -233,7 +368,7 @@ export default function ProfilePage() {
                     max={76}
                     min={38}
                     onChange={(event) =>
-                      commitPreference({ cardAlpha: Number(event.target.value) })
+                      void commitPreference({ cardAlpha: Number(event.target.value) })
                     }
                     type="range"
                     value={cardAlpha}
@@ -248,27 +383,44 @@ export default function ProfilePage() {
                   <input
                     aria-label="磨砂程度"
                     max={36}
-                    min={12}
+                    min={0}
                     onChange={(event) =>
-                      commitPreference({ glassBlur: Number(event.target.value) })
+                      void commitPreference({ glassBlur: Number(event.target.value) })
                     }
                     type="range"
                     value={glassBlur}
                   />
                 </label>
+
+                <label className="theme-control-row range-row">
+                  <span>
+                    <strong>磨砂透明度</strong>
+                    <small>{glassTintAlpha}%</small>
+                  </span>
+                  <input
+                    aria-label="磨砂透明度"
+                    max={100}
+                    min={0}
+                    onChange={(event) =>
+                      void commitPreference({ glassTintAlpha: Number(event.target.value) })
+                    }
+                    type="range"
+                    value={glassTintAlpha}
+                  />
+                </label>
               </div>
 
               <div className="theme-control-list color-control-list">
-                {customColorControls.map((control) => (
+                {colorControls.map((control) => (
                   <label className="theme-control-row" key={control.key}>
                     <span>
                       <strong>{control.label}</strong>
                       <small>{control.value}</small>
                     </span>
                     <input
-                      aria-label={`自定义${control.label}`}
+                      aria-label={control.label}
                       onChange={(event) =>
-                        updateCustomColor(control.key, event.target.value)
+                        updateAppearanceColor(control.key, event.target.value)
                       }
                       type="color"
                       value={control.value}
@@ -278,11 +430,14 @@ export default function ProfilePage() {
               </div>
 
               <div className="theme-preview" style={previewStyle}>
+                <div className="theme-preview-scene" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </div>
                 <span>Preview</span>
                 <strong>HLOVET</strong>
-                <p>
-                  半透明卡片会叠在虚化背景上，主色用于高亮、徽章和文字操作。
-                </p>
+                <p>半透明玻璃会叠在背景上，磨砂颜色决定整体氛围。</p>
               </div>
             </div>
           </section>
@@ -297,4 +452,23 @@ function hexToRgbString(value: string): string {
   return [0, 2, 4]
     .map((index) => Number.parseInt(hexValue.slice(index, index + 2), 16))
     .join(", ");
+}
+
+function toAppearancePayload(preference: ThemePreference): AuthAppearance {
+  const normalized = normalizeThemePreference(preference);
+
+  return {
+    cardAlpha: normalized.cardAlpha ?? defaultThemePreference.cardAlpha!,
+    customAccent: normalized.customAccent ?? defaultThemePreference.customAccent!,
+    customForeground:
+      normalized.customForeground ?? defaultThemePreference.customForeground!,
+    customMuted: normalized.customMuted ?? defaultThemePreference.customMuted!,
+    customSurface:
+      normalized.customSurface ?? defaultThemePreference.customSurface!,
+    glassBlur: normalized.glassBlur ?? defaultThemePreference.glassBlur!,
+    glassTint: normalized.glassTint ?? defaultThemePreference.glassTint!,
+    glassTintAlpha:
+      normalized.glassTintAlpha ?? defaultThemePreference.glassTintAlpha!,
+    themeId: normalized.themeId,
+  };
 }

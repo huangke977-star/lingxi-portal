@@ -33,6 +33,8 @@ export interface ThemePreference {
   cardAlpha?: number;
   customCardAlpha?: number;
   glassBlur?: number;
+  glassTint?: string;
+  glassTintAlpha?: number;
   themeId: ThemeId;
 }
 
@@ -43,6 +45,8 @@ export const defaultThemePreference: ThemePreference = {
   customMuted: "#665867",
   customSurface: "#ffffff",
   glassBlur: 22,
+  glassTint: "#fff3f6",
+  glassTintAlpha: 72,
   themeId: "sakura-mist",
 };
 
@@ -109,6 +113,8 @@ export function applyThemePreference(preference: ThemePreference) {
 
   const cardAlpha = normalizeCardAlpha(normalizedPreference.cardAlpha ?? 52);
   const glassBlur = normalizeGlassBlur(normalizedPreference.glassBlur ?? 22);
+  const glassTint = normalizeHexColor(normalizedPreference.glassTint ?? "#fff3f6", "#fff3f6");
+  const glassTintAlpha = normalizeGlassTintAlpha(normalizedPreference.glassTintAlpha ?? 72);
   const surface = normalizeHexColor(
     normalizedPreference.themeId === "custom"
       ? (normalizedPreference.customSurface ?? "#ffffff")
@@ -116,12 +122,15 @@ export function applyThemePreference(preference: ThemePreference) {
     "#ffffff",
   );
   const surfaceRgb = hexToRgb(surface);
+  const glassTintRgb = hexToRgb(glassTint);
 
   root.style.setProperty("--glass-blur", `blur(${glassBlur}px) saturate(138%)`);
   root.style.setProperty(
     "--portal-bg-blur",
-    `${Math.max(12, Math.round(glassBlur * 0.92))}px`,
+    `${Math.round(glassBlur * 0.92)}px`,
   );
+  root.style.setProperty("--portal-bg-wash", `rgba(${glassTintRgb}, ${glassTintAlpha / 100})`);
+  root.style.setProperty("--portal-bg-edge", `rgba(${hexToRgb(darkenHex(glassTint, 0.48))}, 0.16)`);
   root.style.setProperty(
     "--surface",
     `rgba(${surfaceRgb}, ${cardAlpha / 100})`,
@@ -192,6 +201,8 @@ export function normalizeThemePreference(
       "#ffffff",
     ),
     glassBlur: normalizeGlassBlur(preference.glassBlur ?? 22),
+    glassTint: normalizeHexColor(preference.glassTint ?? "#fff3f6", "#fff3f6"),
+    glassTintAlpha: normalizeGlassTintAlpha(preference.glassTintAlpha ?? 72),
     themeId,
   };
 }
@@ -213,7 +224,15 @@ function normalizeGlassBlur(value: number): number {
     return 22;
   }
 
-  return Math.min(36, Math.max(12, Math.round(value)));
+  return Math.min(36, Math.max(0, Math.round(value)));
+}
+
+function normalizeGlassTintAlpha(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 72;
+  }
+
+  return Math.min(100, Math.max(0, Math.round(value)));
 }
 
 function hexToRgb(value: string): string {

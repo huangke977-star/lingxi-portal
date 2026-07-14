@@ -12,6 +12,18 @@ const user = (level: number, isSuper = false): AuthenticatedUser => ({
   email: 'tester@example.com',
   status: 'active',
   isSuperAdmin: isSuper,
+  avatarUrl: null,
+  appearance: {
+    themeId: 'sakura-mist',
+    customAccent: '#db2777',
+    customSurface: '#ffffff',
+    customForeground: '#2b2530',
+    customMuted: '#665867',
+    cardAlpha: 52,
+    glassBlur: 22,
+    glassTint: '#fff3f6',
+    glassTintAlpha: 72,
+  },
   role: {
     code: isSuper ? 'administrator' : 'qi_refining',
     name: isSuper ? '管理员' : '练气',

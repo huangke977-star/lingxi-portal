@@ -106,6 +106,8 @@ export class AuthService {
       email: user.email,
       status: user.status,
       isSuperAdmin: user.isSuperAdmin,
+      avatarUrl: user.avatarUrl,
+      appearance: user.appearance,
       role: user.role,
     };
   }

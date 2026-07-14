@@ -5,7 +5,10 @@ import {
   applyThemePreference,
   readThemePreference,
   THEME_CHANGE_EVENT,
+  writeThemePreference,
 } from "@/lib/theme-preferences";
+import { getMe } from "@/lib/auth-api";
+import { AUTH_STATE_CHANGE_EVENT, readAccessToken } from "@/lib/auth-storage";
 import {
   BACKGROUND_CHANGE_EVENT,
   getActiveBackground,
@@ -18,6 +21,25 @@ export function ThemeController() {
 
     function syncTheme() {
       applyThemePreference(readThemePreference());
+    }
+
+    async function syncAccountTheme() {
+      const accessToken = readAccessToken();
+      if (!accessToken) {
+        syncTheme();
+        return;
+      }
+
+      try {
+        const user = await getMe(accessToken);
+        if (!isMounted) {
+          return;
+        }
+
+        writeThemePreference(user.appearance);
+      } catch {
+        syncTheme();
+      }
     }
 
     async function syncBackground() {
@@ -45,15 +67,18 @@ export function ThemeController() {
     }
 
     syncTheme();
+    void syncAccountTheme();
     void syncBackground();
     window.addEventListener("storage", syncTheme);
     window.addEventListener(THEME_CHANGE_EVENT, syncTheme);
+    window.addEventListener(AUTH_STATE_CHANGE_EVENT, syncAccountTheme);
     window.addEventListener(BACKGROUND_CHANGE_EVENT, handleBackgroundChange);
 
     return () => {
       isMounted = false;
       window.removeEventListener("storage", syncTheme);
       window.removeEventListener(THEME_CHANGE_EVENT, syncTheme);
+      window.removeEventListener(AUTH_STATE_CHANGE_EVENT, syncAccountTheme);
       window.removeEventListener(BACKGROUND_CHANGE_EVENT, handleBackgroundChange);
     };
   }, []);

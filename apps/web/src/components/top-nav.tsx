@@ -1,9 +1,11 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AuthUser, getMe, logout } from "@/lib/auth-api";
+import { AuthUser, getMe, logout, resolveApiUrl } from "@/lib/auth-api";
 import {
   AUTH_STATE_CHANGE_EVENT,
   clearAuthTokens,
@@ -19,15 +21,15 @@ const navItems = [
 ];
 
 const roleBadgeIcons: Record<string, string> = {
-  qi_refining: "气",
-  foundation_building: "基",
-  golden_core: "丹",
-  nascent_soul: "婴",
-  spirit_transformation: "神",
-  void_refining: "虚",
-  body_integration: "合",
-  mahayana: "乘",
-  administrator: "令",
+  qi_refining: "I",
+  foundation_building: "II",
+  golden_core: "III",
+  nascent_soul: "IV",
+  spirit_transformation: "V",
+  void_refining: "VI",
+  body_integration: "VII",
+  mahayana: "VIII",
+  administrator: "A",
 };
 
 export function TopNav() {
@@ -116,10 +118,12 @@ export function TopNav() {
     }
 
     return {
-      icon: roleBadgeIcons[user.role.code] ?? "阶",
-      tooltip: `${user.role.name}${user.isSuperAdmin ? " · 超级管理员" : ""} · 等级 ${user.role.level}`,
+      icon: roleBadgeIcons[user.role.code] ?? "R",
+      tooltip: user.role.name,
     };
   }, [user]);
+
+  const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
 
   async function handleLogout() {
     if (isLoggingOut) {
@@ -216,7 +220,7 @@ export function TopNav() {
                   className="avatar-button"
                   type="button"
                 >
-                  {avatarText}
+                  {avatarUrl ? <img alt="" src={avatarUrl} /> : avatarText}
                 </button>
                 <div className="account-menu">
                   <div className="account-menu-head">

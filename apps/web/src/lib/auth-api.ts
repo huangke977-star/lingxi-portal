@@ -1,3 +1,5 @@
+import type { ThemeId } from './theme-preferences';
+
 const CONFIGURED_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'auto';
 
 export interface AuthRole {
@@ -6,12 +8,26 @@ export interface AuthRole {
   level: number;
 }
 
+export interface AuthAppearance {
+  themeId: ThemeId;
+  customAccent: string;
+  customSurface: string;
+  customForeground: string;
+  customMuted: string;
+  cardAlpha: number;
+  glassBlur: number;
+  glassTint: string;
+  glassTintAlpha: number;
+}
+
 export interface AuthUser {
   id: number;
   username: string;
   email: string;
   status: 'active' | 'disabled';
   isSuperAdmin: boolean;
+  avatarUrl: string | null;
+  appearance: AuthAppearance;
   role: AuthRole;
 }
 
@@ -62,6 +78,29 @@ export async function getMe(accessToken: string): Promise<AuthUser> {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
+  });
+}
+
+export async function updateMyAppearance(accessToken: string, appearance: AuthAppearance): Promise<AuthUser> {
+  return requestJson<AuthUser>('/auth/me/appearance', {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(appearance),
+  });
+}
+
+export async function uploadMyAvatar(accessToken: string, file: File): Promise<AuthUser> {
+  const body = new FormData();
+  body.append('file', file);
+
+  return requestJson<AuthUser>('/auth/me/avatar', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body,
   });
 }
 
