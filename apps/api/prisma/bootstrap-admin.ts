@@ -13,18 +13,22 @@ interface BootstrapPrisma {
   };
   user: {
     findFirst(input: { where: { OR: Array<{ username?: string; email?: string }> } }): Promise<{ id: number } | null>;
-    create(input: { data: BootstrapUserData }): Promise<unknown>;
-    update(input: { where: { id: number }; data: BootstrapUserData }): Promise<unknown>;
+    create(input: { data: BootstrapUserCreateData }): Promise<unknown>;
+    update(input: { where: { id: number }; data: BootstrapUserUpdateData }): Promise<unknown>;
   };
 }
 
-interface BootstrapUserData {
+interface BootstrapUserUpdateData {
   username: string;
   email: string;
   passwordHash: string;
   roleId: number;
   isSuperAdmin: boolean;
   status: 'active';
+}
+
+interface BootstrapUserCreateData extends BootstrapUserUpdateData {
+  nickname: string;
 }
 
 export async function bootstrapAdminFromEnv(
@@ -52,7 +56,7 @@ export async function bootstrapAdminFromEnv(
   }
 
   const passwordHash = await new PasswordService().hashPassword(password);
-  const data: BootstrapUserData = {
+  const data: BootstrapUserUpdateData = {
     username,
     email,
     passwordHash,
@@ -74,7 +78,7 @@ export async function bootstrapAdminFromEnv(
     return { created: false, username, email };
   }
 
-  await prisma.user.create({ data });
+  await prisma.user.create({ data: { ...data, nickname: username } });
   return { created: true, username, email };
 }
 

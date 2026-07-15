@@ -23,6 +23,7 @@ export class AuthService {
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
     const username = dto.username.trim();
+    const nickname = dto.nickname.trim();
     const email = dto.email.trim().toLowerCase();
 
     if ((await this.usersService.findForLogin(username)) || (await this.usersService.findForLogin(email))) {
@@ -30,7 +31,7 @@ export class AuthService {
     }
 
     const passwordHash = await this.passwordService.hashPassword(dto.password);
-    const user = await this.usersService.createUser({ username, email, passwordHash });
+    const user = await this.usersService.createUser({ username, nickname, email, passwordHash });
 
     return this.createAuthResponse(user);
   }
@@ -103,6 +104,7 @@ export class AuthService {
     return {
       id: user.id,
       username: user.username,
+      nickname: user.nickname,
       email: user.email,
       status: user.status,
       isSuperAdmin: user.isSuperAdmin,

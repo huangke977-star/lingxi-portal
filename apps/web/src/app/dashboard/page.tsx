@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AuthUser, getMe, isAuthExpiredError, logout } from '@/lib/auth-api';
 import { clearAuthTokens, readAccessToken, readRefreshToken } from '@/lib/auth-storage';
+import { getUserDisplayName } from '@/lib/user-display';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -77,8 +78,8 @@ export default function DashboardPage() {
         <div className="workspace-grid">
           <div className="profile-panel">
             <span className="section-label">当前账号</span>
-            <strong>{user.username}</strong>
-            <p>{user.email}</p>
+            <strong>{getUserDisplayName(user)}</strong>
+            <p>@{user.username}</p>
             <span className="realm-badge">{user.isSuperAdmin ? '超级管理员' : user.role.name}</span>
           </div>
           <div className="identity-list">

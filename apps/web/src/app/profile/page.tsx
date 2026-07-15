@@ -25,6 +25,10 @@ import {
 } from "@/lib/auth-storage";
 import { getAccountMotto } from "@/lib/account-mottos";
 import {
+  getAvatarFallbackText,
+  getUserDisplayName,
+} from "@/lib/user-display";
+import {
   defaultThemePreference,
   normalizeThemePreference,
   portalThemes,
@@ -83,6 +87,8 @@ export default function ProfilePage() {
   const [avatarCrop, setAvatarCrop] = useState({ x: 0, y: 0 });
   const [avatarZoom, setAvatarZoom] = useState(1);
   const [avatarCropPixels, setAvatarCropPixels] = useState<Area | null>(null);
+  const [nicknameDraft, setNicknameDraft] = useState("");
+  const [emailDraft, setEmailDraft] = useState("");
   const [profileBioDraft, setProfileBioDraft] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [preference, setPreference] = useState<ThemePreference>(() =>
@@ -102,6 +108,8 @@ export default function ProfilePage() {
           currentUser.appearance,
         );
         setUser(currentUser);
+        setNicknameDraft(currentUser.nickname);
+        setEmailDraft(currentUser.email);
         setProfileBioDraft(currentUser.profileBio);
         setPreference(accountPreference);
         writeThemePreference(accountPreference);
@@ -401,7 +409,29 @@ export default function ProfilePage() {
       return;
     }
 
+    const nextNickname = nicknameDraft.trim();
+    const nextEmail = emailDraft.trim().toLowerCase();
     const nextBio = profileBioDraft.trim();
+    const nicknameLength = Array.from(nextNickname).length;
+
+    if (!nextNickname) {
+      setError("昵称不能为空。");
+      setNotice("");
+      return;
+    }
+
+    if (nicknameLength > 24 && nextNickname !== user?.nickname) {
+      setError("昵称最多 24 个字符。");
+      setNotice("");
+      return;
+    }
+
+    if (!nextEmail) {
+      setError("邮箱不能为空。");
+      setNotice("");
+      return;
+    }
+
     if (!nextBio) {
       setError("个人介绍不能为空。");
       setNotice("");
@@ -412,21 +442,27 @@ export default function ProfilePage() {
     setError("");
     setNotice("");
     try {
-      const updatedUser = await updateMyProfile(token, { profileBio: nextBio });
+      const updatedUser = await updateMyProfile(token, {
+        nickname: nextNickname,
+        email: nextEmail,
+        profileBio: nextBio,
+      });
       setUser(updatedUser);
+      setNicknameDraft(updatedUser.nickname);
+      setEmailDraft(updatedUser.email);
       setProfileBioDraft(updatedUser.profileBio);
       window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
-      setNotice("个人介绍已保存。");
+      setNotice("个人资料已保存。");
     } catch (saveError) {
       setError(
-        saveError instanceof Error ? saveError.message : "个人介绍保存失败。",
+        saveError instanceof Error ? saveError.message : "个人资料保存失败。",
       );
     } finally {
       setIsSavingProfile(false);
     }
   }
 
-  const avatarInitial = user?.username.trim().slice(0, 1).toUpperCase() ?? "H";
+  const avatarInitial = user ? getAvatarFallbackText(user) : "H";
   const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
   const joinedAt = user?.createdAt ? new Date(user.createdAt) : null;
   const joinedAtText = joinedAt ? formatJoinedAt(joinedAt) : "";
@@ -504,7 +540,7 @@ export default function ProfilePage() {
                 />
                 <span className="profile-avatar">
                   {avatarUrl ? (
-                    <img alt={`${user.username} 的头像`} src={avatarUrl} />
+                    <img alt={`${getUserDisplayName(user)} 的头像`} src={avatarUrl} />
                   ) : (
                     avatarInitial
                   )}
@@ -513,26 +549,27 @@ export default function ProfilePage() {
 
               <div className="account-profile-copy">
                 <div className="account-identity-copy">
-                  <strong>{user.username}</strong>
-                  <p>{user.email}</p>
-                </div>
-                <div className="account-role-tag">
-                  <span>{user.isSuperAdmin ? "超级管理员" : user.role.name}</span>
-                  <button
-                    aria-expanded={isLevelInfoOpen}
-                    aria-label="查看账号等级说明"
-                    className="level-help-trigger"
-                    onClick={openLevelInfo}
-                    onFocus={openLevelInfo}
-                    onPointerEnter={openLevelInfo}
-                    onPointerLeave={scheduleLevelInfoClose}
-                    ref={levelHelpTriggerRef}
-                    type="button"
-                  >
-                    ?
-                  </button>
+                  <strong title={getUserDisplayName(user)}>{getUserDisplayName(user)}</strong>
+                  <p title={`@${user.username}`}>@{user.username}</p>
                 </div>
               </div>
+            </div>
+
+            <div className="account-role-tag">
+              <span>{user.isSuperAdmin ? "超级管理员" : user.role.name}</span>
+              <button
+                aria-expanded={isLevelInfoOpen}
+                aria-label="查看账号等级说明"
+                className="level-help-trigger"
+                onClick={openLevelInfo}
+                onFocus={openLevelInfo}
+                onPointerEnter={openLevelInfo}
+                onPointerLeave={scheduleLevelInfoClose}
+                ref={levelHelpTriggerRef}
+                type="button"
+              >
+                ?
+              </button>
             </div>
 
             <dl className="account-metrics">
@@ -554,20 +591,54 @@ export default function ProfilePage() {
 
           <section className="profile-panel profile-bio-panel">
             <div className="panel-heading profile-bio-heading">
-              <span className="section-label">Profile</span>
-              <strong>个人介绍</strong>
+              <span className="section-label">Personal profile</span>
+              <strong>个人资料</strong>
             </div>
             <form className="profile-bio-form" onSubmit={handleProfileSubmit}>
-              <textarea
-                maxLength={180}
-                onChange={(event) => setProfileBioDraft(event.target.value)}
-                placeholder="写一句别人能看到的介绍。"
-                value={profileBioDraft}
-              />
+              <div className="profile-field-grid">
+                <label className="profile-field">
+                  <span>昵称</span>
+                  <input
+                    aria-describedby="nickname-hint"
+                    autoComplete="nickname"
+                    onChange={(event) =>
+                      setNicknameDraft(limitCharacterCount(event.target.value, 24))
+                    }
+                    placeholder="输入昵称"
+                    required
+                    value={nicknameDraft}
+                  />
+                  <small id="nickname-hint">
+                    {Array.from(nicknameDraft.trim()).length}/24 · 用户名 @{user.username} 不会改变
+                  </small>
+                </label>
+                <label className="profile-field">
+                  <span>邮箱</span>
+                  <input
+                    autoComplete="email"
+                    maxLength={191}
+                    onChange={(event) => setEmailDraft(event.target.value)}
+                    placeholder="输入邮箱"
+                    required
+                    type="email"
+                    value={emailDraft}
+                  />
+                </label>
+              </div>
+              <label className="profile-field">
+                <span>个人介绍</span>
+                <textarea
+                  maxLength={180}
+                  onChange={(event) => setProfileBioDraft(event.target.value)}
+                  placeholder="写一句别人能看到的介绍。"
+                  required
+                  value={profileBioDraft}
+                />
+              </label>
               <div className="profile-bio-actions">
                 <span>{profileBioDraft.trim().length}/180</span>
                 <button disabled={isSavingProfile} type="submit">
-                  {isSavingProfile ? "保存中" : "保存介绍"}
+                  {isSavingProfile ? "保存中" : "保存资料"}
                 </button>
               </div>
             </form>
@@ -990,6 +1061,10 @@ function loadImage(source: string): Promise<HTMLImageElement> {
     image.onerror = () => reject(new Error("无法读取所选头像图片。"));
     image.src = source;
   });
+}
+
+function limitCharacterCount(value: string, maximum: number): string {
+  return Array.from(value).slice(0, maximum).join("");
 }
 
 function hexToRgbString(value: string): string {

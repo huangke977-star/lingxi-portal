@@ -9,6 +9,7 @@ import { AuthenticatedUser } from '../src/auth/auth.types';
 const user = (level: number, isSuper = false): AuthenticatedUser => ({
   id: 1,
   username: 'tester',
+  nickname: 'tester',
   email: 'tester@example.com',
   status: 'active',
   isSuperAdmin: isSuper,

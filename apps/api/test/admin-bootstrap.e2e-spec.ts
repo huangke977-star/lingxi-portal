@@ -7,6 +7,7 @@ describe('admin bootstrap', () => {
     const users: Array<{
       id: number;
       username: string;
+      nickname?: string;
       email: string;
       passwordHash: string;
       roleId: number;
@@ -68,6 +69,7 @@ describe('admin bootstrap', () => {
     expect(state.users).toHaveLength(1);
     expect(state.users[0]).toMatchObject({
       username: 'admin',
+      nickname: 'admin',
       email: 'admin@example.com',
       roleId: administratorRole.id,
       isSuperAdmin: true,

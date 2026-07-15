@@ -15,6 +15,7 @@ export interface UserAppearancePreference {
 export interface AuthenticatedUser {
   id: number;
   username: string;
+  nickname: string;
   email: string;
   status: UserStatus;
   isSuperAdmin: boolean;

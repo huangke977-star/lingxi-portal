@@ -24,6 +24,7 @@ describe('auth support services', () => {
         findUnique: jest.fn().mockResolvedValue({
           id: 2,
           username: 'disabled',
+          nickname: 'disabled',
           email: 'disabled@example.com',
           status: 'disabled',
           isSuperAdmin: false,
@@ -61,6 +62,7 @@ describe('auth support services', () => {
       findActiveById: jest.fn().mockResolvedValue({
         id: 1,
         username: 'tester',
+        nickname: 'tester',
         email: 'tester@example.com',
         status: 'active',
         isSuperAdmin: false,

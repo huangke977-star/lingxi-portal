@@ -8,6 +8,7 @@ import { RedisService } from '../src/redis/redis.service';
 interface StoredUser {
   id: number;
   username: string;
+  nickname: string;
   email: string;
   passwordHash: string;
   roleId: number;
@@ -28,6 +29,7 @@ function createPrismaMock() {
   const withRole = (user: StoredUser) => ({
     id: user.id,
     username: user.username,
+    nickname: user.nickname,
     email: user.email,
     passwordHash: user.passwordHash,
     status: user.status,
@@ -63,6 +65,7 @@ function createPrismaMock() {
           }: {
             data: {
               username: string;
+              nickname: string;
               email: string;
               passwordHash: string;
               roleId: number;
@@ -72,6 +75,7 @@ function createPrismaMock() {
             const user: StoredUser = {
               id: users.length + 1,
               username: data.username,
+              nickname: data.nickname,
               email: data.email,
               passwordHash: data.passwordHash,
               roleId: data.roleId,
@@ -193,9 +197,10 @@ describe('AuthController (e2e)', () => {
     await app.close();
   });
 
-  function register(username = 'tester', email = 'tester@example.com') {
+  function register(username = 'tester', email = 'tester@example.com', nickname = '测试昵称') {
     return request(app.getHttpServer()).post('/auth/register').send({
       username,
+      nickname,
       email,
       password: 'Secret123!',
     });
@@ -206,6 +211,7 @@ describe('AuthController (e2e)', () => {
 
     expect(response.body.user).toMatchObject({
       username: 'tester',
+      nickname: '测试昵称',
       email: 'tester@example.com',
       status: 'active',
       isSuperAdmin: false,
@@ -223,6 +229,17 @@ describe('AuthController (e2e)', () => {
 
     await register('tester', 'other@example.com').expect(409);
     await register('other', 'tester@example.com').expect(409);
+  });
+
+  it('requires a nickname during registration', async () => {
+    await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({ username: 'missing_nickname', email: 'missing@example.com', password: 'Secret123!' })
+      .expect(400);
+  });
+
+  it('rejects reserved nicknames during registration', async () => {
+    await register('reserved_user', 'reserved@example.com', '超级管理员').expect(400);
   });
 
   it('logs in with username and returns tokens', async () => {
@@ -301,23 +318,50 @@ describe('AuthController (e2e)', () => {
 
     expect(response.body).toMatchObject({
       username: 'me_user',
+      nickname: '测试昵称',
       profileBio: expect.any(String),
       role: { code: 'qi_refining', name: '练气', level: 10 },
     });
   });
 
-  it('updates current user profile bio', async () => {
+  it('updates current user nickname, email, and profile bio', async () => {
     const registered = await register('bio_user', 'bio@example.com').expect(200);
     const accessToken = registered.body.accessToken as string;
 
     const response = await request(app.getHttpServer())
       .patch('/auth/me/profile')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ profileBio: '我就喜欢这个范。' })
+      .send({ nickname: '一颗测试星', email: 'BIO-UPDATED@example.com', profileBio: '我就喜欢这个范。' })
       .expect(200);
 
+    expect(response.body.nickname).toBe('一颗测试星');
+    expect(response.body.email).toBe('bio-updated@example.com');
     expect(response.body.profileBio).toBe('我就喜欢这个范。');
+    expect(prismaState.users.find((item) => item.username === 'bio_user')?.nickname).toBe('一颗测试星');
+    expect(prismaState.users.find((item) => item.username === 'bio_user')?.email).toBe('bio-updated@example.com');
     expect(prismaState.users.find((item) => item.username === 'bio_user')?.profileBio).toBe('我就喜欢这个范。');
+  });
+
+  it('rejects an email already used by another account', async () => {
+    const registered = await register('email_owner', 'owner@example.com').expect(200);
+    await register('email_target', 'target@example.com').expect(200);
+
+    await request(app.getHttpServer())
+      .patch('/auth/me/profile')
+      .set('Authorization', `Bearer ${registered.body.accessToken as string}`)
+      .send({ nickname: '测试昵称', email: 'target@example.com', profileBio: '保持原样。' })
+      .expect(409);
+  });
+
+  it('rejects reserved nicknames', async () => {
+    const registered = await register('nickname_user', 'nickname@example.com').expect(200);
+    const accessToken = registered.body.accessToken as string;
+
+    await request(app.getHttpServer())
+      .patch('/auth/me/profile')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ nickname: '超级管理员', email: 'nickname@example.com', profileBio: '保持原样。' })
+      .expect(400);
   });
 
   it('rejects disabled users during login and refresh', async () => {

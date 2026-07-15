@@ -13,6 +13,10 @@ import {
   readAccessToken,
   readRefreshToken,
 } from "@/lib/auth-storage";
+import {
+  getAvatarFallbackText,
+  getUserDisplayName,
+} from "@/lib/user-display";
 
 const navItems = [
   { href: "/", label: "首页" },
@@ -132,11 +136,11 @@ export function TopNav() {
   );
 
   const avatarText = useMemo(() => {
-    if (!user?.username) {
+    if (!user) {
       return "H";
     }
 
-    return user.username.trim().slice(0, 1).toUpperCase();
+    return getAvatarFallbackText(user);
   }, [user]);
 
   const roleBadge = useMemo(() => {
@@ -271,7 +275,7 @@ export function TopNav() {
                 <button
                   aria-expanded={isAccountMenuOpen}
                   aria-haspopup="menu"
-                  aria-label={`${user.username} 的账户菜单`}
+                  aria-label={`${getUserDisplayName(user)} 的账户菜单`}
                   className="avatar-button"
                   onClick={openAccountMenu}
                   onFocus={openAccountMenu}
@@ -289,8 +293,8 @@ export function TopNav() {
                   role="menu"
                 >
                   <div className="account-menu-head">
-                    <strong>{user.username}</strong>
-                    <span>{user.email}</span>
+                    <strong>{getUserDisplayName(user)}</strong>
+                    <span>@{user.username}</span>
                   </div>
                   <Link href="/profile" onClick={closeAccountMenu}>
                     个人中心

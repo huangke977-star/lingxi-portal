@@ -9,6 +9,7 @@ import { saveAuthTokens } from '@/lib/auth-storage';
 export default function RegisterPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');
+  const [nickname, setNickname] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
@@ -19,7 +20,7 @@ export default function RegisterPage() {
     event.preventDefault();
     setError('');
 
-    if (!username.trim() || !email.trim() || !password || !confirmation) {
+    if (!username.trim() || !nickname.trim() || !email.trim() || !password || !confirmation) {
       setError('请完整填写注册信息。');
       return;
     }
@@ -31,7 +32,7 @@ export default function RegisterPage() {
 
     setIsSubmitting(true);
     try {
-      const response = await register({ username, email, password });
+      const response = await register({ username, nickname, email, password });
       saveAuthTokens(response);
       router.push('/dashboard');
     } catch (registerError) {
@@ -56,7 +57,20 @@ export default function RegisterPage() {
               maxLength={32}
               name="username"
               onChange={(event) => setUsername(event.target.value)}
+              required
               value={username}
+            />
+          </label>
+          <label>
+            <span>昵称</span>
+            <input
+              autoComplete="nickname"
+              name="nickname"
+              onChange={(event) =>
+                setNickname(limitCharacterCount(event.target.value, 24))
+              }
+              required
+              value={nickname}
             />
           </label>
           <label>
@@ -65,6 +79,7 @@ export default function RegisterPage() {
               autoComplete="email"
               name="email"
               onChange={(event) => setEmail(event.target.value)}
+              required
               type="email"
               value={email}
             />
@@ -75,6 +90,7 @@ export default function RegisterPage() {
               autoComplete="new-password"
               name="password"
               onChange={(event) => setPassword(event.target.value)}
+              required
               type="password"
               value={password}
             />
@@ -85,6 +101,7 @@ export default function RegisterPage() {
               autoComplete="new-password"
               name="confirmation"
               onChange={(event) => setConfirmation(event.target.value)}
+              required
               type="password"
               value={confirmation}
             />
@@ -102,4 +119,8 @@ export default function RegisterPage() {
       </div>
     </section>
   );
+}
+
+function limitCharacterCount(value: string, maximum: number): string {
+  return Array.from(value).slice(0, maximum).join('');
 }
