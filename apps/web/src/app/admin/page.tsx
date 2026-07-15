@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { listAdminUsers, listRoles, updateUserPassword, updateUserRole, updateUserStatus } from '@/lib/admin-api';
-import { AuthRole, AuthUser, getMe, isAuthExpiredError } from '@/lib/auth-api';
+import { ApiRequestError, AuthRole, AuthUser, getMe, isAuthExpiredError } from '@/lib/auth-api';
 import { clearAuthTokens, readAccessToken } from '@/lib/auth-storage';
 
 const STATUS_LABEL: Record<AuthUser['status'], string> = {
@@ -47,17 +47,29 @@ export default function AdminPage() {
         setAccessToken(verifiedToken);
         setCurrentUser(me);
 
-        if (!me.isSuperAdmin) {
+        if (!canAccessUserManagement(me)) {
           return;
         }
 
-        const [nextUsers, nextRoles] = await Promise.all([listAdminUsers(verifiedToken), listRoles()]);
-        if (!isMounted) {
-          return;
-        }
+        try {
+          const [nextUsers, nextRoles] = await Promise.all([listAdminUsers(verifiedToken), listRoles()]);
+          if (!isMounted) {
+            return;
+          }
 
-        setUsers(nextUsers);
-        setRoles(nextRoles);
+          setUsers(nextUsers);
+          setRoles(nextRoles);
+        } catch (managementError) {
+          if (managementError instanceof ApiRequestError && managementError.status === 401) {
+            clearAuthTokens();
+            router.replace('/');
+            return;
+          }
+
+          if (isMounted) {
+            setError(managementError instanceof Error ? managementError.message : '无法读取管理数据。');
+          }
+        }
       } catch (loadError) {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
@@ -213,12 +225,12 @@ export default function AdminPage() {
     );
   }
 
-  if (currentUser && !currentUser.isSuperAdmin) {
+  if (!canAccessUserManagement(currentUser)) {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
         <h1>无权访问</h1>
-        <p>该页面仅超级管理员可查看。</p>
+        <p>该页面仅超级管理员和管理员可查看。</p>
         <div className="actions">
           <Link className="button secondary" href="/dashboard">
             返回工作台
@@ -235,12 +247,13 @@ export default function AdminPage() {
         <div className="title-row">
           <div>
             <h1>用户管理</h1>
-            <p>维护账号角色、启用状态和密码重置。</p>
+            <p>
+              {currentUser.isSuperAdmin
+                ? '维护账号角色、启用状态和密码。'
+                : '维护低于管理员层级账号的角色和启用状态。'}
+            </p>
           </div>
           <div className="admin-header-tools">
-            <Link className="text-action primary" href="/admin/backgrounds">
-              背景管理
-            </Link>
             <div className="admin-summary" aria-label="用户概览">
               <span>{users.length} 个账号</span>
               <span>{enabledCount} 个启用</span>
@@ -264,6 +277,12 @@ export default function AdminPage() {
           <tbody>
             {users.map((user) => {
               const isBusy = busyUserId === user.id;
+              const canChangeRole = canChangeUserRole(currentUser, user);
+              const canChangeStatus = canChangeUserStatus(currentUser, user);
+              const canChangePassword = canChangeUserPassword(currentUser, user);
+              const assignableRoles = currentUser.isSuperAdmin
+                ? roles
+                : roles.filter((role) => role.level < currentUser.role.level);
 
               return (
                 <tr key={user.id}>
@@ -275,40 +294,51 @@ export default function AdminPage() {
                   </td>
                   <td>{user.email}</td>
                   <td>
-                    <select
-                      aria-label={`${user.username} 的角色`}
-                      disabled={isBusy}
-                      onChange={(event) => void handleRoleChange(user, event.target.value)}
-                      value={user.role.code}
-                    >
-                      {roles.map((role) => (
-                        <option key={role.code} value={role.code}>
-                          {role.name} · {role.level}
-                        </option>
-                      ))}
-                    </select>
+                    {canChangeRole ? (
+                      <select
+                        aria-label={`${user.username} 的角色`}
+                        disabled={isBusy}
+                        onChange={(event) => void handleRoleChange(user, event.target.value)}
+                        value={user.role.code}
+                      >
+                        {assignableRoles.map((role) => (
+                          <option key={role.code} value={role.code}>
+                            {role.name} · {role.level}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="table-role-label">
+                        {user.isSuperAdmin ? '超级管理员' : `${user.role.name} · ${user.role.level}`}
+                      </span>
+                    )}
                   </td>
                   <td>
                     <span className={`status-badge ${user.status}`}>{STATUS_LABEL[user.status]}</span>
                   </td>
                   <td>
                     <div className="table-actions">
-                      <button
-                        className="table-action"
-                        disabled={isBusy}
-                        onClick={() => void handleStatusToggle(user)}
-                        type="button"
-                      >
-                        {isBusy ? '保存中' : user.status === 'active' ? '停用' : '启用'}
-                      </button>
-                      <button
-                        className="table-action"
-                        disabled={isBusy}
-                        onClick={() => openPasswordDialog(user)}
-                        type="button"
-                      >
-                        修改密码
-                      </button>
+                      {canChangeStatus ? (
+                        <button
+                          className="table-action"
+                          disabled={isBusy}
+                          onClick={() => void handleStatusToggle(user)}
+                          type="button"
+                        >
+                          {isBusy ? '保存中' : user.status === 'active' ? '停用' : '启用'}
+                        </button>
+                      ) : null}
+                      {canChangePassword ? (
+                        <button
+                          className="table-action"
+                          disabled={isBusy}
+                          onClick={() => openPasswordDialog(user)}
+                          type="button"
+                        >
+                          修改密码
+                        </button>
+                      ) : null}
+                      {!canChangeStatus && !canChangePassword ? <span className="table-no-action">—</span> : null}
                     </div>
                   </td>
                 </tr>
@@ -370,4 +400,32 @@ export default function AdminPage() {
       ) : null}
     </section>
   );
+}
+
+function canAccessUserManagement(user: AuthUser): boolean {
+  return user.isSuperAdmin || user.role.level >= 90;
+}
+
+function canChangeUserRole(actor: AuthUser, target: AuthUser): boolean {
+  if (target.isSuperAdmin) {
+    return false;
+  }
+
+  return actor.isSuperAdmin || target.role.level < actor.role.level;
+}
+
+function canChangeUserStatus(actor: AuthUser, target: AuthUser): boolean {
+  if (target.isSuperAdmin) {
+    return false;
+  }
+
+  return actor.isSuperAdmin || target.role.level < actor.role.level;
+}
+
+function canChangeUserPassword(actor: AuthUser, target: AuthUser): boolean {
+  if (!actor.isSuperAdmin) {
+    return false;
+  }
+
+  return !target.isSuperAdmin || target.id === actor.id;
 }

@@ -61,6 +61,13 @@ interface SupportedAvatarFormat {
   matches: (buffer: Buffer) => boolean;
 }
 
+interface ManagedRole {
+  id: number;
+  code: string;
+  name: string;
+  level: number;
+}
+
 const SUPPORTED_AVATAR_FORMATS: SupportedAvatarFormat[] = [
   {
     extension: '.jpg',
@@ -168,14 +175,21 @@ export class UsersService {
     return users.map((user) => this.toAuthenticatedUser(user));
   }
 
-  async assignRole(id: number, roleCode: string): Promise<AuthenticatedUser> {
+  async assignRole(actor: AuthenticatedUser, id: number, roleCode: string): Promise<AuthenticatedUser> {
+    const target = await this.findUserForManagement(id);
     const role = await this.prisma.role.findUnique({
       where: { code: roleCode },
-      select: { id: true },
+      select: { id: true, code: true, name: true, level: true },
     });
 
     if (!role) {
       throw new NotFoundException('Role not found.');
+    }
+
+    this.assertCanAssignRole(actor, target, role);
+
+    if (target.role.code === role.code) {
+      return target;
     }
 
     const user = await this.prisma.user.update({
@@ -187,7 +201,14 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
-  async setStatus(id: number, status: UserStatus): Promise<AuthenticatedUser> {
+  async setStatus(actor: AuthenticatedUser, id: number, status: UserStatus): Promise<AuthenticatedUser> {
+    const target = await this.findUserForManagement(id);
+    this.assertCanSetStatus(actor, target);
+
+    if (target.status === status) {
+      return target;
+    }
+
     const user = await this.prisma.user.update({
       where: { id },
       data: { status },
@@ -197,7 +218,10 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
-  async updatePassword(id: number, password: string): Promise<AuthenticatedUser> {
+  async updatePassword(actor: AuthenticatedUser, id: number, password: string): Promise<AuthenticatedUser> {
+    const target = await this.findUserForManagement(id);
+    this.assertCanUpdatePassword(actor, target);
+
     const passwordHash = await this.passwordService.hashPassword(password);
     const user = await this.prisma.user.update({
       where: { id },
@@ -358,7 +382,7 @@ export class UsersService {
       },
       role: {
         code: user.role.code,
-        name: user.role.name,
+        name: user.isSuperAdmin ? '超级管理员' : user.role.name,
         level: user.role.level,
       },
     };
@@ -373,6 +397,53 @@ export class UsersService {
       ...this.toAuthenticatedUser(user),
       passwordHash: user.passwordHash,
     };
+  }
+
+  private async findUserForManagement(id: number): Promise<AuthenticatedUser> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: this.userSelect(),
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    return this.toAuthenticatedUser(user);
+  }
+
+  private assertCanAssignRole(actor: AuthenticatedUser, target: AuthenticatedUser, role: ManagedRole): void {
+    if (target.isSuperAdmin) {
+      throw new ForbiddenException('The super admin role cannot be changed.');
+    }
+
+    if (actor.isSuperAdmin) {
+      return;
+    }
+
+    if (target.role.level >= actor.role.level || role.level >= actor.role.level) {
+      throw new ForbiddenException('Administrators may only assign roles below their own level.');
+    }
+  }
+
+  private assertCanSetStatus(actor: AuthenticatedUser, target: AuthenticatedUser): void {
+    if (target.isSuperAdmin) {
+      throw new ForbiddenException('The super admin account cannot be disabled.');
+    }
+
+    if (!actor.isSuperAdmin && target.role.level >= actor.role.level) {
+      throw new ForbiddenException('Administrators may only change accounts below their own level.');
+    }
+  }
+
+  private assertCanUpdatePassword(actor: AuthenticatedUser, target: AuthenticatedUser): void {
+    if (!actor.isSuperAdmin) {
+      throw new ForbiddenException('Only the super admin may update account passwords.');
+    }
+
+    if (target.isSuperAdmin && target.id !== actor.id) {
+      throw new ForbiddenException('A super admin may only update their own super admin password.');
+    }
   }
 
   private validateAvatarFile(file: UploadedAvatarFile): SupportedAvatarFormat {

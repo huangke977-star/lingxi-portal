@@ -51,6 +51,18 @@ function createPrismaMock() {
       lastLoginAt: null,
       createdAt: new Date('2026-07-14T00:00:00.000Z'),
     },
+    {
+      id: 3,
+      username: 'manager',
+      email: 'manager@example.com',
+      passwordHash: 'hash',
+      roleId: 9,
+      isSuperAdmin: false,
+      status: 'active',
+      profileBio: '保持简单。',
+      lastLoginAt: null,
+      createdAt: new Date('2026-07-14T00:00:00.000Z'),
+    },
   ];
   const withRole = (user: StoredUser) => ({
     id: user.id,
@@ -157,10 +169,10 @@ describe('admin user management (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
-    expect(response.body).toHaveLength(2);
+    expect(response.body).toHaveLength(3);
     expect(response.body[0]).toMatchObject({
       username: 'admin',
-      role: { code: 'administrator', name: '管理员', level: 90 },
+      role: { code: 'administrator', name: '超级管理员', level: 90 },
     });
     expect(response.body[0].passwordHash).toBeUndefined();
   });
@@ -208,11 +220,91 @@ describe('admin user management (e2e)', () => {
     expect(response.body.passwordHash).toBeUndefined();
   });
 
-  it('rejects non-super-admin users from updating user passwords', async () => {
-    const token = await tokenFor(2);
+  it('protects the super admin role and status', async () => {
+    const token = await tokenFor(1);
+
+    await request(app.getHttpServer())
+      .patch('/users/1/role')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ roleCode: 'golden_core' })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .patch('/users/1/status')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ status: 'disabled' })
+      .expect(403);
+  });
+
+  it('allows the super admin to update their own password', async () => {
+    const token = await tokenFor(1);
+    const previousHash = state.users[0].passwordHash;
 
     await request(app.getHttpServer())
       .patch('/users/1/password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ password: 'OwnSecret123!' })
+      .expect(200);
+
+    expect(state.users[0].passwordHash).not.toBe(previousHash);
+  });
+
+  it('allows administrators to list users', async () => {
+    const token = await tokenFor(3);
+
+    await request(app.getHttpServer()).get('/users').set('Authorization', `Bearer ${token}`).expect(200);
+  });
+
+  it('allows administrators to manage lower-level roles and status', async () => {
+    const token = await tokenFor(3);
+
+    await request(app.getHttpServer())
+      .patch('/users/2/role')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ roleCode: 'golden_core' })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .patch('/users/2/status')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ status: 'disabled' })
+      .expect(200);
+
+    expect(state.users[1].roleId).toBe(3);
+    expect(state.users[1].status).toBe('disabled');
+  });
+
+  it('prevents administrators from assigning administrator roles', async () => {
+    const token = await tokenFor(3);
+
+    await request(app.getHttpServer())
+      .patch('/users/2/role')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ roleCode: 'administrator' })
+      .expect(403);
+  });
+
+  it('prevents administrators from changing same-level or super-admin accounts', async () => {
+    const token = await tokenFor(3);
+
+    await request(app.getHttpServer())
+      .patch('/users/3/status')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ status: 'disabled' })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .patch('/users/1/role')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ roleCode: 'golden_core' })
+      .expect(403);
+  });
+
+  it('rejects administrators from updating user passwords', async () => {
+    const token = await tokenFor(3);
+
+    await request(app.getHttpServer())
+      .patch('/users/2/password')
       .set('Authorization', `Bearer ${token}`)
       .send({ password: 'OtherSecret123!' })
       .expect(403);
@@ -228,7 +320,7 @@ describe('admin user management (e2e)', () => {
       .expect(400);
   });
 
-  it('rejects non-super-admin users', async () => {
+  it('rejects users below administrator level', async () => {
     const token = await tokenFor(2);
 
     await request(app.getHttpServer()).get('/users').set('Authorization', `Bearer ${token}`).expect(403);

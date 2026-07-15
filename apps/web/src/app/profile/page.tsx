@@ -3,9 +3,10 @@
 /* eslint-disable @next/next/no-img-element */
 
 import type { CSSProperties, FormEvent } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import Cropper, { type Area } from "react-easy-crop";
 import { RoleSymbol } from "@/components/role-symbol";
 import {
   AuthAppearance,
@@ -22,6 +23,7 @@ import {
   clearAuthTokens,
   readAccessToken,
 } from "@/lib/auth-storage";
+import { getAccountMotto } from "@/lib/account-mottos";
 import {
   defaultThemePreference,
   normalizeThemePreference,
@@ -39,7 +41,16 @@ type AppearanceColorKey =
   | "customMuted"
   | "glassTint";
 
-const AVATAR_MAX_FILE_SIZE = 2 * 1024 * 1024;
+type LevelPopoverPlacement = "left" | "right";
+
+interface LevelPopoverPosition {
+  placement: LevelPopoverPlacement;
+  style: CSSProperties;
+}
+
+const AVATAR_SOURCE_MAX_FILE_SIZE = 20 * 1024 * 1024;
+const AVATAR_UPLOAD_MAX_FILE_SIZE = 2 * 1024 * 1024;
+const AVATAR_OUTPUT_SIZE = 512;
 
 const levelRoadmap = [
   { code: "qi_refining", name: "练气", level: 10, status: "注册自动获取" },
@@ -62,6 +73,16 @@ export default function ProfilePage() {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isLevelInfoOpen, setIsLevelInfoOpen] = useState(false);
+  const levelHelpTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const levelPopoverRef = useRef<HTMLDivElement | null>(null);
+  const levelPopoverCloseTimerRef = useRef<number | null>(null);
+  const [levelPopoverStyle, setLevelPopoverStyle] = useState<CSSProperties>({});
+  const [levelPopoverPlacement, setLevelPopoverPlacement] = useState<LevelPopoverPlacement>("right");
+  const [avatarCropSource, setAvatarCropSource] = useState<string | null>(null);
+  const [avatarCropFileName, setAvatarCropFileName] = useState("avatar");
+  const [avatarCrop, setAvatarCrop] = useState({ x: 0, y: 0 });
+  const [avatarZoom, setAvatarZoom] = useState(1);
+  const [avatarCropPixels, setAvatarCropPixels] = useState<Area | null>(null);
   const [profileBioDraft, setProfileBioDraft] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [preference, setPreference] = useState<ThemePreference>(() =>
@@ -77,7 +98,9 @@ export default function ProfilePage() {
 
     getMe(token)
       .then((currentUser) => {
-        const accountPreference = normalizeThemePreference(currentUser.appearance);
+        const accountPreference = normalizeThemePreference(
+          currentUser.appearance,
+        );
         setUser(currentUser);
         setProfileBioDraft(currentUser.profileBio);
         setPreference(accountPreference);
@@ -118,15 +141,87 @@ export default function ProfilePage() {
       return;
     }
 
+    function updatePosition() {
+      if (levelHelpTriggerRef.current) {
+        const position = calculateLevelPopoverPosition(
+          levelHelpTriggerRef.current,
+          levelPopoverRef.current?.offsetHeight,
+        );
+        setLevelPopoverStyle(position.style);
+        setLevelPopoverPlacement(position.placement);
+      }
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+      if (
+        levelHelpTriggerRef.current?.contains(target) ||
+        levelPopoverRef.current?.contains(target)
+      ) {
+        return;
+      }
+
+      setIsLevelInfoOpen(false);
+    }
+
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsLevelInfoOpen(false);
       }
     }
 
+    updatePosition();
+    document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
   }, [isLevelInfoOpen]);
+
+  useEffect(
+    () => () => {
+      if (levelPopoverCloseTimerRef.current !== null) {
+        window.clearTimeout(levelPopoverCloseTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(
+    () => () => {
+      if (avatarCropSource) {
+        URL.revokeObjectURL(avatarCropSource);
+      }
+    },
+    [avatarCropSource],
+  );
+
+  useEffect(() => {
+    if (!avatarCropSource) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isUploadingAvatar) {
+        setAvatarCropSource(null);
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [avatarCropSource, isUploadingAvatar]);
 
   const normalizedPreference = useMemo(
     () => normalizeThemePreference(preference),
@@ -171,11 +266,16 @@ export default function ProfilePage() {
     setNotice("");
 
     try {
-      const updatedUser = await updateMyAppearance(token, toAppearancePayload(nextPreference));
+      const updatedUser = await updateMyAppearance(
+        token,
+        toAppearancePayload(nextPreference),
+      );
       setUser(updatedUser);
       setNotice("外观设置已保存。");
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "外观设置保存失败。");
+      setError(
+        saveError instanceof Error ? saveError.message : "外观设置保存失败。",
+      );
     } finally {
       setIsSavingAppearance(false);
     }
@@ -191,8 +291,38 @@ export default function ProfilePage() {
 
   function updateAppearanceColor(key: AppearanceColorKey, value: string) {
     void commitPreference(
-      key === "glassTint" ? { glassTint: value } : { [key]: value, themeId: "custom" },
+      key === "glassTint"
+        ? { glassTint: value }
+        : { [key]: value, themeId: "custom" },
     );
+  }
+
+  function cancelLevelInfoClose() {
+    if (levelPopoverCloseTimerRef.current !== null) {
+      window.clearTimeout(levelPopoverCloseTimerRef.current);
+      levelPopoverCloseTimerRef.current = null;
+    }
+  }
+
+  function openLevelInfo() {
+    cancelLevelInfoClose();
+    if (levelHelpTriggerRef.current) {
+      const position = calculateLevelPopoverPosition(
+        levelHelpTriggerRef.current,
+        levelPopoverRef.current?.offsetHeight,
+      );
+      setLevelPopoverStyle(position.style);
+      setLevelPopoverPlacement(position.placement);
+    }
+    setIsLevelInfoOpen(true);
+  }
+
+  function scheduleLevelInfoClose() {
+    cancelLevelInfoClose();
+    levelPopoverCloseTimerRef.current = window.setTimeout(() => {
+      setIsLevelInfoOpen(false);
+      levelPopoverCloseTimerRef.current = null;
+    }, 180);
   }
 
   async function handleAvatarChange(file: File | undefined) {
@@ -204,9 +334,34 @@ export default function ProfilePage() {
       return;
     }
 
-    if (file.size > AVATAR_MAX_FILE_SIZE) {
-      setError("头像图片不能超过 2 MB。");
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("头像仅支持 JPEG、PNG 或 WebP 图片。");
       setNotice("");
+      return;
+    }
+
+    if (file.size > AVATAR_SOURCE_MAX_FILE_SIZE) {
+      setError("原始头像图片不能超过 20 MB。");
+      setNotice("");
+      return;
+    }
+
+    setError("");
+    setNotice("");
+    setIsLevelInfoOpen(false);
+    setAvatarCrop({ x: 0, y: 0 });
+    setAvatarZoom(1);
+    setAvatarCropPixels(null);
+    setAvatarCropFileName(file.name);
+    setAvatarCropSource(URL.createObjectURL(file));
+  }
+
+  async function handleAvatarCropConfirm() {
+    const token = readAccessToken();
+    if (!token || !avatarCropSource || !avatarCropPixels) {
+      if (!token) {
+        router.replace("/login");
+      }
       return;
     }
 
@@ -214,12 +369,25 @@ export default function ProfilePage() {
     setError("");
     setNotice("");
     try {
-      const updatedUser = await uploadMyAvatar(token, file);
+      const croppedFile = await createCroppedAvatarFile(
+        avatarCropSource,
+        avatarCropPixels,
+        avatarCropFileName,
+      );
+
+      if (croppedFile.size > AVATAR_UPLOAD_MAX_FILE_SIZE) {
+        throw new Error("裁剪后的头像超过 2 MB，请缩小图片后重试。");
+      }
+
+      const updatedUser = await uploadMyAvatar(token, croppedFile);
       setUser(updatedUser);
+      setAvatarCropSource(null);
       window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
       setNotice("头像已更新。");
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "头像上传失败。");
+      setError(
+        uploadError instanceof Error ? uploadError.message : "头像上传失败。",
+      );
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -250,7 +418,9 @@ export default function ProfilePage() {
       window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
       setNotice("个人介绍已保存。");
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "个人介绍保存失败。");
+      setError(
+        saveError instanceof Error ? saveError.message : "个人介绍保存失败。",
+      );
     } finally {
       setIsSavingProfile(false);
     }
@@ -260,7 +430,18 @@ export default function ProfilePage() {
   const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
   const joinedAt = user?.createdAt ? new Date(user.createdAt) : null;
   const joinedAtText = joinedAt ? formatJoinedAt(joinedAt) : "";
-  const memberDurationText = joinedAt ? formatDuration(now - joinedAt.getTime()) : "";
+  const memberDurationText = joinedAt
+    ? formatDuration(now - joinedAt.getTime())
+    : "";
+  const accountMotto = useMemo(
+    () => (user ? getAccountMotto(user) : ""),
+    [user],
+  );
+  const toastMessage = isSavingAppearance
+    ? "外观保存中"
+    : isSavingProfile
+      ? "资料保存中"
+      : notice;
 
   const previewStyle = {
     "--theme-preview-accent": customAccent,
@@ -293,23 +474,15 @@ export default function ProfilePage() {
           <div>
             <h1>个人中心</h1>
           </div>
-          <div className="actions">
-            <Link className="text-action" href="/dashboard">
-              返回空间
-            </Link>
-          </div>
         </div>
       </header>
 
-      {isLoading || isSavingAppearance || isSavingProfile ? (
+      {isLoading ? (
         <div className="status-row compact-status-row">
-          {isLoading ? <span className="status">正在读取身份</span> : null}
-          {isSavingAppearance ? <span className="status">外观保存中</span> : null}
-          {isSavingProfile ? <span className="status">资料保存中</span> : null}
+          <span className="status">正在读取身份</span>
         </div>
       ) : null}
       {error ? <p className="message error">{error}</p> : null}
-      {notice ? <p className="profile-toast">{notice}</p> : null}
 
       {user ? (
         <div className="profile-settings-grid">
@@ -323,7 +496,10 @@ export default function ProfilePage() {
                 <input
                   accept="image/jpeg,image/png,image/webp"
                   disabled={isUploadingAvatar}
-                  onChange={(event) => void handleAvatarChange(event.target.files?.[0])}
+                  onChange={(event) => {
+                    void handleAvatarChange(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
                   type="file"
                 />
                 <span className="profile-avatar">
@@ -336,15 +512,21 @@ export default function ProfilePage() {
               </label>
 
               <div className="account-profile-copy">
-                <strong>{user.username}</strong>
-                <p>{user.email}</p>
+                <div className="account-identity-copy">
+                  <strong>{user.username}</strong>
+                  <p>{user.email}</p>
+                </div>
                 <div className="account-role-tag">
-                  <span>{user.role.name}</span>
+                  <span>{user.isSuperAdmin ? "超级管理员" : user.role.name}</span>
                   <button
                     aria-expanded={isLevelInfoOpen}
                     aria-label="查看账号等级说明"
                     className="level-help-trigger"
-                    onClick={() => setIsLevelInfoOpen((current) => !current)}
+                    onClick={openLevelInfo}
+                    onFocus={openLevelInfo}
+                    onPointerEnter={openLevelInfo}
+                    onPointerLeave={scheduleLevelInfoClose}
+                    ref={levelHelpTriggerRef}
                     type="button"
                   >
                     ?
@@ -364,50 +546,10 @@ export default function ProfilePage() {
               </div>
             </dl>
 
-            {isLevelInfoOpen ? (
-              <div
-                className="level-modal-backdrop"
-                onClick={() => setIsLevelInfoOpen(false)}
-                role="presentation"
-              >
-                <div
-                  aria-label="账号等级说明"
-                  className="level-modal"
-                  onClick={(event) => event.stopPropagation()}
-                  role="dialog"
-                >
-                  <div className="panel-heading level-modal-heading">
-                    <span className="section-label">账号等级</span>
-                    <strong>角色说明</strong>
-                    <button
-                      aria-label="关闭账号等级说明"
-                      className="level-modal-close"
-                      onClick={() => setIsLevelInfoOpen(false)}
-                      type="button"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div className="level-roadmap">
-                    {levelRoadmap.map((role) => {
-                      const isCurrent = user.role.code === role.code;
-                      return (
-                        <div className={isCurrent ? "current" : ""} key={role.code}>
-                          <span className="level-icon">
-                            <RoleSymbol code={role.code} />
-                          </span>
-                          <span>
-                            <strong>{role.name}</strong>
-                            <small>Lv.{role.level}</small>
-                          </span>
-                          <em>{isCurrent ? "当前等级" : role.status}</em>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            ) : null}
+            <blockquote className="account-motto">
+              <span>给你的话</span>
+              <p>{accountMotto}</p>
+            </blockquote>
           </section>
 
           <section className="profile-panel profile-bio-panel">
@@ -458,7 +600,9 @@ export default function ProfilePage() {
                       <strong>{theme.name}</strong>
                       <span>{theme.description}</span>
                     </span>
-                    {isActive ? <span className="theme-selected">当前</span> : null}
+                    {isActive ? (
+                      <span className="theme-selected">当前</span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -471,11 +615,14 @@ export default function ProfilePage() {
                 type="button"
               >
                 <span className="theme-swatches" aria-hidden="true">
-                  {[customSurface, customForeground, customMuted, customAccent].map(
-                    (swatch) => (
-                      <span key={swatch} style={{ background: swatch }} />
-                    ),
-                  )}
+                  {[
+                    customSurface,
+                    customForeground,
+                    customMuted,
+                    customAccent,
+                  ].map((swatch) => (
+                    <span key={swatch} style={{ background: swatch }} />
+                  ))}
                 </span>
                 <span className="theme-option-copy">
                   <strong>自定义配色</strong>
@@ -499,7 +646,9 @@ export default function ProfilePage() {
                     max={76}
                     min={38}
                     onChange={(event) =>
-                      void commitPreference({ cardAlpha: Number(event.target.value) })
+                      void commitPreference({
+                        cardAlpha: Number(event.target.value),
+                      })
                     }
                     type="range"
                     value={cardAlpha}
@@ -516,7 +665,9 @@ export default function ProfilePage() {
                     max={36}
                     min={0}
                     onChange={(event) =>
-                      void commitPreference({ glassBlur: Number(event.target.value) })
+                      void commitPreference({
+                        glassBlur: Number(event.target.value),
+                      })
                     }
                     type="range"
                     value={glassBlur}
@@ -533,7 +684,9 @@ export default function ProfilePage() {
                     max={100}
                     min={0}
                     onChange={(event) =>
-                      void commitPreference({ glassTintAlpha: Number(event.target.value) })
+                      void commitPreference({
+                        glassTintAlpha: Number(event.target.value),
+                      })
                     }
                     type="range"
                     value={glassTintAlpha}
@@ -582,8 +735,261 @@ export default function ProfilePage() {
           </section>
         </div>
       ) : null}
+
+      {user && isLevelInfoOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              aria-label="账号等级说明"
+              className="level-popover"
+              data-placement={levelPopoverPlacement}
+              onFocus={cancelLevelInfoClose}
+              onPointerEnter={cancelLevelInfoClose}
+              onPointerLeave={scheduleLevelInfoClose}
+              ref={levelPopoverRef}
+              role="dialog"
+              style={levelPopoverStyle}
+            >
+              <div className="panel-heading level-popover-heading">
+                <span className="section-label">账号等级</span>
+                <strong>角色说明</strong>
+              </div>
+              <div className="level-roadmap">
+                {levelRoadmap.map((role) => {
+                  const isCurrent = user.role.code === role.code;
+                  return (
+                    <div
+                      className={isCurrent ? "current" : ""}
+                      key={role.code}
+                    >
+                      <span className="level-icon">
+                        <RoleSymbol code={role.code} />
+                      </span>
+                      <span>
+                        <strong>{role.name}</strong>
+                        <small>Lv.{role.level}</small>
+                      </span>
+                      <em>{isCurrent ? "当前等级" : role.status}</em>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {toastMessage && typeof document !== "undefined"
+        ? createPortal(
+            <p aria-live="polite" className="profile-toast" role="status">
+              {toastMessage}
+            </p>,
+            document.body,
+          )
+        : null}
+
+      {avatarCropSource && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="avatar-crop-backdrop"
+              onClick={() => {
+                if (!isUploadingAvatar) {
+                  setAvatarCropSource(null);
+                }
+              }}
+              role="presentation"
+            >
+              <div
+                aria-label="裁剪头像"
+                aria-modal="true"
+                className="avatar-crop-modal"
+                onClick={(event) => event.stopPropagation()}
+                role="dialog"
+              >
+                <div className="avatar-crop-heading">
+                  <div>
+                    <span className="section-label">Avatar</span>
+                    <strong>调整头像</strong>
+                  </div>
+                  <button
+                    aria-label="取消裁剪头像"
+                    className="level-modal-close"
+                    disabled={isUploadingAvatar}
+                    onClick={() => setAvatarCropSource(null)}
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="avatar-crop-stage">
+                  <Cropper
+                    aspect={1}
+                    crop={avatarCrop}
+                    cropShape="round"
+                    image={avatarCropSource}
+                    maxZoom={3}
+                    minZoom={1}
+                    onCropChange={setAvatarCrop}
+                    onCropComplete={(_area, croppedAreaPixels) =>
+                      setAvatarCropPixels(croppedAreaPixels)
+                    }
+                    onZoomChange={setAvatarZoom}
+                    showGrid={false}
+                    zoom={avatarZoom}
+                  />
+                </div>
+
+                <label className="avatar-zoom-control">
+                  <span>
+                    <strong>缩放</strong>
+                    <small>{Math.round(avatarZoom * 100)}%</small>
+                  </span>
+                  <input
+                    aria-label="头像缩放"
+                    max={3}
+                    min={1}
+                    onChange={(event) =>
+                      setAvatarZoom(Number(event.target.value))
+                    }
+                    step={0.01}
+                    type="range"
+                    value={avatarZoom}
+                  />
+                </label>
+
+                <div className="avatar-crop-actions">
+                  <button
+                    className="text-action"
+                    disabled={isUploadingAvatar}
+                    onClick={() => setAvatarCropSource(null)}
+                    type="button"
+                  >
+                    取消
+                  </button>
+                  <button
+                    className="text-action primary"
+                    disabled={isUploadingAvatar || !avatarCropPixels}
+                    onClick={() => void handleAvatarCropConfirm()}
+                    type="button"
+                  >
+                    {isUploadingAvatar ? "处理中" : "使用此头像"}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </section>
   );
+}
+
+function calculateLevelPopoverPosition(trigger: HTMLElement, measuredHeight = 520): LevelPopoverPosition {
+  const viewportPadding = 12;
+  const gap = 8;
+  const triggerRect = trigger.getBoundingClientRect();
+  const width = Math.min(340, window.innerWidth - viewportPadding * 2);
+  const triggerCenterX = triggerRect.left + triggerRect.width / 2;
+  const triggerCenterY = triggerRect.top + triggerRect.height / 2;
+  const hasSpaceOnRight = triggerRect.right + gap + width <= window.innerWidth - viewportPadding;
+  const hasSpaceOnLeft = triggerRect.left - gap - width >= viewportPadding;
+  let placement: LevelPopoverPlacement;
+  let left: number;
+
+  if (hasSpaceOnRight) {
+    placement = "right";
+    left = triggerRect.right + gap;
+  } else if (hasSpaceOnLeft) {
+    placement = "left";
+    left = triggerRect.left - gap - width;
+  } else if (triggerCenterX >= window.innerWidth / 2) {
+    placement = "left";
+    left = viewportPadding;
+  } else {
+    placement = "right";
+    left = window.innerWidth - width - viewportPadding;
+  }
+
+  const top = Math.max(
+    viewportPadding,
+    Math.min(
+      triggerRect.top - 24,
+      window.innerHeight - measuredHeight - viewportPadding,
+    ),
+  );
+  const arrowTop = Math.min(
+    measuredHeight - 22,
+    Math.max(12, triggerCenterY - top - 5),
+  );
+
+  return {
+    placement,
+    style: {
+      left,
+      top,
+      width,
+      "--level-popover-arrow-top": `${arrowTop}px`,
+    } as CSSProperties,
+  };
+}
+
+async function createCroppedAvatarFile(
+  source: string,
+  cropArea: Area,
+  originalName: string,
+): Promise<File> {
+  const image = await loadImage(source);
+  const canvas = document.createElement("canvas");
+  canvas.width = AVATAR_OUTPUT_SIZE;
+  canvas.height = AVATAR_OUTPUT_SIZE;
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("当前浏览器无法处理头像图片。");
+  }
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(
+    image,
+    cropArea.x,
+    cropArea.y,
+    cropArea.width,
+    cropArea.height,
+    0,
+    0,
+    AVATAR_OUTPUT_SIZE,
+    AVATAR_OUTPUT_SIZE,
+  );
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (result) => {
+        if (result) {
+          resolve(result);
+        } else {
+          reject(new Error("头像裁剪失败，请重新选择图片。"));
+        }
+      },
+      "image/webp",
+      0.9,
+    );
+  });
+  const baseName =
+    originalName.replace(/\.[^.]+$/, "").slice(0, 80) || "avatar";
+
+  return new File([blob], `${baseName}-avatar.webp`, {
+    type: blob.type || "image/webp",
+  });
+}
+
+function loadImage(source: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("无法读取所选头像图片。"));
+    image.src = source;
+  });
 }
 
 function hexToRgbString(value: string): string {
@@ -618,7 +1024,8 @@ function toAppearancePayload(preference: ThemePreference): AuthAppearance {
 
   return {
     cardAlpha: normalized.cardAlpha ?? defaultThemePreference.cardAlpha!,
-    customAccent: normalized.customAccent ?? defaultThemePreference.customAccent!,
+    customAccent:
+      normalized.customAccent ?? defaultThemePreference.customAccent!,
     customForeground:
       normalized.customForeground ?? defaultThemePreference.customForeground!,
     customMuted: normalized.customMuted ?? defaultThemePreference.customMuted!,

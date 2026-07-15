@@ -25,10 +25,13 @@ export function TopNav() {
   const router = useRouter();
   const pathname = usePathname();
   const navRef = useRef<HTMLElement | null>(null);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
+  const accountMenuCloseTimerRef = useRef<number | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -93,6 +96,41 @@ export function TopNav() {
     };
   }, [isMenuOpen]);
 
+  useEffect(() => {
+    if (!isAccountMenuOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!accountMenuRef.current?.contains(event.target as Node)) {
+        setIsAccountMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsAccountMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isAccountMenuOpen]);
+
+  useEffect(
+    () => () => {
+      if (accountMenuCloseTimerRef.current !== null) {
+        window.clearTimeout(accountMenuCloseTimerRef.current);
+      }
+    },
+    [],
+  );
+
   const avatarText = useMemo(() => {
     if (!user?.username) {
       return "H";
@@ -108,7 +146,7 @@ export function TopNav() {
 
     return {
       code: user.role.code,
-      tooltip: user.role.name,
+      tooltip: user.isSuperAdmin ? "超级管理员" : user.role.name,
     };
   }, [user]);
 
@@ -121,6 +159,7 @@ export function TopNav() {
 
     setIsLoggingOut(true);
     setIsMenuOpen(false);
+    setIsAccountMenuOpen(false);
     const refreshToken = readRefreshToken();
 
     try {
@@ -137,6 +176,31 @@ export function TopNav() {
 
   function closeMobileMenu() {
     setIsMenuOpen(false);
+  }
+
+  function closeAccountMenu() {
+    cancelAccountMenuClose();
+    setIsAccountMenuOpen(false);
+  }
+
+  function cancelAccountMenuClose() {
+    if (accountMenuCloseTimerRef.current !== null) {
+      window.clearTimeout(accountMenuCloseTimerRef.current);
+      accountMenuCloseTimerRef.current = null;
+    }
+  }
+
+  function openAccountMenu() {
+    cancelAccountMenuClose();
+    setIsAccountMenuOpen(true);
+  }
+
+  function scheduleAccountMenuClose() {
+    cancelAccountMenuClose();
+    accountMenuCloseTimerRef.current = window.setTimeout(() => {
+      setIsAccountMenuOpen(false);
+      accountMenuCloseTimerRef.current = null;
+    }, 260);
   }
 
   function isActiveRoute(href: string) {
@@ -203,26 +267,44 @@ export function TopNav() {
               >
                 <RoleSymbol className="role-badge-icon" code={roleBadge.code} />
               </button>
-              <div className="account-menu-wrap">
+              <div className="account-menu-wrap" ref={accountMenuRef}>
                 <button
+                  aria-expanded={isAccountMenuOpen}
+                  aria-haspopup="menu"
                   aria-label={`${user.username} 的账户菜单`}
                   className="avatar-button"
+                  onClick={openAccountMenu}
+                  onFocus={openAccountMenu}
+                  onPointerEnter={openAccountMenu}
+                  onPointerLeave={scheduleAccountMenuClose}
                   type="button"
                 >
                   {avatarUrl ? <img alt="" src={avatarUrl} /> : avatarText}
                 </button>
-                <div className="account-menu">
+                <div
+                  className={`account-menu ${isAccountMenuOpen ? "open" : ""}`}
+                  onFocus={cancelAccountMenuClose}
+                  onPointerEnter={cancelAccountMenuClose}
+                  onPointerLeave={scheduleAccountMenuClose}
+                  role="menu"
+                >
                   <div className="account-menu-head">
                     <strong>{user.username}</strong>
                     <span>{user.email}</span>
                   </div>
-                  <Link href="/profile">个人中心</Link>
-                  {user.isSuperAdmin ? (
-                    <Link href="/admin/backgrounds">背景管理</Link>
+                  <Link href="/profile" onClick={closeAccountMenu}>
+                    个人中心
+                  </Link>
+                  {user.isSuperAdmin || user.role.level >= 90 ? (
+                    <Link href="/admin" onClick={closeAccountMenu}>
+                      用户管理
+                    </Link>
                   ) : null}
-                  <Link href="/dashboard">工作台</Link>
-                  <Link href="/nav">导航</Link>
-                  <Link href="/tools">工具箱</Link>
+                  {user.isSuperAdmin ? (
+                    <Link href="/admin/backgrounds" onClick={closeAccountMenu}>
+                      背景管理
+                    </Link>
+                  ) : null}
                   <button
                     disabled={isLoggingOut}
                     onClick={() => void handleLogout()}

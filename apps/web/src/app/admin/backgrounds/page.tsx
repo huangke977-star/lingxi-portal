@@ -220,9 +220,6 @@ export default function BackgroundManagementPage() {
             <h1>背景管理</h1>
             <p>当前背景对所有用户生效，主题仅保留配色与透明度设置。</p>
           </div>
-          <Link className="text-action" href="/admin">
-            用户管理
-          </Link>
         </div>
       </header>
 

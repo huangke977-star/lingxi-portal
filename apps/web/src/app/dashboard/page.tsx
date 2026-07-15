@@ -79,7 +79,7 @@ export default function DashboardPage() {
             <span className="section-label">当前账号</span>
             <strong>{user.username}</strong>
             <p>{user.email}</p>
-            <span className="realm-badge">{user.role.name}</span>
+            <span className="realm-badge">{user.isSuperAdmin ? '超级管理员' : user.role.name}</span>
           </div>
           <div className="identity-list">
             <div>
