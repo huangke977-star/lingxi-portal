@@ -9,7 +9,7 @@ export function hasRoleLevel(user: AuthenticatedUser, minLevel: number): boolean
 }
 
 export function canViewServerEntries(user: AuthenticatedUser): boolean {
-  return hasRoleLevel(user, 90);
+  return isSuperAdmin(user);
 }
 
 export function canManageServerEntries(user: AuthenticatedUser): boolean {

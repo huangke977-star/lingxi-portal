@@ -128,17 +128,30 @@ export default function ContentManagementPage() {
     };
   }, [router]);
 
+  const manageableCategories = useMemo(
+    () =>
+      categories.filter(
+        (category) => category.kind !== "server" || currentUser?.isSuperAdmin,
+      ),
+    [categories, currentUser],
+  );
   const filteredCategories = useMemo(
     () =>
       kindFilter === "all"
-        ? categories
-        : categories.filter((category) => category.kind === kindFilter),
-    [categories, kindFilter],
+        ? manageableCategories
+        : manageableCategories.filter(
+            (category) => category.kind === kindFilter,
+          ),
+    [kindFilter, manageableCategories],
   );
   const selectedCategory =
     filteredCategories.find((category) => category.id === selectedCategoryId) ??
     filteredCategories[0] ??
     null;
+  const canManageServerEntries = currentUser?.isSuperAdmin ?? false;
+  const availableKinds = (
+    Object.entries(KIND_LABEL) as Array<[PortalCategoryKind, string]>
+  ).filter(([kind]) => kind !== "server" || canManageServerEntries);
 
   async function refreshContent(token = accessToken) {
     if (!token) return;
@@ -176,7 +189,8 @@ export default function ContentManagementPage() {
   }
 
   function openCreateEntry() {
-    const category = selectedCategory ?? filteredCategories[0] ?? categories[0];
+    const category =
+      selectedCategory ?? filteredCategories[0] ?? manageableCategories[0];
     if (!category) {
       setError("请先创建一个分类。");
       return;
@@ -239,7 +253,7 @@ export default function ContentManagementPage() {
   async function handleEntrySubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!accessToken || !entryDialog) return;
-    const category = categories.find(
+    const category = manageableCategories.find(
       (item) => item.id === entryDialog.draft.categoryId,
     );
     if (!category) {
@@ -356,12 +370,12 @@ export default function ContentManagementPage() {
     );
   }
 
-  if (!currentUser.isSuperAdmin) {
+  if (!canAccessContentManagement(currentUser)) {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
         <h1>无权访问</h1>
-        <p>内容和服务器入口仅超级管理员可以管理。</p>
+        <p>该页面仅管理员和超级管理员可以访问。</p>
       </section>
     );
   }
@@ -373,7 +387,11 @@ export default function ContentManagementPage() {
         <div className="title-row">
           <div>
             <h1>内容管理</h1>
-            <p>维护导航、工具和仅你可见的服务器入口。</p>
+            <p>
+              {canManageServerEntries
+                ? "维护导航、工具和仅你可见的服务器入口。"
+                : "维护导航、工具和后续自定义页面。"}
+            </p>
           </div>
           <div className="portal-admin-header-actions">
             <button
@@ -397,18 +415,20 @@ export default function ContentManagementPage() {
       </header>
 
       <div aria-label="内容类型" className="portal-kind-tabs" role="tablist">
-        {(["all", ...Object.keys(KIND_LABEL)] as KindFilter[]).map((kind) => (
-          <button
-            aria-selected={kindFilter === kind}
-            className={kindFilter === kind ? "active" : undefined}
-            key={kind}
-            onClick={() => setKindFilter(kind)}
-            role="tab"
-            type="button"
-          >
-            {kind === "all" ? "全部" : KIND_LABEL[kind]}
-          </button>
-        ))}
+        {(["all", ...availableKinds.map(([kind]) => kind)] as KindFilter[]).map(
+          (kind) => (
+            <button
+              aria-selected={kindFilter === kind}
+              className={kindFilter === kind ? "active" : undefined}
+              key={kind}
+              onClick={() => setKindFilter(kind)}
+              role="tab"
+              type="button"
+            >
+              {kind === "all" ? "全部" : KIND_LABEL[kind]}
+            </button>
+          ),
+        )}
       </div>
 
       <div className="portal-admin-layout">
@@ -536,6 +556,7 @@ export default function ContentManagementPage() {
         <CategoryDialog
           dialog={categoryDialog}
           isSaving={isSaving}
+          kinds={availableKinds}
           onChange={(draft) => setCategoryDialog({ ...categoryDialog, draft })}
           onClose={() => setCategoryDialog(null)}
           onSubmit={handleCategorySubmit}
@@ -544,7 +565,7 @@ export default function ContentManagementPage() {
 
       {entryDialog ? (
         <EntryDialog
-          categories={categories}
+          categories={manageableCategories}
           dialog={entryDialog}
           isSaving={isSaving}
           onChange={(draft) => setEntryDialog({ ...entryDialog, draft })}
@@ -560,12 +581,14 @@ export default function ContentManagementPage() {
 function CategoryDialog({
   dialog,
   isSaving,
+  kinds,
   onChange,
   onClose,
   onSubmit,
 }: {
   dialog: CategoryDialogState;
   isSaving: boolean;
+  kinds: Array<[PortalCategoryKind, string]>;
   onChange: (draft: PortalCategoryInput) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -597,7 +620,7 @@ function CategoryDialog({
               }
               value={dialog.draft.kind}
             >
-              {Object.entries(KIND_LABEL).map(([kind, label]) => (
+              {kinds.map(([kind, label]) => (
                 <option key={kind} value={kind}>
                   {label}
                 </option>
@@ -925,4 +948,8 @@ function emptyEntryDraft(category: PortalCategory): PortalEntryInput {
     status: "active",
     roleCodes: [],
   };
+}
+
+function canAccessContentManagement(user: AuthUser): boolean {
+  return user.isSuperAdmin || user.role.level >= 90;
 }

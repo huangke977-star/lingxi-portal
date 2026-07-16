@@ -2,7 +2,7 @@
 
 ## Goal
 
-Move navigation links, tools, and server entries from frontend constants into MySQL so the super administrator can maintain portal content while the backend enforces authentication and role visibility.
+Move navigation links, tools, and server entries from frontend constants into MySQL so administrators can maintain ordinary portal content while the backend enforces authentication and role visibility.
 
 ## Permission Rules
 
@@ -10,7 +10,8 @@ Move navigation links, tools, and server entries from frontend constants into My
 - `AUTHENTICATED`: visible to every signed-in user.
 - `ROLE_RESTRICTED`: visible only to assigned roles; the super administrator always bypasses this restriction.
 - `SERVER` categories are a hard exception: only accounts with `isSuperAdmin=true` may read or manage them. The administrator role cannot read them and cannot bypass this rule by changing visibility settings.
-- Only the super administrator may create, update, or delete categories and entries.
+- Administrators and the super administrator may manage `NAVIGATION`, `TOOL`, and `CUSTOM_PAGE` categories.
+- Server categories are omitted from administrator responses, and direct administrator requests to server management endpoints return `403`.
 
 ## Data Model
 
@@ -24,7 +25,7 @@ Category kinds are `NAVIGATION`, `TOOL`, `SERVER`, and the reserved `CUSTOM_PAGE
 
 - The public endpoint returns only active public entries and never returns server entries.
 - The authenticated endpoint filters entries for the current user; server entries are returned only to the super administrator.
-- Management endpoints return complete records and provide category and entry CRUD.
+- Management endpoints filter records for the actor and provide CRUD for content the actor may manage.
 - Deleting a category that still contains entries returns a conflict instead of cascading content deletion.
 
 ## Frontend
@@ -32,9 +33,8 @@ Category kinds are `NAVIGATION`, `TOOL`, `SERVER`, and the reserved `CUSTOM_PAGE
 - `/nav` loads `NAVIGATION` categories dynamically.
 - `/tools` loads `TOOL` categories and adds `SERVER` categories only for the super administrator.
 - `/admin/content` manages categories, entries, status, ordering, visibility, and role allowlists.
-- The super administrator account menu includes a Content Management entry.
+- Both administrator and super administrator account menus include Content Management; the administrator UI omits the server kind.
 
 ## Migration
 
 The migration seeds the existing three public links, two authenticated tool placeholders, and one server-entry placeholder so deployment does not leave the portal empty.
-

@@ -49,9 +49,9 @@ describe('permission helpers', () => {
     expect(hasRoleLevel(user(10), 30)).toBe(false);
   });
 
-  it('allows administrator level users to view server entries', () => {
-    expect(canViewServerEntries(user(90))).toBe(true);
-    expect(canViewServerEntries(user(80))).toBe(false);
+  it('allows only the super admin to view server entries', () => {
+    expect(canViewServerEntries(user(90))).toBe(false);
+    expect(canViewServerEntries(user(10, true))).toBe(true);
   });
 
   it('allows only super admin to manage server entries', () => {

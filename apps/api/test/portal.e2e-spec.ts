@@ -510,13 +510,68 @@ describe("portal content management (e2e)", () => {
     expect(response.body.categories[0].entries[0].title).toBe("内部面板");
   });
 
-  it("allows only the super administrator to manage content", async () => {
+  it("allows administrators to manage non-server content only", async () => {
     const administratorToken = await tokenFor(2);
-    await request(app.getHttpServer())
+    const managementResponse = await request(app.getHttpServer())
       .get("/portal/admin")
       .set("Authorization", `Bearer ${administratorToken}`)
-      .expect(403);
+      .expect(200);
+    expect(
+      managementResponse.body.categories.some(
+        (category: { kind: string }) => category.kind === "server",
+      ),
+    ).toBe(false);
 
+    const categoryResponse = await request(app.getHttpServer())
+      .post("/portal/admin/categories")
+      .set("Authorization", `Bearer ${administratorToken}`)
+      .send({
+        kind: "tool",
+        name: "管理员工具",
+        description: "可维护内容",
+        sortOrder: 40,
+        status: "active",
+      })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post("/portal/admin/entries")
+      .set("Authorization", `Bearer ${administratorToken}`)
+      .send({
+        categoryId: categoryResponse.body.id,
+        title: "普通工具",
+        description: "",
+        url: null,
+        iconPath: null,
+        openInNewTab: false,
+        visibility: "authenticated",
+        sortOrder: 10,
+        status: "active",
+        roleCodes: [],
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post("/portal/admin/categories")
+      .set("Authorization", `Bearer ${administratorToken}`)
+      .send({ kind: "server", name: "越权分类" })
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch("/portal/admin/categories/3")
+      .set("Authorization", `Bearer ${administratorToken}`)
+      .send({ name: "越权修改" })
+      .expect(403);
+    await request(app.getHttpServer())
+      .post("/portal/admin/entries")
+      .set("Authorization", `Bearer ${administratorToken}`)
+      .send({ categoryId: 3, title: "越权入口" })
+      .expect(403);
+    await request(app.getHttpServer())
+      .delete("/portal/admin/entries/4")
+      .set("Authorization", `Bearer ${administratorToken}`)
+      .expect(403);
+  });
+
+  it("allows the super administrator to manage server content", async () => {
     const superToken = await tokenFor(1);
     const categoryResponse = await request(app.getHttpServer())
       .post("/portal/admin/categories")

@@ -297,15 +297,17 @@ export function TopNav() {
                     个人中心
                   </Link>
                   {user.isSuperAdmin || user.role.level >= 90 ? (
-                    <Link href="/admin" onClick={closeAccountMenu}>
-                      用户管理
-                    </Link>
-                  ) : null}
-                  {user.isSuperAdmin ? (
                     <>
+                      <Link href="/admin" onClick={closeAccountMenu}>
+                        用户管理
+                      </Link>
                       <Link href="/admin/content" onClick={closeAccountMenu}>
                         内容管理
                       </Link>
+                    </>
+                  ) : null}
+                  {user.isSuperAdmin ? (
+                    <>
                       <Link
                         href="/admin/backgrounds"
                         onClick={closeAccountMenu}

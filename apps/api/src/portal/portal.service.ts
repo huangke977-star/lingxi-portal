@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -72,23 +73,24 @@ export class PortalService {
     return this.listVisible(query, user);
   }
 
-  async listAdmin(): Promise<PortalContentResponse> {
+  async listAdmin(actor: AuthenticatedUser): Promise<PortalContentResponse> {
     const categories = await this.prisma.portalCategory.findMany({
       orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
       select: this.categorySelect(),
     });
 
     return {
-      categories: categories.map((category) =>
-        this.toCategoryResponse(category),
-      ),
+      categories: categories
+        .filter((category) => category.kind !== "server" || actor.isSuperAdmin)
+        .map((category) => this.toCategoryResponse(category)),
     };
   }
 
   async createCategory(
     dto: CreatePortalCategoryDto,
-    actorId: number,
+    actor: AuthenticatedUser,
   ): Promise<PortalCategoryResponse> {
+    this.assertCanManageKind(actor, dto.kind);
     const category = await this.prisma.portalCategory.create({
       data: {
         kind: dto.kind,
@@ -97,8 +99,8 @@ export class PortalService {
         description: dto.description,
         sortOrder: dto.sortOrder,
         status: dto.status,
-        createdById: actorId,
-        updatedById: actorId,
+        createdById: actor.id,
+        updatedById: actor.id,
       },
       select: this.categorySelect(),
     });
@@ -109,10 +111,12 @@ export class PortalService {
   async updateCategory(
     id: number,
     dto: UpdatePortalCategoryDto,
-    actorId: number,
+    actor: AuthenticatedUser,
   ): Promise<PortalCategoryResponse> {
     const existing = await this.getCategoryOrThrow(id);
     const targetKind = dto.kind ?? existing.kind;
+    this.assertCanManageKind(actor, existing.kind);
+    this.assertCanManageKind(actor, targetKind);
     const category = await this.prisma.$transaction(async (transaction) => {
       if (targetKind === "server") {
         const entryIds = await transaction.portalEntry.findMany({
@@ -122,7 +126,7 @@ export class PortalService {
         if (entryIds.length > 0) {
           await transaction.portalEntry.updateMany({
             where: { id: { in: entryIds.map((entry) => entry.id) } },
-            data: { visibility: "authenticated", updatedById: actorId },
+            data: { visibility: "authenticated", updatedById: actor.id },
           });
           await transaction.portalEntryRole.deleteMany({
             where: { entryId: { in: entryIds.map((entry) => entry.id) } },
@@ -138,7 +142,7 @@ export class PortalService {
           description: dto.description ?? existing.description,
           sortOrder: dto.sortOrder ?? existing.sortOrder,
           status: dto.status ?? existing.status,
-          updatedById: actorId,
+          updatedById: actor.id,
         },
         select: this.categorySelect(),
       });
@@ -147,8 +151,9 @@ export class PortalService {
     return this.toCategoryResponse(category);
   }
 
-  async deleteCategory(id: number): Promise<void> {
-    await this.getCategoryOrThrow(id);
+  async deleteCategory(id: number, actor: AuthenticatedUser): Promise<void> {
+    const category = await this.getCategoryOrThrow(id);
+    this.assertCanManageKind(actor, category.kind);
     const entryCount = await this.prisma.portalEntry.count({
       where: { categoryId: id },
     });
@@ -161,9 +166,10 @@ export class PortalService {
 
   async createEntry(
     dto: CreatePortalEntryDto,
-    actorId: number,
+    actor: AuthenticatedUser,
   ): Promise<PortalEntryResponse> {
     const category = await this.getCategoryOrThrow(dto.categoryId);
+    this.assertCanManageKind(actor, category.kind);
     const visibility = this.normalizeVisibility(category.kind, dto.visibility);
     const roleCodes = category.kind === "server" ? [] : (dto.roleCodes ?? []);
     const roles = await this.resolveRoles(visibility, roleCodes);
@@ -179,8 +185,8 @@ export class PortalService {
         visibility,
         sortOrder: dto.sortOrder,
         status: dto.status,
-        createdById: actorId,
-        updatedById: actorId,
+        createdById: actor.id,
+        updatedById: actor.id,
         allowedRoles: {
           create: roles.map((role) => ({ roleId: role.id })),
         },
@@ -194,12 +200,15 @@ export class PortalService {
   async updateEntry(
     id: number,
     dto: UpdatePortalEntryDto,
-    actorId: number,
+    actor: AuthenticatedUser,
   ): Promise<PortalEntryResponse> {
     const existing = await this.getEntryOrThrow(id);
+    const existingCategory = await this.getCategoryOrThrow(existing.categoryId);
     const category = await this.getCategoryOrThrow(
       dto.categoryId ?? existing.categoryId,
     );
+    this.assertCanManageKind(actor, existingCategory.kind);
+    this.assertCanManageKind(actor, category.kind);
     const visibility = this.normalizeVisibility(
       category.kind,
       dto.visibility ?? existing.visibility,
@@ -223,7 +232,7 @@ export class PortalService {
         visibility,
         sortOrder: dto.sortOrder ?? existing.sortOrder,
         status: dto.status ?? existing.status,
-        updatedById: actorId,
+        updatedById: actor.id,
         allowedRoles: {
           deleteMany: {},
           create: roles.map((role) => ({ roleId: role.id })),
@@ -235,8 +244,10 @@ export class PortalService {
     return this.toEntryResponse(entry);
   }
 
-  async deleteEntry(id: number): Promise<void> {
-    await this.getEntryOrThrow(id);
+  async deleteEntry(id: number, actor: AuthenticatedUser): Promise<void> {
+    const entry = await this.getEntryOrThrow(id);
+    const category = await this.getCategoryOrThrow(entry.categoryId);
+    this.assertCanManageKind(actor, category.kind);
     await this.prisma.portalEntry.delete({ where: { id } });
   }
 
@@ -292,6 +303,17 @@ export class PortalService {
     visibility: PortalVisibility,
   ): PortalVisibility {
     return categoryKind === "server" ? "authenticated" : visibility;
+  }
+
+  private assertCanManageKind(
+    actor: AuthenticatedUser,
+    kind: PortalCategoryKind,
+  ): void {
+    if (kind === "server" && !actor.isSuperAdmin) {
+      throw new ForbiddenException(
+        "Only the super administrator may access server entries.",
+      );
+    }
   }
 
   private async resolveRoles(
