@@ -13,10 +13,7 @@ import {
   readAccessToken,
   readRefreshToken,
 } from "@/lib/auth-storage";
-import {
-  getAvatarFallbackText,
-  getUserDisplayName,
-} from "@/lib/user-display";
+import { getAvatarFallbackText, getUserDisplayName } from "@/lib/user-display";
 
 const navItems = [
   { href: "/", label: "首页" },
@@ -305,9 +302,17 @@ export function TopNav() {
                     </Link>
                   ) : null}
                   {user.isSuperAdmin ? (
-                    <Link href="/admin/backgrounds" onClick={closeAccountMenu}>
-                      背景管理
-                    </Link>
+                    <>
+                      <Link
+                        href="/admin/backgrounds"
+                        onClick={closeAccountMenu}
+                      >
+                        背景管理
+                      </Link>
+                      <Link href="/admin/cache" onClick={closeAccountMenu}>
+                        缓存管理
+                      </Link>
+                    </>
                   ) : null}
                   <button
                     disabled={isLoggingOut}
