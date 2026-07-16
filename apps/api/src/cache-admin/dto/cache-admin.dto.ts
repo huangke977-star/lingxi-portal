@@ -14,6 +14,7 @@ import {
   MinLength,
 } from "class-validator";
 import { RedisKeyType } from "../../redis/redis.service";
+import { CacheKeyCategory } from "../cache-admin.types";
 
 const CACHE_KEY_TYPES: Array<Exclude<RedisKeyType, "none">> = [
   "string",
@@ -24,17 +25,24 @@ const CACHE_KEY_TYPES: Array<Exclude<RedisKeyType, "none">> = [
   "stream",
 ];
 
+const CACHE_KEY_CATEGORIES: CacheKeyCategory[] = [
+  "refresh-session",
+  "user-sessions",
+  "login-failure",
+  "business-cache",
+];
+
 export class ListCacheKeysQueryDto {
   @Transform(({ value }) => (value === undefined ? "0" : String(value)))
   @IsString()
   @Matches(/^\d+$/)
   cursor = "0";
 
-  @Transform(({ value }) => (value === undefined ? 50 : Number(value)))
+  @Transform(({ value }) => (value === undefined ? 10 : Number(value)))
   @IsInt()
   @Min(10)
   @Max(100)
-  count = 50;
+  count = 10;
 
   @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
   @IsOptional()
@@ -45,6 +53,10 @@ export class ListCacheKeysQueryDto {
   @IsOptional()
   @IsIn(CACHE_KEY_TYPES)
   type?: Exclude<RedisKeyType, "none">;
+
+  @IsOptional()
+  @IsIn(CACHE_KEY_CATEGORIES)
+  category?: CacheKeyCategory;
 }
 
 export class InspectCacheKeyDto {
@@ -65,6 +77,14 @@ export class DeleteCacheKeysDto {
 }
 
 export class UpdateCacheKeyTtlDto extends InspectCacheKeyDto {
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(60)
+  @Max(31_536_000)
+  ttlSeconds!: number;
+}
+
+export class UpdateCacheKeysTtlDto extends DeleteCacheKeysDto {
   @Transform(({ value }) => Number(value))
   @IsInt()
   @Min(60)

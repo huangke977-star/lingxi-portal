@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Cropper, { type Area } from "react-easy-crop";
+import { AppToast } from "@/components/app-toast";
 import { RoleSymbol } from "@/components/role-symbol";
 import {
   AuthAppearance,
@@ -134,15 +135,6 @@ export default function ProfilePage() {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    if (!notice) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => setNotice(""), 2600);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
 
   useEffect(() => {
     if (!isLevelInfoOpen) {
@@ -518,8 +510,6 @@ export default function ProfilePage() {
           <span className="status">正在读取身份</span>
         </div>
       ) : null}
-      {error ? <p className="message error">{error}</p> : null}
-
       {user ? (
         <div className="profile-settings-grid">
           <section className="profile-panel account-card">
@@ -849,14 +839,16 @@ export default function ProfilePage() {
           )
         : null}
 
-      {toastMessage && typeof document !== "undefined"
-        ? createPortal(
-            <p aria-live="polite" className="profile-toast" role="status">
-              {toastMessage}
-            </p>,
-            document.body,
-          )
-        : null}
+      <AppToast
+        duration={error ? 4200 : 2600}
+        message={error || toastMessage}
+        onDismiss={() => {
+          setError("");
+          setNotice("");
+        }}
+        persistent={!error && (isSavingAppearance || isSavingProfile)}
+        tone={error ? "error" : toastMessage === notice ? "success" : "info"}
+      />
 
       {avatarCropSource && typeof document !== "undefined"
         ? createPortal(

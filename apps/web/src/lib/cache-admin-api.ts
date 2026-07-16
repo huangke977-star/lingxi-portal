@@ -68,7 +68,13 @@ export async function getCacheOverview(
 
 export async function listCacheKeys(
   accessToken: string,
-  query: { cursor: string; count: number; search: string; type: string },
+  query: {
+    cursor: string;
+    count: number;
+    search: string;
+    type: string;
+    category: string;
+  },
 ): Promise<CacheKeyPage> {
   const searchParams = new URLSearchParams({
     cursor: query.cursor,
@@ -79,6 +85,9 @@ export async function listCacheKeys(
   }
   if (query.type) {
     searchParams.set("type", query.type);
+  }
+  if (query.category) {
+    searchParams.set("category", query.category);
   }
 
   return requestJson<CacheKeyPage>(
@@ -121,5 +130,17 @@ export async function updateCacheKeyTtl(
     method: "PATCH",
     headers: authorizationHeader(accessToken),
     body: JSON.stringify({ key, ttlSeconds }),
+  });
+}
+
+export async function updateCacheKeysTtl(
+  accessToken: string,
+  keys: string[],
+  ttlSeconds: number,
+): Promise<CacheKeySummary[]> {
+  return requestJson<CacheKeySummary[]>("/admin/cache/ttl/bulk", {
+    method: "PATCH",
+    headers: authorizationHeader(accessToken),
+    body: JSON.stringify({ keys, ttlSeconds }),
   });
 }

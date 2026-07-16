@@ -23,6 +23,7 @@ import {
   InspectCacheKeyDto,
   ListCacheKeysQueryDto,
   UpdateCacheKeyTtlDto,
+  UpdateCacheKeysTtlDto,
 } from "./dto/cache-admin.dto";
 
 @Controller("admin/cache")
@@ -57,5 +58,12 @@ export class CacheAdminController {
   @Patch("ttl")
   updateTtl(@Body() dto: UpdateCacheKeyTtlDto): Promise<CacheKeySummary> {
     return this.cacheAdminService.updateTtl(dto);
+  }
+
+  @Patch("ttl/bulk")
+  updateTtls(
+    @Body() dto: UpdateCacheKeysTtlDto,
+  ): Promise<CacheKeySummary[]> {
+    return this.cacheAdminService.updateTtls(dto);
   }
 }

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useRef, useState } from 'react';
+import { AppToast } from '@/components/app-toast';
 import { login } from '@/lib/auth-api';
 import { saveAuthTokens } from '@/lib/auth-storage';
 
@@ -89,7 +90,6 @@ export default function LoginPage() {
               value={password}
             />
           </label>
-          {error ? <p className="message error">{error}</p> : null}
           <div className="actions">
             <button className="button" disabled={isSubmitting} type="submit">
               {isSubmitting ? '登录中' : '登录'}
@@ -100,6 +100,7 @@ export default function LoginPage() {
           </div>
         </form>
       </div>
+      <AppToast message={error} onDismiss={() => setError('')} tone="error" />
     </section>
   );
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
+import { AppToast } from "@/components/app-toast";
 import {
   listAdminUsers,
   listRoles,
@@ -442,8 +443,15 @@ export default function AdminPage() {
           </select>
         </label>
       </div>
-      {error ? <p className="message error">{error}</p> : null}
-      {notice ? <p className="message success">{notice}</p> : null}
+      <AppToast
+        duration={error ? 4200 : 2600}
+        message={error || notice}
+        onDismiss={() => {
+          setError("");
+          setNotice("");
+        }}
+        tone={error ? "error" : "success"}
+      />
       <div className="admin-table-wrap">
         <table className="admin-table">
           <thead>

@@ -10,6 +10,7 @@ import {
   InspectCacheKeyDto,
   ListCacheKeysQueryDto,
   UpdateCacheKeyTtlDto,
+  UpdateCacheKeysTtlDto,
 } from "./dto/cache-admin.dto";
 import {
   CacheDeleteResponse,
@@ -22,6 +23,7 @@ import {
 
 const MAX_COLLECTION_ITEMS = 200;
 const MAX_STRING_CHARACTERS = 65_536;
+const MAX_EMPTY_SCAN_ATTEMPTS = 25;
 const SENSITIVE_FIELD_PATTERN =
   /(password|passwd|secret|token|authorization|cookie|api[-_]?key|private[-_]?key|credential)/i;
 
@@ -74,24 +76,40 @@ export class CacheAdminService {
   }
 
   async listKeys(query: ListCacheKeysQueryDto): Promise<CacheKeyPageResponse> {
-    const pattern = query.search
-      ? `*${this.escapeRedisGlob(query.search)}*`
-      : "*";
-    const [nextCursor, keys] = await this.redis.scanKeys(
-      query.cursor,
-      pattern,
-      query.count,
-      query.type,
-    );
-    const metadata = await this.redis.getKeyMetadata(keys);
+    const pattern = this.scanPattern(query);
+    let scanCursor = query.cursor;
+    let nextCursor = query.cursor;
+    let summaries: CacheKeySummary[] = [];
+
+    for (let attempt = 0; attempt < MAX_EMPTY_SCAN_ATTEMPTS; attempt += 1) {
+      const [scannedCursor, keys] = await this.redis.scanKeys(
+        scanCursor,
+        pattern,
+        query.count,
+        query.type,
+      );
+      nextCursor = scannedCursor;
+      const metadata = await this.redis.getKeyMetadata(keys);
+      summaries = metadata
+        .filter((item) => item.type !== "none")
+        .filter(
+          (item) =>
+            !query.category ||
+            this.categoryForKey(item.key) === query.category,
+        )
+        .map((item) => this.toSummary(item));
+
+      if (summaries.length > 0 || nextCursor === "0") {
+        break;
+      }
+      scanCursor = nextCursor;
+    }
 
     return {
       cursor: query.cursor,
       nextCursor,
       done: nextCursor === "0",
-      keys: metadata
-        .filter((item) => item.type !== "none")
-        .map((item) => this.toSummary(item)),
+      keys: summaries,
     };
   }
 
@@ -176,6 +194,29 @@ export class CacheAdminService {
     }
 
     return this.toSummary(await this.requireKey(dto.key));
+  }
+
+  async updateTtls(
+    dto: UpdateCacheKeysTtlDto,
+  ): Promise<CacheKeySummary[]> {
+    const keys = [...new Set(dto.keys)];
+    if (keys.some((key) => this.categoryForKey(key) !== "business-cache")) {
+      throw new BadRequestException(
+        "Authentication cache TTL cannot be changed manually.",
+      );
+    }
+
+    await Promise.all(keys.map((key) => this.requireKey(key)));
+    const updated = await Promise.all(
+      keys.map((key) => this.redis.expire(key, dto.ttlSeconds)),
+    );
+    if (updated.some((result) => result !== 1)) {
+      throw new NotFoundException("One or more cache keys were not found.");
+    }
+
+    return (await this.redis.getKeyMetadata(keys)).map((item) =>
+      this.toSummary(item),
+    );
   }
 
   private async inspectString(
@@ -490,5 +531,21 @@ export class CacheAdminService {
         "\\*?[]".includes(character) ? `\\${character}` : character,
       )
       .join("");
+  }
+
+  private scanPattern(query: ListCacheKeysQueryDto): string {
+    if (query.search) {
+      return `*${this.escapeRedisGlob(query.search)}*`;
+    }
+    switch (query.category) {
+      case "refresh-session":
+        return "refresh_token:*";
+      case "user-sessions":
+        return "user_sessions:*";
+      case "login-failure":
+        return "login_fail:*";
+      default:
+        return "*";
+    }
   }
 }

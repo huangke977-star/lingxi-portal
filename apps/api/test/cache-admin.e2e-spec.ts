@@ -262,6 +262,38 @@ describe("cache administration (e2e)", () => {
     ]);
   });
 
+  it("defaults to ten keys and filters by cache category", async () => {
+    const token = await tokenFor(1);
+    state.redis.scanKeys
+      .mockResolvedValueOnce(["7", []])
+      .mockResolvedValueOnce(["0", ["user_sessions:2"]]);
+    const keys = await request(app.getHttpServer())
+      .get("/admin/cache/keys?category=user-sessions")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(keys.body.keys).toEqual([
+      expect.objectContaining({
+        key: "user_sessions:2",
+        category: "user-sessions",
+      }),
+    ]);
+    expect(state.redis.scanKeys).toHaveBeenNthCalledWith(
+      1,
+      "0",
+      "user_sessions:*",
+      10,
+      undefined,
+    );
+    expect(state.redis.scanKeys).toHaveBeenNthCalledWith(
+      2,
+      "7",
+      "user_sessions:*",
+      10,
+      undefined,
+    );
+  });
+
   it("redacts sensitive JSON fields before returning key values", async () => {
     const token = await tokenFor(1);
     const business = await request(app.getHttpServer())
@@ -334,12 +366,43 @@ describe("cache administration (e2e)", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ key: "refresh_token:token-a", ttlSeconds: 600 })
       .expect(400);
+
+    const bulkUpdated = await request(app.getHttpServer())
+      .patch("/admin/cache/ttl/bulk")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        keys: ["business:greeting", "business:api_tokens"],
+        ttlSeconds: 900,
+      })
+      .expect(200);
+    expect(bulkUpdated.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "business:greeting", ttlSeconds: 900 }),
+        expect.objectContaining({
+          key: "business:api_tokens",
+          ttlSeconds: 900,
+        }),
+      ]),
+    );
+
+    await request(app.getHttpServer())
+      .patch("/admin/cache/ttl/bulk")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        keys: ["business:greeting", "refresh_token:token-a"],
+        ttlSeconds: 900,
+      })
+      .expect(400);
   });
 
   it("validates scan limits and bulk delete size", async () => {
     const token = await tokenFor(1);
     await request(app.getHttpServer())
       .get("/admin/cache/keys?count=101")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400);
+    await request(app.getHttpServer())
+      .get("/admin/cache/keys?category=unknown")
       .set("Authorization", `Bearer ${token}`)
       .expect(400);
     await request(app.getHttpServer())

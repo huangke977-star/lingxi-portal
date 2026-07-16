@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { AppToast } from '@/components/app-toast';
 import { AuthUser, getMe, isAuthExpiredError, logout } from '@/lib/auth-api';
 import { clearAuthTokens, readAccessToken, readRefreshToken } from '@/lib/auth-storage';
 import { getUserDisplayName } from '@/lib/user-display';
@@ -73,7 +74,6 @@ export default function DashboardPage() {
       <div className="status-row">
         <span className="status">{isLoading ? '正在读取身份' : user ? '已登录' : '未登录'}</span>
       </div>
-      {error ? <p className="message error">{error}</p> : null}
       {user ? (
         <div className="workspace-grid">
           <div className="profile-panel">
@@ -116,6 +116,7 @@ export default function DashboardPage() {
           </div>
         </div>
       ) : null}
+      <AppToast message={error} onDismiss={() => setError('')} tone="error" />
     </section>
   );
 }

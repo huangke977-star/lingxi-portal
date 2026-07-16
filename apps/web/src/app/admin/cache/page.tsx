@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { AppToast } from "@/components/app-toast";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import {
@@ -17,6 +18,7 @@ import {
   inspectCacheKey,
   listCacheKeys,
   updateCacheKeyTtl,
+  updateCacheKeysTtl,
 } from "@/lib/cache-admin-api";
 
 const KEY_TYPE_LABEL: Record<CacheKeyType, string> = {
@@ -47,10 +49,14 @@ export default function CacheManagementPage() {
   const [searchDraft, setSearchDraft] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
-  const [batchSize, setBatchSize] = useState(50);
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [batchSize, setBatchSize] = useState(10);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [detail, setDetail] = useState<CacheKeyDetail | null>(null);
   const [ttlDraft, setTtlDraft] = useState("3600");
+  const [bulkTtlDraft, setBulkTtlDraft] = useState("3600");
+  const [isBulkTtlOpen, setIsBulkTtlOpen] = useState(false);
+  const [isBulkTtlUpdating, setIsBulkTtlUpdating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
   const [isKeysLoading, setIsKeysLoading] = useState(false);
@@ -136,6 +142,7 @@ export default function CacheManagementPage() {
           count: batchSize,
           search: searchQuery,
           type: typeFilter,
+          category: categoryFilter,
         });
         if (isMounted) {
           setKeyPage(nextPage);
@@ -166,6 +173,7 @@ export default function CacheManagementPage() {
   }, [
     accessToken,
     batchSize,
+    categoryFilter,
     currentUser,
     cursor,
     reloadVersion,
@@ -199,6 +207,22 @@ export default function CacheManagementPage() {
       keys.length > 0 && keys.every((item) => selectedKeys.includes(item.key))
     );
   }, [keyPage, selectedKeys]);
+
+  const selectedSummaries = useMemo(
+    () =>
+      (keyPage?.keys ?? []).filter((item) =>
+        selectedKeys.includes(item.key),
+      ),
+    [keyPage, selectedKeys],
+  );
+
+  const ttlEditableSelectedKeys = useMemo(
+    () =>
+      selectedSummaries
+        .filter((item) => item.canUpdateTtl)
+        .map((item) => item.key),
+    [selectedSummaries],
+  );
 
   async function refreshOverview() {
     if (!accessToken) {
@@ -355,6 +379,79 @@ export default function CacheManagementPage() {
     }
   }
 
+  function openBulkTtl() {
+    if (ttlEditableSelectedKeys.length === 0) {
+      return;
+    }
+    const firstEditable = selectedSummaries.find((item) => item.canUpdateTtl);
+    setBulkTtlDraft(
+      firstEditable && firstEditable.ttlSeconds > 0
+        ? String(firstEditable.ttlSeconds)
+        : "3600",
+    );
+    setIsBulkTtlOpen(true);
+  }
+
+  async function handleBulkTtlSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!accessToken || ttlEditableSelectedKeys.length === 0) {
+      return;
+    }
+    const ttlSeconds = Number(bulkTtlDraft);
+    if (
+      !Number.isInteger(ttlSeconds) ||
+      ttlSeconds < 60 ||
+      ttlSeconds > 31_536_000
+    ) {
+      setError("TTL 必须是 60 到 31536000 之间的整数秒。");
+      return;
+    }
+
+    setIsBulkTtlUpdating(true);
+    setError("");
+    setNotice("");
+    try {
+      const updated = await updateCacheKeysTtl(
+        accessToken,
+        ttlEditableSelectedKeys,
+        ttlSeconds,
+      );
+      const updatedByKey = new Map(updated.map((item) => [item.key, item]));
+      setKeyPage((current) =>
+        current
+          ? {
+              ...current,
+              keys: current.keys.map(
+                (item) => updatedByKey.get(item.key) ?? item,
+              ),
+            }
+          : current,
+      );
+      setDetail((current) =>
+        current && updatedByKey.has(current.key)
+          ? {
+              ...current,
+              ttlSeconds: updatedByKey.get(current.key)?.ttlSeconds ??
+                current.ttlSeconds,
+            }
+          : current,
+      );
+      setIsBulkTtlOpen(false);
+      setNotice(`已更新 ${updated.length} 个缓存键的 TTL。`);
+    } catch (ttlError) {
+      if (isAuthExpiredError(ttlError)) {
+        clearAuthTokens();
+        router.replace("/");
+        return;
+      }
+      setError(
+        ttlError instanceof Error ? ttlError.message : "批量修改 TTL 失败。",
+      );
+    } finally {
+      setIsBulkTtlUpdating(false);
+    }
+  }
+
   async function copyDetailValue() {
     if (!detail) {
       return;
@@ -440,10 +537,24 @@ export default function CacheManagementPage() {
         </div>
       </header>
 
-      {error ? <p className="message error">{error}</p> : null}
-      {notice ? <p className="message success">{notice}</p> : null}
+      <AppToast
+        duration={error ? 4200 : 2600}
+        message={error || notice}
+        onDismiss={() => {
+          setError("");
+          setNotice("");
+        }}
+        tone={error ? "error" : "success"}
+      />
 
       {overview ? <CacheOverviewGrid overview={overview} /> : null}
+
+      <div className="cache-table-heading">
+        <div>
+          <span className="section-label">Cache keys</span>
+          <h2>缓存键</h2>
+        </div>
+      </div>
 
       <div className="cache-toolbar">
         <label className="cache-search-field">
@@ -455,6 +566,24 @@ export default function CacheManagementPage() {
             type="search"
             value={searchDraft}
           />
+        </label>
+        <label>
+          <span>缓存分类</span>
+          <select
+            onChange={(event) => {
+              setCursor("0");
+              setCursorHistory([]);
+              setCategoryFilter(event.target.value);
+            }}
+            value={categoryFilter}
+          >
+            <option value="">全部分类</option>
+            {Object.entries(CATEGORY_LABEL).map(([category, label]) => (
+              <option key={category} value={category}>
+                {label}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           <span>数据类型</span>
@@ -477,7 +606,7 @@ export default function CacheManagementPage() {
           </select>
         </label>
         <label>
-          <span>每批数量</span>
+          <span>每页数量</span>
           <select
             onChange={(event) => {
               setCursor("0");
@@ -486,6 +615,7 @@ export default function CacheManagementPage() {
             }}
             value={batchSize}
           >
+            <option value={10}>10 条</option>
             <option value={20}>20 条</option>
             <option value={50}>50 条</option>
             <option value={100}>100 条</option>
@@ -493,22 +623,37 @@ export default function CacheManagementPage() {
         </label>
       </div>
 
-      <div className="cache-table-heading">
-        <div>
-          <span className="section-label">Cache keys</span>
-          <h2>缓存键</h2>
+      {selectedKeys.length ? (
+        <div className="cache-selection-bar">
+          <span>
+            已选择 <strong>{selectedKeys.length}</strong> 项，其中{" "}
+            <strong>{ttlEditableSelectedKeys.length}</strong> 项可修改 TTL
+          </span>
+          <div className="cache-selection-actions">
+            <button
+              className="text-action"
+              disabled={ttlEditableSelectedKeys.length === 0}
+              onClick={openBulkTtl}
+              title={
+                ttlEditableSelectedKeys.length
+                  ? "批量修改已选业务缓存的 TTL"
+                  : "登录相关缓存不允许修改 TTL"
+              }
+              type="button"
+            >
+              修改 TTL（{ttlEditableSelectedKeys.length} 项）
+            </button>
+           <button
+             className="cache-danger-action"
+             disabled={isDeleting}
+             onClick={() => void handleDelete(selectedKeys)}
+             type="button"
+           >
+              删除/清理选中项
+           </button>
+          </div>
         </div>
-        {selectedKeys.length ? (
-          <button
-            className="cache-danger-action"
-            disabled={isDeleting}
-            onClick={() => void handleDelete(selectedKeys)}
-            type="button"
-          >
-            处理选中的 {selectedKeys.length} 项
-          </button>
-        ) : null}
-      </div>
+      ) : null}
 
       <div className="admin-table-wrap cache-table-wrap">
         <table className="admin-table cache-table">
@@ -607,6 +752,71 @@ export default function CacheManagementPage() {
           </button>
         </div>
       </nav>
+
+      {isBulkTtlOpen ? (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              !isBulkTtlUpdating
+            ) {
+              setIsBulkTtlOpen(false);
+            }
+          }}
+          role="presentation"
+        >
+          <section
+            aria-labelledby="bulk-ttl-title"
+            aria-modal="true"
+            className="modal-panel cache-bulk-ttl-panel"
+            role="dialog"
+          >
+            <div className="modal-heading">
+              <span className="section-label">Batch TTL</span>
+              <h2 id="bulk-ttl-title">批量修改 TTL</h2>
+              <p>
+                将同时修改 {ttlEditableSelectedKeys.length}
+                个已选业务缓存，登录相关缓存不会包含在内。
+              </p>
+            </div>
+            <form
+              className="form-stack modal-form"
+              onSubmit={(event) => void handleBulkTtlSubmit(event)}
+            >
+              <label>
+                <span>TTL（秒）</span>
+                <input
+                  inputMode="numeric"
+                  max={31_536_000}
+                  min={60}
+                  onChange={(event) => setBulkTtlDraft(event.target.value)}
+                  required
+                  type="number"
+                  value={bulkTtlDraft}
+                />
+              </label>
+              <div className="actions">
+                <button
+                  className="button"
+                  disabled={isBulkTtlUpdating}
+                  type="submit"
+                >
+                  {isBulkTtlUpdating ? "保存中" : "保存 TTL"}
+                </button>
+                <button
+                  className="button secondary"
+                  disabled={isBulkTtlUpdating}
+                  onClick={() => setIsBulkTtlOpen(false)}
+                  type="button"
+                >
+                  取消
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
 
       {detail ? (
         <div
