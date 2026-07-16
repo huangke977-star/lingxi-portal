@@ -1,4 +1,11 @@
 import type { ThemeId } from "./theme-preferences";
+import {
+  AUTH_STATE_CHANGE_EVENT,
+  clearAuthTokens,
+  readAccessToken,
+  readRefreshToken,
+  saveAuthTokens,
+} from "./auth-storage";
 
 const CONFIGURED_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "auto";
 
@@ -40,6 +47,15 @@ export interface AuthResponse {
   refreshToken: string;
 }
 
+export interface AuthSession {
+  id: string;
+  issuedAt: string;
+  expiresAt: string;
+  ip: string;
+  userAgent: string;
+  current: boolean;
+}
+
 interface ApiErrorBody {
   message?: string | string[];
 }
@@ -57,7 +73,7 @@ export class ApiRequestError extends Error {
 export function isAuthExpiredError(error: unknown): boolean {
   return (
     error instanceof ApiRequestError &&
-    (error.status === 401 || error.status === 403)
+    error.status === 401
   );
 }
 
@@ -101,6 +117,43 @@ export async function logout(refreshToken: string): Promise<void> {
     method: "POST",
     body: JSON.stringify({ refreshToken }),
   });
+}
+
+export async function listMySessions(
+  accessToken: string,
+): Promise<AuthSession[]> {
+  const result = await requestJson<{ sessions: AuthSession[] }>(
+    "/auth/sessions",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return result.sessions;
+}
+
+export async function revokeOtherSessions(
+  accessToken: string,
+): Promise<number> {
+  const result = await requestJson<{ revokedSessions: number }>(
+    "/auth/sessions/revoke-others",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return result.revokedSessions;
+}
+
+export async function revokeAllSessions(accessToken: string): Promise<number> {
+  const result = await requestJson<{ revokedSessions: number }>(
+    "/auth/sessions/revoke-all",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  return result.revokedSessions;
 }
 
 export async function getMe(accessToken: string): Promise<AuthUser> {
@@ -198,10 +251,26 @@ export async function requestJson<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
+  let response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
     ...init,
     headers,
   });
+
+  if (
+    response.status === 401 &&
+    path !== "/auth/refresh" &&
+    headers.has("Authorization") &&
+    readRefreshToken()
+  ) {
+    const session = await refreshStoredSession();
+    if (session) {
+      headers.set("Authorization", `Bearer ${session.accessToken}`);
+      response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
+        ...init,
+        headers,
+      });
+    }
+  }
 
   if (!response.ok) {
     throw new ApiRequestError(
@@ -211,6 +280,171 @@ export async function requestJson<T>(
   }
 
   return response.json() as Promise<T>;
+}
+
+interface StoredSessionTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
+interface RefreshLock {
+  owner: string;
+  expiresAt: number;
+}
+
+const REFRESH_LOCK_KEY = "hlovet_refresh_lock";
+const REFRESH_LOCK_DURATION_MS = 12_000;
+let refreshOwnerId = "";
+let refreshPromise: Promise<StoredSessionTokens | null> | null = null;
+
+export function refreshStoredSession(): Promise<StoredSessionTokens | null> {
+  if (typeof window === "undefined") {
+    return Promise.resolve(null);
+  }
+  if (!refreshPromise) {
+    refreshPromise = performStoredSessionRefresh().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
+async function performStoredSessionRefresh(): Promise<StoredSessionTokens | null> {
+  const initialRefreshToken = readRefreshToken();
+  if (!initialRefreshToken) {
+    return null;
+  }
+
+  const owner = getRefreshOwnerId();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (!tryAcquireRefreshLock(owner)) {
+      const updated = await waitForAnotherTabRefresh(initialRefreshToken);
+      if (updated || !readRefreshToken()) {
+        return updated;
+      }
+      continue;
+    }
+
+    try {
+      const latestRefreshToken = readRefreshToken();
+      if (!latestRefreshToken) {
+        return null;
+      }
+      if (latestRefreshToken !== initialRefreshToken) {
+        return readStoredSessionTokens();
+      }
+
+      const response = await refresh(latestRefreshToken);
+      saveAuthTokens(response);
+      return {
+        accessToken: response.accessToken,
+        refreshToken: response.refreshToken,
+      };
+    } catch (error) {
+      if (
+        error instanceof ApiRequestError &&
+        (error.status === 401 || error.status === 403)
+      ) {
+        clearAuthTokens();
+        throw new ApiRequestError("登录状态已过期，请重新登录。", 401);
+      }
+      throw error;
+    } finally {
+      releaseRefreshLock(owner);
+    }
+  }
+
+  return readStoredSessionTokens();
+}
+
+function readStoredSessionTokens(): StoredSessionTokens | null {
+  const accessToken = readAccessToken();
+  const refreshToken = readRefreshToken();
+  return accessToken && refreshToken ? { accessToken, refreshToken } : null;
+}
+
+function getRefreshOwnerId(): string {
+  if (!refreshOwnerId) {
+    refreshOwnerId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+  return refreshOwnerId;
+}
+
+function tryAcquireRefreshLock(owner: string): boolean {
+  const now = Date.now();
+  const existing = readRefreshLock();
+  if (existing && existing.owner !== owner && existing.expiresAt > now) {
+    return false;
+  }
+
+  const next: RefreshLock = {
+    owner,
+    expiresAt: now + REFRESH_LOCK_DURATION_MS,
+  };
+  window.localStorage.setItem(REFRESH_LOCK_KEY, JSON.stringify(next));
+  const confirmed = readRefreshLock();
+  return confirmed?.owner === owner;
+}
+
+function releaseRefreshLock(owner: string): void {
+  if (readRefreshLock()?.owner === owner) {
+    window.localStorage.removeItem(REFRESH_LOCK_KEY);
+  }
+}
+
+function readRefreshLock(): RefreshLock | null {
+  const value = window.localStorage.getItem(REFRESH_LOCK_KEY);
+  if (!value) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value) as RefreshLock;
+    return typeof parsed.owner === "string" &&
+      typeof parsed.expiresAt === "number"
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function waitForAnotherTabRefresh(
+  previousRefreshToken: string,
+): Promise<StoredSessionTokens | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      const currentRefreshToken = readRefreshToken();
+      if (
+        currentRefreshToken === previousRefreshToken &&
+        Date.now() < (readRefreshLock()?.expiresAt ?? 0)
+      ) {
+        return;
+      }
+      settled = true;
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+      window.removeEventListener("storage", check);
+      window.removeEventListener(AUTH_STATE_CHANGE_EVENT, check);
+      resolve(
+        currentRefreshToken !== previousRefreshToken
+          ? readStoredSessionTokens()
+          : null,
+      );
+    };
+    const check = () => finish();
+    const interval = window.setInterval(finish, 250);
+    const timeout = window.setTimeout(() => {
+      window.localStorage.removeItem(REFRESH_LOCK_KEY);
+      finish();
+    }, REFRESH_LOCK_DURATION_MS + 500);
+    window.addEventListener("storage", check);
+    window.addEventListener(AUTH_STATE_CHANGE_EVENT, check);
+  });
 }
 
 export function getBrowserApiBaseUrl(): string {

@@ -39,6 +39,7 @@ The auth phase needs these local variables in `.env`. Do not commit real secrets
 - `JWT_ACCESS_EXPIRES_IN`
 - `REFRESH_TOKEN_SECRET`
 - `REFRESH_TOKEN_EXPIRES_IN_DAYS`
+- `MAX_REFRESH_SESSIONS_PER_USER`（默认 `10`）
 
 ## 超级管理员初始化 / Super Admin Bootstrap
 
@@ -96,6 +97,16 @@ Users can save account-level appearance settings at `/profile`, including theme,
 超级管理员可以通过头像菜单或 `/admin/cache` 查看 Redis 状态、使用游标搜索缓存键、检查脱敏后的键值，并安全撤销登录会话或清除登录失败计数。管理员角色无权访问。页面不提供任意 Redis 命令、`KEYS *` 或清库功能，Redis 仍只存在于 Docker 内部网络。
 
 Super administrators can use the avatar menu or `/admin/cache` to inspect Redis metrics, browse keys with cursor-based scans, view redacted values, revoke login sessions, and clear login failure counters. Administrator-role users are denied. The page exposes no arbitrary Redis commands, `KEYS *`, or database flush actions, and Redis remains internal to the Docker network.
+
+## 登录续期与设备管理 / Session Renewal And Device Management
+
+登录后的 Access Token 会在到期前自动续期，受保护接口遇到 `401` 时也会刷新并重试一次。普通 `403` 权限错误不会清除登录状态。个人中心的“登录设备”区域可查看当前账号的有效会话，并支持退出其他设备或退出全部设备。每个账号默认最多保留 10 个 Refresh Token 会话，超出时自动撤销较旧会话。
+
+Access tokens renew automatically before expiry, and protected requests retry once after a `401` refresh. Ordinary `403` permission errors do not clear the login state. The Login Sessions panel in `/profile` lists active account sessions and can revoke other devices or every device. Each account keeps at most 10 refresh-token sessions by default; older sessions are revoked automatically.
+
+Authentication cache TTL values are controlled by the access/refresh-token policy and cannot be edited from cache management. This keeps token records and user-session indexes consistent. Revoking a Refresh Token does not retroactively invalidate an already issued Access Token, which can remain valid until its short expiry time.
+
+认证缓存的 TTL 由 Access Token / Refresh Token 策略统一控制，缓存管理页不能手动修改，以保证令牌记录和用户会话索引一致。撤销 Refresh Token 后，已经签发的短期 Access Token 不会被追溯失效，最迟会在自身到期时停止使用。
 
 ## Docker 全栈 / Docker Stack
 
@@ -176,3 +187,5 @@ pnpm build
 - `docs/superpowers/specs/2026-07-13-global-background-management.md`
 - `docs/superpowers/specs/2026-07-14-account-appearance-profile.zh-CN.md`
 - `docs/superpowers/specs/2026-07-14-account-appearance-profile.md`
+- `docs/superpowers/specs/2026-07-16-session-renewal-and-management.zh-CN.md`
+- `docs/superpowers/specs/2026-07-16-session-renewal-and-management.md`

@@ -36,7 +36,22 @@ export interface AuthResponse {
   refreshToken: string;
 }
 
+export interface RefreshSessionContext {
+  ip: string;
+  userAgent: string;
+}
+
+export interface AuthSessionSummary {
+  id: string;
+  issuedAt: string;
+  expiresAt: string;
+  ip: string;
+  userAgent: string;
+  current: boolean;
+}
+
 export interface AccessTokenPayload {
   sub: number;
   username: string;
+  sid?: string;
 }

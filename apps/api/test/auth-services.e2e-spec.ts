@@ -7,6 +7,7 @@ describe('auth support services', () => {
   beforeEach(() => {
     process.env.REFRESH_TOKEN_SECRET = 'test-refresh-token-secret';
     process.env.REFRESH_TOKEN_EXPIRES_IN_DAYS = '30';
+    process.env.MAX_REFRESH_SESSIONS_PER_USER = '10';
   });
 
   it('hashes passwords without returning plaintext', async () => {
@@ -40,14 +41,19 @@ describe('auth support services', () => {
   it('rotates refresh tokens by removing old state', async () => {
     const redisStore = new Map<string, string>();
     const redisSets = new Map<string, Set<string>>();
+    const deleteKey = (key: string) => {
+      const deletedString = redisStore.delete(key);
+      const deletedSet = redisSets.delete(key);
+      return deletedString || deletedSet ? 1 : 0;
+    };
     const redis = {
       set: jest.fn(async (key: string, value: string) => {
         redisStore.set(key, value);
       }),
       get: jest.fn(async (key: string) => redisStore.get(key) ?? null),
-      del: jest.fn(async (key: string) => {
-        redisStore.delete(key);
-        return 1;
+      del: jest.fn(async (key: string) => deleteKey(key)),
+      delMany: jest.fn(async (keys: string[]) => {
+        return keys.reduce((deleted, key) => deleted + deleteKey(key), 0);
       }),
       sadd: jest.fn(async (key: string, value: string) => {
         const set = redisSets.get(key) ?? new Set<string>();
@@ -55,8 +61,11 @@ describe('auth support services', () => {
         redisSets.set(key, set);
       }),
       srem: jest.fn(async (key: string, value: string) => {
-        redisSets.get(key)?.delete(value);
+        return redisSets.get(key)?.delete(value) ? 1 : 0;
       }),
+      smembers: jest.fn(async (key: string) => [...(redisSets.get(key) ?? [])]),
+      scard: jest.fn(async (key: string) => redisSets.get(key)?.size ?? 0),
+      expire: jest.fn(async () => 1),
     };
     const users = {
       findActiveById: jest.fn().mockResolvedValue({
@@ -86,9 +95,16 @@ describe('auth support services', () => {
     const service = new RefreshTokenService(redis as never, users as never);
 
     const first = await service.issue(1);
+    const firstRecord = JSON.parse(
+      redisStore.get(`refresh_token:${first.tokenId}`) ?? '{}',
+    ) as { issuedAt?: string };
     const second = await service.rotate(first.refreshToken);
 
     expect(second.refreshToken).not.toBe(first.refreshToken);
+    const secondRecord = JSON.parse(
+      redisStore.get(`refresh_token:${second.tokenId}`) ?? '{}',
+    ) as { issuedAt?: string };
+    expect(secondRecord.issuedAt).toBe(firstRecord.issuedAt);
     await expect(service.rotate(first.refreshToken)).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

@@ -130,6 +130,12 @@ function createRedisMock() {
   const store = new Map<string, string>();
   const sets = new Map<string, Set<string>>();
 
+  const deleteKey = (key: string) => {
+    const deletedString = store.delete(key);
+    const deletedSet = sets.delete(key);
+    return deletedString || deletedSet ? 1 : 0;
+  };
+
   return {
     store,
     sets,
@@ -138,9 +144,9 @@ function createRedisMock() {
         store.set(key, value);
       }),
       get: jest.fn(async (key: string) => store.get(key) ?? null),
-      del: jest.fn(async (key: string) => {
-        store.delete(key);
-        return 1;
+      del: jest.fn(async (key: string) => deleteKey(key)),
+      delMany: jest.fn(async (keys: string[]) => {
+        return keys.reduce((deleted, key) => deleted + deleteKey(key), 0);
       }),
       sadd: jest.fn(async (key: string, value: string) => {
         const set = sets.get(key) ?? new Set<string>();
@@ -149,9 +155,10 @@ function createRedisMock() {
         return 1;
       }),
       srem: jest.fn(async (key: string, value: string) => {
-        sets.get(key)?.delete(value);
-        return 1;
+        return sets.get(key)?.delete(value) ? 1 : 0;
       }),
+      smembers: jest.fn(async (key: string) => [...(sets.get(key) ?? [])]),
+      scard: jest.fn(async (key: string) => sets.get(key)?.size ?? 0),
       incr: jest.fn(async (key: string) => {
         const next = Number(store.get(key) ?? '0') + 1;
         store.set(key, String(next));
@@ -165,15 +172,17 @@ function createRedisMock() {
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
   let prismaState: ReturnType<typeof createPrismaMock>;
+  let redisState: ReturnType<typeof createRedisMock>;
 
   beforeEach(async () => {
     process.env.JWT_ACCESS_SECRET = 'test-access-token-secret';
     process.env.JWT_ACCESS_EXPIRES_IN = '15m';
     process.env.REFRESH_TOKEN_SECRET = 'test-refresh-token-secret';
     process.env.REFRESH_TOKEN_EXPIRES_IN_DAYS = '30';
+    process.env.MAX_REFRESH_SESSIONS_PER_USER = '10';
 
     prismaState = createPrismaMock();
-    const redisState = createRedisMock();
+    redisState = createRedisMock();
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -222,6 +231,9 @@ describe('AuthController (e2e)', () => {
     expect(response.body.accessToken).toEqual(expect.any(String));
     expect(response.body.refreshToken).toEqual(expect.any(String));
     expect(response.body.user.passwordHash).toBeUndefined();
+    expect(readJwtPayload(response.body.accessToken as string).sid).toEqual(
+      expect.any(String),
+    );
   });
 
   it('rejects duplicate username or email', async () => {
@@ -307,6 +319,117 @@ describe('AuthController (e2e)', () => {
     await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(401);
   });
 
+  it('lists login sessions and marks the access-token session as current', async () => {
+    await register('sessions_user', 'sessions@example.com').expect(200);
+    const loggedIn = await request(app.getHttpServer())
+      .post('/auth/login')
+      .set('User-Agent', 'HLOVET session test')
+      .send({ account: 'sessions_user', password: 'Secret123!' })
+      .expect(200);
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/sessions')
+      .set('Authorization', `Bearer ${loggedIn.body.accessToken as string}`)
+      .expect(200);
+
+    expect(response.body.sessions).toHaveLength(2);
+    expect(response.body.sessions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: readJwtPayload(loggedIn.body.accessToken as string).sid,
+          current: true,
+          userAgent: 'HLOVET session test',
+        }),
+      ]),
+    );
+  });
+
+  it('revokes other login sessions without revoking the current session', async () => {
+    const registered = await register('revoke_others', 'revoke-others@example.com').expect(200);
+    const otherRefreshToken = registered.body.refreshToken as string;
+    const current = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ account: 'revoke_others', password: 'Secret123!' })
+      .expect(200);
+
+    const revoked = await request(app.getHttpServer())
+      .post('/auth/sessions/revoke-others')
+      .set('Authorization', `Bearer ${current.body.accessToken as string}`)
+      .expect(200);
+
+    expect(revoked.body).toEqual({ revokedSessions: 1 });
+    await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refreshToken: otherRefreshToken })
+      .expect(401);
+    await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refreshToken: current.body.refreshToken as string })
+      .expect(200);
+  });
+
+  it('revokes all login sessions for the current account', async () => {
+    const registered = await register('revoke_all', 'revoke-all@example.com').expect(200);
+
+    const revoked = await request(app.getHttpServer())
+      .post('/auth/sessions/revoke-all')
+      .set('Authorization', `Bearer ${registered.body.accessToken as string}`)
+      .expect(200);
+
+    expect(revoked.body).toEqual({ revokedSessions: 1 });
+    await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refreshToken: registered.body.refreshToken as string })
+      .expect(401);
+  });
+
+  it('keeps only the ten newest login sessions per account', async () => {
+    process.env.MAX_REFRESH_SESSIONS_PER_USER = '10';
+    const issuedRefreshTokens: string[] = [];
+    const registered = await register('session_limit', 'session-limit@example.com').expect(200);
+    issuedRefreshTokens.push(registered.body.refreshToken as string);
+    let latestAccessToken = registered.body.accessToken as string;
+
+    for (let index = 0; index < 10; index += 1) {
+      const loggedIn = await request(app.getHttpServer())
+        .post('/auth/login')
+        .set('User-Agent', `Session ${index + 2}`)
+        .send({ account: 'session_limit', password: 'Secret123!' })
+        .expect(200);
+      issuedRefreshTokens.push(loggedIn.body.refreshToken as string);
+      latestAccessToken = loggedIn.body.accessToken as string;
+    }
+
+    const sessions = await request(app.getHttpServer())
+      .post('/auth/sessions')
+      .set('Authorization', `Bearer ${latestAccessToken}`)
+      .expect(200);
+
+    expect(sessions.body.sessions).toHaveLength(10);
+    await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refreshToken: issuedRefreshTokens[0] })
+      .expect(401);
+  });
+
+  it('removes stale ids from the user session index', async () => {
+    const registered = await register('stale_session', 'stale-session@example.com').expect(200);
+    const user = prismaState.users.find((item) => item.username === 'stale_session');
+    if (!user) {
+      throw new Error('Expected stale_session to exist');
+    }
+    redisState.sets.get(`user_sessions:${user.id}`)?.add('missing-token-id');
+
+    await request(app.getHttpServer())
+      .post('/auth/sessions')
+      .set('Authorization', `Bearer ${registered.body.accessToken as string}`)
+      .expect(200);
+
+    expect(redisState.sets.get(`user_sessions:${user.id}`)).not.toContain(
+      'missing-token-id',
+    );
+  });
+
   it('returns /auth/me for a valid access token', async () => {
     const registered = await register('me_user', 'me@example.com').expect(200);
     const accessToken = registered.body.accessToken as string;
@@ -380,3 +503,14 @@ describe('AuthController (e2e)', () => {
     await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken }).expect(403);
   });
 });
+
+function readJwtPayload(token: string): Record<string, unknown> {
+  const payload = token.split('.')[1];
+  if (!payload) {
+    throw new Error('Expected a JWT payload.');
+  }
+  return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Record<
+    string,
+    unknown
+  >;
+}

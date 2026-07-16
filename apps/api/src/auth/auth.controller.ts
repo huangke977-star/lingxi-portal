@@ -19,7 +19,8 @@ import { UsersService, AVATAR_MAX_FILE_SIZE_BYTES } from '../users/users.service
 import { UpdateUserAppearanceDto } from '../users/dto/update-user-appearance.dto';
 import { UpdateUserProfileDto } from '../users/dto/update-user-profile.dto';
 import { AuthService } from './auth.service';
-import { AuthResponse, AuthenticatedUser } from './auth.types';
+import { AuthResponse, AuthenticatedUser, AuthSessionSummary, RefreshSessionContext } from './auth.types';
+import { CurrentSessionId } from './current-session-id.decorator';
 import { CurrentUser } from './current-user.decorator';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -35,14 +36,17 @@ export class AuthController {
 
   @Post('register')
   @HttpCode(200)
-  register(@Body() dto: RegisterDto): Promise<AuthResponse> {
-    return this.authService.register(dto);
+  register(
+    @Body() dto: RegisterDto,
+    @Req() request: SessionRequest,
+  ): Promise<AuthResponse> {
+    return this.authService.register(dto, this.sessionContext(request));
   }
 
   @Post('login')
   @HttpCode(200)
-  login(@Body() dto: LoginDto, @Req() request: { ip?: string }): Promise<AuthResponse> {
-    return this.authService.login(dto, request.ip ?? 'unknown');
+  login(@Body() dto: LoginDto, @Req() request: SessionRequest): Promise<AuthResponse> {
+    return this.authService.login(dto, this.sessionContext(request));
   }
 
   @Post('refresh')
@@ -55,6 +59,35 @@ export class AuthController {
   @HttpCode(200)
   logout(@Body() dto: RefreshTokenDto): Promise<{ success: true }> {
     return this.authService.logout(dto.refreshToken);
+  }
+
+  @Post('sessions')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  sessions(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentSessionId() sessionId: string | null,
+  ): Promise<{ sessions: AuthSessionSummary[] }> {
+    return this.authService.listSessions(user.id, sessionId);
+  }
+
+  @Post('sessions/revoke-others')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  revokeOtherSessions(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentSessionId() sessionId: string | null,
+  ): Promise<{ revokedSessions: number }> {
+    return this.authService.revokeOtherSessions(user.id, sessionId);
+  }
+
+  @Post('sessions/revoke-all')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  revokeAllSessions(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ revokedSessions: number }> {
+    return this.authService.revokeAllSessions(user.id);
   }
 
   @Get('me')
@@ -94,4 +127,19 @@ export class AuthController {
     const file = await this.usersService.getAvatarFile(storedName);
     return new StreamableFile(createReadStream(file.filePath), { type: file.mimeType });
   }
+
+  private sessionContext(request: SessionRequest): RefreshSessionContext {
+    const userAgent = request.headers?.['user-agent'];
+    return {
+      ip: request.ip ?? 'unknown',
+      userAgent: Array.isArray(userAgent)
+        ? userAgent[0] ?? 'unknown'
+        : userAgent ?? 'unknown',
+    };
+  }
+}
+
+interface SessionRequest {
+  ip?: string;
+  headers?: Record<string, string | string[] | undefined>;
 }

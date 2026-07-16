@@ -4,17 +4,21 @@
 
 import type { CSSProperties, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Cropper, { type Area } from "react-easy-crop";
 import { AppToast } from "@/components/app-toast";
 import { RoleSymbol } from "@/components/role-symbol";
 import {
   AuthAppearance,
+  AuthSession,
   AuthUser,
   getMe,
   isAuthExpiredError,
+  listMySessions,
   resolveApiUrl,
+  revokeAllSessions,
+  revokeOtherSessions,
   updateMyAppearance,
   updateMyProfile,
   uploadMyAvatar,
@@ -91,9 +95,41 @@ export default function ProfilePage() {
   const [nicknameDraft, setNicknameDraft] = useState("");
   const [emailDraft, setEmailDraft] = useState("");
   const [profileBioDraft, setProfileBioDraft] = useState("");
+  const [sessions, setSessions] = useState<AuthSession[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  const [sessionAction, setSessionAction] = useState<
+    "others" | "all" | null
+  >(null);
   const [now, setNow] = useState(() => Date.now());
   const [preference, setPreference] = useState<ThemePreference>(() =>
     readThemePreference(),
+  );
+
+  const loadAccountSessions = useCallback(
+    async (token = readAccessToken()) => {
+      if (!token) {
+        setSessions([]);
+        return;
+      }
+      setIsLoadingSessions(true);
+      try {
+        setSessions(await listMySessions(token));
+      } catch (sessionError) {
+        if (isAuthExpiredError(sessionError)) {
+          clearAuthTokens();
+          router.replace("/");
+          return;
+        }
+        setError(
+          sessionError instanceof Error
+            ? sessionError.message
+            : "无法读取登录设备。",
+        );
+      } finally {
+        setIsLoadingSessions(false);
+      }
+    },
+    [router],
   );
 
   useEffect(() => {
@@ -114,6 +150,7 @@ export default function ProfilePage() {
         setProfileBioDraft(currentUser.profileBio);
         setPreference(accountPreference);
         writeThemePreference(accountPreference);
+        void loadAccountSessions(readAccessToken());
       })
       .catch((loadError) => {
         if (isAuthExpiredError(loadError)) {
@@ -129,7 +166,7 @@ export default function ProfilePage() {
       .finally(() => {
         setIsLoading(false);
       });
-  }, [router]);
+  }, [loadAccountSessions, router]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -454,6 +491,71 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleRevokeOtherSessions() {
+    const token = readAccessToken();
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    if (!window.confirm("确定退出其他设备吗？当前设备会保持登录。")) {
+      return;
+    }
+
+    setSessionAction("others");
+    setError("");
+    setNotice("");
+    try {
+      const revoked = await revokeOtherSessions(token);
+      await loadAccountSessions(readAccessToken());
+      setNotice(`已退出 ${revoked} 个其他设备会话。`);
+    } catch (sessionError) {
+      if (isAuthExpiredError(sessionError)) {
+        clearAuthTokens();
+        router.replace("/");
+        return;
+      }
+      setError(
+        sessionError instanceof Error
+          ? sessionError.message
+          : "退出其他设备失败。",
+      );
+    } finally {
+      setSessionAction(null);
+    }
+  }
+
+  async function handleRevokeAllSessions() {
+    const token = readAccessToken();
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    if (!window.confirm("确定退出全部设备吗？当前页面也会退出登录。")) {
+      return;
+    }
+
+    setSessionAction("all");
+    setError("");
+    setNotice("");
+    try {
+      await revokeAllSessions(token);
+      clearAuthTokens();
+      router.replace("/");
+    } catch (sessionError) {
+      if (isAuthExpiredError(sessionError)) {
+        clearAuthTokens();
+        router.replace("/");
+        return;
+      }
+      setError(
+        sessionError instanceof Error
+          ? sessionError.message
+          : "退出全部设备失败。",
+      );
+      setSessionAction(null);
+    }
+  }
+
   const avatarInitial = user ? getAvatarFallbackText(user) : "H";
   const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
   const joinedAt = user?.createdAt ? new Date(user.createdAt) : null;
@@ -469,6 +571,8 @@ export default function ProfilePage() {
     ? "外观保存中"
     : isSavingProfile
       ? "资料保存中"
+      : sessionAction
+        ? "会话处理中"
       : notice;
 
   const previewStyle = {
@@ -632,6 +736,64 @@ export default function ProfilePage() {
                 </button>
               </div>
             </form>
+          </section>
+
+          <section className="profile-panel account-sessions-panel">
+            <div className="account-sessions-heading">
+              <div className="panel-heading">
+                <span className="section-label">Login sessions</span>
+                <strong>登录设备</strong>
+              </div>
+              <div className="account-session-actions">
+                <button
+                  className="text-action"
+                  disabled={
+                    sessionAction !== null ||
+                    sessions.filter((session) => !session.current).length === 0
+                  }
+                  onClick={() => void handleRevokeOtherSessions()}
+                  type="button"
+                >
+                  退出其他设备
+                </button>
+                <button
+                  className="cache-danger-action"
+                  disabled={sessionAction !== null || sessions.length === 0}
+                  onClick={() => void handleRevokeAllSessions()}
+                  type="button"
+                >
+                  退出全部设备
+                </button>
+              </div>
+            </div>
+
+            <div className="account-session-list">
+              {isLoadingSessions ? (
+                <p className="account-session-state">正在读取登录设备</p>
+              ) : sessions.length ? (
+                sessions.map((session) => (
+                  <div className="account-session-row" key={session.id}>
+                    <div>
+                      <strong>{formatSessionDevice(session.userAgent)}</strong>
+                      <span>{session.ip === "unknown" ? "IP 未记录" : session.ip}</span>
+                    </div>
+                    <div>
+                      <span>登录时间</span>
+                      <strong>{formatSessionTime(session.issuedAt)}</strong>
+                    </div>
+                    <div>
+                      <span>有效期至</span>
+                      <strong>{formatSessionTime(session.expiresAt)}</strong>
+                    </div>
+                    <em className={session.current ? "current" : ""}>
+                      {session.current ? "当前设备" : "其他设备"}
+                    </em>
+                  </div>
+                ))
+              ) : (
+                <p className="account-session-state">暂无可用登录会话</p>
+              )}
+            </div>
           </section>
 
           <section className="profile-panel theme-panel">
@@ -846,7 +1008,10 @@ export default function ProfilePage() {
           setError("");
           setNotice("");
         }}
-        persistent={!error && (isSavingAppearance || isSavingProfile)}
+        persistent={
+          !error &&
+          (isSavingAppearance || isSavingProfile || sessionAction !== null)
+        }
         tone={error ? "error" : toastMessage === notice ? "success" : "info"}
       />
 
@@ -1084,6 +1249,43 @@ function formatDuration(value: number): string {
   const seconds = totalSeconds % 60;
 
   return `${days}天 ${hours}小时 ${minutes}分 ${seconds}秒`;
+}
+
+function formatSessionTime(value: string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatSessionDevice(userAgent: string): string {
+  if (!userAgent || userAgent === "unknown") {
+    return "未知设备";
+  }
+  const device = /iPhone/i.test(userAgent)
+    ? "iPhone"
+    : /iPad/i.test(userAgent)
+      ? "iPad"
+      : /Android/i.test(userAgent)
+        ? "Android"
+        : /Windows/i.test(userAgent)
+          ? "Windows"
+          : /Macintosh|Mac OS X/i.test(userAgent)
+            ? "Mac"
+            : "其他设备";
+  const browser = /Edg\//i.test(userAgent)
+    ? "Edge"
+    : /Chrome\//i.test(userAgent)
+      ? "Chrome"
+      : /Firefox\//i.test(userAgent)
+        ? "Firefox"
+        : /Safari\//i.test(userAgent)
+          ? "Safari"
+          : "浏览器";
+  return `${device} · ${browser}`;
 }
 
 function toAppearancePayload(preference: ThemePreference): AuthAppearance {

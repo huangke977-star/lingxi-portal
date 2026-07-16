@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AuthSessionController } from "@/components/auth-session-controller";
 import { ThemeController } from "@/components/theme-controller";
 import { TopNav } from "@/components/top-nav";
 import "@fontsource-variable/noto-sans-sc/index.css";
@@ -12,8 +13,8 @@ export const metadata: Metadata = {
   manifest: "/site.webmanifest",
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/tab-icon.svg?v=2", type: "image/svg+xml" },
+      { url: "/favicon.ico?v=2", sizes: "any" },
     ],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
   },
@@ -27,6 +28,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body>
+        <AuthSessionController />
         <ThemeController />
         <TopNav />
         <main className="content-shell">{children}</main>

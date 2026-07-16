@@ -14,6 +14,7 @@ export class JwtAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<{
       headers: { authorization?: string };
       user?: AuthenticatedUser;
+      sessionId?: string | null;
     }>();
     const token = this.extractBearerToken(request.headers.authorization);
 
@@ -31,6 +32,7 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     request.user = await this.usersService.findActiveById(payload.sub);
+    request.sessionId = payload.sid ?? null;
     return true;
   }
 

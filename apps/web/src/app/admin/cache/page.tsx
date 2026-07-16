@@ -625,9 +625,14 @@ export default function CacheManagementPage() {
 
       {selectedKeys.length ? (
         <div className="cache-selection-bar">
-          <span>
-            已选择 <strong>{selectedKeys.length}</strong> 项，其中{" "}
-            <strong>{ttlEditableSelectedKeys.length}</strong> 项可修改 TTL
+          <span className="cache-selection-summary">
+            <span>
+              已选择 <strong>{selectedKeys.length}</strong> 项，其中{" "}
+              <strong>{ttlEditableSelectedKeys.length}</strong> 项可修改 TTL
+            </span>
+            {ttlEditableSelectedKeys.length === 0 ? (
+              <small>当前选择的是认证缓存，TTL 由登录策略统一管理。</small>
+            ) : null}
           </span>
           <div className="cache-selection-actions">
             <button
@@ -708,7 +713,16 @@ export default function CacheManagementPage() {
                       {KEY_TYPE_LABEL[item.type]}
                     </span>
                   </td>
-                  <td>{formatTtl(item.ttlSeconds)}</td>
+                  <td>
+                    <span className="cache-ttl-display">
+                      <span>{formatTtl(item.ttlSeconds)}</span>
+                      {!item.canUpdateTtl ? (
+                        <small title="认证缓存 TTL 由登录策略统一管理">
+                          系统管理
+                        </small>
+                      ) : null}
+                    </span>
+                  </td>
                   <td>{formatBytes(item.memoryBytes)}</td>
                   <td>
                     <button
@@ -862,7 +876,14 @@ export default function CacheManagementPage() {
               </div>
               <div>
                 <dt>TTL</dt>
-                <dd>{formatTtl(detail.ttlSeconds)}</dd>
+                <dd>
+                  {formatTtl(detail.ttlSeconds)}
+                  {!detail.canUpdateTtl ? (
+                    <small className="cache-ttl-detail-note">
+                      由登录策略统一管理
+                    </small>
+                  ) : null}
+                </dd>
               </div>
               <div>
                 <dt>内存</dt>
