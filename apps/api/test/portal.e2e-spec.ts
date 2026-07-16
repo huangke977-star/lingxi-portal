@@ -571,6 +571,125 @@ describe("portal content management (e2e)", () => {
       .expect(403);
   });
 
+  it("shares non-server configuration between administrators", async () => {
+    const administratorToken = await tokenFor(2);
+    const superToken = await tokenFor(1);
+
+    const administratorCategory = await request(app.getHttpServer())
+      .post("/portal/admin/categories")
+      .set("Authorization", `Bearer ${administratorToken}`)
+      .send({
+        kind: "tool",
+        name: "共享工具",
+        description: "由管理员创建",
+        sortOrder: 40,
+        status: "active",
+      })
+      .expect(201);
+    const administratorEntry = await request(app.getHttpServer())
+      .post("/portal/admin/entries")
+      .set("Authorization", `Bearer ${administratorToken}`)
+      .send({
+        categoryId: administratorCategory.body.id,
+        title: "管理员创建的条目",
+        description: "",
+        url: null,
+        iconPath: null,
+        openInNewTab: false,
+        visibility: "authenticated",
+        sortOrder: 10,
+        status: "active",
+        roleCodes: [],
+      })
+      .expect(201);
+
+    const superManagement = await request(app.getHttpServer())
+      .get("/portal/admin")
+      .set("Authorization", `Bearer ${superToken}`)
+      .expect(200);
+    expect(
+      superManagement.body.categories
+        .find(
+          (category: { id: number }) =>
+            category.id === administratorCategory.body.id,
+        )
+        ?.entries.map((entry: { title: string }) => entry.title),
+    ).toEqual(["管理员创建的条目"]);
+
+    await request(app.getHttpServer())
+      .patch(`/portal/admin/entries/${administratorEntry.body.id}`)
+      .set("Authorization", `Bearer ${superToken}`)
+      .send({ title: "超级管理员已修改" })
+      .expect(200);
+
+    const superCategory = await request(app.getHttpServer())
+      .post("/portal/admin/categories")
+      .set("Authorization", `Bearer ${superToken}`)
+      .send({
+        kind: "navigation",
+        name: "共享导航",
+        description: "由超级管理员创建",
+        sortOrder: 50,
+        status: "active",
+      })
+      .expect(201);
+    const superEntry = await request(app.getHttpServer())
+      .post("/portal/admin/entries")
+      .set("Authorization", `Bearer ${superToken}`)
+      .send({
+        categoryId: superCategory.body.id,
+        title: "超级管理员创建的条目",
+        description: "",
+        url: "https://example.com/shared",
+        iconPath: null,
+        openInNewTab: true,
+        visibility: "public",
+        sortOrder: 10,
+        status: "active",
+        roleCodes: [],
+      })
+      .expect(201);
+
+    const administratorManagement = await request(app.getHttpServer())
+      .get("/portal/admin")
+      .set("Authorization", `Bearer ${administratorToken}`)
+      .expect(200);
+    expect(
+      administratorManagement.body.categories.some(
+        (category: { kind: string }) => category.kind === "server",
+      ),
+    ).toBe(false);
+    expect(
+      administratorManagement.body.categories
+        .find(
+          (category: { id: number }) =>
+            category.id === administratorCategory.body.id,
+        )
+        ?.entries.map((entry: { title: string }) => entry.title),
+    ).toEqual(["超级管理员已修改"]);
+    expect(
+      administratorManagement.body.categories
+        .find(
+          (category: { id: number }) => category.id === superCategory.body.id,
+        )
+        ?.entries.map((entry: { title: string }) => entry.title),
+    ).toEqual(["超级管理员创建的条目"]);
+
+    await request(app.getHttpServer())
+      .patch(`/portal/admin/categories/${superCategory.body.id}`)
+      .set("Authorization", `Bearer ${administratorToken}`)
+      .send({ name: "管理员已修改共享导航" })
+      .expect(200);
+    await request(app.getHttpServer())
+      .delete(`/portal/admin/entries/${superEntry.body.id}`)
+      .set("Authorization", `Bearer ${administratorToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .delete(`/portal/admin/categories/${superCategory.body.id}`)
+      .set("Authorization", `Bearer ${administratorToken}`)
+      .expect(200);
+  });
+
   it("allows the super administrator to manage server content", async () => {
     const superToken = await tokenFor(1);
     const categoryResponse = await request(app.getHttpServer())

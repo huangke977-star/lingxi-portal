@@ -11,6 +11,7 @@ Move navigation links, tools, and server entries from frontend constants into My
 - `ROLE_RESTRICTED`: visible only to assigned roles; the super administrator always bypasses this restriction.
 - `SERVER` categories are a hard exception: only accounts with `isSuperAdmin=true` may read or manage them. The administrator role cannot read them and cannot bypass this rule by changing visibility settings.
 - Administrators and the super administrator may manage `NAVIGATION`, `TOOL`, and `CUSTOM_PAGE` categories.
+- Ordinary categories and entries are shared site-wide rather than isolated by creator; administrators and the super administrator may view, update, and delete ordinary content created by either role.
 - Server categories are omitted from administrator responses, and direct administrator requests to server management endpoints return `403`.
 
 ## Data Model

@@ -94,7 +94,7 @@ export default function ContentManagementPage() {
         if (!isMounted) return;
         setCurrentUser(me);
         setAccessToken(verifiedToken);
-        if (!me.isSuperAdmin) return;
+        if (!canAccessContentManagement(me)) return;
 
         const [content, nextRoles] = await Promise.all([
           listPortalAdminContent(verifiedToken),

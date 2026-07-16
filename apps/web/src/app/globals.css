@@ -3198,8 +3198,9 @@ a.entry-item:hover {
 }
 
 .portal-content-modal {
-  max-height: min(90vh, 780px);
+  max-height: calc(100svh - 24px);
   overflow-y: auto;
+  gap: 14px;
 }
 
 .portal-content-modal.wide {
@@ -3224,6 +3225,10 @@ a.entry-item:hover {
 
 .portal-content-modal textarea {
   resize: vertical;
+}
+
+.portal-content-modal .modal-form {
+  gap: 12px;
 }
 
 .portal-content-modal select:focus,
@@ -3276,8 +3281,10 @@ a.entry-item:hover {
   flex: 0 0 auto;
 }
 
-.portal-checkbox-row {
+.form-stack .portal-checkbox-row {
+  display: flex;
   width: fit-content;
+  align-items: center;
 }
 
 .cache-bulk-ttl-panel {
@@ -4033,10 +4040,6 @@ a.entry-item:hover {
     gap: 10px;
   }
 
-  .portal-form-columns {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .portal-role-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -4059,6 +4062,10 @@ a.entry-item:hover {
   .portal-entry-admin-row > .portal-row-actions {
     grid-column: 2;
     justify-self: end;
+  }
+
+  .portal-form-columns {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .portal-role-grid {
