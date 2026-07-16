@@ -1,0 +1,40 @@
+# HLOVET Portal Content Management Design
+
+## Goal
+
+Move navigation links, tools, and server entries from frontend constants into MySQL so the super administrator can maintain portal content while the backend enforces authentication and role visibility.
+
+## Permission Rules
+
+- `PUBLIC`: visible to guests and every signed-in user.
+- `AUTHENTICATED`: visible to every signed-in user.
+- `ROLE_RESTRICTED`: visible only to assigned roles; the super administrator always bypasses this restriction.
+- `SERVER` categories are a hard exception: only accounts with `isSuperAdmin=true` may read or manage them. The administrator role cannot read them and cannot bypass this rule by changing visibility settings.
+- Only the super administrator may create, update, or delete categories and entries.
+
+## Data Model
+
+- `PortalCategory`: kind, name, description, ordering, and status.
+- `PortalEntry`: title, description, URL, icon, opening behavior, visibility, ordering, and status.
+- `PortalEntryRole`: many-to-many role assignments for restricted entries.
+
+Category kinds are `NAVIGATION`, `TOOL`, `SERVER`, and the reserved `CUSTOM_PAGE`. This phase renders the first three kinds.
+
+## API
+
+- The public endpoint returns only active public entries and never returns server entries.
+- The authenticated endpoint filters entries for the current user; server entries are returned only to the super administrator.
+- Management endpoints return complete records and provide category and entry CRUD.
+- Deleting a category that still contains entries returns a conflict instead of cascading content deletion.
+
+## Frontend
+
+- `/nav` loads `NAVIGATION` categories dynamically.
+- `/tools` loads `TOOL` categories and adds `SERVER` categories only for the super administrator.
+- `/admin/content` manages categories, entries, status, ordering, visibility, and role allowlists.
+- The super administrator account menu includes a Content Management entry.
+
+## Migration
+
+The migration seeds the existing three public links, two authenticated tool placeholders, and one server-entry placeholder so deployment does not leave the portal empty.
+

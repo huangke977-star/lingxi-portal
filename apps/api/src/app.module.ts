@@ -3,9 +3,10 @@ import { AuthModule } from './auth/auth.module';
 import { BackgroundsModule } from './backgrounds/backgrounds.module';
 import { CacheAdminModule } from './cache-admin/cache-admin.module';
 import { HealthModule } from './health/health.module';
+import { PortalModule } from './portal/portal.module';
 import { RolesModule } from './roles/roles.module';
 
 @Module({
-  imports: [HealthModule, RolesModule, AuthModule, BackgroundsModule, CacheAdminModule],
+  imports: [HealthModule, RolesModule, AuthModule, BackgroundsModule, CacheAdminModule, PortalModule],
 })
 export class AppModule {}

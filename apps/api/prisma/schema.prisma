@@ -12,47 +12,70 @@ enum UserStatus {
   disabled
 }
 
+enum PortalCategoryKind {
+  navigation
+  tool
+  server
+  custom_page
+}
+
+enum PortalVisibility {
+  public
+  authenticated
+  role_restricted
+}
+
+enum PortalRecordStatus {
+  active
+  disabled
+}
+
 model Role {
-  id        Int      @id @default(autoincrement())
-  code      String   @unique @db.VarChar(64)
-  name      String   @db.VarChar(64)
-  level     Int      @unique
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  users     User[]
+  id               Int               @id @default(autoincrement())
+  code             String            @unique @db.VarChar(64)
+  name             String            @db.VarChar(64)
+  level            Int               @unique
+  sortOrder        Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  users            User[]
+  portalEntryRoles PortalEntryRole[]
 
   @@map("roles")
 }
 
 model User {
-  id               Int               @id @default(autoincrement())
-  username         String            @unique @db.VarChar(32)
-  nickname         String            @db.VarChar(32)
-  email            String            @unique @db.VarChar(191)
-  passwordHash     String            @map("password_hash") @db.VarChar(255)
-  roleId           Int               @map("role_id")
-  role             Role              @relation(fields: [roleId], references: [id])
-  isSuperAdmin     Boolean           @default(false) @map("is_super_admin")
-  status           UserStatus        @default(active)
-  appearanceThemeId String           @default("sakura-mist") @map("appearance_theme_id") @db.VarChar(64)
-  customAccent     String            @default("#db2777") @map("custom_accent") @db.VarChar(7)
-  customSurface    String            @default("#ffffff") @map("custom_surface") @db.VarChar(7)
-  customForeground String            @default("#2b2530") @map("custom_foreground") @db.VarChar(7)
-  customMuted      String            @default("#665867") @map("custom_muted") @db.VarChar(7)
-  cardAlpha        Int               @default(52) @map("card_alpha")
-  glassBlur        Int               @default(22) @map("glass_blur")
-  glassTint        String            @default("#fff3f6") @map("glass_tint") @db.VarChar(7)
-  glassTintAlpha   Int               @default(72) @map("glass_tint_alpha")
-  avatarOriginalName String?         @map("avatar_original_name") @db.VarChar(255)
-  avatarStoredName String?           @unique @map("avatar_stored_name") @db.VarChar(255)
-  avatarMimeType   String?           @map("avatar_mime_type") @db.VarChar(64)
-  avatarSizeBytes  Int?              @map("avatar_size_bytes")
-  profileBio       String            @default("我懒，我不写") @map("profile_bio") @db.VarChar(180)
-  lastLoginAt      DateTime?         @map("last_login_at")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  backgroundImages BackgroundImage[]
+  id                      Int               @id @default(autoincrement())
+  username                String            @unique @db.VarChar(32)
+  nickname                String            @db.VarChar(32)
+  email                   String            @unique @db.VarChar(191)
+  passwordHash            String            @map("password_hash") @db.VarChar(255)
+  roleId                  Int               @map("role_id")
+  role                    Role              @relation(fields: [roleId], references: [id])
+  isSuperAdmin            Boolean           @default(false) @map("is_super_admin")
+  status                  UserStatus        @default(active)
+  appearanceThemeId       String            @default("sakura-mist") @map("appearance_theme_id") @db.VarChar(64)
+  customAccent            String            @default("#db2777") @map("custom_accent") @db.VarChar(7)
+  customSurface           String            @default("#ffffff") @map("custom_surface") @db.VarChar(7)
+  customForeground        String            @default("#2b2530") @map("custom_foreground") @db.VarChar(7)
+  customMuted             String            @default("#665867") @map("custom_muted") @db.VarChar(7)
+  cardAlpha               Int               @default(52) @map("card_alpha")
+  glassBlur               Int               @default(22) @map("glass_blur")
+  glassTint               String            @default("#fff3f6") @map("glass_tint") @db.VarChar(7)
+  glassTintAlpha          Int               @default(72) @map("glass_tint_alpha")
+  avatarOriginalName      String?           @map("avatar_original_name") @db.VarChar(255)
+  avatarStoredName        String?           @unique @map("avatar_stored_name") @db.VarChar(255)
+  avatarMimeType          String?           @map("avatar_mime_type") @db.VarChar(64)
+  avatarSizeBytes         Int?              @map("avatar_size_bytes")
+  profileBio              String            @default("我懒，我不写") @map("profile_bio") @db.VarChar(180)
+  lastLoginAt             DateTime?         @map("last_login_at")
+  createdAt               DateTime          @default(now()) @map("created_at")
+  updatedAt               DateTime          @updatedAt @map("updated_at")
+  backgroundImages        BackgroundImage[]
+  portalCategoriesCreated PortalCategory[]  @relation("PortalCategoryCreatedBy")
+  portalCategoriesUpdated PortalCategory[]  @relation("PortalCategoryUpdatedBy")
+  portalEntriesCreated    PortalEntry[]     @relation("PortalEntryCreatedBy")
+  portalEntriesUpdated    PortalEntry[]     @relation("PortalEntryUpdatedBy")
 
   @@index([roleId])
   @@map("users")
@@ -73,4 +96,64 @@ model BackgroundImage {
   @@index([isActive])
   @@index([uploadedById])
   @@map("background_images")
+}
+
+model PortalCategory {
+  id          Int                @id @default(autoincrement())
+  kind        PortalCategoryKind
+  name        String             @db.VarChar(80)
+  slug        String             @unique @db.VarChar(80)
+  description String             @default("") @db.VarChar(255)
+  sortOrder   Int                @default(0) @map("sort_order")
+  status      PortalRecordStatus @default(active)
+  createdById Int?               @map("created_by_id")
+  createdBy   User?              @relation("PortalCategoryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById Int?               @map("updated_by_id")
+  updatedBy   User?              @relation("PortalCategoryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  entries     PortalEntry[]
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  @@index([kind, status, sortOrder])
+  @@index([createdById])
+  @@index([updatedById])
+  @@map("portal_categories")
+}
+
+model PortalEntry {
+  id           Int                @id @default(autoincrement())
+  categoryId   Int                @map("category_id")
+  category     PortalCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  title        String             @db.VarChar(100)
+  description  String             @default("") @db.VarChar(300)
+  url          String?            @db.VarChar(2048)
+  iconPath     String?            @map("icon_path") @db.VarChar(512)
+  openInNewTab Boolean            @default(true) @map("open_in_new_tab")
+  visibility   PortalVisibility   @default(public)
+  sortOrder    Int                @default(0) @map("sort_order")
+  status       PortalRecordStatus @default(active)
+  createdById  Int?               @map("created_by_id")
+  createdBy    User?              @relation("PortalEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById  Int?               @map("updated_by_id")
+  updatedBy    User?              @relation("PortalEntryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  allowedRoles PortalEntryRole[]
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  @@index([categoryId, status, sortOrder])
+  @@index([visibility])
+  @@index([createdById])
+  @@index([updatedById])
+  @@map("portal_entries")
+}
+
+model PortalEntryRole {
+  entryId Int         @map("entry_id")
+  entry   PortalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  roleId  Int         @map("role_id")
+  role    Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([entryId, roleId])
+  @@index([roleId])
+  @@map("portal_entry_roles")
 }

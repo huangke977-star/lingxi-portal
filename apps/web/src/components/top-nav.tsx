@@ -303,6 +303,9 @@ export function TopNav() {
                   ) : null}
                   {user.isSuperAdmin ? (
                     <>
+                      <Link href="/admin/content" onClick={closeAccountMenu}>
+                        内容管理
+                      </Link>
                       <Link
                         href="/admin/backgrounds"
                         onClick={closeAccountMenu}

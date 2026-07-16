@@ -2927,6 +2927,359 @@ a.entry-item:hover {
   max-width: none;
 }
 
+.portal-category-list {
+  display: grid;
+  gap: 28px;
+}
+
+.portal-category-section {
+  display: grid;
+  gap: 14px;
+}
+
+.portal-category-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 2px;
+}
+
+.portal-category-heading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.portal-category-heading h2,
+.portal-admin-panel-heading h2 {
+  font-size: 1.2rem;
+}
+
+.portal-category-heading p {
+  max-width: 520px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  text-align: right;
+}
+
+.portal-entry-marker {
+  overflow: hidden;
+}
+
+.portal-entry-marker img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.portal-empty-state {
+  display: grid;
+  min-height: 180px;
+  place-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  padding: 28px;
+  text-align: center;
+}
+
+.portal-empty-state strong {
+  color: var(--foreground);
+}
+
+.portal-admin-shell {
+  padding-bottom: 20px;
+}
+
+.portal-admin-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 18px;
+}
+
+.portal-admin-header-actions .text-action {
+  gap: 6px;
+}
+
+.portal-kind-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+  border-bottom: 1px solid var(--control-line);
+}
+
+.portal-kind-tabs button {
+  min-height: 42px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 620;
+  padding: 0 1px;
+}
+
+.portal-kind-tabs button.active {
+  border-bottom-color: var(--accent-strong);
+  color: var(--accent-strong);
+}
+
+.portal-admin-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.36fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.portal-category-admin-panel,
+.portal-entry-admin-panel {
+  display: grid;
+  gap: 16px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: var(--glass-blur);
+  padding: 20px;
+}
+
+.portal-admin-panel-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.portal-admin-panel-heading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.portal-category-admin-list,
+.portal-entry-admin-list {
+  display: grid;
+}
+
+.portal-category-admin-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--control-line);
+}
+
+.portal-category-admin-row:last-child,
+.portal-entry-admin-row:last-child {
+  border-bottom: 0;
+}
+
+.portal-category-admin-row.active {
+  background: color-mix(in srgb, var(--accent-soft) 54%, transparent);
+}
+
+.portal-category-select {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  padding: 13px 10px;
+  text-align: left;
+}
+
+.portal-category-select span,
+.portal-category-select small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.portal-category-select strong {
+  overflow: hidden;
+  font-size: 0.96rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portal-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.portal-row-actions button {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.portal-row-actions button:hover,
+.portal-row-actions button:focus-visible {
+  background: var(--surface-strong);
+  color: var(--accent-strong);
+  outline: none;
+}
+
+.portal-row-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
+.portal-entry-admin-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid var(--control-line);
+  padding: 15px 4px;
+}
+
+.portal-entry-admin-copy {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.portal-entry-admin-copy strong,
+.portal-entry-admin-copy p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portal-entry-admin-copy p {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.portal-entry-admin-copy > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.portal-entry-admin-copy > div span,
+.portal-server-rule {
+  color: var(--muted-strong);
+  font-size: 0.76rem;
+  font-weight: 620;
+}
+
+.portal-server-rule {
+  color: #b76e79;
+}
+
+.portal-admin-empty {
+  color: var(--muted);
+  font-size: 0.88rem;
+  padding: 18px 10px;
+}
+
+.portal-admin-empty.large {
+  display: grid;
+  min-height: 220px;
+  place-content: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.portal-admin-empty.large strong {
+  color: var(--foreground);
+}
+
+.portal-content-modal {
+  max-height: min(90vh, 780px);
+  overflow-y: auto;
+}
+
+.portal-content-modal.wide {
+  width: min(100%, 620px);
+}
+
+.portal-content-modal select,
+.portal-content-modal textarea {
+  width: 100%;
+  border: 1px solid var(--control-line);
+  border-radius: 8px;
+  background: rgba(230, 239, 244, 0.68);
+  color: var(--foreground);
+  font: inherit;
+  outline: none;
+  padding: 10px 12px;
+}
+
+.portal-content-modal select {
+  min-height: 42px;
+}
+
+.portal-content-modal textarea {
+  resize: vertical;
+}
+
+.portal-content-modal select:focus,
+.portal-content-modal textarea:focus {
+  border-color: rgba(47, 111, 237, 0.54);
+  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.13);
+}
+
+.portal-form-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.42fr);
+  gap: 14px;
+}
+
+.portal-role-fieldset {
+  display: grid;
+  gap: 10px;
+  border: 0;
+  padding: 0;
+}
+
+.portal-role-fieldset legend {
+  color: var(--muted-strong);
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.portal-role-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.portal-role-grid label,
+.portal-checkbox-row {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  padding: 8px 10px;
+}
+
+.portal-role-grid input,
+.portal-checkbox-row input {
+  width: 16px;
+  min-height: 16px;
+  flex: 0 0 auto;
+}
+
+.portal-checkbox-row {
+  width: fit-content;
+}
+
 .cache-bulk-ttl-panel {
   border-radius: 8px;
   box-shadow: var(--shadow-hover);
@@ -2941,6 +3294,10 @@ a.entry-item:hover {
 
   .background-gallery {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portal-admin-layout {
+    grid-template-columns: minmax(220px, 0.42fr) minmax(0, 1fr);
   }
 }
 
@@ -3639,5 +3996,76 @@ a.entry-item:hover {
   .account-menu {
     right: 0;
     width: min(230px, calc(100vw - 28px));
+  }
+}
+
+@media (max-width: 860px) {
+  .portal-category-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .portal-category-heading p {
+    max-width: none;
+    text-align: left;
+  }
+
+  .portal-admin-header-actions {
+    justify-content: flex-start;
+  }
+
+  .portal-kind-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .portal-kind-tabs button {
+    flex: 0 0 auto;
+  }
+
+  .portal-admin-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-entry-admin-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .portal-form-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-role-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portal-content-modal {
+    max-height: calc(100svh - 24px);
+  }
+}
+
+@media (max-width: 520px) {
+  .portal-category-admin-panel,
+  .portal-entry-admin-panel {
+    padding: 16px;
+  }
+
+  .portal-entry-admin-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .portal-entry-admin-row > .portal-row-actions {
+    grid-column: 2;
+    justify-self: end;
+  }
+
+  .portal-role-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-content-modal {
+    padding: 18px;
   }
 }
