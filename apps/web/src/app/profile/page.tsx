@@ -1029,7 +1029,7 @@ export default function ProfilePage() {
                       className={isCurrent ? "current" : ""}
                       key={role.code}
                     >
-                      <span className="level-icon">
+                      <span className="level-icon" data-role={role.code}>
                         <RoleSymbol code={role.code} />
                       </span>
                       <span>

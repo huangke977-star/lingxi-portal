@@ -146,7 +146,7 @@ export function TopNav() {
     }
 
     return {
-      code: user.role.code,
+      code: user.isSuperAdmin ? "super_administrator" : user.role.code,
       tooltip: user.isSuperAdmin ? "超级管理员" : user.role.name,
     };
   }, [user]);
@@ -261,7 +261,7 @@ export function TopNav() {
               <button
                 aria-label={roleBadge.tooltip}
                 className="level-badge"
-                data-role={user.role.code}
+                data-role={roleBadge.code}
                 data-tooltip={roleBadge.tooltip}
                 title={roleBadge.tooltip}
                 type="button"

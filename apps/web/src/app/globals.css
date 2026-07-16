@@ -368,39 +368,43 @@ body:has(.auth-page) .topbar {
 }
 
 .level-badge[data-role="qi_refining"] {
-  --role-accent: #0f766e;
+  --role-accent: #0f9f8f;
 }
 
 .level-badge[data-role="foundation_building"] {
-  --role-accent: #2563eb;
+  --role-accent: #3b82f6;
 }
 
 .level-badge[data-role="golden_core"] {
-  --role-accent: #b7791f;
+  --role-accent: #d79b24;
 }
 
 .level-badge[data-role="nascent_soul"] {
-  --role-accent: #7c3aed;
+  --role-accent: #8b5cf6;
 }
 
 .level-badge[data-role="spirit_transformation"] {
-  --role-accent: #c026d3;
+  --role-accent: #d946ef;
 }
 
 .level-badge[data-role="void_refining"] {
-  --role-accent: #4f46e5;
+  --role-accent: #6366f1;
 }
 
 .level-badge[data-role="body_integration"] {
-  --role-accent: #15803d;
+  --role-accent: #22a06b;
 }
 
 .level-badge[data-role="mahayana"] {
-  --role-accent: #be123c;
+  --role-accent: #e11d48;
 }
 
 .level-badge[data-role="administrator"] {
-  --role-accent: var(--accent-strong);
+  --role-accent: #475569;
+}
+
+.level-badge[data-role="super_administrator"] {
+  --role-accent: #b76e79;
 }
 
 .level-badge:hover,
@@ -412,7 +416,6 @@ body:has(.auth-page) .topbar {
 .level-badge .role-badge-icon {
   width: 28px;
   height: 28px;
-  stroke-width: 2.1;
 }
 
 .level-badge::after {
@@ -1471,6 +1474,46 @@ a.entry-item:hover {
   display: block;
   width: 1em;
   height: 1em;
+}
+
+.role-symbol[data-role="qi_refining"] {
+  color: #0f9f8f;
+}
+
+.role-symbol[data-role="foundation_building"] {
+  color: #3b82f6;
+}
+
+.role-symbol[data-role="golden_core"] {
+  color: #d79b24;
+}
+
+.role-symbol[data-role="nascent_soul"] {
+  color: #8b5cf6;
+}
+
+.role-symbol[data-role="spirit_transformation"] {
+  color: #d946ef;
+}
+
+.role-symbol[data-role="void_refining"] {
+  color: #6366f1;
+}
+
+.role-symbol[data-role="body_integration"] {
+  color: #22a06b;
+}
+
+.role-symbol[data-role="mahayana"] {
+  color: #e11d48;
+}
+
+.role-symbol[data-role="administrator"] {
+  color: #475569;
+}
+
+.role-symbol[data-role="super_administrator"] {
+  color: #b76e79;
 }
 
 .level-panel {
