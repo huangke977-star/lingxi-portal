@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Cropper, { type Area } from "react-easy-crop";
+import { MonitorSmartphone } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
 import { RoleSymbol } from "@/components/role-symbol";
 import {
@@ -97,6 +98,7 @@ export default function ProfilePage() {
   const [profileBioDraft, setProfileBioDraft] = useState("");
   const [sessions, setSessions] = useState<AuthSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  const [isSessionsOpen, setIsSessionsOpen] = useState(false);
   const [sessionAction, setSessionAction] = useState<
     "others" | "all" | null
   >(null);
@@ -556,8 +558,17 @@ export default function ProfilePage() {
     }
   }
 
+  function handleSessionPanelToggle() {
+    const willOpen = !isSessionsOpen;
+    setIsSessionsOpen(willOpen);
+    if (willOpen) {
+      void loadAccountSessions();
+    }
+  }
+
   const avatarInitial = user ? getAvatarFallbackText(user) : "H";
   const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
+  const currentSession = sessions.find((session) => session.current) ?? null;
   const joinedAt = user?.createdAt ? new Date(user.createdAt) : null;
   const joinedAtText = joinedAt ? formatJoinedAt(joinedAt) : "";
   const memberDurationText = joinedAt
@@ -681,6 +692,35 @@ export default function ProfilePage() {
               <span>给你的话</span>
               <p>{accountMotto}</p>
             </blockquote>
+
+            <div className="current-session-summary">
+              <div className="current-session-copy">
+                <span>当前登录设备</span>
+                <strong>
+                  {isLoadingSessions && !currentSession
+                    ? "正在识别设备"
+                    : currentSession
+                      ? formatSessionDevice(currentSession.userAgent)
+                      : "未知设备"}
+                </strong>
+                <small>
+                  {currentSession?.ip && currentSession.ip !== "unknown"
+                    ? currentSession.ip
+                    : "IP 未记录"}
+                </small>
+              </div>
+              <button
+                aria-controls="account-sessions-panel"
+                aria-expanded={isSessionsOpen}
+                aria-label={isSessionsOpen ? "收起登录设备列表" : "展开登录设备列表"}
+                className={`session-panel-toggle ${isSessionsOpen ? "active" : ""}`}
+                onClick={handleSessionPanelToggle}
+                title={isSessionsOpen ? "收起登录设备" : "查看登录设备"}
+                type="button"
+              >
+                <MonitorSmartphone aria-hidden="true" strokeWidth={1.8} />
+              </button>
+            </div>
           </section>
 
           <section className="profile-panel profile-bio-panel">
@@ -738,63 +778,68 @@ export default function ProfilePage() {
             </form>
           </section>
 
-          <section className="profile-panel account-sessions-panel">
-            <div className="account-sessions-heading">
-              <div className="panel-heading">
-                <span className="section-label">Login sessions</span>
-                <strong>登录设备</strong>
+          {isSessionsOpen ? (
+            <section
+              className="profile-panel account-sessions-panel"
+              id="account-sessions-panel"
+            >
+              <div className="account-sessions-heading">
+                <div className="panel-heading">
+                  <span className="section-label">Login sessions</span>
+                  <strong>登录设备</strong>
+                </div>
+                <div className="account-session-actions">
+                  <button
+                    className="text-action"
+                    disabled={
+                      sessionAction !== null ||
+                      sessions.filter((session) => !session.current).length === 0
+                    }
+                    onClick={() => void handleRevokeOtherSessions()}
+                    type="button"
+                  >
+                    退出其他设备
+                  </button>
+                  <button
+                    className="cache-danger-action"
+                    disabled={sessionAction !== null || sessions.length === 0}
+                    onClick={() => void handleRevokeAllSessions()}
+                    type="button"
+                  >
+                    退出全部设备
+                  </button>
+                </div>
               </div>
-              <div className="account-session-actions">
-                <button
-                  className="text-action"
-                  disabled={
-                    sessionAction !== null ||
-                    sessions.filter((session) => !session.current).length === 0
-                  }
-                  onClick={() => void handleRevokeOtherSessions()}
-                  type="button"
-                >
-                  退出其他设备
-                </button>
-                <button
-                  className="cache-danger-action"
-                  disabled={sessionAction !== null || sessions.length === 0}
-                  onClick={() => void handleRevokeAllSessions()}
-                  type="button"
-                >
-                  退出全部设备
-                </button>
-              </div>
-            </div>
 
-            <div className="account-session-list">
-              {isLoadingSessions ? (
-                <p className="account-session-state">正在读取登录设备</p>
-              ) : sessions.length ? (
-                sessions.map((session) => (
-                  <div className="account-session-row" key={session.id}>
-                    <div>
-                      <strong>{formatSessionDevice(session.userAgent)}</strong>
-                      <span>{session.ip === "unknown" ? "IP 未记录" : session.ip}</span>
+              <div className="account-session-list">
+                {isLoadingSessions ? (
+                  <p className="account-session-state">正在读取登录设备</p>
+                ) : sessions.length ? (
+                  sessions.map((session) => (
+                    <div className="account-session-row" key={session.id}>
+                      <div>
+                        <strong>{formatSessionDevice(session.userAgent)}</strong>
+                        <span>{session.ip === "unknown" ? "IP 未记录" : session.ip}</span>
+                      </div>
+                      <div>
+                        <span>登录时间</span>
+                        <strong>{formatSessionTime(session.issuedAt)}</strong>
+                      </div>
+                      <div>
+                        <span>有效期至</span>
+                        <strong>{formatSessionTime(session.expiresAt)}</strong>
+                      </div>
+                      <em className={session.current ? "current" : ""}>
+                        {session.current ? "当前设备" : "其他设备"}
+                      </em>
                     </div>
-                    <div>
-                      <span>登录时间</span>
-                      <strong>{formatSessionTime(session.issuedAt)}</strong>
-                    </div>
-                    <div>
-                      <span>有效期至</span>
-                      <strong>{formatSessionTime(session.expiresAt)}</strong>
-                    </div>
-                    <em className={session.current ? "current" : ""}>
-                      {session.current ? "当前设备" : "其他设备"}
-                    </em>
-                  </div>
-                ))
-              ) : (
-                <p className="account-session-state">暂无可用登录会话</p>
-              )}
-            </div>
-          </section>
+                  ))
+                ) : (
+                  <p className="account-session-state">暂无可用登录会话</p>
+                )}
+              </div>
+            </section>
+          ) : null}
 
           <section className="profile-panel theme-panel">
             <div className="panel-heading">

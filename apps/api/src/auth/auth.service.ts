@@ -65,8 +65,8 @@ export class AuthService {
     return this.createAuthResponse(user, context);
   }
 
-  async refresh(refreshToken: string): Promise<AuthResponse> {
-    const rotated = await this.refreshTokenService.rotate(refreshToken);
+  async refresh(refreshToken: string, context: RefreshSessionContext): Promise<AuthResponse> {
+    const rotated = await this.refreshTokenService.rotate(refreshToken, context);
     return {
       user: rotated.user,
       accessToken: await this.signAccessToken(rotated.user, rotated.tokenId),
@@ -82,11 +82,13 @@ export class AuthService {
   async listSessions(
     userId: number,
     sessionId: string | null,
+    context: RefreshSessionContext,
   ): Promise<{ sessions: AuthSessionSummary[] }> {
     return {
       sessions: await this.refreshTokenService.listSessions(
         userId,
         sessionId,
+        context,
       ),
     };
   }

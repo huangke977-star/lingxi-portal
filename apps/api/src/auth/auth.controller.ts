@@ -51,8 +51,11 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(200)
-  refresh(@Body() dto: RefreshTokenDto): Promise<AuthResponse> {
-    return this.authService.refresh(dto.refreshToken);
+  refresh(
+    @Body() dto: RefreshTokenDto,
+    @Req() request: SessionRequest,
+  ): Promise<AuthResponse> {
+    return this.authService.refresh(dto.refreshToken, this.sessionContext(request));
   }
 
   @Post('logout')
@@ -67,8 +70,9 @@ export class AuthController {
   sessions(
     @CurrentUser() user: AuthenticatedUser,
     @CurrentSessionId() sessionId: string | null,
+    @Req() request: SessionRequest,
   ): Promise<{ sessions: AuthSessionSummary[] }> {
-    return this.authService.listSessions(user.id, sessionId);
+    return this.authService.listSessions(user.id, sessionId, this.sessionContext(request));
   }
 
   @Post('sessions/revoke-others')
@@ -129,9 +133,13 @@ export class AuthController {
   }
 
   private sessionContext(request: SessionRequest): RefreshSessionContext {
+    const forwardedFor = request.headers?.['x-forwarded-for'];
     const userAgent = request.headers?.['user-agent'];
+    const forwardedIp = Array.isArray(forwardedFor)
+      ? forwardedFor[0]
+      : forwardedFor?.split(',')[0];
     return {
-      ip: request.ip ?? 'unknown',
+      ip: normalizeIp(forwardedIp?.trim() || request.ip || 'unknown'),
       userAgent: Array.isArray(userAgent)
         ? userAgent[0] ?? 'unknown'
         : userAgent ?? 'unknown',
@@ -142,4 +150,8 @@ export class AuthController {
 interface SessionRequest {
   ip?: string;
   headers?: Record<string, string | string[] | undefined>;
+}
+
+function normalizeIp(ip: string): string {
+  return ip.startsWith('::ffff:') ? ip.slice('::ffff:'.length) : ip;
 }

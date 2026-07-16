@@ -13,6 +13,7 @@ Keep users signed in during normal activity, distinguish authentication expiry f
 - A normal `403` response is shown as an authorization error and does not clear tokens.
 - Refresh responses with `401` or `403` clear local authentication because the refresh session is invalid or the account is disabled.
 - Refresh Token rotation keeps the original session login time while extending its expiry.
+- Login, refresh, and session-list requests record the latest available device user agent and proxy-forwarded client IP, allowing older sessions with missing metadata to be repaired when the profile is opened.
 
 ## Session State
 
@@ -28,6 +29,7 @@ Keep users signed in during normal activity, distinguish authentication expiry f
 - `POST /auth/sessions/revoke-others` revokes every Refresh Token except the current one.
 - `POST /auth/sessions/revoke-all` revokes every Refresh Token for the account.
 - `/profile` shows device/browser, IP, login time, expiry time, and current-device status.
+- The account summary shows the current device and IP. The full session panel is collapsed by default and opens from the device icon, whose accent state reflects whether the panel is expanded.
 - Revoking all sessions clears local tokens and returns the current browser to the homepage.
 
 ## Cache TTL Policy

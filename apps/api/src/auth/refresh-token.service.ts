@@ -56,7 +56,10 @@ export class RefreshTokenService {
     return { refreshToken, tokenId, expiresAt };
   }
 
-  async rotate(refreshToken: string): Promise<{
+  async rotate(
+    refreshToken: string,
+    context: RefreshSessionContext = { ip: 'unknown', userAgent: 'unknown' },
+  ): Promise<{
     refreshToken: string;
     tokenId: string;
     expiresAt: Date;
@@ -76,10 +79,11 @@ export class RefreshTokenService {
 
     const user = await this.usersService.findActiveById(record.userId);
     await this.revoke(refreshToken);
-    const next = await this.issue(record.userId, {
-      ip: record.ip ?? 'unknown',
-      userAgent: record.userAgent ?? 'unknown',
-    }, record.issuedAt);
+    const next = await this.issue(
+      record.userId,
+      this.mergeSessionContext(record, context),
+      record.issuedAt,
+    );
 
     return { ...next, user };
   }
@@ -101,8 +105,10 @@ export class RefreshTokenService {
   async listSessions(
     userId: number,
     currentTokenId: string | null,
+    context: RefreshSessionContext = { ip: 'unknown', userAgent: 'unknown' },
   ): Promise<AuthSessionSummary[]> {
     const current = await this.requireUserSession(userId, currentTokenId);
+    await this.updateSessionContext(current.tokenId, current.record, context);
     await this.repairCurrentSessionIndex(userId, current.tokenId);
     const sessions = await this.cleanAndLimitSessions(userId, current.tokenId);
     return sessions.map(({ tokenId, record }) => ({
@@ -194,6 +200,39 @@ export class RefreshTokenService {
     const sessionsKey = this.userSessionsKey(userId);
     await this.redis.sadd(sessionsKey, tokenId);
     await this.redis.expire(sessionsKey, this.refreshTtlSeconds());
+  }
+
+  private async updateSessionContext(
+    tokenId: string,
+    record: StoredRefreshToken,
+    context: RefreshSessionContext,
+  ): Promise<void> {
+    const merged = this.mergeSessionContext(record, context);
+    if (merged.ip === record.ip && merged.userAgent === record.userAgent) {
+      return;
+    }
+    const ttlSeconds = Math.max(
+      1,
+      Math.ceil((Date.parse(record.expiresAt) - Date.now()) / 1000),
+    );
+    await this.redis.set(
+      this.tokenKey(tokenId),
+      JSON.stringify({ ...record, ...merged }),
+      ttlSeconds,
+    );
+  }
+
+  private mergeSessionContext(
+    record: StoredRefreshToken,
+    context: RefreshSessionContext,
+  ): RefreshSessionContext {
+    return {
+      ip: context.ip !== 'unknown' ? context.ip : record.ip ?? 'unknown',
+      userAgent:
+        context.userAgent !== 'unknown'
+          ? context.userAgent
+          : record.userAgent ?? 'unknown',
+    };
   }
 
   private async cleanAndLimitSessions(

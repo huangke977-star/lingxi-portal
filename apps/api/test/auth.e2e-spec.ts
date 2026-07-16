@@ -301,13 +301,35 @@ describe('AuthController (e2e)', () => {
   it('refreshes by rotating refresh token state', async () => {
     const registered = await register('refresh_user', 'refresh@example.com').expect(200);
     const firstRefreshToken = registered.body.refreshToken as string;
+    const firstTokenId = firstRefreshToken.split('.')[0];
+    const storedRecord = JSON.parse(
+      redisState.store.get(`refresh_token:${firstTokenId}`) ?? '{}',
+    ) as Record<string, unknown>;
+    delete storedRecord.ip;
+    delete storedRecord.userAgent;
+    redisState.store.set(`refresh_token:${firstTokenId}`, JSON.stringify(storedRecord));
 
     const refreshed = await request(app.getHttpServer())
       .post('/auth/refresh')
+      .set('User-Agent', 'Backfilled Chrome session')
+      .set('X-Forwarded-For', '198.51.100.24')
       .send({ refreshToken: firstRefreshToken })
       .expect(200);
 
     expect(refreshed.body.refreshToken).not.toBe(firstRefreshToken);
+    const sessions = await request(app.getHttpServer())
+      .post('/auth/sessions')
+      .set('User-Agent', 'Backfilled Chrome session')
+      .set('X-Forwarded-For', '198.51.100.24')
+      .set('Authorization', `Bearer ${refreshed.body.accessToken as string}`)
+      .expect(200);
+    expect(sessions.body.sessions).toEqual([
+      expect.objectContaining({
+        current: true,
+        ip: '198.51.100.24',
+        userAgent: 'Backfilled Chrome session',
+      }),
+    ]);
     await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: firstRefreshToken }).expect(401);
   });
 
@@ -324,11 +346,21 @@ describe('AuthController (e2e)', () => {
     const loggedIn = await request(app.getHttpServer())
       .post('/auth/login')
       .set('User-Agent', 'HLOVET session test')
+      .set('X-Forwarded-For', '203.0.113.18')
       .send({ account: 'sessions_user', password: 'Secret123!' })
       .expect(200);
+    const currentTokenId = readJwtPayload(loggedIn.body.accessToken as string).sid as string;
+    const currentRecord = JSON.parse(
+      redisState.store.get(`refresh_token:${currentTokenId}`) ?? '{}',
+    ) as Record<string, unknown>;
+    delete currentRecord.ip;
+    delete currentRecord.userAgent;
+    redisState.store.set(`refresh_token:${currentTokenId}`, JSON.stringify(currentRecord));
 
     const response = await request(app.getHttpServer())
       .post('/auth/sessions')
+      .set('User-Agent', 'Current profile device')
+      .set('X-Forwarded-For', '203.0.113.19')
       .set('Authorization', `Bearer ${loggedIn.body.accessToken as string}`)
       .expect(200);
 
@@ -336,9 +368,10 @@ describe('AuthController (e2e)', () => {
     expect(response.body.sessions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: readJwtPayload(loggedIn.body.accessToken as string).sid,
+          id: currentTokenId,
           current: true,
-          userAgent: 'HLOVET session test',
+          ip: '203.0.113.19',
+          userAgent: 'Current profile device',
         }),
       ]),
     );
