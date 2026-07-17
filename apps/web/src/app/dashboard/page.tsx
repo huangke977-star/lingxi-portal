@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AppToast } from '@/components/app-toast';
-import { AuthUser, getMe, isAuthExpiredError, logout } from '@/lib/auth-api';
-import { clearAuthTokens, readAccessToken, readRefreshToken } from '@/lib/auth-storage';
+import { AuthUser, getMe, isAuthExpiredError } from '@/lib/auth-api';
+import { clearAuthTokens, readAccessToken } from '@/lib/auth-storage';
 import { getUserDisplayName } from '@/lib/user-display';
 
 export default function DashboardPage() {
@@ -13,7 +13,6 @@ export default function DashboardPage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     const accessToken = readAccessToken();
@@ -40,20 +39,6 @@ export default function DashboardPage() {
       });
   }, [router]);
 
-  async function handleLogout() {
-    setIsLoggingOut(true);
-    const refreshToken = readRefreshToken();
-
-    try {
-      if (refreshToken) {
-        await logout(refreshToken);
-      }
-    } finally {
-      clearAuthTokens();
-      router.replace('/login');
-    }
-  }
-
   return (
     <section className="page-shell">
       <header className="page-header">
@@ -62,11 +47,6 @@ export default function DashboardPage() {
           <div>
             <h1>个人空间</h1>
             <p>查看当前身份、角色境界和可用的门户入口。</p>
-          </div>
-          <div className="actions">
-            <button className="button secondary" disabled={isLoggingOut || !user} onClick={handleLogout} type="button">
-              {isLoggingOut ? '退出中' : '退出登录'}
-            </button>
           </div>
         </div>
       </header>

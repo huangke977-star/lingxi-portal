@@ -12,7 +12,6 @@ export default function NavPage() {
             <h1>公开导航</h1>
             <p>常用项目、服务和参考入口会在这里持续更新。</p>
           </div>
-          <span className="status">按权限显示</span>
         </div>
       </header>
 

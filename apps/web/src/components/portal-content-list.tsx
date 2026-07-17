@@ -4,6 +4,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ExternalLink } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
 import { isAuthExpiredError } from "@/lib/auth-api";
 import {
@@ -23,13 +24,6 @@ interface PortalContentListProps {
   kinds: PortalCategoryKind[];
   emptyMessage: string;
 }
-
-const KIND_LABEL: Record<PortalCategoryKind, string> = {
-  navigation: "导航",
-  tool: "工具",
-  server: "超级管理员",
-  custom_page: "页面",
-};
 
 export function PortalContentList({
   kinds,
@@ -96,20 +90,18 @@ export function PortalContentList({
             <section className="portal-category-section" key={category.id}>
               <div className="portal-category-heading">
                 <div>
-                  <span className="section-label">
-                    {KIND_LABEL[category.kind]}
-                  </span>
                   <h2>{category.name}</h2>
                 </div>
-                {category.description ? <p>{category.description}</p> : null}
+                <div className="portal-category-heading-aside">
+                  <span className="portal-category-count">
+                    {category.entries.length} 个入口
+                  </span>
+                  {category.description ? <p>{category.description}</p> : null}
+                </div>
               </div>
-              <div className="entry-list card-grid">
+              <div className="entry-list card-grid portal-entry-grid">
                 {category.entries.map((entry) => (
-                  <PortalEntryItem
-                    entry={entry}
-                    kind={category.kind}
-                    key={entry.id}
-                  />
+                  <PortalEntryItem entry={entry} key={entry.id} />
                 ))}
               </div>
             </section>
@@ -131,37 +123,71 @@ export function PortalContentList({
   );
 }
 
-function PortalEntryItem({
-  entry,
-  kind,
-}: {
-  entry: PortalEntry;
-  kind: PortalCategoryKind;
-}) {
+function PortalEntryItem({ entry }: { entry: PortalEntry }) {
+  const description = entry.description.trim();
+  const iconPath = entry.iconPath?.trim() || null;
+  const [failedIconPath, setFailedIconPath] = useState<string | null>(null);
+  const showConfiguredIcon = Boolean(
+    iconPath && failedIconPath !== iconPath,
+  );
+  const descriptionId = description
+    ? `portal-entry-description-${entry.id}`
+    : undefined;
+  const subtitle = portalEntrySubtitle(entry.url);
   const content = (
     <>
-      <span className="entry-marker portal-entry-marker">
-        {entry.iconPath ? (
-          <img alt="" src={entry.iconPath} />
+      <span
+        aria-hidden="true"
+        className={`portal-entry-art ${showConfiguredIcon ? "has-image" : "is-fallback"}`}
+      >
+        {showConfiguredIcon ? (
+          <img
+            alt=""
+            onError={() => setFailedIconPath(iconPath)}
+            src={iconPath ?? ""}
+          />
         ) : (
-          portalEntryMarker(entry.title)
+          <span>{portalEntryMarker(entry.title)}</span>
         )}
       </span>
-      <span className="entry-main">
-        <strong>{entry.title}</strong>
-        <span>{entry.description || "暂无说明"}</span>
-      </span>
-      <span className="entry-meta">{entryMeta(entry, kind)}</span>
+      <strong className="portal-entry-title">{entry.title}</strong>
+      <span className="portal-entry-subtitle">{subtitle}</span>
+      {entry.url ? (
+        <ExternalLink
+          aria-hidden="true"
+          className="portal-entry-open-icon"
+          size={15}
+          strokeWidth={1.8}
+        />
+      ) : null}
+      {description ? (
+        <span
+          className="portal-entry-tooltip"
+          id={descriptionId}
+          role="tooltip"
+        >
+          {description}
+        </span>
+      ) : null}
     </>
   );
 
   if (!entry.url) {
-    return <div className="entry-item muted">{content}</div>;
+    return (
+      <div
+        aria-describedby={descriptionId}
+        className="entry-item portal-entry-card muted"
+        tabIndex={description ? 0 : undefined}
+      >
+        {content}
+      </div>
+    );
   }
 
   return (
     <a
-      className="entry-item"
+      aria-describedby={descriptionId}
+      className="entry-item portal-entry-card"
       href={entry.url}
       rel={entry.openInNewTab ? "noreferrer" : undefined}
       target={entry.openInNewTab ? "_blank" : undefined}
@@ -171,18 +197,21 @@ function PortalEntryItem({
   );
 }
 
-function entryMeta(entry: PortalEntry, kind: PortalCategoryKind): string {
-  if (kind === "server") {
-    return "超级管理员";
+function portalEntrySubtitle(url: string | null): string {
+  const normalizedUrl = url?.trim();
+  if (!normalizedUrl) return "暂未配置链接";
+  if (
+    normalizedUrl.startsWith("/") ||
+    normalizedUrl.startsWith("#") ||
+    normalizedUrl.startsWith("?")
+  ) {
+    return "站内页面";
   }
-  if (!entry.url) {
-    return "待接入";
+
+  try {
+    const parsedUrl = new URL(normalizedUrl);
+    return parsedUrl.hostname.replace(/^www\./, "") || "链接入口";
+  } catch {
+    return "链接入口";
   }
-  if (entry.visibility === "public") {
-    return "公开";
-  }
-  if (entry.visibility === "authenticated") {
-    return "登录可见";
-  }
-  return entry.allowedRoles.map((role) => role.name).join(" · ");
 }

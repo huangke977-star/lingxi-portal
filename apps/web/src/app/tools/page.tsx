@@ -12,7 +12,6 @@ export default function ToolsPage() {
             <h1>工具箱</h1>
             <p>常用工具会根据当前账号身份显示。</p>
           </div>
-          <span className="status">按角色开放</span>
         </div>
       </header>
 

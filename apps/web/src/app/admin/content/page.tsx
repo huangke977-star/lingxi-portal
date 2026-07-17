@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import Link from "next/link";
@@ -499,9 +500,7 @@ export default function ContentManagementPage() {
             <div className="portal-entry-admin-list">
               {selectedCategory.entries.map((entry) => (
                 <article className="portal-entry-admin-row" key={entry.id}>
-                  <span className="entry-marker portal-entry-marker">
-                    {portalEntryMarker(entry.title)}
-                  </span>
+                  <AdminEntryIcon entry={entry} />
                   <div className="portal-entry-admin-copy">
                     <strong>{entry.title}</strong>
                     <p>{entry.description || "暂无说明"}</p>
@@ -575,6 +574,31 @@ export default function ContentManagementPage() {
         />
       ) : null}
     </section>
+  );
+}
+
+function AdminEntryIcon({ entry }: { entry: PortalEntry }) {
+  const iconPath = entry.iconPath?.trim() || null;
+  const [failedIconPath, setFailedIconPath] = useState<string | null>(null);
+  const showConfiguredIcon = Boolean(
+    iconPath && failedIconPath !== iconPath,
+  );
+
+  return (
+    <span
+      aria-hidden="true"
+      className={`portal-entry-admin-icon${showConfiguredIcon ? " has-image" : " is-fallback"}`}
+    >
+      {showConfiguredIcon ? (
+        <img
+          alt=""
+          onError={() => setFailedIconPath(iconPath)}
+          src={iconPath ?? ""}
+        />
+      ) : (
+        portalEntryMarker(entry.title)
+      )}
+    </span>
   );
 }
 

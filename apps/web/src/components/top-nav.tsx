@@ -4,7 +4,13 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { RoleSymbol } from "@/components/role-symbol";
 import { AuthUser, getMe, logout, resolveApiUrl } from "@/lib/auth-api";
 import {
@@ -103,9 +109,20 @@ export function TopNav() {
     }
 
     function handlePointerDown(event: PointerEvent) {
-      if (!accountMenuRef.current?.contains(event.target as Node)) {
-        setIsAccountMenuOpen(false);
+      const accountMenu = accountMenuRef.current;
+      if (!accountMenu) {
+        return;
       }
+
+      const eventPath = event.composedPath();
+      if (
+        eventPath.includes(accountMenu) ||
+        accountMenu.contains(event.target as Node)
+      ) {
+        return;
+      }
+
+      setIsAccountMenuOpen(false);
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -114,10 +131,13 @@ export function TopNav() {
       }
     }
 
-    document.addEventListener("pointerdown", handlePointerDown);
+    const listenerFrame = window.requestAnimationFrame(() => {
+      document.addEventListener("pointerdown", handlePointerDown);
+    });
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      window.cancelAnimationFrame(listenerFrame);
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
@@ -204,6 +224,18 @@ export function TopNav() {
     }, 260);
   }
 
+  function handleAccountPointerEnter(event: ReactPointerEvent<HTMLElement>) {
+    if (event.pointerType === "mouse") {
+      openAccountMenu();
+    }
+  }
+
+  function handleAccountPointerLeave(event: ReactPointerEvent<HTMLElement>) {
+    if (event.pointerType === "mouse") {
+      scheduleAccountMenuClose();
+    }
+  }
+
   function isActiveRoute(href: string) {
     if (href === "/") {
       return pathname === href;
@@ -274,10 +306,13 @@ export function TopNav() {
                   aria-haspopup="menu"
                   aria-label={`${getUserDisplayName(user)} 的账户菜单`}
                   className="avatar-button"
-                  onClick={openAccountMenu}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openAccountMenu();
+                  }}
                   onFocus={openAccountMenu}
-                  onPointerEnter={openAccountMenu}
-                  onPointerLeave={scheduleAccountMenuClose}
+                  onPointerEnter={handleAccountPointerEnter}
+                  onPointerLeave={handleAccountPointerLeave}
                   type="button"
                 >
                   {avatarUrl ? <img alt="" src={avatarUrl} /> : avatarText}
@@ -285,8 +320,8 @@ export function TopNav() {
                 <div
                   className={`account-menu ${isAccountMenuOpen ? "open" : ""}`}
                   onFocus={cancelAccountMenuClose}
-                  onPointerEnter={cancelAccountMenuClose}
-                  onPointerLeave={scheduleAccountMenuClose}
+                  onPointerEnter={handleAccountPointerEnter}
+                  onPointerLeave={handleAccountPointerLeave}
                   role="menu"
                 >
                   <div className="account-menu-head">
