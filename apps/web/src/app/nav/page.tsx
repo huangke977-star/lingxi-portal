@@ -10,7 +10,7 @@ export default function NavPage() {
         <div className="title-row">
           <div>
             <h1>公开导航</h1>
-            <p>常用项目、服务和参考入口会在这里持续更新。</p>
+            <p>常用站点、在线服务和实用工具会在这里持续更新。</p>
           </div>
         </div>
       </header>
