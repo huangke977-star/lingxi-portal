@@ -25,6 +25,7 @@ const navItems = [
   { href: "/", label: "首页" },
   { href: "/nav", label: "导航" },
   { href: "/tools", label: "工具" },
+  { href: "/articles", label: "文章" },
   { href: "/dashboard", label: "工作台" },
 ];
 
@@ -331,6 +332,11 @@ export function TopNav() {
                   <Link href="/profile" onClick={closeAccountMenu}>
                     个人中心
                   </Link>
+                  {user ? (
+                    <Link href="/profile/articles" onClick={closeAccountMenu}>
+                      我的文章
+                    </Link>
+                  ) : null}
                   {user.isSuperAdmin || user.role.level >= 90 ? (
                     <>
                       <Link href="/admin" onClick={closeAccountMenu}>
@@ -338,6 +344,9 @@ export function TopNav() {
                       </Link>
                       <Link href="/admin/content" onClick={closeAccountMenu}>
                         内容管理
+                      </Link>
+                      <Link href="/admin/articles" onClick={closeAccountMenu}>
+                        文章管理
                       </Link>
                     </>
                   ) : null}

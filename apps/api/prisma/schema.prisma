@@ -30,6 +30,27 @@ enum PortalRecordStatus {
   disabled
 }
 
+enum ArticleStatus {
+  draft
+  published
+  unpublished
+  blocked
+  deleted
+}
+
+enum ArticleVisibility {
+  public
+  authenticated
+  role_restricted
+  private
+}
+
+enum ArticleCommentStatus {
+  active
+  blocked
+  deleted
+}
+
 model Role {
   id               Int               @id @default(autoincrement())
   code             String            @unique @db.VarChar(64)
@@ -40,6 +61,7 @@ model Role {
   updatedAt        DateTime          @updatedAt
   users            User[]
   portalEntryRoles PortalEntryRole[]
+  articleAllowedRoles ArticleAllowedRole[]
 
   @@map("roles")
 }
@@ -76,6 +98,11 @@ model User {
   portalCategoriesUpdated PortalCategory[]  @relation("PortalCategoryUpdatedBy")
   portalEntriesCreated    PortalEntry[]     @relation("PortalEntryCreatedBy")
   portalEntriesUpdated    PortalEntry[]     @relation("PortalEntryUpdatedBy")
+  articles                Article[]         @relation("ArticleAuthor")
+  articleComments         ArticleComment[]   @relation("ArticleCommentAuthor")
+  articleLikes            ArticleLike[]
+  articleFavorites        ArticleFavorite[]
+  articleViews            ArticleView[]
 
   @@index([roleId])
   @@map("users")
@@ -156,4 +183,125 @@ model PortalEntryRole {
   @@id([entryId, roleId])
   @@index([roleId])
   @@map("portal_entry_roles")
+}
+
+model Article {
+  id            Int                    @id @default(autoincrement())
+  authorId      Int                    @map("author_id")
+  author        User                   @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  title         String                 @db.VarChar(120)
+  slug          String                 @unique @db.VarChar(180)
+  summary       String                 @default("") @db.VarChar(300)
+  content       String                 @db.LongText
+  coverPath     String?                @map("cover_path") @db.VarChar(512)
+  category      String                 @default("") @db.VarChar(80)
+  tags          String                 @default("") @db.VarChar(500)
+  titleColor    String                 @default("") @map("title_color") @db.VarChar(7)
+  visibility    ArticleVisibility      @default(public)
+  status        ArticleStatus          @default(draft)
+  isPinned      Boolean                @default(false) @map("is_pinned")
+  pinOrder      Int                    @default(0) @map("pin_order")
+  publishedAt   DateTime?              @map("published_at")
+  blockedReason String?                @map("blocked_reason") @db.VarChar(255)
+  viewCount     Int                    @default(0) @map("view_count")
+  likeCount     Int                    @default(0) @map("like_count")
+  favoriteCount Int                    @default(0) @map("favorite_count")
+  commentCount  Int                    @default(0) @map("comment_count")
+  allowedRoles  ArticleAllowedRole[]
+  images        ArticleImage[]
+  comments      ArticleComment[]
+  likes         ArticleLike[]
+  favorites     ArticleFavorite[]
+  views         ArticleView[]
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+
+  @@index([authorId, status, updatedAt])
+  @@index([status, visibility, isPinned, pinOrder])
+  @@index([category, status])
+  @@map("articles")
+}
+
+model ArticleAllowedRole {
+  articleId Int     @map("article_id")
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  roleId    Int     @map("role_id")
+  role      Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, roleId])
+  @@index([roleId])
+  @@map("article_allowed_roles")
+}
+
+model ArticleImage {
+  id           Int      @id @default(autoincrement())
+  articleId    Int      @map("article_id")
+  article      Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  originalName String   @map("original_name") @db.VarChar(255)
+  storedName   String   @unique @map("stored_name") @db.VarChar(255)
+  mimeType     String   @map("mime_type") @db.VarChar(64)
+  sizeBytes    Int      @map("size_bytes")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([articleId, sortOrder])
+  @@map("article_images")
+}
+
+model ArticleComment {
+  id        Int                  @id @default(autoincrement())
+  articleId Int                  @map("article_id")
+  article   Article              @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  authorId  Int                  @map("author_id")
+  author    User                 @relation("ArticleCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  parentId  Int?                 @map("parent_id")
+  parent    ArticleComment?      @relation("ArticleCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   ArticleComment[]     @relation("ArticleCommentReplies")
+  body      String               @db.Text
+  status    ArticleCommentStatus @default(active)
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+
+  @@index([articleId, status, createdAt])
+  @@index([parentId])
+  @@map("article_comments")
+}
+
+model ArticleLike {
+  articleId Int      @map("article_id")
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId    Int      @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([articleId, userId])
+  @@index([userId])
+  @@map("article_likes")
+}
+
+model ArticleFavorite {
+  articleId Int      @map("article_id")
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId    Int      @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([articleId, userId])
+  @@index([userId])
+  @@map("article_favorites")
+}
+
+model ArticleView {
+  id         Int      @id @default(autoincrement())
+  articleId  Int      @map("article_id")
+  article    Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId     Int?     @map("user_id")
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  visitorKey String   @map("visitor_key") @db.VarChar(191)
+  viewedOn   String   @map("viewed_on") @db.VarChar(10)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([articleId, visitorKey, viewedOn])
+  @@index([articleId, createdAt])
+  @@map("article_views")
 }

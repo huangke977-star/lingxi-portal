@@ -20,6 +20,8 @@ function getDatabaseConfig() {
       process.env.MYSQL_DATABASE ??
       decodeURIComponent(databaseUrl?.pathname.replace(/^\//, '') ?? 'lingxi_portal'),
     connectionLimit: Number(process.env.MYSQL_CONNECTION_LIMIT ?? 5),
+    allowPublicKeyRetrieval:
+      process.env.MYSQL_ALLOW_PUBLIC_KEY_RETRIEVAL === 'true',
   };
 }
 

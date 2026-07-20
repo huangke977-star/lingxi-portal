@@ -105,11 +105,13 @@ services:
       MAX_REFRESH_SESSIONS_PER_USER: ${MAX_REFRESH_SESSIONS_PER_USER:-10}
       BACKGROUND_UPLOAD_DIR: /app/uploads/backgrounds
       AVATAR_UPLOAD_DIR: /app/uploads/avatars
+      ARTICLE_UPLOAD_DIR: /app/uploads/articles
     ports:
       - "127.0.0.1:${API_PORT:-3001}:3001"
     volumes:
       - background_uploads:/app/uploads/backgrounds
       - avatar_uploads:/app/uploads/avatars
+      - article_uploads:/app/uploads/articles
     depends_on:
       api-bootstrap:
         condition: service_completed_successfully
@@ -136,3 +138,4 @@ volumes:
   redis_data:
   background_uploads:
   avatar_uploads:
+  article_uploads:
