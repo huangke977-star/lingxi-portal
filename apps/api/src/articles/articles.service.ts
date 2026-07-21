@@ -22,6 +22,7 @@ import {
 } from "./dto/article.dto";
 import {
   ArticleAuthorResponse,
+  ArticleCenterSummaryResponse,
   ArticleCommentResponse,
   ArticleCommentsResponse,
   ArticleInteractionResponse,
@@ -132,6 +133,34 @@ export class ArticlesService {
     user: AuthenticatedUser,
   ): Promise<ArticleListResponse> {
     return this.listArticles(query, user, false);
+  }
+
+  async getCenterSummary(
+    user: AuthenticatedUser | null,
+  ): Promise<ArticleCenterSummaryResponse> {
+    const visibleWhere = this.buildWhere(new ListArticlesQueryDto(), user, false, false);
+    const canManage = Boolean(user?.isSuperAdmin || (user?.role.level ?? 0) >= 90);
+    const [discover, mine, favorites, liked, manage] = await Promise.all([
+      this.prisma.article.count({ where: visibleWhere }),
+      user
+        ? this.prisma.article.count({
+            where: { authorId: user.id, status: { not: ArticleStatus.deleted } },
+          })
+        : Promise.resolve(0),
+      user
+        ? this.prisma.articleFavorite.count({
+            where: { userId: user.id, article: visibleWhere },
+          })
+        : Promise.resolve(0),
+      user
+        ? this.prisma.articleLike.count({
+            where: { userId: user.id, article: visibleWhere },
+          })
+        : Promise.resolve(0),
+      canManage ? this.prisma.article.count() : Promise.resolve(0),
+    ]);
+
+    return { discover, mine, favorites, liked, manage };
   }
 
   listMine(query: ListArticlesQueryDto, user: AuthenticatedUser): Promise<ArticleListResponse> {

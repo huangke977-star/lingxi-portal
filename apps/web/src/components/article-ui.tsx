@@ -14,11 +14,10 @@ import { getAvatarFallbackText } from "@/lib/user-display";
 
 export function formatArticleDate(value: string | null): string {
   if (!value) return "尚未发布";
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(new Date(value));
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 export function ArticleAuthorLine({ author }: { author: ArticleAuthor }) {

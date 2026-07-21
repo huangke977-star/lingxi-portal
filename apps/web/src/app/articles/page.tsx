@@ -1,12 +1,12 @@
 "use client";
 
-import { Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleCard } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
-import { Article, listPublicArticles, listVisibleArticles } from "@/lib/article-api";
+import { ArticleList, listPublicArticles, listVisibleArticles } from "@/lib/article-api";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 
@@ -14,34 +14,39 @@ export default function ArticlesPage() {
   return <Suspense fallback={<section className="page-shell articles-page"><div className="article-empty-state">正在读取文章。</div></section>}><ArticlesContent /></Suspense>;
 }
 
+const emptyList: ArticleList = { items: [], total: 0, page: 1, pageSize: 10, totalPages: 1 };
+
 function ArticlesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const querySearch = searchParams.get("q") ?? "";
   const querySort = searchParams.get("sort") === "popular" ? "popular" : "latest";
+  const queryPage = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
   const [searchInput, setSearchInput] = useState(querySearch);
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [total, setTotal] = useState(0);
+  const [list, setList] = useState<ArticleList>(emptyList);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const composingRef = useRef(false);
 
-  function replaceQuery(next: { q?: string; sort?: "latest" | "popular" }) {
+  function replaceQuery(next: { q?: string; sort?: "latest" | "popular"; page?: number }) {
     const params = new URLSearchParams(searchParams.toString());
     const nextSearch = next.q ?? querySearch;
     const nextSort = next.sort ?? querySort;
+    const nextPage = next.page ?? queryPage;
     if (nextSearch.trim()) params.set("q", nextSearch.trim());
     else params.delete("q");
     if (nextSort === "popular") params.set("sort", nextSort);
     else params.delete("sort");
+    if (nextPage > 1) params.set("page", String(nextPage));
+    else params.delete("page");
     router.replace(`/articles${params.size ? `?${params}` : ""}`);
   }
 
   useEffect(() => {
     if (composingRef.current || searchInput === querySearch) return;
-    const timer = window.setTimeout(() => replaceQuery({ q: searchInput }), 300);
+    const timer = window.setTimeout(() => replaceQuery({ q: searchInput, page: 1 }), 300);
     return () => window.clearTimeout(timer);
     // Search is represented in the URL so refresh and back navigation remain stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -56,24 +61,22 @@ function ArticlesContent() {
     // URL changes start a new request cycle for the feed.
     setIsLoading(true);
     const listRequest = token
-      ? listVisibleArticles(token, { search: querySearch, sort: querySort, pageSize: 20 })
-      : listPublicArticles({ search: querySearch, sort: querySort, pageSize: 20 });
+      ? listVisibleArticles(token, { page: queryPage, search: querySearch, sort: querySort, pageSize: 10 })
+      : listPublicArticles({ page: queryPage, search: querySearch, sort: querySort, pageSize: 10 });
     Promise.all([token ? getMe(token) : Promise.resolve(null), listRequest])
       .then(([currentUser, result]) => {
         if (!active) return;
         setUser(currentUser);
-        setArticles(result.items);
-        setTotal(result.total);
+        setList(result);
       })
       .catch(async (loadError) => {
         if (!active) return;
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          const result = await listPublicArticles({ search: querySearch, sort: querySort, pageSize: 20 });
+          const result = await listPublicArticles({ page: queryPage, search: querySearch, sort: querySort, pageSize: 10 });
           if (!active) return;
           setUser(null);
-          setArticles(result.items);
-          setTotal(result.total);
+          setList(result);
           setIsLoggedIn(false);
           return;
         }
@@ -81,7 +84,7 @@ function ArticlesContent() {
       })
       .finally(() => { if (active) setIsLoading(false); });
     return () => { active = false; };
-  }, [querySearch, querySort]);
+  }, [queryPage, querySearch, querySort]);
 
   return (
     <section className="page-shell articles-page">
@@ -110,13 +113,13 @@ function ArticlesContent() {
             "latest",
             "最新",
           ], ["popular", "热门"]] as const).map(([value, label]) => (
-            <button aria-selected={querySort === value} className={querySort === value ? "active" : undefined} key={value} onClick={() => replaceQuery({ sort: value })} role="tab" type="button">{label}</button>
+            <button aria-selected={querySort === value} className={querySort === value ? "active" : undefined} key={value} onClick={() => replaceQuery({ sort: value, page: 1 })} role="tab" type="button">{label}</button>
           ))}
         </div>
       </div>
 
-      <div className="article-feed-heading"><span>{isLoading ? "正在加载" : querySearch ? `找到 ${total} 篇文章` : `${total} 篇文章`}</span></div>
-      {isLoading ? <div className="article-empty-state">正在读取文章。</div> : articles.length ? <div className="article-feed-grid">{articles.map((article) => <ArticleCard article={article} key={article.id} />)}</div> : <div className="article-empty-state"><strong>还没有找到文章</strong><span>{querySearch ? "换一个关键词试试。" : "这里还没有发布内容。"}</span></div>}
+      {isLoading ? <div className="article-empty-state">正在读取文章。</div> : list.items.length ? <div className="article-feed-grid">{list.items.map((article) => <ArticleCard article={article} key={article.id} />)}</div> : <div className="article-empty-state"><strong>还没有找到文章</strong><span>{querySearch ? "换一个关键词试试。" : "这里还没有发布内容。"}</span></div>}
+      {list.totalPages > 1 ? <nav aria-label="分页" className="article-pagination"><button disabled={list.page <= 1} onClick={() => replaceQuery({ page: list.page - 1 })} title="上一页" type="button"><ChevronLeft aria-hidden="true" size={18} /></button><span>{list.page} / {list.totalPages}</span><button disabled={list.page >= list.totalPages} onClick={() => replaceQuery({ page: list.page + 1 })} title="下一页" type="button"><ChevronRight aria-hidden="true" size={18} /></button></nav> : null}
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );

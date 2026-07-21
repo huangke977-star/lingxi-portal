@@ -55,6 +55,17 @@ export class ArticlesController {
     return this.articlesService.listVisible(query, user);
   }
 
+  @Get("center/summary")
+  getPublicCenterSummary() {
+    return this.articlesService.getCenterSummary(null);
+  }
+
+  @Get("visible/center/summary")
+  @UseGuards(JwtAuthGuard)
+  getVisibleCenterSummary(@CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.getCenterSummary(user);
+  }
+
   @Get("mine")
   @UseGuards(JwtAuthGuard)
   listMine(

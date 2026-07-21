@@ -74,6 +74,14 @@ export interface ArticleMineSummaryResponse {
   deleted: number;
 }
 
+export interface ArticleCenterSummaryResponse {
+  discover: number;
+  mine: number;
+  favorites: number;
+  liked: number;
+  manage: number;
+}
+
 export interface ArticleCommentsResponse {
   items: ArticleCommentResponse[];
 }

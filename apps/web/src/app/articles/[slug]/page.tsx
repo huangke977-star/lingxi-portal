@@ -124,7 +124,6 @@ export default function ArticleDetailPage() {
       <Link className="article-back-link" href="/articles">返回文章</Link>
       <article className="article-reading-layout">
         <header className="article-reading-header">
-          <div className="article-reading-meta"><span>{article.category || "随笔"}</span><span>{formatArticleDate(article.publishedAt)}</span>{article.isPinned ? <span>置顶</span> : null}</div>
           <h1 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h1>
           {article.summary ? <p className="article-reading-summary">{article.summary}</p> : null}
           <div className="article-reading-author"><ArticleAuthorLine author={article.author} /><span className="article-reading-divider" /><span>发布于 {formatArticleDate(article.publishedAt)}</span></div>

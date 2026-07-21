@@ -12,6 +12,8 @@ Extend HLOVET from a link portal into a lightweight community where users can pu
 - Support live search plus latest and popular sorting; pinned articles stay ahead of regular content.
 - Article details include views, likes, favorites, comments, and replies.
 - The article center owns `Discover`, `My Writing`, `Favorites`, and `Liked` tabs. Administrators also see `Manage`.
+- Each article-center tab displays its total count from one aggregate summary endpoint.
+- Article lists use ten items per page and consistent previous/next pagination, including discovery and administration.
 - The avatar menu no longer duplicates `My Articles` or `Article Management` entries.
 - `My Writing` separates all active work, drafts, published, unpublished, restricted, and recycle-bin items.
 - Writing and editing use dedicated pages and support drafts, publishing, editing, unpublishing, recycle-bin moves, restore, and permanent deletion.
@@ -23,6 +25,9 @@ Extend HLOVET from a link portal into a lightweight community where users can pu
 - Desktop uses a wide header, a readable main column, and a contextual article sidebar instead of a single narrow strip.
 - Mobile prioritizes the article body and places metadata and interaction statistics afterward.
 - Line height and paragraph spacing are controlled separately so a soft break does not create paragraph-sized whitespace.
+- Article timestamps are displayed to the second using one consistent format.
+- Article headers and filter areas use compact vertical spacing, and category metadata is not duplicated in the detail header.
+- Scrollable article controls use narrow, theme-aware scrollbars without native arrow buttons.
 
 ## Permissions
 
@@ -49,6 +54,7 @@ Statistics are read-only by default. If correction is needed later, only the sup
 
 - Favorite and liked lists are paginated in reverse interaction order.
 - Writing-status counts are returned separately for tab badges.
+- A center summary returns discover, writing, favorite, liked, and management totals in one request.
 - Delete is soft-delete; restoring returns an article to draft, and only recycle-bin items can be permanently deleted.
 - Permanent deletion removes both database records and stored article image files.
 

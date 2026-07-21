@@ -185,7 +185,6 @@ function MyArticlesContent() {
         </label>
       </div>
 
-      <div className="article-feed-heading"><span>{isLoading ? "正在加载" : `${list.total} 篇文章`}</span></div>
       {isLoading ? <div className="article-empty-state">正在读取你的文章。</div> : list.items.length ? (
         <div className="article-mine-list">
           {list.items.map((article) => (

@@ -142,6 +142,26 @@ describe("ArticlesService article center extensions", () => {
     });
   });
 
+  it("returns all article-center tab counts in one summary", async () => {
+    const prisma = createPrismaMock();
+    prisma.article.count
+      .mockResolvedValueOnce(5)
+      .mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(7);
+    prisma.articleFavorite.count.mockResolvedValueOnce(2);
+    prisma.articleLike.count.mockResolvedValueOnce(3);
+    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const adminUser = { ...user, isSuperAdmin: true };
+
+    await expect(service.getCenterSummary(adminUser)).resolves.toEqual({
+      discover: 5,
+      mine: 4,
+      favorites: 2,
+      liked: 3,
+      manage: 7,
+    });
+  });
+
   it("restores deleted articles as unpinned drafts", async () => {
     const prisma = createPrismaMock();
     const service = new ArticlesService(prisma as unknown as PrismaService);

@@ -74,6 +74,14 @@ export interface ArticleMineSummary {
   deleted: number;
 }
 
+export interface ArticleCenterSummary {
+  discover: number;
+  mine: number;
+  favorites: number;
+  liked: number;
+  manage: number;
+}
+
 export interface ArticleInput {
   title: string;
   summary: string;
@@ -120,6 +128,17 @@ export function listPublicArticles(query?: Parameters<typeof listQuery>[0]): Pro
 
 export function listVisibleArticles(accessToken: string, query?: Parameters<typeof listQuery>[0]): Promise<ArticleList> {
   return requestJson<ArticleList>(`/articles/visible${listQuery(query)}`, {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function getPublicArticleCenterSummary(): Promise<ArticleCenterSummary> {
+  return requestJson<ArticleCenterSummary>("/articles/center/summary", { cache: "no-store" });
+}
+
+export function getVisibleArticleCenterSummary(accessToken: string): Promise<ArticleCenterSummary> {
+  return requestJson<ArticleCenterSummary>("/articles/visible/center/summary", {
     cache: "no-store",
     headers: authHeaders(accessToken),
   });

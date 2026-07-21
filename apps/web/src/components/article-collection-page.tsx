@@ -21,7 +21,7 @@ const emptyList: ArticleList = {
   items: [],
   total: 0,
   page: 1,
-  pageSize: 12,
+  pageSize: 10,
   totalPages: 1,
 };
 
@@ -68,7 +68,7 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
     const request = mode === "favorites" ? listFavoriteArticles : listLikedArticles;
     Promise.all([
       getMe(token),
-      request(token, { page: queryPage, pageSize: 12, search: querySearch }),
+      request(token, { page: queryPage, pageSize: 10, search: querySearch }),
     ])
       .then(([currentUser, result]) => {
         setUser(currentUser);
@@ -124,9 +124,6 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
         </label>
       </div>
 
-      <div className="article-feed-heading">
-        <span>{isLoading ? "正在加载" : querySearch ? `找到 ${list.total} 篇` : `${list.total} 篇文章`}</span>
-      </div>
       {isLoading ? (
         <div className="article-empty-state">正在读取文章。</div>
       ) : list.items.length ? (
