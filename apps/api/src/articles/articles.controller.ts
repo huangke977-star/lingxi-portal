@@ -64,6 +64,39 @@ export class ArticlesController {
     return this.articlesService.listMine(query, user);
   }
 
+  @Get("mine/summary")
+  @UseGuards(JwtAuthGuard)
+  getMineSummary(@CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.getMineSummary(user);
+  }
+
+  @Get("mine/:id")
+  @UseGuards(JwtAuthGuard)
+  getMineById(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.articlesService.getMineById(id, user);
+  }
+
+  @Get("favorites")
+  @UseGuards(JwtAuthGuard)
+  listFavorites(
+    @Query() query: ListArticlesQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.articlesService.listFavorites(query, user);
+  }
+
+  @Get("liked")
+  @UseGuards(JwtAuthGuard)
+  listLiked(
+    @Query() query: ListArticlesQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.articlesService.listLiked(query, user);
+  }
+
   @Get("admin")
   @UseGuards(JwtAuthGuard, UserManagementGuard)
   listAdmin(@Query() query: ListArticlesQueryDto) {
@@ -151,6 +184,21 @@ export class ArticlesController {
   @UseGuards(JwtAuthGuard)
   delete(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
     return this.articlesService.delete(id, user);
+  }
+
+  @Post(":id/restore")
+  @UseGuards(JwtAuthGuard)
+  restore(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.restore(id, user);
+  }
+
+  @Delete(":id/permanent")
+  @UseGuards(JwtAuthGuard)
+  permanentlyDelete(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.articlesService.permanentlyDelete(id, user);
   }
 
   @Post(":id/images")

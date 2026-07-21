@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Bookmark, Heart, MessageCircle, Send } from "lucide-react";
+import { Bookmark, CalendarDays, Heart, MessageCircle, Send, Tag } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleAuthorLine, ArticleBody, ArticleStats, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import {
@@ -16,13 +17,15 @@ import {
   likeArticle,
   listArticleComments,
 } from "@/lib/article-api";
-import { isAuthExpiredError } from "@/lib/auth-api";
+import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 
 export default function ArticleDetailPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const [article, setArticle] = useState<Article | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [comments, setComments] = useState<ArticleComment[]>([]);
   const [commentDraft, setCommentDraft] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -34,11 +37,16 @@ export default function ArticleDetailPage() {
     const slug = params.slug;
     if (!slug) return;
     const token = readAccessToken();
+    // Authentication is stored outside React and must be synchronized after mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsLoggedIn(Boolean(token));
     Promise.all([
+      token ? getMe(token) : Promise.resolve(null),
       token ? getVisibleArticle(token, slug) : getPublicArticle(slug),
       listArticleComments(slug, token ?? undefined),
     ])
-      .then(([loadedArticle, loadedComments]) => {
+      .then(([currentUser, loadedArticle, loadedComments]) => {
+        setUser(currentUser);
         setArticle(loadedArticle);
         setComments(loadedComments.items);
       })
@@ -47,6 +55,8 @@ export default function ArticleDetailPage() {
           clearAuthTokens();
           try {
             const loadedArticle = await getPublicArticle(slug);
+            setUser(null);
+            setIsLoggedIn(false);
             setArticle(loadedArticle);
             setComments((await listArticleComments(slug)).items);
             return;
@@ -110,6 +120,7 @@ export default function ArticleDetailPage() {
 
   return (
     <section className="page-shell article-detail-page">
+      <ArticleCenterNav active="discover" isLoggedIn={isLoggedIn} user={user} />
       <Link className="article-back-link" href="/articles">返回文章</Link>
       <article className="article-reading-layout">
         <header className="article-reading-header">
@@ -118,13 +129,23 @@ export default function ArticleDetailPage() {
           {article.summary ? <p className="article-reading-summary">{article.summary}</p> : null}
           <div className="article-reading-author"><ArticleAuthorLine author={article.author} /><span className="article-reading-divider" /><span>发布于 {formatArticleDate(article.publishedAt)}</span></div>
         </header>
-        <div className="article-reading-actions">
-          <button className={article.liked ? "active" : undefined} onClick={() => void handleInteraction("like")} type="button"><Heart aria-hidden="true" size={17} />{article.liked ? "已赞" : "点赞"}</button>
-          <button className={article.favorited ? "active" : undefined} onClick={() => void handleInteraction("favorite")} type="button"><Bookmark aria-hidden="true" size={17} />{article.favorited ? "已收藏" : "收藏"}</button>
-          <ArticleStats article={article} />
+        <div className="article-reading-grid">
+          <aside className="article-reading-aside">
+            <div className="article-aside-author"><ArticleAuthorLine author={article.author} /><span>@{article.author.username}</span></div>
+            <div className="article-reading-actions">
+              <button className={article.liked ? "active" : undefined} onClick={() => void handleInteraction("like")} type="button"><Heart aria-hidden="true" size={17} />{article.liked ? "已赞" : "点赞"}</button>
+              <button className={article.favorited ? "active" : undefined} onClick={() => void handleInteraction("favorite")} type="button"><Bookmark aria-hidden="true" size={17} />{article.favorited ? "已收藏" : "收藏"}</button>
+            </div>
+            <ArticleStats article={article} />
+            <dl className="article-aside-meta">
+              <div><dt><Tag aria-hidden="true" size={15} />分类</dt><dd>{article.category || "随笔"}</dd></div>
+              <div><dt><CalendarDays aria-hidden="true" size={15} />发布时间</dt><dd>{formatArticleDate(article.publishedAt)}</dd></div>
+              <div><dt>更新时间</dt><dd>{formatArticleDate(article.updatedAt)}</dd></div>
+            </dl>
+            {article.tags.length ? <div className="article-tag-list">{article.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div> : null}
+          </aside>
+          <main className="article-reading-main"><ArticleBody content={article.content} /></main>
         </div>
-        <ArticleBody content={article.content} />
-        {article.tags.length ? <div className="article-tag-list">{article.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div> : null}
       </article>
 
       <section className="article-comments-section">

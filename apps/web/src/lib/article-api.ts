@@ -65,6 +65,15 @@ export interface ArticleList {
   totalPages: number;
 }
 
+export interface ArticleMineSummary {
+  total: number;
+  draft: number;
+  published: number;
+  unpublished: number;
+  blocked: number;
+  deleted: number;
+}
+
 export interface ArticleInput {
   title: string;
   summary: string;
@@ -81,8 +90,8 @@ export const ARTICLE_STATUS_LABEL: Record<ArticleStatus, string> = {
   draft: "草稿",
   published: "已发布",
   unpublished: "已下架",
-  blocked: "已屏蔽",
-  deleted: "已删除",
+  blocked: "受限",
+  deleted: "回收站",
 };
 
 export const ARTICLE_VISIBILITY_LABEL: Record<ArticleVisibility, string> = {
@@ -118,6 +127,34 @@ export function listVisibleArticles(accessToken: string, query?: Parameters<type
 
 export function listMyArticles(accessToken: string, query?: Parameters<typeof listQuery>[0]): Promise<ArticleList> {
   return requestJson<ArticleList>(`/articles/mine${listQuery(query)}`, {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function getMyArticleSummary(accessToken: string): Promise<ArticleMineSummary> {
+  return requestJson<ArticleMineSummary>("/articles/mine/summary", {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function getMyArticle(accessToken: string, id: number): Promise<Article> {
+  return requestJson<Article>(`/articles/mine/${id}`, {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function listFavoriteArticles(accessToken: string, query?: Parameters<typeof listQuery>[0]): Promise<ArticleList> {
+  return requestJson<ArticleList>(`/articles/favorites${listQuery(query)}`, {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function listLikedArticles(accessToken: string, query?: Parameters<typeof listQuery>[0]): Promise<ArticleList> {
+  return requestJson<ArticleList>(`/articles/liked${listQuery(query)}`, {
     cache: "no-store",
     headers: authHeaders(accessToken),
   });
@@ -177,6 +214,20 @@ export function unpublishArticle(accessToken: string, id: number): Promise<Artic
 
 export function deleteArticle(accessToken: string, id: number): Promise<void> {
   return requestJson<void>(`/articles/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function restoreArticle(accessToken: string, id: number): Promise<Article> {
+  return requestJson<Article>(`/articles/${id}/restore`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function permanentlyDeleteArticle(accessToken: string, id: number): Promise<void> {
+  return requestJson<void>(`/articles/${id}/permanent`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+  });
 }
 
 export async function uploadArticleImages(accessToken: string, id: number, files: File[]): Promise<string[]> {

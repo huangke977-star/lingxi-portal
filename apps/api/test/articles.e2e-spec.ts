@@ -1,0 +1,165 @@
+import { ArticleStatus, ArticleVisibility } from "../src/generated/prisma/client";
+import { AuthenticatedUser } from "../src/auth/auth.types";
+import { PrismaService } from "../src/prisma/prisma.service";
+import { ArticlesService } from "../src/articles/articles.service";
+import { ListArticlesQueryDto } from "../src/articles/dto/article.dto";
+
+const user: AuthenticatedUser = {
+  id: 7,
+  username: "writer",
+  nickname: "写作者",
+  email: "writer@example.com",
+  status: "active",
+  isSuperAdmin: false,
+  avatarUrl: null,
+  profileBio: "",
+  createdAt: new Date("2026-07-20T00:00:00.000Z"),
+  appearance: {
+    themeId: "sakura-mist",
+    customAccent: "#db2777",
+    customSurface: "#ffffff",
+    customForeground: "#2b2530",
+    customMuted: "#665867",
+    cardAlpha: 52,
+    glassBlur: 22,
+    glassTint: "#fff3f6",
+    glassTintAlpha: 72,
+  },
+  role: { code: "qi_refining", name: "练气", level: 10 },
+};
+
+function articleRecord(status: ArticleStatus = ArticleStatus.published) {
+  return {
+    id: 12,
+    authorId: user.id,
+    title: "服务器经验",
+    slug: "server-notes-12345678",
+    summary: "摘要",
+    content: "正文",
+    coverPath: null,
+    category: "运维",
+    tags: "服务器,经验",
+    titleColor: "",
+    visibility: ArticleVisibility.public,
+    status,
+    isPinned: false,
+    pinOrder: 0,
+    publishedAt: new Date("2026-07-20T00:00:00.000Z"),
+    blockedReason: null,
+    viewCount: 3,
+    likeCount: 2,
+    favoriteCount: 1,
+    commentCount: 0,
+    createdAt: new Date("2026-07-20T00:00:00.000Z"),
+    updatedAt: new Date("2026-07-21T00:00:00.000Z"),
+    author: {
+      id: user.id,
+      nickname: user.nickname,
+      username: user.username,
+      avatarStoredName: null,
+    },
+    allowedRoles: [],
+    images: [],
+    likes: [{ userId: user.id }],
+    favorites: [{ userId: user.id }],
+  };
+}
+
+function createPrismaMock() {
+  return {
+    article: {
+      count: jest.fn(async () => 0),
+      findMany: jest.fn(async () => []),
+      findUnique: jest.fn(async () => articleRecord(ArticleStatus.deleted)),
+      update: jest.fn(async () => articleRecord(ArticleStatus.draft)),
+      delete: jest.fn(async () => articleRecord(ArticleStatus.deleted)),
+      groupBy: jest.fn(async () => [
+        { status: ArticleStatus.draft, _count: { _all: 2 } },
+        { status: ArticleStatus.published, _count: { _all: 3 } },
+        { status: ArticleStatus.deleted, _count: { _all: 1 } },
+      ]),
+    },
+    articleFavorite: {
+      count: jest.fn(async (_args: unknown) => {
+        void _args;
+        return 1;
+      }),
+      findMany: jest.fn(async (_args: unknown) => {
+        void _args;
+        return [{ article: articleRecord() }];
+      }),
+    },
+    articleLike: {
+      count: jest.fn(async (_args: unknown) => {
+        void _args;
+        return 1;
+      }),
+      findMany: jest.fn(async (_args: unknown) => {
+        void _args;
+        return [{ article: articleRecord() }];
+      }),
+    },
+  };
+}
+
+describe("ArticlesService article center extensions", () => {
+  it("lists favorites in interaction order and applies expanded search", async () => {
+    const prisma = createPrismaMock();
+    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const query = Object.assign(new ListArticlesQueryDto(), {
+      search: "写作者",
+      page: 1,
+      pageSize: 10,
+    });
+
+    const result = await service.listFavorites(query, user);
+
+    expect(result.total).toBe(1);
+    expect(result.items[0].favorited).toBe(true);
+    const args = prisma.articleFavorite.findMany.mock.calls[0][0] as {
+      orderBy: Array<{ createdAt: string }>;
+      where: { article: { AND: Array<{ OR: unknown[] }> } };
+    };
+    expect(args.orderBy).toEqual([{ createdAt: "desc" }]);
+    expect(args.where.article.AND[0].OR).toEqual(expect.arrayContaining([
+      { category: { contains: "写作者" } },
+      { tags: { contains: "写作者" } },
+      { author: { is: { nickname: { contains: "写作者" } } } },
+    ]));
+  });
+
+  it("returns creation counts for every author status", async () => {
+    const prisma = createPrismaMock();
+    const service = new ArticlesService(prisma as unknown as PrismaService);
+
+    await expect(service.getMineSummary(user)).resolves.toEqual({
+      total: 6,
+      draft: 2,
+      published: 3,
+      unpublished: 0,
+      blocked: 0,
+      deleted: 1,
+    });
+  });
+
+  it("restores deleted articles as unpinned drafts", async () => {
+    const prisma = createPrismaMock();
+    const service = new ArticlesService(prisma as unknown as PrismaService);
+
+    const restored = await service.restore(12, user);
+
+    expect(restored.status).toBe("draft");
+    expect(prisma.article.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 12 },
+      data: expect.objectContaining({ status: ArticleStatus.draft, isPinned: false, pinOrder: 0 }),
+    }));
+  });
+
+  it("permanently deletes only items already in the recycle bin", async () => {
+    const prisma = createPrismaMock();
+    const service = new ArticlesService(prisma as unknown as PrismaService);
+
+    await expect(service.permanentlyDelete(12, user)).resolves.toEqual({ success: true });
+    expect(prisma.article.delete).toHaveBeenCalledWith({ where: { id: 12 } });
+  });
+});

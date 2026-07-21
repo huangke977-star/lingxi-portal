@@ -4,6 +4,10 @@
 
 import Link from "next/link";
 import { Bookmark, Eye, Heart, MessageCircle, Pin } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
+import remarkBreaks from "remark-breaks";
+import remarkGfm from "remark-gfm";
 import type { Article, ArticleAuthor } from "@/lib/article-api";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
@@ -58,63 +62,28 @@ export function ArticleCard({ article }: { article: Article }) {
 }
 
 export function ArticleBody({ content }: { content: string }) {
-  const lines = content.replaceAll("\r\n", "\n").split("\n");
-  const blocks: React.ReactNode[] = [];
-  let codeLines: string[] = [];
-  let inCode = false;
-
-  function flushCode() {
-    if (!codeLines.length) return;
-    blocks.push(<pre className="article-code" key={`code-${blocks.length}`}><code>{codeLines.join("\n")}</code></pre>);
-    codeLines = [];
-  }
-
-  lines.forEach((line, index) => {
-    if (line.trim().startsWith("```")) {
-      if (inCode) flushCode();
-      inCode = !inCode;
-      return;
-    }
-    if (inCode) {
-      codeLines.push(line);
-      return;
-    }
-    const trimmed = line.trim();
-    if (!trimmed) {
-      blocks.push(<div className="article-line-space" key={`space-${index}`} />);
-      return;
-    }
-    const image = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
-    if (image && safeArticleUrl(image[2])) {
-      blocks.push(<figure className="article-body-image" key={`image-${index}`}><img alt={image[1]} src={resolveApiUrl(image[2])} /><figcaption>{image[1]}</figcaption></figure>);
-      return;
-    }
-    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
-    if (heading) {
-      const Heading = heading[1].length === 1 ? "h2" : heading[1].length === 2 ? "h3" : "h4";
-      blocks.push(<Heading key={`heading-${index}`}>{renderInline(heading[2])}</Heading>);
-      return;
-    }
-    if (/^[-*]\s+/.test(trimmed)) {
-      blocks.push(<p className="article-list-line" key={`list-${index}`}><span>•</span>{renderInline(trimmed.replace(/^[-*]\s+/, ""))}</p>);
-      return;
-    }
-    blocks.push(<p key={`paragraph-${index}`}>{renderInline(trimmed)}</p>);
-  });
-  if (inCode) flushCode();
-  return <div className="article-body">{blocks}</div>;
+  return (
+    <div className="article-body">
+      <ReactMarkdown
+        components={{
+          a: ({ href, children }) => safeArticleUrl(href)
+            ? <a href={href} rel="noreferrer" target="_blank">{children}</a>
+            : <span>{children}</span>,
+          img: ({ alt, src }) => safeArticleUrl(src)
+            ? <img alt={alt ?? ""} className="article-body-image" src={resolveApiUrl(src)} />
+            : null,
+          pre: ({ children }) => <pre className="article-code">{children}</pre>,
+          table: ({ children }) => <div className="article-table-wrap"><table>{children}</table></div>,
+        }}
+        rehypePlugins={[rehypeSanitize]}
+        remarkPlugins={[remarkGfm, remarkBreaks]}
+      >
+        {content.replaceAll("\r\n", "\n")}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
-function renderInline(value: string): React.ReactNode {
-  const parts = value.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g).filter(Boolean);
-  return parts.map((part, index) => {
-    if (part.startsWith("**") && part.endsWith("**")) return <strong key={index}>{part.slice(2, -2)}</strong>;
-    const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-    if (link && safeArticleUrl(link[2])) return <a href={link[2]} key={index} rel="noreferrer" target="_blank">{link[1]}</a>;
-    return <span key={index}>{part}</span>;
-  });
-}
-
-function safeArticleUrl(value: string): boolean {
-  return value.startsWith("/") || /^https?:\/\//i.test(value);
+function safeArticleUrl(value: unknown): value is string {
+  return typeof value === "string" && (value.startsWith("/") || /^https?:\/\//i.test(value));
 }

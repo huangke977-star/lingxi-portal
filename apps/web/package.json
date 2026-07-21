@@ -15,7 +15,11 @@
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "react-easy-crop": "^6.2.2"
+    "react-easy-crop": "^6.2.2",
+    "react-markdown": "^10.1.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@types/node": "latest",
@@ -24,6 +28,6 @@
     "eslint": "9.39.4",
     "eslint-config-next": "latest",
     "prettier": "latest",
-    "typescript": "latest"
+    "typescript": "6.0.3"
   }
 }

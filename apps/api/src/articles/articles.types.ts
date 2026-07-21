@@ -65,6 +65,15 @@ export interface ArticleListResponse {
   totalPages: number;
 }
 
+export interface ArticleMineSummaryResponse {
+  total: number;
+  draft: number;
+  published: number;
+  unpublished: number;
+  blocked: number;
+  deleted: number;
+}
+
 export interface ArticleCommentsResponse {
   items: ArticleCommentResponse[];
 }

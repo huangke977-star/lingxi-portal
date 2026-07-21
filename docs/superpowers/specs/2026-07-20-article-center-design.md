@@ -9,10 +9,20 @@ Extend HLOVET from a link portal into a lightweight community where users can pu
 ## User Experience
 
 - Add an `Articles` entry to the top navigation for published content visible to the current visitor.
-- Support search, latest, popular, and pinned sorting.
+- Support live search plus latest and popular sorting; pinned articles stay ahead of regular content.
 - Article details include views, likes, favorites, comments, and replies.
-- Signed-in users manage their work from `My Articles` in the avatar menu.
-- `My Articles` supports creating, saving drafts, publishing, editing, unpublishing, deleting, and viewing statistics.
+- The article center owns `Discover`, `My Writing`, `Favorites`, and `Liked` tabs. Administrators also see `Manage`.
+- The avatar menu no longer duplicates `My Articles` or `Article Management` entries.
+- `My Writing` separates all active work, drafts, published, unpublished, restricted, and recycle-bin items.
+- Writing and editing use dedicated pages and support drafts, publishing, editing, unpublishing, recycle-bin moves, restore, and permanent deletion.
+- Search state is stored in the URL, handles IME composition, and covers title, summary, body, category, tags, and author.
+
+## Reading Experience
+
+- Article bodies use sanitized Markdown with GFM and soft line breaks.
+- Desktop uses a wide header, a readable main column, and a contextual article sidebar instead of a single narrow strip.
+- Mobile prioritizes the article body and places metadata and interaction statistics afterward.
+- Line height and paragraph spacing are controlled separately so a soft break does not create paragraph-sized whitespace.
 
 ## Permissions
 
@@ -34,6 +44,13 @@ Article moderation is separate from existing portal-content management and suppo
 - Viewing view, like, favorite, and comment statistics.
 
 Statistics are read-only by default. If correction is needed later, only the super administrator should be able to perform it through an auditable action.
+
+## User Article APIs
+
+- Favorite and liked lists are paginated in reverse interaction order.
+- Writing-status counts are returned separately for tab badges.
+- Delete is soft-delete; restoring returns an article to draft, and only recycle-bin items can be permanently deleted.
+- Permanent deletion removes both database records and stored article image files.
 
 ## Images
 

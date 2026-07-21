@@ -26,6 +26,7 @@ import {
   ArticleCommentsResponse,
   ArticleInteractionResponse,
   ArticleListResponse,
+  ArticleMineSummaryResponse,
   ArticleResponse,
 } from "./articles.types";
 
@@ -137,6 +138,42 @@ export class ArticlesService {
     return this.listArticles(query, user, false, true);
   }
 
+  listFavorites(query: ListArticlesQueryDto, user: AuthenticatedUser): Promise<ArticleListResponse> {
+    return this.listInteractedArticles(query, user, "favorite");
+  }
+
+  listLiked(query: ListArticlesQueryDto, user: AuthenticatedUser): Promise<ArticleListResponse> {
+    return this.listInteractedArticles(query, user, "like");
+  }
+
+  async getMineSummary(user: AuthenticatedUser): Promise<ArticleMineSummaryResponse> {
+    const grouped = await this.prisma.article.groupBy({
+      by: ["status"],
+      where: { authorId: user.id },
+      _count: { _all: true },
+    });
+    const summary: ArticleMineSummaryResponse = {
+      total: 0,
+      draft: 0,
+      published: 0,
+      unpublished: 0,
+      blocked: 0,
+      deleted: 0,
+    };
+    for (const item of grouped) {
+      const count = item._count._all;
+      summary[item.status] = count;
+      summary.total += count;
+    }
+    return summary;
+  }
+
+  async getMineById(id: number, user: AuthenticatedUser): Promise<ArticleResponse> {
+    const article = await this.getArticleOrThrow(id);
+    this.assertCanEdit(article, user);
+    return this.toResponse(article, user.id);
+  }
+
   listAdmin(query: ListArticlesQueryDto): Promise<ArticleListResponse> {
     return this.listArticles(query, null, true);
   }
@@ -197,9 +234,15 @@ export class ArticlesService {
   async update(id: number, user: AuthenticatedUser, dto: UpdateArticleDto): Promise<ArticleResponse> {
     const existing = await this.getArticleOrThrow(id);
     this.assertCanEdit(existing, user);
+    if (existing.status === ArticleStatus.deleted) {
+      throw new BadRequestException("回收站中的文章需要先恢复才能编辑。");
+    }
     const visibility = dto.visibility ?? existing.visibility;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? this.roleCodes(existing));
-    const status = dto.status ? this.normalizeAuthorStatus(dto.status) : existing.status;
+    const requestedStatus = dto.status ? this.normalizeAuthorStatus(dto.status) : existing.status;
+    const status = existing.status === ArticleStatus.blocked && !this.canManageContent(user)
+      ? ArticleStatus.blocked
+      : requestedStatus;
     const article = await this.prisma.article.update({
       where: { id },
       data: {
@@ -230,6 +273,9 @@ export class ArticlesService {
   async publish(id: number, user: AuthenticatedUser): Promise<ArticleResponse> {
     const existing = await this.getArticleOrThrow(id);
     this.assertCanEdit(existing, user);
+    if (existing.status === ArticleStatus.blocked || existing.status === ArticleStatus.deleted) {
+      throw new BadRequestException("受限或已删除的文章不能直接发布。");
+    }
     if (!existing.title.trim() || !existing.content.trim()) {
       throw new BadRequestException("文章标题和正文不能为空。");
     }
@@ -244,6 +290,9 @@ export class ArticlesService {
   async unpublish(id: number, user: AuthenticatedUser): Promise<ArticleResponse> {
     const existing = await this.getArticleOrThrow(id);
     this.assertCanEdit(existing, user);
+    if (existing.status === ArticleStatus.blocked || existing.status === ArticleStatus.deleted) {
+      throw new BadRequestException("受限或已删除的文章不能执行下架操作。");
+    }
     const article = await this.prisma.article.update({
       where: { id },
       data: { status: ArticleStatus.unpublished },
@@ -256,6 +305,40 @@ export class ArticlesService {
     const existing = await this.getArticleOrThrow(id);
     this.assertCanEdit(existing, user);
     await this.prisma.article.update({ where: { id }, data: { status: ArticleStatus.deleted } });
+    return { success: true };
+  }
+
+  async restore(id: number, user: AuthenticatedUser): Promise<ArticleResponse> {
+    const existing = await this.getArticleOrThrow(id);
+    this.assertCanEdit(existing, user);
+    if (existing.status !== ArticleStatus.deleted) {
+      throw new BadRequestException("只有回收站中的文章可以恢复。");
+    }
+    const article = await this.prisma.article.update({
+      where: { id },
+      data: {
+        status: ArticleStatus.draft,
+        isPinned: false,
+        pinOrder: 0,
+        blockedReason: null,
+      },
+      include: articleInclude,
+    });
+    return this.toResponse(article, user.id);
+  }
+
+  async permanentlyDelete(id: number, user: AuthenticatedUser): Promise<{ success: true }> {
+    const existing = await this.getArticleOrThrow(id);
+    this.assertCanEdit(existing, user);
+    if (existing.status !== ArticleStatus.deleted) {
+      throw new BadRequestException("文章需要先移入回收站才能彻底删除。");
+    }
+    await this.prisma.article.delete({ where: { id } });
+    await Promise.all(
+      existing.images.map(({ storedName }) =>
+        unlink(this.resolveStoredPath(storedName)).catch(() => undefined),
+      ),
+    );
     return { success: true };
   }
 
@@ -468,6 +551,42 @@ export class ArticlesService {
     };
   }
 
+  private async listInteractedArticles(
+    query: ListArticlesQueryDto,
+    user: AuthenticatedUser,
+    interaction: "favorite" | "like",
+  ): Promise<ArticleListResponse> {
+    const articleWhere = this.buildWhere(query, user, false, false);
+    const relationWhere = { userId: user.id, article: articleWhere };
+    const total = interaction === "favorite"
+      ? await this.prisma.articleFavorite.count({ where: relationWhere })
+      : await this.prisma.articleLike.count({ where: relationWhere });
+    const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+    const page = Math.min(query.page, totalPages);
+    const articles: ArticleRecord[] = interaction === "favorite"
+      ? (await this.prisma.articleFavorite.findMany({
+          where: relationWhere,
+          orderBy: [{ createdAt: "desc" }],
+          skip: (page - 1) * query.pageSize,
+          take: query.pageSize,
+          select: { article: { include: articleInclude } },
+        })).map(({ article }) => article)
+      : (await this.prisma.articleLike.findMany({
+          where: relationWhere,
+          orderBy: [{ createdAt: "desc" }],
+          skip: (page - 1) * query.pageSize,
+          take: query.pageSize,
+          select: { article: { include: articleInclude } },
+        })).map(({ article }) => article);
+    return {
+      items: articles.map((article) => this.toResponse(article, user.id)),
+      total,
+      page,
+      pageSize: query.pageSize,
+      totalPages,
+    };
+  }
+
   private buildWhere(
     query: ListArticlesQueryDto,
     user: AuthenticatedUser | null,
@@ -497,7 +616,17 @@ export class ArticlesService {
     if (query.category) where.category = query.category.trim();
     if (query.sort === "pinned") where.isPinned = true;
     if (search) {
-      where.AND = [{ OR: [{ title: { contains: search } }, { summary: { contains: search } }, { content: { contains: search } }] }];
+      where.AND = [{
+        OR: [
+          { title: { contains: search } },
+          { summary: { contains: search } },
+          { content: { contains: search } },
+          { category: { contains: search } },
+          { tags: { contains: search } },
+          { author: { is: { nickname: { contains: search } } } },
+          { author: { is: { username: { contains: search } } } },
+        ],
+      }];
     }
     return where;
   }
