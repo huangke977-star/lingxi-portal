@@ -21,7 +21,7 @@ const emptyList: ArticleList = {
   items: [],
   total: 0,
   page: 1,
-  pageSize: 10,
+  pageSize: 12,
   totalPages: 1,
 };
 
@@ -68,7 +68,7 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
     const request = mode === "favorites" ? listFavoriteArticles : listLikedArticles;
     Promise.all([
       getMe(token),
-      request(token, { page: queryPage, pageSize: 10, search: querySearch }),
+      request(token, { page: queryPage, pageSize: 12, search: querySearch }),
     ])
       .then(([currentUser, result]) => {
         setUser(currentUser);

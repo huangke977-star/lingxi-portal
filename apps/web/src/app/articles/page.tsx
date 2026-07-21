@@ -14,7 +14,7 @@ export default function ArticlesPage() {
   return <Suspense fallback={<section className="page-shell articles-page"><div className="article-empty-state">正在读取文章。</div></section>}><ArticlesContent /></Suspense>;
 }
 
-const emptyList: ArticleList = { items: [], total: 0, page: 1, pageSize: 10, totalPages: 1 };
+const emptyList: ArticleList = { items: [], total: 0, page: 1, pageSize: 12, totalPages: 1 };
 
 function ArticlesContent() {
   const router = useRouter();
@@ -61,8 +61,8 @@ function ArticlesContent() {
     // URL changes start a new request cycle for the feed.
     setIsLoading(true);
     const listRequest = token
-      ? listVisibleArticles(token, { page: queryPage, search: querySearch, sort: querySort, pageSize: 10 })
-      : listPublicArticles({ page: queryPage, search: querySearch, sort: querySort, pageSize: 10 });
+      ? listVisibleArticles(token, { page: queryPage, search: querySearch, sort: querySort, pageSize: 12 })
+      : listPublicArticles({ page: queryPage, search: querySearch, sort: querySort, pageSize: 12 });
     Promise.all([token ? getMe(token) : Promise.resolve(null), listRequest])
       .then(([currentUser, result]) => {
         if (!active) return;
@@ -73,7 +73,7 @@ function ArticlesContent() {
         if (!active) return;
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          const result = await listPublicArticles({ page: queryPage, search: querySearch, sort: querySort, pageSize: 10 });
+          const result = await listPublicArticles({ page: queryPage, search: querySearch, sort: querySort, pageSize: 12 });
           if (!active) return;
           setUser(null);
           setList(result);

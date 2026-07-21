@@ -60,7 +60,13 @@ export function ArticleCard({ article }: { article: Article }) {
   );
 }
 
-export function ArticleBody({ content }: { content: string }) {
+export function ArticleBody({
+  content,
+  pendingImageUrls,
+}: {
+  content: string;
+  pendingImageUrls?: Record<string, string>;
+}) {
   return (
     <div className="article-body">
       <ReactMarkdown
@@ -68,9 +74,11 @@ export function ArticleBody({ content }: { content: string }) {
           a: ({ href, children }) => safeArticleUrl(href)
             ? <a href={href} rel="noreferrer" target="_blank">{children}</a>
             : <span>{children}</span>,
-          img: ({ alt, src }) => safeArticleUrl(src)
-            ? <img alt={alt ?? ""} className="article-body-image" src={resolveApiUrl(src)} />
-            : null,
+          img: ({ alt, src }) => {
+            if (!safeArticleUrl(src)) return null;
+            const resolvedSource = pendingImageUrls?.[src] ?? resolveApiUrl(src);
+            return <img alt={alt ?? ""} className="article-body-image" src={resolvedSource} />;
+          },
           pre: ({ children }) => <pre className="article-code">{children}</pre>,
           table: ({ children }) => <div className="article-table-wrap"><table>{children}</table></div>,
         }}

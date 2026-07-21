@@ -13,10 +13,13 @@ Extend HLOVET from a link portal into a lightweight community where users can pu
 - Article details include views, likes, favorites, comments, and replies.
 - The article center owns `Discover`, `My Writing`, `Favorites`, and `Liked` tabs. Administrators also see `Manage`.
 - Each article-center tab displays its total count from one aggregate summary endpoint.
-- Article lists use ten items per page and consistent previous/next pagination, including discovery and administration.
+- Article lists use consistent previous/next pagination, including discovery and administration.
+- Discovery, favorites, liked, writing, and administration use twelve items per page. Public collection cards use a compact three-column desktop grid with one-line summary truncation.
 - The avatar menu no longer duplicates `My Articles` or `Article Management` entries.
 - `My Writing` separates all active work, drafts, published, unpublished, restricted, and recycle-bin items.
 - Writing and editing use dedicated pages and support drafts, publishing, editing, unpublishing, recycle-bin moves, restore, and permanent deletion.
+- Saving a draft or edit stays in the editor and reports success without route navigation. Publishing returns to the published section of `My Writing`.
+- Selected images are inserted at the current editor cursor, previewed through temporary browser object URLs, and uploaded only when the article is saved or published.
 - Search state is stored in the URL, handles IME composition, and covers title, summary, body, category, tags, and author.
 
 ## Reading Experience
@@ -28,6 +31,7 @@ Extend HLOVET from a link portal into a lightweight community where users can pu
 - Article timestamps are displayed to the second using one consistent format.
 - Article headers and filter areas use compact vertical spacing, and category metadata is not duplicated in the detail header.
 - Scrollable article controls use narrow, theme-aware scrollbars without native arrow buttons.
+- The document scrollbar reserves stable space, and the fixed-height comment editor avoids layout movement while typing.
 
 ## Permissions
 
@@ -47,6 +51,8 @@ Article moderation is separate from existing portal-content management and suppo
 - Pinning articles and changing pin order.
 - Setting title color and reading permissions.
 - Viewing view, like, favorite, and comment statistics.
+- Searching articles by title, author, category, tags, summary, or body.
+- Selecting an article before reviewing its threaded comments and replies; commenter avatars and reply nesting preserve context.
 
 Statistics are read-only by default. If correction is needed later, only the super administrator should be able to perform it through an auditable action.
 

@@ -49,7 +49,7 @@ const emptySummary: ArticleMineSummary = {
   deleted: 0,
 };
 
-const emptyList: ArticleList = { items: [], total: 0, page: 1, pageSize: 10, totalPages: 1 };
+const emptyList: ArticleList = { items: [], total: 0, page: 1, pageSize: 12, totalPages: 1 };
 
 export default function MyArticlesPage() {
   return <Suspense fallback={<section className="page-shell articles-page"><div className="article-empty-state">正在读取你的文章。</div></section>}><MyArticlesContent /></Suspense>;
@@ -91,7 +91,7 @@ function MyArticlesContent() {
       getMyArticleSummary(token),
       listMyArticles(token, {
         page: queryPage,
-        pageSize: 10,
+        pageSize: 12,
         search: querySearch,
         status: status === "all" ? undefined : status,
       }),
