@@ -34,7 +34,7 @@ Extend HLOVET from a link portal into a lightweight community where users can pu
 - Article timestamps are displayed to the second using one consistent format.
 - Article headers and filter areas use compact vertical spacing, and category metadata is not duplicated in the detail header.
 - Long article titles wrap within equal left and right header padding instead of overflowing the reading area.
-- Pinned article rows use an icon-only top-left corner marker; article card lists use a consistent 8px gap, and row actions use a compact 14px size.
+- Pinned article rows use a gold icon-only marker floating just outside the top-left edge, so pinned and regular text remain aligned; article card lists use a consistent 8px gap, and row actions use a compact 14px size.
 - Article images follow normal paragraph spacing above and below instead of adding a separate large image margin.
 - Scrollable article controls use narrow, theme-aware scrollbars without native arrow buttons.
 - The document scrollbar reserves stable space, and the fixed-height comment editor avoids layout movement while typing.

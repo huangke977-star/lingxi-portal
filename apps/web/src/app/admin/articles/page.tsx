@@ -248,7 +248,7 @@ export default function AdminArticlesPage() {
       <aside className="admin-article-list">
         {articleList.items.map((article) => (
           <button
-            className={`admin-article-row${selected?.id === article.id ? " active" : ""}${article.isPinned ? " is-pinned" : ""}`}
+            className={`admin-article-row${selected?.id === article.id ? " active" : ""}`}
             key={article.id}
             onClick={() => void selectArticle(article)}
             type="button"

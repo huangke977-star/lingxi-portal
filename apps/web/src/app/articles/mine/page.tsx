@@ -206,7 +206,7 @@ function MyArticlesContent() {
       {isLoading ? <div className="article-empty-state">正在读取你的文章。</div> : list.items.length ? (
         <div className="article-mine-list">
           {list.items.map((article) => (
-            <article className={`article-mine-row${article.isPinned ? " is-pinned" : ""}`} key={article.id}>
+            <article className="article-mine-row" key={article.id}>
               <ArticlePinBadge isPinned={article.isPinned} />
               <div className="article-mine-row-main">
                 <div className="article-mine-row-title">

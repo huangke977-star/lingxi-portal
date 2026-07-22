@@ -91,7 +91,7 @@ export function ArticleCard({
   taxonomyPlacement?: "meta" | "after-stats";
 }) {
   return (
-    <Link className={`article-card${article.isPinned ? " is-pinned" : ""}`} href={`/articles/${article.slug}`}>
+    <Link className="article-card" href={`/articles/${article.slug}`}>
       <ArticlePinBadge isPinned={article.isPinned} />
       <div className="article-card-main">
         <h2 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h2>

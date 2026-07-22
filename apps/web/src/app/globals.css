@@ -5938,20 +5938,16 @@ a.entry-item:hover {
 
 .article-pin-corner {
   position: absolute;
-  top: 9px;
-  left: 8px;
+  top: 8px;
+  left: -7px;
   z-index: 1;
   display: inline-flex;
   width: 18px;
   height: 18px;
   align-items: center;
   justify-content: center;
-  color: var(--accent-strong);
-  filter: drop-shadow(0 1px 3px rgba(46, 35, 48, 0.18));
-}
-
-.article-card.is-pinned {
-  padding-left: 38px;
+  color: #d6a21f;
+  filter: drop-shadow(0 1px 3px rgba(103, 70, 4, 0.28));
 }
 
 .article-card:hover {
@@ -6267,8 +6263,6 @@ a.entry-item:hover {
   padding: 9px 10px;
 }
 
-.admin-article-row.is-pinned { padding-left: 32px; }
-
 .admin-article-row.active {
   background: var(--surface-strong);
   box-shadow: none;
@@ -6324,10 +6318,6 @@ a.entry-item:hover {
 
 .article-mine-row {
   position: relative;
-}
-
-.article-mine-row.is-pinned {
-  padding-left: 38px;
 }
 
 .article-status-dot {
