@@ -140,7 +140,7 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
       {isLoading ? (
         <div className="article-empty-state">正在读取文章。</div>
       ) : list.items.length ? (
-        <div className="article-feed-list">{list.items.map((article: Article) => <ArticleCard article={article} key={article.id} />)}</div>
+        <div className="article-feed-list">{list.items.map((article: Article) => <ArticleCard article={article} key={article.id} taxonomyPlacement="after-stats" />)}</div>
       ) : (
         <div className="article-empty-state">
           <Icon aria-hidden="true" size={24} />

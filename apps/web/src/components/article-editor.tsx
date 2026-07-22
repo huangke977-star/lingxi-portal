@@ -75,8 +75,10 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const categoryPickerRef = useRef<HTMLDivElement | null>(null);
   const tagPickerRef = useRef<HTMLDivElement | null>(null);
   const pendingImagesRef = useRef<PendingArticleImage[]>([]);
+  const [isCategoryPickerOpen, setIsCategoryPickerOpen] = useState(false);
   const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
   const selectedTags = useMemo(() => parseArticleTags(draft.tags), [draft.tags]);
   const categoryOptions = useMemo(
@@ -103,12 +105,16 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   }, []);
 
   useEffect(() => {
-    if (!isTagPickerOpen) return;
+    if (!isCategoryPickerOpen && !isTagPickerOpen) return;
     function handlePointerDown(event: PointerEvent) {
+      if (!categoryPickerRef.current?.contains(event.target as Node)) setIsCategoryPickerOpen(false);
       if (!tagPickerRef.current?.contains(event.target as Node)) setIsTagPickerOpen(false);
     }
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setIsTagPickerOpen(false);
+      if (event.key === "Escape") {
+        setIsCategoryPickerOpen(false);
+        setIsTagPickerOpen(false);
+      }
     }
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
@@ -116,7 +122,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isTagPickerOpen]);
+  }, [isCategoryPickerOpen, isTagPickerOpen]);
 
   function applyArticle(loaded: Article) {
     if (loaded.status === "deleted") {
@@ -368,17 +374,59 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
             <div className="article-editor-fields">
               <input className="article-title-input" maxLength={120} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="文章标题" value={draft.title} />
               <div className="article-editor-taxonomy-grid">
-                <label>
+                <div className="article-category-picker" ref={categoryPickerRef}>
                   <span>分类</span>
-                  <select onChange={(event) => setDraft({ ...draft, category: event.target.value })} value={draft.category}>
-                    {categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
-                  </select>
-                </label>
+                  <button
+                    aria-expanded={isCategoryPickerOpen}
+                    className="article-category-picker-trigger"
+                    onClick={() => {
+                      setIsCategoryPickerOpen((current) => !current);
+                      setIsTagPickerOpen(false);
+                    }}
+                    type="button"
+                  >
+                    <span>{draft.category || "随笔"}</span>
+                    <ChevronDown aria-hidden="true" size={15} />
+                  </button>
+                  {isCategoryPickerOpen ? (
+                    <div className="article-category-picker-menu">
+                      {categoryOptions.map((category) => {
+                        const selected = draft.category === category;
+                        return (
+                          <button
+                            aria-pressed={selected}
+                            className={selected ? "selected" : undefined}
+                            key={category}
+                            onClick={() => {
+                              setDraft((current) => ({ ...current, category }));
+                              setIsCategoryPickerOpen(false);
+                            }}
+                            type="button"
+                          >
+                            <span>{category}</span>{selected ? <Check aria-hidden="true" size={14} /> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
                 <div className="article-tag-picker" ref={tagPickerRef}>
                   <span>标签</span>
-                  <button aria-expanded={isTagPickerOpen} className="article-tag-picker-trigger" onClick={() => setIsTagPickerOpen((current) => !current)} type="button">
+                  <button
+                    aria-expanded={isTagPickerOpen}
+                    className="article-tag-picker-trigger"
+                    onClick={() => {
+                      setIsTagPickerOpen((current) => !current);
+                      setIsCategoryPickerOpen(false);
+                    }}
+                    type="button"
+                  >
                     <Tags aria-hidden="true" size={16} />
-                    <span>{selectedTags.length ? `已选 ${selectedTags.length} 项` : "选择标签"}</span>
+                    <span className={`article-tag-picker-values${selectedTags.length ? " selected" : ""}`}>
+                      {selectedTags.length
+                        ? selectedTags.map((tag) => <span key={tag}>#{tag}</span>)
+                        : "选择标签"}
+                    </span>
                     <ChevronDown aria-hidden="true" size={15} />
                   </button>
                   {isTagPickerOpen ? (
@@ -395,7 +443,6 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
                   ) : null}
                 </div>
               </div>
-              {selectedTags.length ? <div className="article-selected-tags">{selectedTags.map((tag) => <span key={tag}>#{tag}</span>)}</div> : null}
               <div className="article-editor-grid"><label>阅读权限<select onChange={(event) => setDraft({ ...draft, visibility: event.target.value as ArticleInput["visibility"] })} value={draft.visibility}>{Object.entries(ARTICLE_VISIBILITY_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>标题颜色<input aria-label="标题颜色" onChange={(event) => setDraft({ ...draft, titleColor: event.target.value })} type="color" value={draft.titleColor || "#2b2530"} /></label></div>
               {draft.visibility === "role_restricted" ? <input onChange={(event) => setDraft({ ...draft, roleCodes: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })} placeholder="角色代码，用逗号分隔" value={draft.roleCodes.join(", ")} /> : null}
             </div>

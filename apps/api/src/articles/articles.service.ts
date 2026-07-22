@@ -115,8 +115,10 @@ const articleInclude = {
   comments: {
     where: { status: ArticleCommentStatus.active },
     orderBy: [{ createdAt: "desc" as const }, { id: "desc" as const }],
+    distinct: ["authorId" as const],
     take: 5,
     select: {
+      authorId: true,
       author: {
         select: {
           id: true,
@@ -810,6 +812,14 @@ export class ArticlesService {
   }
 
   private toResponse(article: ArticleRecord, viewerId?: number): ArticleResponse {
+    const recentCommenters: ArticleAuthorResponse[] = [];
+    const commenterIds = new Set<number>();
+    for (const comment of article.comments) {
+      if (commenterIds.has(comment.authorId)) continue;
+      commenterIds.add(comment.authorId);
+      recentCommenters.push(this.toAuthor(comment.author));
+      if (recentCommenters.length === 5) break;
+    }
     return {
       id: article.id,
       title: article.title,
@@ -831,7 +841,7 @@ export class ArticlesService {
       favoriteCount: article.favoriteCount,
       commentCount: article.commentCount,
       author: this.toAuthor(article.author),
-      recentCommenters: article.comments.map(({ author }) => this.toAuthor(author)),
+      recentCommenters,
       allowedRoles: article.allowedRoles.map(({ role }) => role),
       images: article.images.map((image) => `/articles/images/${image.storedName}`),
       liked: viewerId !== undefined && article.likes.some((like) => like.userId === viewerId),

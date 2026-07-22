@@ -14,13 +14,14 @@ Extend HLOVET from a link portal into a lightweight community where users can pu
 - The article center owns `Discover`, `My Writing`, `Favorites`, and `Liked` tabs. Administrators also see `Manage`.
 - Each article-center tab displays its total count from one aggregate summary endpoint.
 - Discovery, favorites, liked, and writing append twelve-item pages as the reader scrolls. Administration keeps explicit previous/next pagination.
-- User-facing article cards use compact horizontal rows. Category and tag chips remain visible, and up to five recent reply avatars appear beside interaction statistics.
+- User-facing article cards use compact horizontal rows. Discovery places taxonomy after the author and publish time; personal collections place taxonomy after interaction statistics.
+- Recent reply avatars represent the latest five distinct commenters, ordered by their most recent reply.
 - The avatar menu no longer duplicates `My Articles` or `Article Management` entries.
 - `My Writing` separates all active work, drafts, published, unpublished, restricted, and recycle-bin items.
 - Writing and editing use dedicated pages and support drafts, publishing, editing, unpublishing, recycle-bin moves, restore, and permanent deletion.
 - Saving a draft or edit stays in the editor and reports success without route navigation. Publishing returns to the published section of `My Writing`.
 - Selected images are inserted at the current editor cursor, previewed through temporary browser object URLs, and uploaded only when the article is saved or published.
-- The editor uses a category select and a bounded multi-select tag menu. Summary editing and summary presentation are removed from the user interface.
+- The editor uses matching custom dropdowns for category and tags. Tags use a three-column menu, and selected tags remain inside the tag control. Summary editing and presentation are removed from the user interface.
 - Search state is stored in the URL, handles IME composition, and covers title, summary, body, category, tags, and author.
 - Routine pages start directly with their working controls and content; standalone introductory page banners are removed, with their actions relocated to nearby toolbars.
 
@@ -55,6 +56,7 @@ Article moderation is separate from existing portal-content management and suppo
 - Viewing view, like, favorite, and comment statistics.
 - Searching articles by title, author, category, tags, summary, or body.
 - Selecting an article before reviewing its threaded comments and replies; commenter avatars and reply nesting preserve context.
+- Article and comment tabs retain the original independent-tab treatment; selected article rows use a surface highlight without a left-side border, and the comment thread header is separated from its entries by a full-width rule.
 
 Statistics are read-only by default. If correction is needed later, only the super administrator should be able to perform it through an auditable action.
 

@@ -57,13 +57,16 @@ export function ArticleTaxonomy({ article, limit = 3 }: { article: Article; limi
 }
 
 export function RecentCommenters({ article }: { article: Article }) {
-  if (!article.recentCommenters.length) return null;
+  const commenters = article.recentCommenters.filter(
+    (author, index, authors) => authors.findIndex((candidate) => candidate.id === author.id) === index,
+  ).slice(0, 5);
+  if (!commenters.length) return null;
   return (
     <span aria-label="最近回复用户" className="article-recent-commenters">
-      {article.recentCommenters.map((author, index) => {
+      {commenters.map((author) => {
         const avatar = author.avatarUrl ? resolveApiUrl(author.avatarUrl) : null;
         return (
-          <span className="article-recent-avatar" key={`${author.id}-${index}`} title={author.nickname}>
+          <span className="article-recent-avatar" key={author.id} title={author.nickname}>
             {avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText({ nickname: author.nickname, username: author.username })}
           </span>
         );
@@ -72,20 +75,27 @@ export function RecentCommenters({ article }: { article: Article }) {
   );
 }
 
-export function ArticleCard({ article }: { article: Article }) {
+export function ArticleCard({
+  article,
+  taxonomyPlacement = "meta",
+}: {
+  article: Article;
+  taxonomyPlacement?: "meta" | "after-stats";
+}) {
   return (
     <Link className="article-card" href={`/articles/${article.slug}`}>
       <div className="article-card-main">
-        <ArticleTaxonomy article={article} />
         <h2 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h2>
         <div className="article-card-meta">
           <ArticleAuthorLine author={article.author} />
-          <span>{formatArticleDate(article.publishedAt)}</span>
+          <span className="article-card-date">{formatArticleDate(article.publishedAt)}</span>
+          {taxonomyPlacement === "meta" ? <ArticleTaxonomy article={article} /> : null}
         </div>
       </div>
       <div className="article-card-aside">
         <RecentCommenters article={article} />
         <ArticleStats article={article} compact />
+        {taxonomyPlacement === "after-stats" ? <ArticleTaxonomy article={article} /> : null}
       </div>
     </Link>
   );
