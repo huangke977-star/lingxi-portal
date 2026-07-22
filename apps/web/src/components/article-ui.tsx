@@ -43,12 +43,20 @@ export function ArticleStats({ article, compact = false }: { article: Article; c
   );
 }
 
+export function ArticlePinBadge({ isPinned }: { isPinned: boolean }) {
+  if (!isPinned) return null;
+  return (
+    <span aria-label="置顶文章" className="article-pin-corner" role="img" title="置顶文章">
+      <Pin aria-hidden="true" fill="currentColor" size={13} />
+    </span>
+  );
+}
+
 export function ArticleTaxonomy({ article, limit = 3 }: { article: Article; limit?: number }) {
   const visibleTags = article.tags.slice(0, limit);
   const hiddenCount = Math.max(0, article.tags.length - visibleTags.length);
   return (
     <span className="article-taxonomy">
-      {article.isPinned ? <span className="article-pin-label"><Pin aria-hidden="true" size={12} />置顶</span> : null}
       <span className="article-category">{article.category || "随笔"}</span>
       {visibleTags.map((tag) => <span className="article-tag-chip" key={tag}>#{tag}</span>)}
       {hiddenCount ? <span className="article-tag-more">+{hiddenCount}</span> : null}
@@ -83,7 +91,8 @@ export function ArticleCard({
   taxonomyPlacement?: "meta" | "after-stats";
 }) {
   return (
-    <Link className="article-card" href={`/articles/${article.slug}`}>
+    <Link className={`article-card${article.isPinned ? " is-pinned" : ""}`} href={`/articles/${article.slug}`}>
+      <ArticlePinBadge isPinned={article.isPinned} />
       <div className="article-card-main">
         <h2 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h2>
         <div className="article-card-meta">

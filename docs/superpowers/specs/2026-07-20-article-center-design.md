@@ -33,6 +33,9 @@ Extend HLOVET from a link portal into a lightweight community where users can pu
 - Line height and paragraph spacing are controlled separately so a soft break does not create paragraph-sized whitespace.
 - Article timestamps are displayed to the second using one consistent format.
 - Article headers and filter areas use compact vertical spacing, and category metadata is not duplicated in the detail header.
+- Long article titles wrap within equal left and right header padding instead of overflowing the reading area.
+- Pinned article rows use an icon-only top-left corner marker; article card lists use a consistent 8px gap, and row actions use a compact 14px size.
+- Article images follow normal paragraph spacing above and below instead of adding a separate large image margin.
 - Scrollable article controls use narrow, theme-aware scrollbars without native arrow buttons.
 - The document scrollbar reserves stable space, and the fixed-height comment editor avoids layout movement while typing.
 
@@ -56,7 +59,7 @@ Article moderation is separate from existing portal-content management and suppo
 - Viewing view, like, favorite, and comment statistics.
 - Searching articles by title, author, category, tags, summary, or body.
 - Selecting an article before reviewing its threaded comments and replies; commenter avatars and reply nesting preserve context.
-- Article and comment tabs retain the original independent-tab treatment; selected article rows use a surface highlight without a left-side border, and the comment thread header is separated from its entries by a full-width rule.
+- Article and comment tabs retain the original independent-tab treatment; selected article rows use a surface highlight without a left-side border, and the comment thread header is separated from its entries by a rule that reaches the panel edges.
 
 Statistics are read-only by default. If correction is needed later, only the super administrator should be able to perform it through an auditable action.
 

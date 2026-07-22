@@ -13,7 +13,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleBackToTop, ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
-import { ArticleStats, ArticleTaxonomy, RecentCommenters, formatArticleDate } from "@/components/article-ui";
+import { ArticlePinBadge, ArticleStats, ArticleTaxonomy, RecentCommenters, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import {
   ArticleList,
@@ -206,7 +206,8 @@ function MyArticlesContent() {
       {isLoading ? <div className="article-empty-state">正在读取你的文章。</div> : list.items.length ? (
         <div className="article-mine-list">
           {list.items.map((article) => (
-            <article className="article-mine-row" key={article.id}>
+            <article className={`article-mine-row${article.isPinned ? " is-pinned" : ""}`} key={article.id}>
+              <ArticlePinBadge isPinned={article.isPinned} />
               <div className="article-mine-row-main">
                 <div className="article-mine-row-title">
                   <span className={`article-status-dot ${article.status}`}>{ARTICLE_STATUS_LABEL[article.status]}</span>

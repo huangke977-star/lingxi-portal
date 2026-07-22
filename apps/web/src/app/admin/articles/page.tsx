@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
-import { ArticleAuthorLine, formatArticleDate } from "@/components/article-ui";
+import { ArticleAuthorLine, ArticlePinBadge, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import {
   Article,
@@ -248,18 +248,18 @@ export default function AdminArticlesPage() {
       <aside className="admin-article-list">
         {articleList.items.map((article) => (
           <button
-            className={`admin-article-row${selected?.id === article.id ? " active" : ""}`}
+            className={`admin-article-row${selected?.id === article.id ? " active" : ""}${article.isPinned ? " is-pinned" : ""}`}
             key={article.id}
             onClick={() => void selectArticle(article)}
             type="button"
           >
+            <ArticlePinBadge isPinned={article.isPinned} />
             <span>
               <strong>{article.title}</strong>
               <small>{article.author.nickname} · {ARTICLE_STATUS_LABEL[article.status]}</small>
             </span>
             <span className="admin-article-row-meta">
               {article.commentCount ? <span><MessageSquare aria-hidden="true" size={13} />{article.commentCount}</span> : null}
-              {article.isPinned ? <Pin aria-hidden="true" size={15} /> : null}
             </span>
           </button>
         ))}
