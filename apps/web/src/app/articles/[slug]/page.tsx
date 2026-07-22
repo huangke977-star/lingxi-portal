@@ -125,7 +125,6 @@ export default function ArticleDetailPage() {
       <article className="article-reading-layout">
         <header className="article-reading-header">
           <h1 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h1>
-          {article.summary ? <p className="article-reading-summary">{article.summary}</p> : null}
           <div className="article-reading-author"><ArticleAuthorLine author={article.author} /><span className="article-reading-divider" /><span>发布于 {formatArticleDate(article.publishedAt)}</span></div>
         </header>
         <div className="article-reading-grid">

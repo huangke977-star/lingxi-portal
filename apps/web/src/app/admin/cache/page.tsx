@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { RefreshCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
@@ -519,24 +520,6 @@ export default function CacheManagementPage() {
 
   return (
     <section className="page-shell admin-shell cache-admin-shell">
-      <header className="page-header">
-        <span className="eyebrow">HLOVET Admin</span>
-        <div className="title-row">
-          <div>
-            <h1>缓存管理</h1>
-            <p>查看 Redis 运行状态、缓存键及脱敏后的键值内容。</p>
-          </div>
-          <button
-            className="text-action primary"
-            disabled={isOverviewRefreshing}
-            onClick={() => void refreshOverview()}
-            type="button"
-          >
-            {isOverviewRefreshing ? "刷新中" : "刷新数据"}
-          </button>
-        </div>
-      </header>
-
       <AppToast
         duration={error ? 4200 : 2600}
         message={error || notice}
@@ -546,6 +529,13 @@ export default function CacheManagementPage() {
         }}
         tone={error ? "error" : "success"}
       />
+
+      <div className="cache-overview-toolbar">
+        <span>Redis</span>
+        <button aria-label="刷新缓存数据" disabled={isOverviewRefreshing} onClick={() => void refreshOverview()} title="刷新缓存数据" type="button">
+          <RefreshCcw aria-hidden="true" className={isOverviewRefreshing ? "spinning" : undefined} size={17} />
+        </button>
+      </div>
 
       {overview ? <CacheOverviewGrid overview={overview} /> : null}
 

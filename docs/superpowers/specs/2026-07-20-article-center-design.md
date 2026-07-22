@@ -8,19 +8,21 @@ Extend HLOVET from a link portal into a lightweight community where users can pu
 
 ## User Experience
 
-- Add an `Articles` entry to the top navigation for published content visible to the current visitor.
+- Add a `Discover` entry to the top navigation for published content visible to the current visitor.
 - Support live search plus latest and popular sorting; pinned articles stay ahead of regular content.
 - Article details include views, likes, favorites, comments, and replies.
 - The article center owns `Discover`, `My Writing`, `Favorites`, and `Liked` tabs. Administrators also see `Manage`.
 - Each article-center tab displays its total count from one aggregate summary endpoint.
-- Article lists use consistent previous/next pagination, including discovery and administration.
-- Discovery, favorites, liked, writing, and administration use twelve items per page. Public collection cards use a compact three-column desktop grid with one-line summary truncation.
+- Discovery, favorites, liked, and writing append twelve-item pages as the reader scrolls. Administration keeps explicit previous/next pagination.
+- User-facing article cards use compact horizontal rows. Category and tag chips remain visible, and up to five recent reply avatars appear beside interaction statistics.
 - The avatar menu no longer duplicates `My Articles` or `Article Management` entries.
 - `My Writing` separates all active work, drafts, published, unpublished, restricted, and recycle-bin items.
 - Writing and editing use dedicated pages and support drafts, publishing, editing, unpublishing, recycle-bin moves, restore, and permanent deletion.
 - Saving a draft or edit stays in the editor and reports success without route navigation. Publishing returns to the published section of `My Writing`.
 - Selected images are inserted at the current editor cursor, previewed through temporary browser object URLs, and uploaded only when the article is saved or published.
+- The editor uses a category select and a bounded multi-select tag menu. Summary editing and summary presentation are removed from the user interface.
 - Search state is stored in the URL, handles IME composition, and covers title, summary, body, category, tags, and author.
+- Routine pages start directly with their working controls and content; standalone introductory page banners are removed, with their actions relocated to nearby toolbars.
 
 ## Reading Experience
 

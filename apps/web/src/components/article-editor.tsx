@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ImagePlus, Save, Send, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, ImagePlus, Save, Send, Tags, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
@@ -25,7 +25,26 @@ import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const MAX_ARTICLE_IMAGES = 20;
+const MAX_SELECTED_TAGS = 6;
 const PENDING_IMAGE_PATH_PREFIX = "/__pending_article_image__/";
+const ARTICLE_CATEGORY_OPTIONS = ["随笔", "技术", "服务器", "工具", "资源", "教程", "生活", "公告"];
+const ARTICLE_TAG_OPTIONS = [
+  "AI",
+  "开发",
+  "前端",
+  "后端",
+  "数据库",
+  "运维",
+  "服务器",
+  "网络",
+  "工具",
+  "资源",
+  "教程",
+  "经验",
+  "随笔",
+  "生活",
+  "公告",
+];
 
 interface PendingArticleImage {
   id: string;
@@ -38,7 +57,7 @@ const emptyDraft: ArticleInput = {
   title: "",
   summary: "",
   content: "",
-  category: "",
+  category: "随笔",
   tags: "",
   titleColor: "",
   visibility: "public",
@@ -56,7 +75,20 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const tagPickerRef = useRef<HTMLDivElement | null>(null);
   const pendingImagesRef = useRef<PendingArticleImage[]>([]);
+  const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
+  const selectedTags = useMemo(() => parseArticleTags(draft.tags), [draft.tags]);
+  const categoryOptions = useMemo(
+    () => draft.category && !ARTICLE_CATEGORY_OPTIONS.includes(draft.category)
+      ? [draft.category, ...ARTICLE_CATEGORY_OPTIONS]
+      : ARTICLE_CATEGORY_OPTIONS,
+    [draft.category],
+  );
+  const tagOptions = useMemo(
+    () => Array.from(new Set([...ARTICLE_TAG_OPTIONS, ...selectedTags])),
+    [selectedTags],
+  );
   const pendingImageUrls = useMemo(
     () => Object.fromEntries(pendingImages.map((image) => [image.marker, image.previewUrl])),
     [pendingImages],
@@ -70,6 +102,22 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     pendingImagesRef.current.forEach((image) => URL.revokeObjectURL(image.previewUrl));
   }, []);
 
+  useEffect(() => {
+    if (!isTagPickerOpen) return;
+    function handlePointerDown(event: PointerEvent) {
+      if (!tagPickerRef.current?.contains(event.target as Node)) setIsTagPickerOpen(false);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsTagPickerOpen(false);
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isTagPickerOpen]);
+
   function applyArticle(loaded: Article) {
     if (loaded.status === "deleted") {
       router.replace("/articles/mine?status=deleted");
@@ -78,9 +126,9 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     setArticle(loaded);
     setDraft({
       title: loaded.title,
-      summary: loaded.summary,
+      summary: "",
       content: loaded.content,
-      category: loaded.category,
+      category: loaded.category || "随笔",
       tags: loaded.tags.join(", "),
       titleColor: loaded.titleColor,
       visibility: loaded.visibility,
@@ -198,6 +246,17 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     return "draft";
   }
 
+  function toggleTag(tag: string) {
+    const nextTags = selectedTags.includes(tag)
+      ? selectedTags.filter((item) => item !== tag)
+      : [...selectedTags, tag];
+    if (nextTags.length > MAX_SELECTED_TAGS) {
+      setError(`最多选择 ${MAX_SELECTED_TAGS} 个标签。`);
+      return;
+    }
+    setDraft((current) => ({ ...current, tags: nextTags.join(",") }));
+  }
+
   async function saveArticle(shouldPublish: boolean) {
     const token = readAccessToken();
     if (!token) return;
@@ -215,6 +274,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       if (!saved) {
         saved = await createArticle(token, {
           ...draft,
+          summary: "",
           content: stripPendingImageMarkdown(draft.content, usedPendingImages),
           status: "draft",
         });
@@ -235,6 +295,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       if (!wasNewArticle || usedPendingImages.length) {
         saved = await updateArticle(token, saved.id, {
           ...draft,
+          summary: "",
           content: finalContent,
           status: wasNewArticle ? saved.status : currentEditableStatus(),
         });
@@ -292,12 +353,13 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
 
   return (
     <section className="page-shell articles-page article-editor-page">
-      <header className="page-header articles-header">
-        <span className="eyebrow">HLOVET Journal</span>
-        <div className="title-row"><div><h1>{article ? "编辑文章" : "写文章"}</h1><p>{article ? `当前状态：${ARTICLE_STATUS_LABEL[article.status]}` : "从一个标题开始，内容会自动保存在你的创作空间中。"}</p></div></div>
-      </header>
       <ArticleCenterNav active="mine" isLoggedIn user={user} showWrite={false} />
-      <Link className="article-back-link" href="/articles/mine">返回创作列表</Link>
+      <div className="article-editor-context">
+        <Link className="article-back-link" href="/articles/mine">返回创作列表</Link>
+        <span className={`article-status-dot ${article?.status ?? "draft"}`}>
+          {article ? ARTICLE_STATUS_LABEL[article.status] : "新文章"}
+        </span>
+      </div>
 
       {isLoading ? <div className="article-empty-state">正在读取文章。</div> : (
         <div className="article-editor-workspace">
@@ -305,8 +367,35 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
             {article?.status === "blocked" ? <div className="article-blocked-reason">这篇文章当前受限。{article.blockedReason ? `原因：${article.blockedReason}` : "修改可以保存，但需要管理员解除限制后才能重新发布。"}</div> : null}
             <div className="article-editor-fields">
               <input className="article-title-input" maxLength={120} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="文章标题" value={draft.title} />
-              <input maxLength={300} onChange={(event) => setDraft({ ...draft, summary: event.target.value })} placeholder="摘要，可选" value={draft.summary} />
-              <div className="article-editor-grid"><input maxLength={80} onChange={(event) => setDraft({ ...draft, category: event.target.value })} placeholder="分类，例如：服务器经验" value={draft.category} /><input maxLength={500} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} placeholder="标签，用逗号分隔" value={draft.tags} /></div>
+              <div className="article-editor-taxonomy-grid">
+                <label>
+                  <span>分类</span>
+                  <select onChange={(event) => setDraft({ ...draft, category: event.target.value })} value={draft.category}>
+                    {categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
+                  </select>
+                </label>
+                <div className="article-tag-picker" ref={tagPickerRef}>
+                  <span>标签</span>
+                  <button aria-expanded={isTagPickerOpen} className="article-tag-picker-trigger" onClick={() => setIsTagPickerOpen((current) => !current)} type="button">
+                    <Tags aria-hidden="true" size={16} />
+                    <span>{selectedTags.length ? `已选 ${selectedTags.length} 项` : "选择标签"}</span>
+                    <ChevronDown aria-hidden="true" size={15} />
+                  </button>
+                  {isTagPickerOpen ? (
+                    <div className="article-tag-picker-menu">
+                      {tagOptions.map((tag) => {
+                        const selected = selectedTags.includes(tag);
+                        return (
+                          <button aria-pressed={selected} className={selected ? "selected" : undefined} key={tag} onClick={() => toggleTag(tag)} type="button">
+                            <span>{tag}</span>{selected ? <Check aria-hidden="true" size={14} /> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              {selectedTags.length ? <div className="article-selected-tags">{selectedTags.map((tag) => <span key={tag}>#{tag}</span>)}</div> : null}
               <div className="article-editor-grid"><label>阅读权限<select onChange={(event) => setDraft({ ...draft, visibility: event.target.value as ArticleInput["visibility"] })} value={draft.visibility}>{Object.entries(ARTICLE_VISIBILITY_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>标题颜色<input aria-label="标题颜色" onChange={(event) => setDraft({ ...draft, titleColor: event.target.value })} type="color" value={draft.titleColor || "#2b2530"} /></label></div>
               {draft.visibility === "role_restricted" ? <input onChange={(event) => setDraft({ ...draft, roleCodes: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })} placeholder="角色代码，用逗号分隔" value={draft.roleCodes.join(", ")} /> : null}
             </div>
@@ -325,6 +414,10 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
 
 function sanitizeImageAlt(value: string): string {
   return value.replace(/[\[\]\r\n]/g, " ").trim() || "图片";
+}
+
+function parseArticleTags(value: string): string[] {
+  return Array.from(new Set(value.split(",").map((tag) => tag.trim()).filter(Boolean)));
 }
 
 function escapeRegExp(value: string): string {

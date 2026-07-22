@@ -38,6 +38,7 @@ export interface Article {
   favoriteCount: number;
   commentCount: number;
   author: ArticleAuthor;
+  recentCommenters: ArticleAuthor[];
   allowedRoles: ArticleRole[];
   images: string[];
   liked: boolean;

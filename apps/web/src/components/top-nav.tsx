@@ -25,7 +25,7 @@ const navItems = [
   { href: "/", label: "首页" },
   { href: "/nav", label: "导航" },
   { href: "/tools", label: "工具" },
-  { href: "/articles", label: "文章" },
+  { href: "/articles", label: "发现" },
   { href: "/dashboard", label: "工作台" },
 ];
 

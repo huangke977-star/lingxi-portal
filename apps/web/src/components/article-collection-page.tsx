@@ -1,9 +1,10 @@
 "use client";
 
-import { Bookmark, ChevronLeft, ChevronRight, Heart, Search, X } from "lucide-react";
+import { Bookmark, Heart, Search, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
+import { ArticleBackToTop, ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleCard } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import {
@@ -29,28 +30,26 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const querySearch = searchParams.get("q") ?? "";
-  const queryPage = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
   const [searchInput, setSearchInput] = useState(querySearch);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [list, setList] = useState<ArticleList>(emptyList);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const composingRef = useRef(false);
 
-  function replaceQuery(next: { q?: string; page?: number }) {
+  function replaceQuery(next: { q?: string }) {
     const params = new URLSearchParams(searchParams.toString());
     const nextSearch = next.q ?? querySearch;
-    const nextPage = next.page ?? queryPage;
     if (nextSearch.trim()) params.set("q", nextSearch.trim());
     else params.delete("q");
-    if (nextPage > 1) params.set("page", String(nextPage));
-    else params.delete("page");
+    params.delete("page");
     router.replace(`${mode === "favorites" ? "/articles/favorites" : "/articles/liked"}${params.size ? `?${params}` : ""}`);
   }
 
   useEffect(() => {
     if (composingRef.current || searchInput === querySearch) return;
-    const timer = window.setTimeout(() => replaceQuery({ q: searchInput, page: 1 }), 300);
+    const timer = window.setTimeout(() => replaceQuery({ q: searchInput }), 300);
     return () => window.clearTimeout(timer);
     // Query replacement is intentionally driven by the input value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -65,10 +64,11 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
     // URL changes start a new request cycle for this protected collection.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoading(true);
+    setList(emptyList);
     const request = mode === "favorites" ? listFavoriteArticles : listLikedArticles;
     Promise.all([
       getMe(token),
-      request(token, { page: queryPage, pageSize: 12, search: querySearch }),
+      request(token, { page: 1, pageSize: 12, search: querySearch }),
     ])
       .then(([currentUser, result]) => {
         setUser(currentUser);
@@ -83,22 +83,35 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
         setError(loadError instanceof Error ? loadError.message : "文章加载失败。");
       })
       .finally(() => setIsLoading(false));
-  }, [mode, queryPage, querySearch, router]);
+  }, [mode, querySearch, router]);
+
+  const loadMore = useCallback(() => {
+    if (isLoading || isLoadingMore || list.page >= list.totalPages) return;
+    const token = readAccessToken();
+    if (!token) {
+      router.replace("/");
+      return;
+    }
+    const request = mode === "favorites" ? listFavoriteArticles : listLikedArticles;
+    setIsLoadingMore(true);
+    request(token, { page: list.page + 1, pageSize: 12, search: querySearch })
+      .then((result) => setList((current) => appendArticlePage(current, result)))
+      .catch((loadError) => {
+        if (isAuthExpiredError(loadError)) {
+          clearAuthTokens();
+          router.replace("/");
+          return;
+        }
+        setError(loadError instanceof Error ? loadError.message : "文章加载失败。");
+      })
+      .finally(() => setIsLoadingMore(false));
+  }, [isLoading, isLoadingMore, list.page, list.totalPages, mode, querySearch, router]);
 
   const isFavorites = mode === "favorites";
   const Icon = isFavorites ? Bookmark : Heart;
 
   return (
     <section className="page-shell articles-page article-collection-page">
-      <header className="page-header articles-header">
-        <span className="eyebrow">HLOVET Journal</span>
-        <div className="title-row">
-          <div>
-            <h1>{isFavorites ? "我的收藏" : "赞过的文章"}</h1>
-            <p>{isFavorites ? "留住值得再次阅读的内容。" : "回看你曾经表达过认可的文章。"}</p>
-          </div>
-        </div>
-      </header>
       <ArticleCenterNav active={mode} isLoggedIn user={user} />
 
       <div className="article-feed-toolbar article-collection-toolbar">
@@ -127,7 +140,7 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
       {isLoading ? (
         <div className="article-empty-state">正在读取文章。</div>
       ) : list.items.length ? (
-        <div className="article-feed-grid">{list.items.map((article: Article) => <ArticleCard article={article} key={article.id} />)}</div>
+        <div className="article-feed-list">{list.items.map((article: Article) => <ArticleCard article={article} key={article.id} />)}</div>
       ) : (
         <div className="article-empty-state">
           <Icon aria-hidden="true" size={24} />
@@ -136,14 +149,14 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
         </div>
       )}
 
-      {list.totalPages > 1 ? (
-        <nav aria-label="分页" className="article-pagination">
-          <button disabled={list.page <= 1} onClick={() => replaceQuery({ page: list.page - 1 })} title="上一页" type="button"><ChevronLeft aria-hidden="true" size={18} /></button>
-          <span>{list.page} / {list.totalPages}</span>
-          <button disabled={list.page >= list.totalPages} onClick={() => replaceQuery({ page: list.page + 1 })} title="下一页" type="button"><ChevronRight aria-hidden="true" size={18} /></button>
-        </nav>
-      ) : null}
+      {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
+      <ArticleBackToTop />
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );
+}
+
+function appendArticlePage(current: ArticleList, next: ArticleList): ArticleList {
+  const existingIds = new Set(current.items.map((article) => article.id));
+  return { ...next, items: [...current.items, ...next.items.filter((article) => !existingIds.has(article.id))] };
 }

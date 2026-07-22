@@ -611,15 +611,6 @@ export default function ProfilePage() {
 
   return (
     <section className="page-shell profile-page">
-      <header className="page-header">
-        <span className="eyebrow">HLOVET Account</span>
-        <div className="title-row">
-          <div>
-            <h1>个人中心</h1>
-          </div>
-        </div>
-      </header>
-
       {isLoading ? (
         <div className="status-row compact-status-row">
           <span className="status">正在读取身份</span>

@@ -30,16 +30,6 @@ export default async function HomePage() {
 
   return (
     <section className="page-shell">
-      <header className="portal-hero">
-        <span className="eyebrow">HLOVET</span>
-        <div className="title-row">
-          <div>
-            <h1>轻量导航与工具入口</h1>
-            <p>把常用站点、个人工具和后续自定义页面收在一个浅色卡片门户里。</p>
-          </div>
-        </div>
-      </header>
-
       <div className="overview-grid">
         <div className="overview-panel">
           <span className="section-label">运行状态</span>

@@ -62,6 +62,16 @@ function articleRecord(status: ArticleStatus = ArticleStatus.published) {
     images: [],
     likes: [{ userId: user.id }],
     favorites: [{ userId: user.id }],
+    comments: [
+      {
+        author: {
+          id: 9,
+          nickname: "回复者",
+          username: "commenter",
+          avatarStoredName: null,
+        },
+      },
+    ],
   };
 }
 
@@ -116,6 +126,9 @@ describe("ArticlesService article center extensions", () => {
 
     expect(result.total).toBe(1);
     expect(result.items[0].favorited).toBe(true);
+    expect(result.items[0].recentCommenters).toEqual([
+      expect.objectContaining({ nickname: "回复者", username: "commenter" }),
+    ]);
     const args = prisma.articleFavorite.findMany.mock.calls[0][0] as {
       orderBy: Array<{ createdAt: string }>;
       where: { article: { AND: Array<{ OR: unknown[] }> } };

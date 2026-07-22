@@ -41,16 +41,6 @@ export default function DashboardPage() {
 
   return (
     <section className="page-shell">
-      <header className="page-header">
-        <span className="eyebrow">HLOVET Space</span>
-        <div className="title-row">
-          <div>
-            <h1>个人空间</h1>
-            <p>查看当前身份、角色境界和可用的门户入口。</p>
-          </div>
-        </div>
-      </header>
-
       <div className="status-row">
         <span className="status">{isLoading ? '正在读取身份' : user ? '已登录' : '未登录'}</span>
       </div>

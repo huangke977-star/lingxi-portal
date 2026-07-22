@@ -383,53 +383,31 @@ export default function ContentManagementPage() {
 
   return (
     <section className="page-shell admin-shell portal-admin-shell">
-      <header className="page-header">
-        <span className="eyebrow">HLOVET Admin</span>
-        <div className="title-row">
-          <div>
-            <h1>内容管理</h1>
-            <p>
-              {canManageServerEntries
-                ? "维护导航、工具和仅你可见的服务器入口。"
-                : "维护导航、工具和后续自定义页面。"}
-            </p>
-          </div>
-          <div className="portal-admin-header-actions">
-            <button
-              className="text-action primary"
-              onClick={openCreateCategory}
-              type="button"
-            >
-              <Plus aria-hidden="true" size={17} />
-              新建分类
-            </button>
-            <button
-              className="text-action primary"
-              onClick={openCreateEntry}
-              type="button"
-            >
-              <Plus aria-hidden="true" size={17} />
-              新建条目
-            </button>
-          </div>
+      <div className="portal-admin-toolbar">
+        <div aria-label="内容类型" className="portal-kind-tabs" role="tablist">
+          {(["all", ...availableKinds.map(([kind]) => kind)] as KindFilter[]).map(
+            (kind) => (
+              <button
+                aria-selected={kindFilter === kind}
+                className={kindFilter === kind ? "active" : undefined}
+                key={kind}
+                onClick={() => setKindFilter(kind)}
+                role="tab"
+                type="button"
+              >
+                {kind === "all" ? "全部" : KIND_LABEL[kind]}
+              </button>
+            ),
+          )}
         </div>
-      </header>
-
-      <div aria-label="内容类型" className="portal-kind-tabs" role="tablist">
-        {(["all", ...availableKinds.map(([kind]) => kind)] as KindFilter[]).map(
-          (kind) => (
-            <button
-              aria-selected={kindFilter === kind}
-              className={kindFilter === kind ? "active" : undefined}
-              key={kind}
-              onClick={() => setKindFilter(kind)}
-              role="tab"
-              type="button"
-            >
-              {kind === "all" ? "全部" : KIND_LABEL[kind]}
-            </button>
-          ),
-        )}
+        <div className="portal-admin-header-actions">
+          <button className="text-action primary" onClick={openCreateCategory} type="button">
+            <Plus aria-hidden="true" size={17} />新建分类
+          </button>
+          <button className="text-action primary" onClick={openCreateEntry} type="button">
+            <Plus aria-hidden="true" size={17} />新建条目
+          </button>
+        </div>
       </div>
 
       <div className="portal-admin-layout">

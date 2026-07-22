@@ -398,26 +398,11 @@ export default function AdminPage() {
 
   return (
     <section className="page-shell admin-shell">
-      <header className="page-header">
-        <span className="eyebrow">HLOVET Admin</span>
-        <div className="title-row">
-          <div>
-            <h1>用户管理</h1>
-            <p>
-              {currentUser.isSuperAdmin
-                ? "维护账号角色、启用状态和密码。"
-                : "维护低于管理员层级账号的角色和启用状态。"}
-            </p>
-          </div>
-          <div className="admin-header-tools">
-            <div className="admin-summary" aria-label="用户概览">
-              <span>{total} 个账号</span>
-              <span>{activeCount} 个启用</span>
-            </div>
-          </div>
-        </div>
-      </header>
       <div className="admin-list-toolbar">
+        <div className="admin-summary" aria-label="用户概览">
+          <span>{total} 个账号</span>
+          <span>{activeCount} 个启用</span>
+        </div>
         <label className="admin-search-field">
           <span>搜索用户</span>
           <input

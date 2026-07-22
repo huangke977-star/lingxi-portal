@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import {
-  ChevronLeft,
-  ChevronRight,
   Edit3,
   ExternalLink,
   RotateCcw,
@@ -12,9 +10,10 @@ import {
   X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
-import { ArticleStats, formatArticleDate } from "@/components/article-ui";
+import { ArticleBackToTop, ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
+import { ArticleStats, ArticleTaxonomy, RecentCommenters, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import {
   ArticleList,
@@ -61,27 +60,25 @@ function MyArticlesContent() {
   const rawStatus = searchParams.get("status") ?? "all";
   const status = statusTabs.some((tab) => tab.value === rawStatus) ? rawStatus as "all" | ArticleStatus : "all";
   const querySearch = searchParams.get("q") ?? "";
-  const queryPage = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
   const [searchInput, setSearchInput] = useState(querySearch);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [summary, setSummary] = useState<ArticleMineSummary>(emptySummary);
   const [list, setList] = useState<ArticleList>(emptyList);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const composingRef = useRef(false);
 
-  function replaceQuery(next: { status?: "all" | ArticleStatus; q?: string; page?: number }) {
+  function replaceQuery(next: { status?: "all" | ArticleStatus; q?: string }) {
     const params = new URLSearchParams(searchParams.toString());
     const nextStatus = next.status ?? status;
     const nextSearch = next.q ?? querySearch;
-    const nextPage = next.page ?? queryPage;
     if (nextStatus === "all") params.delete("status");
     else params.set("status", nextStatus);
     if (nextSearch.trim()) params.set("q", nextSearch.trim());
     else params.delete("q");
-    if (nextPage > 1) params.set("page", String(nextPage));
-    else params.delete("page");
+    params.delete("page");
     router.replace(`/articles/mine${params.size ? `?${params}` : ""}`);
   }
 
@@ -90,7 +87,7 @@ function MyArticlesContent() {
       getMe(token),
       getMyArticleSummary(token),
       listMyArticles(token, {
-        page: queryPage,
+        page: 1,
         pageSize: 12,
         search: querySearch,
         status: status === "all" ? undefined : status,
@@ -103,7 +100,7 @@ function MyArticlesContent() {
 
   useEffect(() => {
     if (composingRef.current || searchInput === querySearch) return;
-    const timer = window.setTimeout(() => replaceQuery({ q: searchInput, page: 1 }), 300);
+    const timer = window.setTimeout(() => replaceQuery({ q: searchInput }), 300);
     return () => window.clearTimeout(timer);
     // Query replacement is intentionally driven by the input value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -118,6 +115,7 @@ function MyArticlesContent() {
     // URL changes start a new request cycle for this protected view.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoading(true);
+    setList(emptyList);
     load(token)
       .catch((loadError) => {
         if (isAuthExpiredError(loadError)) {
@@ -128,9 +126,35 @@ function MyArticlesContent() {
         setError(loadError instanceof Error ? loadError.message : "无法读取文章。");
       })
       .finally(() => setIsLoading(false));
-    // The URL owns status, search, and pagination state.
+    // The URL owns status and search state; additional pages append in place.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryPage, querySearch, router, status]);
+  }, [querySearch, router, status]);
+
+  const loadMore = useCallback(() => {
+    if (isLoading || isLoadingMore || list.page >= list.totalPages) return;
+    const token = readAccessToken();
+    if (!token) {
+      router.replace("/");
+      return;
+    }
+    setIsLoadingMore(true);
+    listMyArticles(token, {
+      page: list.page + 1,
+      pageSize: 12,
+      search: querySearch,
+      status: status === "all" ? undefined : status,
+    })
+      .then((result) => setList((current) => appendArticlePage(current, result)))
+      .catch((loadError) => {
+        if (isAuthExpiredError(loadError)) {
+          clearAuthTokens();
+          router.replace("/");
+          return;
+        }
+        setError(loadError instanceof Error ? loadError.message : "无法读取文章。");
+      })
+      .finally(() => setIsLoadingMore(false));
+  }, [isLoading, isLoadingMore, list.page, list.totalPages, querySearch, router, status]);
 
   async function runAction(action: (token: string) => Promise<unknown>, success: string) {
     const token = readAccessToken();
@@ -150,12 +174,6 @@ function MyArticlesContent() {
 
   return (
     <section className="page-shell articles-page my-articles-page">
-      <header className="page-header articles-header">
-        <span className="eyebrow">HLOVET Journal</span>
-        <div className="title-row">
-          <div><h1>我的创作</h1><p>{user ? `${user.nickname} 的文章、草稿和发布记录。` : "管理你的创作内容。"}</p></div>
-        </div>
-      </header>
       <ArticleCenterNav active="mine" isLoggedIn user={user} />
 
       <div className="article-mine-toolbar">
@@ -164,7 +182,7 @@ function MyArticlesContent() {
             <button
               className={status === tab.value ? "active" : undefined}
               key={tab.value}
-              onClick={() => replaceQuery({ status: tab.value, page: 1 })}
+              onClick={() => replaceQuery({ status: tab.value })}
               type="button"
             >
               {tab.label}<span>{countFor(tab.value)}</span>
@@ -194,9 +212,9 @@ function MyArticlesContent() {
                   <span className={`article-status-dot ${article.status}`}>{ARTICLE_STATUS_LABEL[article.status]}</span>
                   <h2>{article.title}</h2>
                 </div>
-                <p>{article.summary || article.content.replace(/[#>*`\[\]]/g, "").slice(0, 140)}</p>
+                <ArticleTaxonomy article={article} limit={4} />
                 {article.status === "blocked" && article.blockedReason ? <div className="article-blocked-reason">受限原因：{article.blockedReason}</div> : null}
-                <div className="article-mine-row-meta"><span>更新于 {formatArticleDate(article.updatedAt)}</span><ArticleStats article={article} compact /></div>
+                <div className="article-mine-row-meta"><span>更新于 {formatArticleDate(article.updatedAt)}</span><RecentCommenters article={article} /><ArticleStats article={article} compact /></div>
               </div>
               <div className="article-mine-row-actions">
                 {article.status !== "deleted" ? <Link href={`/articles/edit/${article.id}`} title="编辑"><Edit3 aria-hidden="true" size={17} /><span>编辑</span></Link> : null}
@@ -210,8 +228,14 @@ function MyArticlesContent() {
         </div>
       ) : <div className="article-empty-state"><strong>这里还没有文章</strong><span>{querySearch ? "换一个关键词试试。" : status === "deleted" ? "回收站目前是空的。" : "点击右上角“写文章”开始创作。"}</span></div>}
 
-      {list.totalPages > 1 ? <nav aria-label="分页" className="article-pagination"><button disabled={list.page <= 1} onClick={() => replaceQuery({ page: list.page - 1 })} title="上一页" type="button"><ChevronLeft aria-hidden="true" size={18} /></button><span>{list.page} / {list.totalPages}</span><button disabled={list.page >= list.totalPages} onClick={() => replaceQuery({ page: list.page + 1 })} title="下一页" type="button"><ChevronRight aria-hidden="true" size={18} /></button></nav> : null}
+      {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
+      <ArticleBackToTop />
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );
+}
+
+function appendArticlePage(current: ArticleList, next: ArticleList): ArticleList {
+  const existingIds = new Set(current.items.map((article) => article.id));
+  return { ...next, items: [...current.items, ...next.items.filter((article) => !existingIds.has(article.id))] };
 }

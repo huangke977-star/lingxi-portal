@@ -214,16 +214,6 @@ export default function BackgroundManagementPage() {
 
   return (
     <section className="page-shell admin-shell background-admin-shell">
-      <header className="page-header">
-        <span className="eyebrow">HLOVET Admin</span>
-        <div className="title-row">
-          <div>
-            <h1>背景管理</h1>
-            <p>当前背景对所有用户生效，主题仅保留配色与透明度设置。</p>
-          </div>
-        </div>
-      </header>
-
       <AppToast
         duration={error ? 4200 : 2600}
         message={error || notice}

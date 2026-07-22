@@ -112,6 +112,21 @@ const articleInclude = {
   },
   likes: { select: { userId: true } },
   favorites: { select: { userId: true } },
+  comments: {
+    where: { status: ArticleCommentStatus.active },
+    orderBy: [{ createdAt: "desc" as const }, { id: "desc" as const }],
+    take: 5,
+    select: {
+      author: {
+        select: {
+          id: true,
+          nickname: true,
+          username: true,
+          avatarStoredName: true,
+        },
+      },
+    },
+  },
 } satisfies Prisma.ArticleInclude;
 
 type ArticleRecord = Prisma.ArticleGetPayload<{ include: typeof articleInclude }>;
@@ -816,6 +831,7 @@ export class ArticlesService {
       favoriteCount: article.favoriteCount,
       commentCount: article.commentCount,
       author: this.toAuthor(article.author),
+      recentCommenters: article.comments.map(({ author }) => this.toAuthor(author)),
       allowedRoles: article.allowedRoles.map(({ role }) => role),
       images: article.images.map((image) => `/articles/images/${image.storedName}`),
       liked: viewerId !== undefined && article.likes.some((like) => like.userId === viewerId),

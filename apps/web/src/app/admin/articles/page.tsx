@@ -298,7 +298,6 @@ export default function AdminArticlesPage() {
 
   return (
     <section className="page-shell admin-articles-page">
-      <header className="page-header articles-header"><span className="eyebrow">HLOVET Journal</span><div className="title-row"><div><h1>文章管理</h1><p>管理文章、回复、阅读权限和展示排序。</p></div></div></header>
       <ArticleCenterNav active="manage" isLoggedIn user={user} />
       <div className="admin-management-toolbar">
         <div className="admin-content-tabs">
