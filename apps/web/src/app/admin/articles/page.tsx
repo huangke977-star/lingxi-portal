@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   Bookmark,
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   CornerDownRight,
@@ -26,13 +27,18 @@ import { AppToast } from "@/components/app-toast";
 import {
   Article,
   ArticleComment,
+  ArticleCommentReport,
   ArticleList,
   ARTICLE_STATUS_LABEL,
   ARTICLE_VISIBILITY_LABEL,
+  getAdminArticle,
+  getCommentReportSummary,
   listAdminArticles,
   listAdminComments,
+  listCommentReports,
   moderateArticle,
   moderateArticleComment,
+  moderateCommentReport,
 } from "@/lib/article-api";
 import { buildArticleCommentThreads } from "@/lib/article-comments";
 import type { ArticleCommentThread } from "@/lib/article-comments";
@@ -51,6 +57,10 @@ export default function AdminArticlesPage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [articleList, setArticleList] = useState<ArticleList>(emptyArticleList);
   const [comments, setComments] = useState<ArticleComment[]>([]);
+  const [reports, setReports] = useState<ArticleCommentReport[]>([]);
+  const [pendingReportCount, setPendingReportCount] = useState(0);
+  const [commentFilter, setCommentFilter] = useState<"all" | "reported" | "pending">("all");
+  const [highlightCommentId, setHighlightCommentId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Article | null>(null);
   const [activeTab, setActiveTab] = useState<"articles" | "comments">("articles");
   const [searchInput, setSearchInput] = useState("");
@@ -71,6 +81,16 @@ export default function AdminArticlesPage() {
   const initializedRef = useRef(false);
 
   const commentThreads = useMemo(() => buildArticleCommentThreads(comments), [comments]);
+  const visibleCommentThreads = useMemo(() => commentThreads.filter((thread) => {
+    if (commentFilter === "all") return true;
+    const threadComments = [thread.root, ...thread.replies.map(({ comment }) => comment)];
+    return threadComments.some((comment) => {
+      const commentReports = comment.reports ?? [];
+      return commentFilter === "reported"
+        ? commentReports.length > 0
+        : commentReports.some((report) => report.status === "pending");
+    });
+  }), [commentFilter, commentThreads]);
 
   function applyArticleSelection(article: Article) {
     setSelected(article);
@@ -91,6 +111,15 @@ export default function AdminArticlesPage() {
     } finally {
       setIsCommentsLoading(false);
     }
+  }
+
+  async function loadReportQueue(token: string) {
+    const [summary, reportResult] = await Promise.all([
+      getCommentReportSummary(token),
+      listCommentReports(token, "pending"),
+    ]);
+    setPendingReportCount(summary.pending);
+    setReports(reportResult.items);
   }
 
   async function loadArticles(token: string, page: number, search = searchQuery) {
@@ -127,7 +156,7 @@ export default function AdminArticlesPage() {
     }
     // Initial route hydration starts the protected article workspace.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    Promise.all([getMe(token), loadArticles(token, 1, "")])
+    Promise.all([getMe(token), loadArticles(token, 1, ""), loadReportQueue(token)])
       .then(([currentUser]) => {
         if (!currentUser.isSuperAdmin && currentUser.role.level < 90) {
           window.location.href = "/";
@@ -246,6 +275,42 @@ export default function AdminArticlesPage() {
     }
   }
 
+  async function locateReportedComment(report: ArticleCommentReport) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      const article = await getAdminArticle(token, report.article.id);
+      applyArticleSelection(article);
+      setActiveTab("comments");
+      setCommentFilter("all");
+      await loadComments(token, article.id);
+      setHighlightCommentId(report.commentId);
+      window.setTimeout(() => {
+        document.getElementById(`admin-comment-${report.commentId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 80);
+      window.setTimeout(() => setHighlightCommentId(null), 3600);
+    } catch (locateError) {
+      setError(locateError instanceof Error ? locateError.message : "无法定位被举报的评论。");
+    }
+  }
+
+  async function handleReport(
+    report: ArticleCommentReport,
+    status: "resolved" | "rejected",
+    commentStatus?: ArticleComment["status"],
+  ) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      await moderateCommentReport(token, report.id, { status, commentStatus });
+      await loadReportQueue(token);
+      if (selected) await loadComments(token, selected.id);
+      setNotice(status === "rejected" ? "举报已驳回。" : commentStatus === "deleted" ? "评论已删除并处理举报。" : "评论已屏蔽并处理举报。");
+    } catch (reportError) {
+      setError(reportError instanceof Error ? reportError.message : "举报处理失败。");
+    }
+  }
+
   function renderArticleList() {
     return (
       <aside className="admin-article-list">
@@ -280,19 +345,21 @@ export default function AdminArticlesPage() {
 
   function renderCommentRow(comment: ArticleComment, parent: ArticleComment | null, replyCount = 0) {
     return (
-      <article className={`admin-comment-row ${comment.status}${parent ? " reply" : ""}`} key={comment.id}>
+      <article className={`admin-comment-row ${comment.status}${parent ? " reply" : ""}${highlightCommentId === comment.id ? " highlighted" : ""}`} id={`admin-comment-${comment.id}`} key={comment.id}>
         <div className="admin-comment-row-heading">
           <ArticleAuthorLine author={comment.author} />
           {parent ? <span className="admin-comment-reply-target"><CornerDownRight aria-hidden="true" size={13} />回复 @{parent.author.nickname}</span> : null}
           <span>{formatArticleDate(comment.createdAt)}</span>
           <span className={`article-status-dot ${comment.status}`}>{comment.status === "active" ? "正常" : comment.status === "blocked" ? "已屏蔽" : "已删除"}</span>
           {replyCount ? <span className="admin-comment-thread-count">{replyCount} 条回复</span> : null}
+          {comment.pendingReportCount ? <span className="admin-comment-report-badge"><AlertTriangle aria-hidden="true" size={13} />{comment.pendingReportCount} 条待处理</span> : null}
         </div>
         <p>{comment.body}</p>
         <div className="admin-comment-row-actions">
           {comment.status !== "active" ? <button onClick={() => void changeCommentStatus(comment, "active")} type="button"><ShieldCheck aria-hidden="true" size={15} />恢复</button> : <button onClick={() => void changeCommentStatus(comment, "blocked")} type="button"><Flag aria-hidden="true" size={15} />屏蔽</button>}
           <button className="text-danger-action" onClick={() => void changeCommentStatus(comment, "deleted")} type="button"><Trash2 aria-hidden="true" size={15} />删除</button>
         </div>
+        {comment.reports?.length ? <div className="admin-comment-reports">{comment.reports.map((report) => <div className={`admin-comment-report ${report.status}`} key={report.id}><span><ArticleAuthorLine author={report.reporter} /><strong>{report.reason === "spam" ? "垃圾广告" : report.reason === "harassment" ? "辱骂骚扰" : report.reason === "illegal" ? "违法违规" : report.reason === "privacy" ? "隐私泄露" : report.reason === "misinformation" ? "不实内容" : "其他"}</strong>{report.detail ? <small>{report.detail}</small> : null}</span>{report.status === "pending" ? <div><button onClick={() => void handleReport(report, "resolved", "blocked")} type="button">屏蔽并处理</button><button onClick={() => void handleReport(report, "resolved", "deleted")} type="button">删除并处理</button><button onClick={() => void handleReport(report, "rejected")} type="button">驳回</button></div> : <em>{report.status === "resolved" ? "已处理" : "已驳回"}</em>}</div>)}</div> : null}
       </article>
     );
   }
@@ -314,6 +381,7 @@ export default function AdminArticlesPage() {
           <button className={activeTab === "articles" ? "active" : undefined} onClick={() => void changeTab("articles")} type="button"><FileText aria-hidden="true" size={16} />文章 <span>{articleList.total}</span></button>
           <button className={activeTab === "comments" ? "active" : undefined} onClick={() => void changeTab("comments")} type="button"><MessageSquare aria-hidden="true" size={16} />评论与回复 <span>{selected?.commentCount ?? 0}</span></button>
         </div>
+        <details className="admin-report-queue"><summary><AlertTriangle aria-hidden="true" size={15} />待处理举报 <span>{pendingReportCount}</span></summary><div>{reports.length ? reports.map((report) => <button key={report.id} onClick={() => void locateReportedComment(report)} type="button"><strong>{report.article.title}</strong><span>{report.reporter.nickname} · {formatArticleDate(report.createdAt)}</span></button>) : <span>暂无待处理举报。</span>}</div></details>
         <label className="article-search admin-article-search">
           <Search aria-hidden="true" size={16} />
           <input aria-label="搜索管理文章" onChange={(event) => setSearchInput(event.target.value)} onCompositionEnd={(event) => { composingRef.current = false; setSearchInput(event.currentTarget.value); }} onCompositionStart={() => { composingRef.current = true; }} placeholder="搜索标题、作者、分类或正文" value={searchInput} />
@@ -342,7 +410,8 @@ export default function AdminArticlesPage() {
           <section className="admin-comments-panel">
             {selected ? <>
               <div className="admin-comments-heading"><div><span className="section-label">Comment Thread</span><h2>{selected.title}</h2></div><Link href={`/articles/${selected.slug}`} target="_blank"><ExternalLink aria-hidden="true" size={15} />查看文章</Link></div>
-              {isCommentsLoading ? <div className="article-empty-state">正在读取评论。</div> : commentThreads.length ? <div className="admin-comments-table">{commentThreads.map(renderCommentThread)}</div> : <div className="article-empty-state">这篇文章暂时没有评论和回复。</div>}
+              <div className="admin-comment-filters"><button className={commentFilter === "all" ? "active" : undefined} onClick={() => setCommentFilter("all")} type="button">全部</button><button className={commentFilter === "reported" ? "active" : undefined} onClick={() => setCommentFilter("reported")} type="button">有举报</button><button className={commentFilter === "pending" ? "active" : undefined} onClick={() => setCommentFilter("pending")} type="button">待处理</button></div>
+              {isCommentsLoading ? <div className="article-empty-state">正在读取评论。</div> : visibleCommentThreads.length ? <div className="admin-comments-table">{visibleCommentThreads.map(renderCommentThread)}</div> : <div className="article-empty-state">当前筛选下没有评论和回复。</div>}
             </> : <div className="article-empty-state">选择一篇文章查看评论。</div>}
           </section>
         </div>

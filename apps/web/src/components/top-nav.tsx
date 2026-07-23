@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import { RoleSymbol } from "@/components/role-symbol";
+import { getCommentReportSummary } from "@/lib/article-api";
 import { AuthUser, getMe, logout, resolveApiUrl } from "@/lib/auth-api";
 import {
   AUTH_STATE_CHANGE_EVENT,
@@ -20,6 +21,7 @@ import {
   readRefreshToken,
 } from "@/lib/auth-storage";
 import { getAvatarFallbackText, getUserDisplayName } from "@/lib/user-display";
+import { getSocialSummary } from "@/lib/social-api";
 
 const navItems = [
   { href: "/", label: "首页" },
@@ -40,6 +42,8 @@ export function TopNav() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [socialCount, setSocialCount] = useState(0);
+  const [pendingReportCount, setPendingReportCount] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -49,6 +53,8 @@ export function TopNav() {
 
       if (!accessToken) {
         setUser(null);
+        setSocialCount(0);
+        setPendingReportCount(0);
         if (isMounted) {
           setIsLoading(false);
         }
@@ -59,6 +65,16 @@ export function TopNav() {
         const currentUser = await getMe(accessToken);
         if (isMounted) {
           setUser(currentUser);
+        }
+        const summaries = await Promise.all([
+          getSocialSummary(accessToken).catch(() => ({ unreadMessages: 0, pendingFriendRequests: 0 })),
+          currentUser.isSuperAdmin || currentUser.role.level >= 90
+            ? getCommentReportSummary(accessToken).catch(() => ({ pending: 0 }))
+            : Promise.resolve({ pending: 0 }),
+        ]);
+        if (isMounted) {
+          setSocialCount(summaries[0].unreadMessages + summaries[0].pendingFriendRequests);
+          setPendingReportCount(summaries[1].pending);
         }
       } catch {
         clearAuthTokens();
@@ -332,6 +348,9 @@ export function TopNav() {
                   <Link href="/profile" onClick={closeAccountMenu}>
                     个人中心
                   </Link>
+                  <Link className="account-menu-count-link" href="/messages" onClick={closeAccountMenu}>
+                    消息与好友{socialCount ? <span>{socialCount > 99 ? "99+" : socialCount}</span> : null}
+                  </Link>
                   {user.isSuperAdmin || user.role.level >= 90 ? (
                     <>
                       <Link href="/admin" onClick={closeAccountMenu}>
@@ -339,6 +358,9 @@ export function TopNav() {
                       </Link>
                       <Link href="/admin/content" onClick={closeAccountMenu}>
                         内容管理
+                      </Link>
+                      <Link className="account-menu-count-link" href="/articles/manage" onClick={closeAccountMenu}>
+                        文章与评论{pendingReportCount ? <span className="account-menu-alert-count">{pendingReportCount > 99 ? "99+" : pendingReportCount}</span> : null}
                       </Link>
                     </>
                   ) : null}

@@ -57,6 +57,8 @@ function articleRecord(status: ArticleStatus = ArticleStatus.published) {
       nickname: user.nickname,
       username: user.username,
       avatarStoredName: null,
+      isSuperAdmin: false,
+      role: user.role,
     },
     allowedRoles: [],
     images: [],
@@ -70,6 +72,8 @@ function articleRecord(status: ArticleStatus = ArticleStatus.published) {
           nickname: "回复者",
           username: "commenter",
           avatarStoredName: null,
+          isSuperAdmin: false,
+          role: { code: "qi_refining", name: "练气", level: 10 },
         },
       },
       {
@@ -79,6 +83,8 @@ function articleRecord(status: ArticleStatus = ArticleStatus.published) {
           nickname: "回复者",
           username: "commenter",
           avatarStoredName: null,
+          isSuperAdmin: false,
+          role: { code: "qi_refining", name: "练气", level: 10 },
         },
       },
       {
@@ -88,6 +94,8 @@ function articleRecord(status: ArticleStatus = ArticleStatus.published) {
           nickname: "另一位回复者",
           username: "commenter-2",
           avatarStoredName: null,
+          isSuperAdmin: false,
+          role: { code: "foundation_building", name: "筑基", level: 20 },
         },
       },
     ],
@@ -214,5 +222,32 @@ describe("ArticlesService article center extensions", () => {
 
     await expect(service.permanentlyDelete(12, user)).resolves.toEqual({ success: true });
     expect(prisma.article.delete).toHaveBeenCalledWith({ where: { id: 12 } });
+  });
+
+  it("soft deletes an owned comment and recalculates the active comment count", async () => {
+    const transaction = {
+      articleComment: {
+        update: jest.fn(async () => ({ articleId: 12 })),
+        count: jest.fn(async () => 4),
+      },
+      article: { update: jest.fn(async () => ({ id: 12 })) },
+    };
+    const prisma = {
+      articleComment: {
+        findUnique: jest.fn(async () => ({ authorId: user.id, status: "active" })),
+      },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
+    };
+    const service = new ArticlesService(prisma as unknown as PrismaService);
+
+    await expect(service.deleteComment(44, user)).resolves.toEqual({ success: true });
+    expect(transaction.articleComment.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 44 },
+      data: { status: "deleted" },
+    }));
+    expect(transaction.article.update).toHaveBeenCalledWith({
+      where: { id: 12 },
+      data: { commentCount: 4 },
+    });
   });
 });

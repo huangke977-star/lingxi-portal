@@ -6,8 +6,9 @@ import { ArticlesModule } from './articles/articles.module';
 import { HealthModule } from './health/health.module';
 import { PortalModule } from './portal/portal.module';
 import { RolesModule } from './roles/roles.module';
+import { SocialModule } from './social/social.module';
 
 @Module({
-  imports: [HealthModule, RolesModule, AuthModule, BackgroundsModule, CacheAdminModule, PortalModule, ArticlesModule],
+  imports: [HealthModule, RolesModule, AuthModule, BackgroundsModule, CacheAdminModule, PortalModule, ArticlesModule, SocialModule],
 })
 export class AppModule {}

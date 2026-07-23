@@ -22,6 +22,8 @@
     "@nestjs/core": "latest",
     "@nestjs/jwt": "latest",
     "@nestjs/platform-express": "latest",
+    "@nestjs/platform-socket.io": "^11.1.28",
+    "@nestjs/websockets": "^11.1.28",
     "@prisma/adapter-mariadb": "latest",
     "@prisma/client": "latest",
     "bcryptjs": "latest",
@@ -30,7 +32,8 @@
     "dotenv": "latest",
     "ioredis": "latest",
     "reflect-metadata": "latest",
-    "rxjs": "latest"
+    "rxjs": "latest",
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "@eslint/js": "latest",

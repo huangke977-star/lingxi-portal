@@ -7,7 +7,14 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 import { access, mkdir, unlink, writeFile } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
-import { ArticleCommentStatus, ArticleStatus, ArticleVisibility, Prisma } from "../generated/prisma/client";
+import {
+  ArticleCommentReportReason,
+  ArticleCommentReportStatus,
+  ArticleCommentStatus,
+  ArticleStatus,
+  ArticleVisibility,
+  Prisma,
+} from "../generated/prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -17,13 +24,17 @@ import {
   CreateArticleDto,
   ListArticlesQueryDto,
   ModerateArticleCommentDto,
+  ModerateArticleCommentReportDto,
   ModerateArticleDto,
+  ReportArticleCommentDto,
   UpdateArticleDto,
 } from "./dto/article.dto";
 import {
   ArticleAuthorResponse,
   ArticleCenterSummaryResponse,
   ArticleCommentResponse,
+  ArticleCommentReportResponse,
+  ArticleCommentReportSummaryResponse,
   ArticleCommentsResponse,
   ArticleInteractionResponse,
   ArticleListResponse,
@@ -96,6 +107,8 @@ const articleInclude = {
       nickname: true,
       username: true,
       avatarStoredName: true,
+      isSuperAdmin: true,
+      role: { select: { code: true, name: true, level: true } },
     },
   },
   allowedRoles: {
@@ -125,6 +138,8 @@ const articleInclude = {
           nickname: true,
           username: true,
           avatarStoredName: true,
+          isSuperAdmin: true,
+          role: { select: { code: true, name: true, level: true } },
         },
       },
     },
@@ -132,6 +147,28 @@ const articleInclude = {
 } satisfies Prisma.ArticleInclude;
 
 type ArticleRecord = Prisma.ArticleGetPayload<{ include: typeof articleInclude }>;
+
+const commentReportInclude = {
+  comment: {
+    select: {
+      article: { select: { id: true, title: true, slug: true } },
+    },
+  },
+  reporter: {
+    select: {
+      id: true,
+      nickname: true,
+      username: true,
+      avatarStoredName: true,
+      isSuperAdmin: true,
+      role: { select: { code: true, name: true, level: true } },
+    },
+  },
+} satisfies Prisma.ArticleCommentReportInclude;
+
+type CommentReportRecord = Prisma.ArticleCommentReportGetPayload<{
+  include: typeof commentReportInclude;
+}>;
 
 @Injectable()
 export class ArticlesService {
@@ -240,11 +277,34 @@ export class ArticlesService {
     const article = await this.getArticleBySlug(slug);
     this.assertCanRead(article, user);
     const comments = await this.prisma.articleComment.findMany({
-      where: { articleId: article.id, status: ArticleCommentStatus.active },
+      where: { articleId: article.id },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: this.commentSelect(),
     });
-    return { items: comments.map((comment) => this.toCommentResponse(comment)) };
+    const includedIds = this.visibleCommentIds(comments);
+    const visibleComments = comments.filter((comment) => includedIds.has(comment.id));
+    const commentIds = visibleComments.map((comment) => comment.id);
+    const [likes, reports] = user && commentIds.length
+      ? await Promise.all([
+          this.prisma.articleCommentLike.findMany({
+            where: { userId: user.id, commentId: { in: commentIds } },
+            select: { commentId: true },
+          }),
+          this.prisma.articleCommentReport.findMany({
+            where: { reporterId: user.id, commentId: { in: commentIds }, status: ArticleCommentReportStatus.pending },
+            select: { commentId: true },
+          }),
+        ])
+      : [[], []];
+    const likedIds = new Set(likes.map((like) => like.commentId));
+    const reportedIds = new Set(reports.map((report) => report.commentId));
+    return {
+      items: visibleComments.map((comment) => this.toCommentResponse(comment, {
+        liked: likedIds.has(comment.id),
+        reported: reportedIds.has(comment.id),
+        sanitizeHiddenBody: true,
+      })),
+    };
   }
 
   async create(user: AuthenticatedUser, dto: CreateArticleDto): Promise<ArticleResponse> {
@@ -522,8 +582,78 @@ export class ArticlesService {
     if (comment.authorId !== user.id && !this.canManageContent(user)) {
       throw new ForbiddenException("没有删除这条评论的权限。");
     }
-    await this.prisma.articleComment.update({ where: { id }, data: { status: ArticleCommentStatus.deleted } });
+    if (comment.status !== ArticleCommentStatus.deleted) {
+      await this.prisma.$transaction((transaction) =>
+        this.setCommentStatus(transaction, id, ArticleCommentStatus.deleted),
+      );
+    }
     return { success: true };
+  }
+
+  async toggleCommentLike(
+    id: number,
+    user: AuthenticatedUser,
+    liked: boolean,
+  ): Promise<{ liked: boolean; likeCount: number }> {
+    const comment = await this.prisma.articleComment.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    if (!comment || comment.status !== ArticleCommentStatus.active) {
+      throw new NotFoundException("评论不存在或当前不可互动。");
+    }
+    const existing = await this.prisma.articleCommentLike.findUnique({
+      where: { commentId_userId: { commentId: id, userId: user.id } },
+      select: { commentId: true },
+    });
+    if (liked && !existing) {
+      await this.prisma.$transaction([
+        this.prisma.articleCommentLike.create({ data: { commentId: id, userId: user.id } }),
+        this.prisma.articleComment.update({ where: { id }, data: { likeCount: { increment: 1 } } }),
+      ]);
+    } else if (!liked && existing) {
+      await this.prisma.$transaction([
+        this.prisma.articleCommentLike.delete({ where: { commentId_userId: { commentId: id, userId: user.id } } }),
+        this.prisma.articleComment.update({ where: { id }, data: { likeCount: { decrement: 1 } } }),
+      ]);
+    }
+    const updated = await this.prisma.articleComment.findUniqueOrThrow({ where: { id }, select: { likeCount: true } });
+    return { liked, likeCount: Math.max(0, updated.likeCount) };
+  }
+
+  async reportComment(
+    id: number,
+    user: AuthenticatedUser,
+    dto: ReportArticleCommentDto,
+  ): Promise<{ reported: true }> {
+    const comment = await this.prisma.articleComment.findUnique({
+      where: { id },
+      select: { authorId: true, status: true },
+    });
+    if (!comment || comment.status !== ArticleCommentStatus.active) {
+      throw new NotFoundException("评论不存在或当前不可举报。");
+    }
+    if (comment.authorId === user.id) {
+      throw new BadRequestException("不能举报自己的评论。");
+    }
+    await this.prisma.articleCommentReport.upsert({
+      where: { commentId_reporterId: { commentId: id, reporterId: user.id } },
+      create: {
+        commentId: id,
+        reporterId: user.id,
+        reason: dto.reason as ArticleCommentReportReason,
+        detail: dto.detail?.trim() || null,
+      },
+      update: {
+        reason: dto.reason as ArticleCommentReportReason,
+        detail: dto.detail?.trim() || null,
+        status: ArticleCommentReportStatus.pending,
+        handledById: null,
+        handledAt: null,
+        resolution: null,
+      },
+    });
+    return { reported: true };
   }
 
   async moderateArticle(id: number, actor: AuthenticatedUser, dto: ModerateArticleDto): Promise<ArticleResponse> {
@@ -558,7 +688,57 @@ export class ArticlesService {
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: this.commentSelect(),
     });
-    return { items: comments.map((comment) => this.toCommentResponse(comment)) };
+    const reports = comments.length
+      ? await this.prisma.articleCommentReport.findMany({
+          where: { commentId: { in: comments.map((comment) => comment.id) } },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          include: commentReportInclude,
+        })
+      : [];
+    const reportsByComment = new Map<number, ArticleCommentReportResponse[]>();
+    for (const report of reports) {
+      const current = reportsByComment.get(report.commentId) ?? [];
+      current.push(this.toCommentReportResponse(report));
+      reportsByComment.set(report.commentId, current);
+    }
+    return {
+      items: comments.map((comment) => {
+        const commentReports = reportsByComment.get(comment.id) ?? [];
+        return this.toCommentResponse(comment, {
+          reports: commentReports,
+          pendingReportCount: commentReports.filter((report) => report.status === ArticleCommentReportStatus.pending).length,
+        });
+      }),
+    };
+  }
+
+  async getCommentReportSummary(): Promise<ArticleCommentReportSummaryResponse> {
+    return {
+      pending: await this.prisma.articleCommentReport.count({
+        where: { status: ArticleCommentReportStatus.pending },
+      }),
+    };
+  }
+
+  async listCommentReports(status?: string): Promise<{ items: ArticleCommentReportResponse[] }> {
+    const normalizedStatus = status && Object.values(ArticleCommentReportStatus).includes(status as ArticleCommentReportStatus)
+      ? status as ArticleCommentReportStatus
+      : undefined;
+    const reports = await this.prisma.articleCommentReport.findMany({
+      where: normalizedStatus ? { status: normalizedStatus } : undefined,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 100,
+      include: commentReportInclude,
+    });
+    return { items: reports.map((report) => this.toCommentReportResponse(report)) };
+  }
+
+  async getAdminArticle(id: number): Promise<ArticleResponse> {
+    const article = await this.prisma.article.findUnique({ where: { id }, include: articleInclude });
+    if (!article) {
+      throw new NotFoundException("文章不存在。");
+    }
+    return this.toResponse(article);
   }
 
   async moderateComment(id: number, actor: AuthenticatedUser, dto: ModerateArticleCommentDto): Promise<{ success: true }> {
@@ -567,7 +747,41 @@ export class ArticlesService {
     if (!comment) {
       throw new NotFoundException("评论不存在。");
     }
-    await this.prisma.articleComment.update({ where: { id }, data: { status: dto.status } });
+    if (comment.status !== dto.status) {
+      await this.prisma.$transaction((transaction) =>
+        this.setCommentStatus(transaction, id, dto.status as ArticleCommentStatus),
+      );
+    }
+    return { success: true };
+  }
+
+  async moderateCommentReport(
+    id: number,
+    actor: AuthenticatedUser,
+    dto: ModerateArticleCommentReportDto,
+  ): Promise<{ success: true }> {
+    this.assertCanManageContent(actor);
+    const report = await this.prisma.articleCommentReport.findUnique({
+      where: { id },
+      select: { commentId: true },
+    });
+    if (!report) {
+      throw new NotFoundException("举报记录不存在。");
+    }
+    await this.prisma.$transaction(async (transaction) => {
+      if (dto.commentStatus) {
+        await this.setCommentStatus(transaction, report.commentId, dto.commentStatus as ArticleCommentStatus);
+      }
+      await transaction.articleCommentReport.update({
+        where: { id },
+        data: {
+          status: dto.status as ArticleCommentReportStatus,
+          resolution: dto.resolution?.trim() || null,
+          handledById: actor.id,
+          handledAt: new Date(),
+        },
+      });
+    });
     return { success: true };
   }
 
@@ -858,9 +1072,19 @@ export class ArticlesService {
       parentId: true,
       body: true,
       status: true,
+      likeCount: true,
       createdAt: true,
       updatedAt: true,
-      author: { select: { id: true, nickname: true, username: true, avatarStoredName: true } },
+      author: {
+        select: {
+          id: true,
+          nickname: true,
+          username: true,
+          avatarStoredName: true,
+          isSuperAdmin: true,
+          role: { select: { code: true, name: true, level: true } },
+        },
+      },
     } as const;
   }
 
@@ -870,28 +1094,118 @@ export class ArticlesService {
     parentId: number | null;
     body: string;
     status?: ArticleCommentStatus;
+    likeCount: number;
     createdAt: Date;
     updatedAt: Date;
-    author: { id: number; nickname: string; username: string; avatarStoredName: string | null };
-  }): ArticleCommentResponse {
+    author: {
+      id: number;
+      nickname: string;
+      username: string;
+      avatarStoredName: string | null;
+      isSuperAdmin: boolean;
+      role: { code: string; name: string; level: number };
+    };
+  }, options: {
+    liked?: boolean;
+    reported?: boolean;
+    pendingReportCount?: number;
+    reports?: ArticleCommentReportResponse[];
+    sanitizeHiddenBody?: boolean;
+  } = {}): ArticleCommentResponse {
+    const status = comment.status ?? ArticleCommentStatus.active;
+    const body = options.sanitizeHiddenBody && status !== ArticleCommentStatus.active
+      ? status === ArticleCommentStatus.deleted ? "该评论已删除" : "该评论已被屏蔽"
+      : comment.body;
     return {
       id: comment.id,
       articleId: comment.articleId,
       parentId: comment.parentId,
-      body: comment.body,
-      status: comment.status ?? ArticleCommentStatus.active,
+      body,
+      status,
+      likeCount: Math.max(0, comment.likeCount),
+      liked: options.liked ?? false,
+      reported: options.reported ?? false,
+      pendingReportCount: options.pendingReportCount,
+      reports: options.reports,
       author: this.toAuthor(comment.author),
       createdAt: comment.createdAt.toISOString(),
       updatedAt: comment.updatedAt.toISOString(),
     };
   }
 
-  private toAuthor(author: { id: number; nickname: string; username: string; avatarStoredName: string | null }): ArticleAuthorResponse {
+  private toCommentReportResponse(report: CommentReportRecord): ArticleCommentReportResponse {
+    return {
+      id: report.id,
+      commentId: report.commentId,
+      article: report.comment.article,
+      reporter: this.toAuthor(report.reporter),
+      reason: report.reason,
+      detail: report.detail,
+      status: report.status,
+      resolution: report.resolution,
+      createdAt: report.createdAt.toISOString(),
+      handledAt: report.handledAt?.toISOString() ?? null,
+    };
+  }
+
+  private visibleCommentIds(comments: Array<{
+    id: number;
+    parentId: number | null;
+    status: ArticleCommentStatus;
+  }>): Set<number> {
+    const commentsById = new Map(comments.map((comment) => [comment.id, comment]));
+    const included = new Set<number>();
+    for (const comment of comments) {
+      if (comment.status !== ArticleCommentStatus.active) continue;
+      let current: typeof comment | undefined = comment;
+      const visited = new Set<number>();
+      while (current && !visited.has(current.id)) {
+        visited.add(current.id);
+        included.add(current.id);
+        current = current.parentId ? commentsById.get(current.parentId) : undefined;
+      }
+    }
+    return included;
+  }
+
+  private async setCommentStatus(
+    transaction: Prisma.TransactionClient,
+    id: number,
+    status: ArticleCommentStatus,
+  ): Promise<void> {
+    const comment = await transaction.articleComment.update({
+      where: { id },
+      data: { status },
+      select: { articleId: true },
+    });
+    const activeCount = await transaction.articleComment.count({
+      where: { articleId: comment.articleId, status: ArticleCommentStatus.active },
+    });
+    await transaction.article.update({
+      where: { id: comment.articleId },
+      data: { commentCount: activeCount },
+    });
+  }
+
+  private toAuthor(author: {
+    id: number;
+    nickname: string;
+    username: string;
+    avatarStoredName: string | null;
+    isSuperAdmin: boolean;
+    role: { code: string; name: string; level: number };
+  }): ArticleAuthorResponse {
     return {
       id: author.id,
       nickname: author.nickname || author.username,
       username: author.username,
       avatarUrl: author.avatarStoredName ? `/auth/avatars/${author.avatarStoredName}` : null,
+      isSuperAdmin: author.isSuperAdmin,
+      role: {
+        code: author.role.code,
+        name: author.isSuperAdmin ? "超级管理员" : author.role.name,
+        level: author.role.level,
+      },
     };
   }
 

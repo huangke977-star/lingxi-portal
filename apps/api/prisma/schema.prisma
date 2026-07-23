@@ -51,58 +51,87 @@ enum ArticleCommentStatus {
   deleted
 }
 
+enum ArticleCommentReportReason {
+  spam
+  harassment
+  illegal
+  privacy
+  misinformation
+  other
+}
+
+enum ArticleCommentReportStatus {
+  pending
+  resolved
+  rejected
+}
+
+enum FriendshipStatus {
+  pending
+  accepted
+  declined
+  removed
+}
+
 model Role {
-  id               Int               @id @default(autoincrement())
-  code             String            @unique @db.VarChar(64)
-  name             String            @db.VarChar(64)
-  level            Int               @unique
-  sortOrder        Int               @default(0)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  users            User[]
-  portalEntryRoles PortalEntryRole[]
+  id                  Int                  @id @default(autoincrement())
+  code                String               @unique @db.VarChar(64)
+  name                String               @db.VarChar(64)
+  level               Int                  @unique
+  sortOrder           Int                  @default(0)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  users               User[]
+  portalEntryRoles    PortalEntryRole[]
   articleAllowedRoles ArticleAllowedRole[]
 
   @@map("roles")
 }
 
 model User {
-  id                      Int               @id @default(autoincrement())
-  username                String            @unique @db.VarChar(32)
-  nickname                String            @db.VarChar(32)
-  email                   String            @unique @db.VarChar(191)
-  passwordHash            String            @map("password_hash") @db.VarChar(255)
-  roleId                  Int               @map("role_id")
-  role                    Role              @relation(fields: [roleId], references: [id])
-  isSuperAdmin            Boolean           @default(false) @map("is_super_admin")
-  status                  UserStatus        @default(active)
-  appearanceThemeId       String            @default("sakura-mist") @map("appearance_theme_id") @db.VarChar(64)
-  customAccent            String            @default("#db2777") @map("custom_accent") @db.VarChar(7)
-  customSurface           String            @default("#ffffff") @map("custom_surface") @db.VarChar(7)
-  customForeground        String            @default("#2b2530") @map("custom_foreground") @db.VarChar(7)
-  customMuted             String            @default("#665867") @map("custom_muted") @db.VarChar(7)
-  cardAlpha               Int               @default(52) @map("card_alpha")
-  glassBlur               Int               @default(22) @map("glass_blur")
-  glassTint               String            @default("#fff3f6") @map("glass_tint") @db.VarChar(7)
-  glassTintAlpha          Int               @default(72) @map("glass_tint_alpha")
-  avatarOriginalName      String?           @map("avatar_original_name") @db.VarChar(255)
-  avatarStoredName        String?           @unique @map("avatar_stored_name") @db.VarChar(255)
-  avatarMimeType          String?           @map("avatar_mime_type") @db.VarChar(64)
-  avatarSizeBytes         Int?              @map("avatar_size_bytes")
-  profileBio              String            @default("我懒，我不写") @map("profile_bio") @db.VarChar(180)
-  lastLoginAt             DateTime?         @map("last_login_at")
-  createdAt               DateTime          @default(now()) @map("created_at")
-  updatedAt               DateTime          @updatedAt @map("updated_at")
+  id                      Int                    @id @default(autoincrement())
+  username                String                 @unique @db.VarChar(32)
+  nickname                String                 @db.VarChar(32)
+  email                   String                 @unique @db.VarChar(191)
+  passwordHash            String                 @map("password_hash") @db.VarChar(255)
+  roleId                  Int                    @map("role_id")
+  role                    Role                   @relation(fields: [roleId], references: [id])
+  isSuperAdmin            Boolean                @default(false) @map("is_super_admin")
+  status                  UserStatus             @default(active)
+  appearanceThemeId       String                 @default("sakura-mist") @map("appearance_theme_id") @db.VarChar(64)
+  customAccent            String                 @default("#db2777") @map("custom_accent") @db.VarChar(7)
+  customSurface           String                 @default("#ffffff") @map("custom_surface") @db.VarChar(7)
+  customForeground        String                 @default("#2b2530") @map("custom_foreground") @db.VarChar(7)
+  customMuted             String                 @default("#665867") @map("custom_muted") @db.VarChar(7)
+  cardAlpha               Int                    @default(52) @map("card_alpha")
+  glassBlur               Int                    @default(22) @map("glass_blur")
+  glassTint               String                 @default("#fff3f6") @map("glass_tint") @db.VarChar(7)
+  glassTintAlpha          Int                    @default(72) @map("glass_tint_alpha")
+  avatarOriginalName      String?                @map("avatar_original_name") @db.VarChar(255)
+  avatarStoredName        String?                @unique @map("avatar_stored_name") @db.VarChar(255)
+  avatarMimeType          String?                @map("avatar_mime_type") @db.VarChar(64)
+  avatarSizeBytes         Int?                   @map("avatar_size_bytes")
+  profileBio              String                 @default("我懒，我不写") @map("profile_bio") @db.VarChar(180)
+  lastLoginAt             DateTime?              @map("last_login_at")
+  createdAt               DateTime               @default(now()) @map("created_at")
+  updatedAt               DateTime               @updatedAt @map("updated_at")
   backgroundImages        BackgroundImage[]
-  portalCategoriesCreated PortalCategory[]  @relation("PortalCategoryCreatedBy")
-  portalCategoriesUpdated PortalCategory[]  @relation("PortalCategoryUpdatedBy")
-  portalEntriesCreated    PortalEntry[]     @relation("PortalEntryCreatedBy")
-  portalEntriesUpdated    PortalEntry[]     @relation("PortalEntryUpdatedBy")
-  articles                Article[]         @relation("ArticleAuthor")
-  articleComments         ArticleComment[]   @relation("ArticleCommentAuthor")
+  portalCategoriesCreated PortalCategory[]       @relation("PortalCategoryCreatedBy")
+  portalCategoriesUpdated PortalCategory[]       @relation("PortalCategoryUpdatedBy")
+  portalEntriesCreated    PortalEntry[]          @relation("PortalEntryCreatedBy")
+  portalEntriesUpdated    PortalEntry[]          @relation("PortalEntryUpdatedBy")
+  articles                Article[]              @relation("ArticleAuthor")
+  articleComments         ArticleComment[]       @relation("ArticleCommentAuthor")
   articleLikes            ArticleLike[]
   articleFavorites        ArticleFavorite[]
   articleViews            ArticleView[]
+  articleCommentLikes     ArticleCommentLike[]
+  articleCommentReports   ArticleCommentReport[] @relation("ArticleCommentReporter")
+  handledCommentReports   ArticleCommentReport[] @relation("ArticleCommentReportHandler")
+  friendshipsAsOne        Friendship[]           @relation("FriendshipUserOne")
+  friendshipsAsTwo        Friendship[]           @relation("FriendshipUserTwo")
+  friendshipRequests      Friendship[]           @relation("FriendshipRequester")
+  chatMessages            ChatMessage[]          @relation("ChatMessageSender")
 
   @@index([roleId])
   @@map("users")
@@ -186,35 +215,35 @@ model PortalEntryRole {
 }
 
 model Article {
-  id            Int                    @id @default(autoincrement())
-  authorId      Int                    @map("author_id")
-  author        User                   @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  title         String                 @db.VarChar(120)
-  slug          String                 @unique @db.VarChar(180)
-  summary       String                 @default("") @db.VarChar(300)
-  content       String                 @db.LongText
-  coverPath     String?                @map("cover_path") @db.VarChar(512)
-  category      String                 @default("") @db.VarChar(80)
-  tags          String                 @default("") @db.VarChar(500)
-  titleColor    String                 @default("") @map("title_color") @db.VarChar(7)
-  visibility    ArticleVisibility      @default(public)
-  status        ArticleStatus          @default(draft)
-  isPinned      Boolean                @default(false) @map("is_pinned")
-  pinOrder      Int                    @default(0) @map("pin_order")
-  publishedAt   DateTime?              @map("published_at")
-  blockedReason String?                @map("blocked_reason") @db.VarChar(255)
-  viewCount     Int                    @default(0) @map("view_count")
-  likeCount     Int                    @default(0) @map("like_count")
-  favoriteCount Int                    @default(0) @map("favorite_count")
-  commentCount  Int                    @default(0) @map("comment_count")
+  id            Int                  @id @default(autoincrement())
+  authorId      Int                  @map("author_id")
+  author        User                 @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  title         String               @db.VarChar(120)
+  slug          String               @unique @db.VarChar(180)
+  summary       String               @default("") @db.VarChar(300)
+  content       String               @db.LongText
+  coverPath     String?              @map("cover_path") @db.VarChar(512)
+  category      String               @default("") @db.VarChar(80)
+  tags          String               @default("") @db.VarChar(500)
+  titleColor    String               @default("") @map("title_color") @db.VarChar(7)
+  visibility    ArticleVisibility    @default(public)
+  status        ArticleStatus        @default(draft)
+  isPinned      Boolean              @default(false) @map("is_pinned")
+  pinOrder      Int                  @default(0) @map("pin_order")
+  publishedAt   DateTime?            @map("published_at")
+  blockedReason String?              @map("blocked_reason") @db.VarChar(255)
+  viewCount     Int                  @default(0) @map("view_count")
+  likeCount     Int                  @default(0) @map("like_count")
+  favoriteCount Int                  @default(0) @map("favorite_count")
+  commentCount  Int                  @default(0) @map("comment_count")
   allowedRoles  ArticleAllowedRole[]
   images        ArticleImage[]
   comments      ArticleComment[]
   likes         ArticleLike[]
   favorites     ArticleFavorite[]
   views         ArticleView[]
-  createdAt     DateTime               @default(now()) @map("created_at")
-  updatedAt     DateTime               @updatedAt @map("updated_at")
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
 
   @@index([authorId, status, updatedAt])
   @@index([status, visibility, isPinned, pinOrder])
@@ -249,22 +278,60 @@ model ArticleImage {
 }
 
 model ArticleComment {
-  id        Int                  @id @default(autoincrement())
-  articleId Int                  @map("article_id")
-  article   Article              @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  authorId  Int                  @map("author_id")
-  author    User                 @relation("ArticleCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  parentId  Int?                 @map("parent_id")
-  parent    ArticleComment?      @relation("ArticleCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies   ArticleComment[]     @relation("ArticleCommentReplies")
-  body      String               @db.Text
-  status    ArticleCommentStatus @default(active)
-  createdAt DateTime             @default(now()) @map("created_at")
-  updatedAt DateTime             @updatedAt @map("updated_at")
+  id        Int                    @id @default(autoincrement())
+  articleId Int                    @map("article_id")
+  article   Article                @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  authorId  Int                    @map("author_id")
+  author    User                   @relation("ArticleCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  parentId  Int?                   @map("parent_id")
+  parent    ArticleComment?        @relation("ArticleCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   ArticleComment[]       @relation("ArticleCommentReplies")
+  body      String                 @db.Text
+  status    ArticleCommentStatus   @default(active)
+  likeCount Int                    @default(0) @map("like_count")
+  likes     ArticleCommentLike[]
+  reports   ArticleCommentReport[]
+  createdAt DateTime               @default(now()) @map("created_at")
+  updatedAt DateTime               @updatedAt @map("updated_at")
 
   @@index([articleId, status, createdAt])
   @@index([parentId])
   @@map("article_comments")
+}
+
+model ArticleCommentLike {
+  commentId Int            @map("comment_id")
+  comment   ArticleComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    Int            @map("user_id")
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  @@id([commentId, userId])
+  @@index([userId])
+  @@map("article_comment_likes")
+}
+
+model ArticleCommentReport {
+  id          Int                        @id @default(autoincrement())
+  commentId   Int                        @map("comment_id")
+  comment     ArticleComment             @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  reporterId  Int                        @map("reporter_id")
+  reporter    User                       @relation("ArticleCommentReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reason      ArticleCommentReportReason
+  detail      String?                    @db.VarChar(500)
+  status      ArticleCommentReportStatus @default(pending)
+  handledById Int?                       @map("handled_by_id")
+  handledBy   User?                      @relation("ArticleCommentReportHandler", fields: [handledById], references: [id], onDelete: SetNull)
+  handledAt   DateTime?                  @map("handled_at")
+  resolution  String?                    @db.VarChar(500)
+  createdAt   DateTime                   @default(now()) @map("created_at")
+  updatedAt   DateTime                   @updatedAt @map("updated_at")
+
+  @@unique([commentId, reporterId])
+  @@index([status, createdAt])
+  @@index([reporterId])
+  @@index([handledById])
+  @@map("article_comment_reports")
 }
 
 model ArticleLike {
@@ -304,4 +371,53 @@ model ArticleView {
   @@unique([articleId, visitorKey, viewedOn])
   @@index([articleId, createdAt])
   @@map("article_views")
+}
+
+model Friendship {
+  id            Int              @id @default(autoincrement())
+  userOneId     Int              @map("user_one_id")
+  userOne       User             @relation("FriendshipUserOne", fields: [userOneId], references: [id], onDelete: Cascade)
+  userTwoId     Int              @map("user_two_id")
+  userTwo       User             @relation("FriendshipUserTwo", fields: [userTwoId], references: [id], onDelete: Cascade)
+  requestedById Int              @map("requested_by_id")
+  requestedBy   User             @relation("FriendshipRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+  status        FriendshipStatus @default(pending)
+  respondedAt   DateTime?        @map("responded_at")
+  acceptedAt    DateTime?        @map("accepted_at")
+  conversation  Conversation?
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  @@unique([userOneId, userTwoId])
+  @@index([userOneId, status])
+  @@index([userTwoId, status])
+  @@index([requestedById])
+  @@map("friendships")
+}
+
+model Conversation {
+  id           Int           @id @default(autoincrement())
+  friendshipId Int           @unique @map("friendship_id")
+  friendship   Friendship    @relation(fields: [friendshipId], references: [id], onDelete: Cascade)
+  messages     ChatMessage[]
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  @@index([updatedAt])
+  @@map("conversations")
+}
+
+model ChatMessage {
+  id             Int          @id @default(autoincrement())
+  conversationId Int          @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       Int          @map("sender_id")
+  sender         User         @relation("ChatMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  body           String       @db.Text
+  readAt         DateTime?    @map("read_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([conversationId, id])
+  @@index([senderId, createdAt])
+  @@map("chat_messages")
 }

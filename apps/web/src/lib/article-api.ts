@@ -9,6 +9,8 @@ export interface ArticleAuthor {
   nickname: string;
   username: string;
   avatarUrl: string | null;
+  isSuperAdmin: boolean;
+  role: ArticleRole;
 }
 
 export interface ArticleRole {
@@ -53,9 +55,30 @@ export interface ArticleComment {
   parentId: number | null;
   body: string;
   status: ArticleCommentStatus;
+  likeCount: number;
+  liked: boolean;
+  reported: boolean;
+  pendingReportCount?: number;
+  reports?: ArticleCommentReport[];
   author: ArticleAuthor;
   createdAt: string;
   updatedAt: string;
+}
+
+export type ArticleCommentReportReason = "spam" | "harassment" | "illegal" | "privacy" | "misinformation" | "other";
+export type ArticleCommentReportStatus = "pending" | "resolved" | "rejected";
+
+export interface ArticleCommentReport {
+  id: number;
+  commentId: number;
+  article: { id: number; title: string; slug: string };
+  reporter: ArticleAuthor;
+  reason: ArticleCommentReportReason;
+  detail: string | null;
+  status: ArticleCommentReportStatus;
+  resolution: string | null;
+  createdAt: string;
+  handledAt: string | null;
 }
 
 export interface ArticleList {
@@ -287,6 +310,25 @@ export function deleteArticleComment(accessToken: string, id: number): Promise<v
   return requestJson<void>(`/articles/comments/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
 }
 
+export function likeArticleComment(accessToken: string, id: number, liked: boolean): Promise<{ liked: boolean; likeCount: number }> {
+  return requestJson(`/articles/comments/${id}/like`, {
+    method: liked ? "POST" : "DELETE",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function reportArticleComment(
+  accessToken: string,
+  id: number,
+  input: { reason: ArticleCommentReportReason; detail?: string },
+): Promise<{ reported: true }> {
+  return requestJson(`/articles/comments/${id}/report`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(input),
+  });
+}
+
 export function moderateArticle(accessToken: string, id: number, input: Partial<ArticleInput> & { status?: ArticleStatus; isPinned?: boolean; pinOrder?: number; blockedReason?: string }): Promise<Article> {
   return requestJson<Article>(`/articles/admin/${id}`, {
     method: "PATCH",
@@ -300,6 +342,43 @@ export function listAdminComments(accessToken: string, articleId?: number): Prom
   return requestJson<{ items: ArticleComment[] }>(`/articles/admin/comments${query}`, {
     cache: "no-store",
     headers: authHeaders(accessToken),
+  });
+}
+
+export function getAdminArticle(accessToken: string, id: number): Promise<Article> {
+  return requestJson<Article>(`/articles/admin/${id}`, {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function getCommentReportSummary(accessToken: string): Promise<{ pending: number }> {
+  return requestJson("/articles/admin/comment-reports/summary", {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function listCommentReports(
+  accessToken: string,
+  status?: ArticleCommentReportStatus,
+): Promise<{ items: ArticleCommentReport[] }> {
+  const query = status ? `?status=${status}` : "";
+  return requestJson(`/articles/admin/comment-reports${query}`, {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function moderateCommentReport(
+  accessToken: string,
+  id: number,
+  input: { status: "resolved" | "rejected"; commentStatus?: ArticleCommentStatus; resolution?: string },
+): Promise<void> {
+  return requestJson<void>(`/articles/admin/comment-reports/${id}`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(input),
   });
 }
 

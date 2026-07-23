@@ -1,21 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { Bookmark, CalendarDays, CornerDownRight, Heart, MessageCircle, Reply, Send, Tag, X } from "lucide-react";
+import { Bookmark, CalendarDays, CornerDownRight, Flag, Heart, MessageCircle, Reply, Send, Tag, ThumbsUp, Trash2, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleAuthorLine, ArticleBody, ArticleStats, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
+import { CommentAuthorIdentity } from "@/components/public-profile-popover";
 import {
   Article,
   ArticleComment,
+  ArticleCommentReportReason,
   createArticleComment,
+  deleteArticleComment,
   favoriteArticle,
   getPublicArticle,
   getVisibleArticle,
   likeArticle,
+  likeArticleComment,
   listArticleComments,
+  reportArticleComment,
 } from "@/lib/article-api";
 import { buildArticleCommentThreads } from "@/lib/article-comments";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
@@ -30,12 +35,15 @@ export default function ArticleDetailPage() {
   const [comments, setComments] = useState<ArticleComment[]>([]);
   const [commentDraft, setCommentDraft] = useState("");
   const [replyingTo, setReplyingTo] = useState<ArticleComment | null>(null);
-  const [replyDraft, setReplyDraft] = useState("");
+  const [reportingComment, setReportingComment] = useState<ArticleComment | null>(null);
+  const [reportReason, setReportReason] = useState<ArticleCommentReportReason>("spam");
+  const [reportDetail, setReportDetail] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-  const [isSubmittingReply, setIsSubmittingReply] = useState(false);
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const commentThreads = useMemo(() => buildArticleCommentThreads(comments), [comments]);
 
   useEffect(() => {
@@ -108,11 +116,12 @@ export default function ArticleDetailPage() {
     }
     setIsSubmittingComment(true);
     try {
-      const comment = await createArticleComment(token, article.id, commentDraft.trim());
+      const comment = await createArticleComment(token, article.id, commentDraft.trim(), replyingTo?.id);
       setComments((current) => [...current, comment]);
       setArticle((current) => current ? { ...current, commentCount: current.commentCount + 1 } : current);
       setCommentDraft("");
-      setNotice("评论已发布。");
+      setReplyingTo(null);
+      setNotice(replyingTo ? "回复已发布。" : "评论已发布。");
     } catch (commentError) {
       setError(commentError instanceof Error ? commentError.message : "评论发布失败。");
     } finally {
@@ -127,64 +136,76 @@ export default function ArticleDetailPage() {
       return;
     }
     setReplyingTo(comment);
-    setReplyDraft("");
+    window.requestAnimationFrame(() => {
+      composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      composerRef.current?.focus({ preventScroll: true });
+    });
   }
 
-  async function handleReplySubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!article || !replyingTo || !replyDraft.trim()) return;
+  async function handleCommentDelete(comment: ArticleComment) {
+    const token = readAccessToken();
+    if (!token || !article || !window.confirm("确定删除这条评论吗？")) return;
+    try {
+      await deleteArticleComment(token, comment.id);
+      const refreshed = await listArticleComments(article.slug, token);
+      setComments(refreshed.items);
+      setArticle((current) => current ? { ...current, commentCount: Math.max(0, current.commentCount - 1) } : current);
+      if (replyingTo?.id === comment.id) setReplyingTo(null);
+      setNotice("评论已删除。");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "评论删除失败。");
+    }
+  }
+
+  async function handleCommentLike(comment: ArticleComment) {
     const token = readAccessToken();
     if (!token) {
-      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      router.push(`/login?from=${encodeURIComponent(`/articles/${article?.slug ?? ""}`)}`);
       return;
     }
-    setIsSubmittingReply(true);
     try {
-      const reply = await createArticleComment(token, article.id, replyDraft.trim(), replyingTo.id);
-      setComments((current) => [...current, reply]);
-      setArticle((current) => current ? { ...current, commentCount: current.commentCount + 1 } : current);
-      setReplyingTo(null);
-      setReplyDraft("");
-      setNotice("回复已发布。");
-    } catch (replyError) {
-      setError(replyError instanceof Error ? replyError.message : "回复发布失败。");
-    } finally {
-      setIsSubmittingReply(false);
+      const result = await likeArticleComment(token, comment.id, !comment.liked);
+      setComments((current) => current.map((item) => item.id === comment.id ? { ...item, ...result } : item));
+    } catch (likeError) {
+      setError(likeError instanceof Error ? likeError.message : "点赞失败。");
     }
   }
 
-  function renderReplyForm(comment: ArticleComment) {
-    if (replyingTo?.id !== comment.id) return null;
-    return (
-      <form className="article-reply-form" onSubmit={handleReplySubmit}>
-        <div className="article-reply-form-heading">
-          <span>回复 <strong>@{comment.author.nickname}</strong></span>
-          <button aria-label="取消回复" onClick={() => { setReplyingTo(null); setReplyDraft(""); }} title="取消回复" type="button"><X aria-hidden="true" size={15} /></button>
-        </div>
-        <textarea aria-label={`回复 ${comment.author.nickname}`} autoFocus maxLength={2000} onChange={(event) => setReplyDraft(event.target.value)} placeholder={`回复 @${comment.author.nickname}`} rows={2} value={replyDraft} />
-        <div className="article-reply-form-footer">
-          <span>{replyDraft.length} / 2000</span>
-          <button className="button" disabled={isSubmittingReply || !replyDraft.trim()} type="submit"><Send aria-hidden="true" size={15} />{isSubmittingReply ? "发布中" : "发布回复"}</button>
-        </div>
-      </form>
-    );
+  async function handleReportSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const token = readAccessToken();
+    if (!token || !reportingComment) return;
+    setIsSubmittingReport(true);
+    try {
+      await reportArticleComment(token, reportingComment.id, { reason: reportReason, detail: reportDetail.trim() || undefined });
+      setComments((current) => current.map((item) => item.id === reportingComment.id ? { ...item, reported: true } : item));
+      setReportingComment(null);
+      setReportDetail("");
+      setNotice("举报已提交，管理员会尽快处理。");
+    } catch (reportError) {
+      setError(reportError instanceof Error ? reportError.message : "举报提交失败。");
+    } finally {
+      setIsSubmittingReport(false);
+    }
   }
 
   function renderComment(comment: ArticleComment, parent: ArticleComment | null = null) {
     return (
       <div className={parent ? "article-comment-wrap reply" : "article-comment-wrap"} key={comment.id}>
-        <article className={parent ? "article-comment reply" : "article-comment"}>
+        <article className={`${parent ? "article-comment reply" : "article-comment"}${comment.status !== "active" ? " unavailable" : ""}`}>
           <div className="article-comment-heading">
-            <ArticleAuthorLine author={comment.author} />
+            <CommentAuthorIdentity author={comment.author} />
             {parent ? <span className="article-reply-target"><CornerDownRight aria-hidden="true" size={13} />回复 @{parent.author.nickname}</span> : null}
             <time>{formatArticleDate(comment.createdAt)}</time>
           </div>
           <p>{comment.body}</p>
-          <div className="article-comment-actions">
+          {comment.status === "active" ? <div className="article-comment-actions">
+            <button className={comment.liked ? "active" : undefined} onClick={() => void handleCommentLike(comment)} type="button"><ThumbsUp aria-hidden="true" fill={comment.liked ? "currentColor" : "none"} size={14} />{comment.likeCount || "点赞"}</button>
             <button onClick={() => beginReply(comment)} type="button"><Reply aria-hidden="true" size={14} />回复</button>
-          </div>
+            {user?.id !== comment.author.id ? <button className={comment.reported ? "active" : undefined} disabled={comment.reported} onClick={() => setReportingComment(comment)} type="button"><Flag aria-hidden="true" size={14} />{comment.reported ? "已举报" : "举报"}</button> : null}
+            {user?.id === comment.author.id ? <button className="text-danger-action" onClick={() => void handleCommentDelete(comment)} type="button"><Trash2 aria-hidden="true" size={14} />删除</button> : null}
+          </div> : null}
         </article>
-        {renderReplyForm(comment)}
       </div>
     );
   }
@@ -221,13 +242,15 @@ export default function ArticleDetailPage() {
       </article>
 
       <section className="article-comments-section">
-        <div className="article-section-heading"><div><span className="section-label">Conversation</span><h2>评论与回复</h2></div><span>{comments.length} 条</span></div>
+        <div className="article-section-heading"><div><span className="section-label">Conversation</span><h2>评论与回复</h2></div><span>{article.commentCount} 条</span></div>
         {commentThreads.length ? <div className="article-comments-list">{commentThreads.map((thread) => <section className="article-comment-thread" key={thread.root.id}>{renderComment(thread.root)}{thread.replies.length ? <div className="article-comment-replies">{thread.replies.map(({ comment, parent }) => renderComment(comment, parent ?? thread.root))}</div> : null}</section>)}</div> : <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />还没有评论。</div>}
         <form className="article-comment-form" onSubmit={handleCommentSubmit}>
-          <textarea maxLength={2000} onChange={(event) => setCommentDraft(event.target.value)} placeholder="写下你的想法" rows={3} value={commentDraft} />
-          <button className="button" disabled={isSubmittingComment || !commentDraft.trim()} type="submit"><Send aria-hidden="true" size={16} />{isSubmittingComment ? "发布中" : "发布评论"}</button>
+          {replyingTo ? <div className="article-composer-context"><span>回复 <strong>@{replyingTo.author.nickname}</strong></span><button aria-label="取消回复" onClick={() => setReplyingTo(null)} title="取消回复" type="button"><X aria-hidden="true" size={15} /></button></div> : null}
+          <textarea aria-label={replyingTo ? `回复 ${replyingTo.author.nickname}` : "评论文章"} maxLength={2000} onChange={(event) => setCommentDraft(event.target.value)} placeholder={replyingTo ? `回复 @${replyingTo.author.nickname}` : "写下你的想法"} ref={composerRef} rows={3} value={commentDraft} />
+          <div className="article-composer-footer"><span>{commentDraft.length} / 2000</span><button className="button" disabled={isSubmittingComment || !commentDraft.trim()} type="submit"><Send aria-hidden="true" size={16} />{isSubmittingComment ? "发布中" : replyingTo ? "发布回复" : "发布评论"}</button></div>
         </form>
       </section>
+      {reportingComment ? <div className="comment-report-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setReportingComment(null); }}><form className="comment-report-dialog" onSubmit={handleReportSubmit}><div><strong>举报评论</strong><button aria-label="关闭举报窗口" onClick={() => setReportingComment(null)} type="button"><X aria-hidden="true" size={17} /></button></div><label>举报原因<select onChange={(event) => setReportReason(event.target.value as ArticleCommentReportReason)} value={reportReason}><option value="spam">垃圾广告</option><option value="harassment">辱骂骚扰</option><option value="illegal">违法违规</option><option value="privacy">隐私泄露</option><option value="misinformation">不实内容</option><option value="other">其他</option></select></label><label>补充说明<textarea maxLength={500} onChange={(event) => setReportDetail(event.target.value)} placeholder="可选，帮助管理员判断具体问题" rows={3} value={reportDetail} /></label><button className="button" disabled={isSubmittingReport} type="submit">{isSubmittingReport ? "提交中" : "提交举报"}</button></form></div> : null}
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );

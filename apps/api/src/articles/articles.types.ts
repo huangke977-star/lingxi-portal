@@ -9,6 +9,8 @@ export interface ArticleAuthorResponse {
   nickname: string;
   username: string;
   avatarUrl: string | null;
+  isSuperAdmin: boolean;
+  role: ArticleRoleResponse;
 }
 
 export interface ArticleRoleResponse {
@@ -53,9 +55,35 @@ export interface ArticleCommentResponse {
   parentId: number | null;
   body: string;
   status: ArticleCommentStatusValue;
+  likeCount: number;
+  liked: boolean;
+  reported: boolean;
+  pendingReportCount?: number;
+  reports?: ArticleCommentReportResponse[];
   author: ArticleAuthorResponse;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ArticleCommentReportResponse {
+  id: number;
+  commentId: number;
+  article: {
+    id: number;
+    title: string;
+    slug: string;
+  };
+  reporter: ArticleAuthorResponse;
+  reason: string;
+  detail: string | null;
+  status: string;
+  resolution: string | null;
+  createdAt: string;
+  handledAt: string | null;
+}
+
+export interface ArticleCommentReportSummaryResponse {
+  pending: number;
 }
 
 export interface ArticleListResponse {

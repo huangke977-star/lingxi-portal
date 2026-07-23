@@ -33,7 +33,9 @@ import {
   CreateArticleDto,
   ListArticlesQueryDto,
   ModerateArticleCommentDto,
+  ModerateArticleCommentReportDto,
   ModerateArticleDto,
+  ReportArticleCommentDto,
   UpdateArticleDto,
 } from "./dto/article.dto";
 
@@ -121,6 +123,24 @@ export class ArticlesController {
     return this.articlesService.listAdminComments(
       parsedArticleId && Number.isInteger(parsedArticleId) ? parsedArticleId : undefined,
     );
+  }
+
+  @Get("admin/comment-reports/summary")
+  @UseGuards(JwtAuthGuard, UserManagementGuard)
+  getCommentReportSummary() {
+    return this.articlesService.getCommentReportSummary();
+  }
+
+  @Get("admin/comment-reports")
+  @UseGuards(JwtAuthGuard, UserManagementGuard)
+  listCommentReports(@Query("status") status?: string) {
+    return this.articlesService.listCommentReports(status);
+  }
+
+  @Get("admin/:id")
+  @UseGuards(JwtAuthGuard, UserManagementGuard)
+  getAdminArticle(@Param("id", ParseIntPipe) id: number) {
+    return this.articlesService.getAdminArticle(id);
   }
 
   @Get("images/:storedName")
@@ -270,6 +290,28 @@ export class ArticlesController {
     return this.articlesService.deleteComment(id, user);
   }
 
+  @Post("comments/:id/like")
+  @UseGuards(JwtAuthGuard)
+  likeComment(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.toggleCommentLike(id, user, true);
+  }
+
+  @Delete("comments/:id/like")
+  @UseGuards(JwtAuthGuard)
+  unlikeComment(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.toggleCommentLike(id, user, false);
+  }
+
+  @Post("comments/:id/report")
+  @UseGuards(JwtAuthGuard)
+  reportComment(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ReportArticleCommentDto,
+  ) {
+    return this.articlesService.reportComment(id, user, dto);
+  }
+
   @Patch("admin/:id")
   @UseGuards(JwtAuthGuard, UserManagementGuard)
   moderate(
@@ -288,6 +330,16 @@ export class ArticlesController {
     @Body() dto: ModerateArticleCommentDto,
   ) {
     return this.articlesService.moderateComment(id, actor, dto);
+  }
+
+  @Patch("admin/comment-reports/:id")
+  @UseGuards(JwtAuthGuard, UserManagementGuard)
+  moderateCommentReport(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Body() dto: ModerateArticleCommentReportDto,
+  ) {
+    return this.articlesService.moderateCommentReport(id, actor, dto);
   }
 
   private visitorKey(request: Request, userId?: number): string {

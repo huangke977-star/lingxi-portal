@@ -156,3 +156,36 @@ export class ModerateArticleCommentDto {
   @IsIn(ARTICLE_COMMENT_STATUSES)
   status!: ArticleCommentStatusValue;
 }
+
+export const ARTICLE_COMMENT_REPORT_REASONS = [
+  "spam",
+  "harassment",
+  "illegal",
+  "privacy",
+  "misinformation",
+  "other",
+] as const;
+
+export class ReportArticleCommentDto {
+  @IsIn(ARTICLE_COMMENT_REPORT_REASONS)
+  reason!: (typeof ARTICLE_COMMENT_REPORT_REASONS)[number];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  detail?: string;
+}
+
+export class ModerateArticleCommentReportDto {
+  @IsIn(["resolved", "rejected"])
+  status!: "resolved" | "rejected";
+
+  @IsOptional()
+  @IsIn(ARTICLE_COMMENT_STATUSES)
+  commentStatus?: ArticleCommentStatusValue;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  resolution?: string;
+}
