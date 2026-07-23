@@ -10,7 +10,7 @@ Extend HLOVET from a link portal into a lightweight community where users can pu
 
 - Add a `Discover` entry to the top navigation for published content visible to the current visitor.
 - Support live search plus latest and popular sorting; pinned articles stay ahead of regular content.
-- Article details include views, likes, favorites, comments, and replies.
+- Article details include views, likes, favorites, comments, and replies; users can reply to either a root comment or another reply, with the reply target shown explicitly.
 - The article center owns `Discover`, `My Writing`, `Favorites`, and `Liked` tabs. Administrators also see `Manage`.
 - Each article-center tab displays its total count from one aggregate summary endpoint.
 - Discovery, favorites, liked, and writing append twelve-item pages as the reader scrolls. Administration keeps explicit previous/next pagination.
@@ -59,7 +59,7 @@ Article moderation is separate from existing portal-content management and suppo
 - Setting title color and reading permissions.
 - Viewing view, like, favorite, and comment statistics.
 - Searching articles by title, author, category, tags, summary, or body.
-- Selecting an article before reviewing its threaded comments and replies; commenter avatars and reply nesting preserve context.
+- Selecting an article before reviewing its threaded comments and replies; each thread is grouped under its root comment, all descendants stay at one reply indentation level, and reply targets, reply counts, commenter avatars, timestamps, and moderation state preserve context without excessive nesting.
 - Article and comment tabs retain the original independent-tab treatment; selected article rows use a surface highlight without a left-side border, and the comment thread header is separated from its entries by a rule that reaches the panel edges.
 
 Statistics are read-only by default. If correction is needed later, only the super administrator should be able to perform it through an auditable action.

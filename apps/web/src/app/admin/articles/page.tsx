@@ -5,6 +5,7 @@ import {
   Bookmark,
   ChevronLeft,
   ChevronRight,
+  CornerDownRight,
   ExternalLink,
   Eye,
   FileText,
@@ -33,6 +34,8 @@ import {
   moderateArticle,
   moderateArticleComment,
 } from "@/lib/article-api";
+import { buildArticleCommentThreads } from "@/lib/article-comments";
+import type { ArticleCommentThread } from "@/lib/article-comments";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 
@@ -67,7 +70,7 @@ export default function AdminArticlesPage() {
   const composingRef = useRef(false);
   const initializedRef = useRef(false);
 
-  const commentThreads = useMemo(() => buildCommentThreads(comments), [comments]);
+  const commentThreads = useMemo(() => buildArticleCommentThreads(comments), [comments]);
 
   function applyArticleSelection(article: Article) {
     setSelected(article);
@@ -224,9 +227,9 @@ export default function AdminArticlesPage() {
       setComments((current) => current.map((item) => (
         item.id === comment.id ? { ...item, status: nextStatus } : item
       )));
-      setNotice(nextStatus === "active" ? "回复已恢复。" : "回复已处理。");
+      setNotice(nextStatus === "active" ? "评论内容已恢复。" : nextStatus === "blocked" ? "评论内容已屏蔽。" : "评论内容已删除。");
     } catch (commentError) {
-      setError(commentError instanceof Error ? commentError.message : "回复处理失败。");
+      setError(commentError instanceof Error ? commentError.message : "评论内容处理失败。");
     }
   }
 
@@ -275,24 +278,31 @@ export default function AdminArticlesPage() {
     );
   }
 
-  function renderCommentThread(comment: ArticleComment) {
-    const children = commentThreads.children.get(comment.id) ?? [];
+  function renderCommentRow(comment: ArticleComment, parent: ArticleComment | null, replyCount = 0) {
     return (
-      <div className="admin-comment-thread" key={comment.id}>
-        <article className={`admin-comment-row ${comment.status}`}>
-          <div className="admin-comment-row-heading">
-            <ArticleAuthorLine author={comment.author} />
-            <span>{formatArticleDate(comment.createdAt)}</span>
-            <span className={`article-status-dot ${comment.status}`}>{comment.status === "active" ? "正常" : comment.status === "blocked" ? "已屏蔽" : "已删除"}</span>
-          </div>
-          <p>{comment.body}</p>
-          <div className="admin-comment-row-actions">
-            {comment.status !== "active" ? <button onClick={() => void changeCommentStatus(comment, "active")} type="button"><ShieldCheck aria-hidden="true" size={15} />恢复</button> : <button onClick={() => void changeCommentStatus(comment, "blocked")} type="button"><Flag aria-hidden="true" size={15} />屏蔽</button>}
-            <button className="text-danger-action" onClick={() => void changeCommentStatus(comment, "deleted")} type="button"><Trash2 aria-hidden="true" size={15} />删除</button>
-          </div>
-        </article>
-        {children.length ? <div className="admin-comment-children">{children.map(renderCommentThread)}</div> : null}
-      </div>
+      <article className={`admin-comment-row ${comment.status}${parent ? " reply" : ""}`} key={comment.id}>
+        <div className="admin-comment-row-heading">
+          <ArticleAuthorLine author={comment.author} />
+          {parent ? <span className="admin-comment-reply-target"><CornerDownRight aria-hidden="true" size={13} />回复 @{parent.author.nickname}</span> : null}
+          <span>{formatArticleDate(comment.createdAt)}</span>
+          <span className={`article-status-dot ${comment.status}`}>{comment.status === "active" ? "正常" : comment.status === "blocked" ? "已屏蔽" : "已删除"}</span>
+          {replyCount ? <span className="admin-comment-thread-count">{replyCount} 条回复</span> : null}
+        </div>
+        <p>{comment.body}</p>
+        <div className="admin-comment-row-actions">
+          {comment.status !== "active" ? <button onClick={() => void changeCommentStatus(comment, "active")} type="button"><ShieldCheck aria-hidden="true" size={15} />恢复</button> : <button onClick={() => void changeCommentStatus(comment, "blocked")} type="button"><Flag aria-hidden="true" size={15} />屏蔽</button>}
+          <button className="text-danger-action" onClick={() => void changeCommentStatus(comment, "deleted")} type="button"><Trash2 aria-hidden="true" size={15} />删除</button>
+        </div>
+      </article>
+    );
+  }
+
+  function renderCommentThread(thread: ArticleCommentThread) {
+    return (
+      <section className="admin-comment-thread" key={thread.root.id}>
+        {renderCommentRow(thread.root, null, thread.replies.length)}
+        {thread.replies.length ? <div className="admin-comment-children">{thread.replies.map(({ comment, parent }) => renderCommentRow(comment, parent ?? thread.root))}</div> : null}
+      </section>
     );
   }
 
@@ -332,7 +342,7 @@ export default function AdminArticlesPage() {
           <section className="admin-comments-panel">
             {selected ? <>
               <div className="admin-comments-heading"><div><span className="section-label">Comment Thread</span><h2>{selected.title}</h2></div><Link href={`/articles/${selected.slug}`} target="_blank"><ExternalLink aria-hidden="true" size={15} />查看文章</Link></div>
-              {isCommentsLoading ? <div className="article-empty-state">正在读取评论。</div> : commentThreads.roots.length ? <div className="admin-comments-table">{commentThreads.roots.map(renderCommentThread)}</div> : <div className="article-empty-state">这篇文章暂时没有评论和回复。</div>}
+              {isCommentsLoading ? <div className="article-empty-state">正在读取评论。</div> : commentThreads.length ? <div className="admin-comments-table">{commentThreads.map(renderCommentThread)}</div> : <div className="article-empty-state">这篇文章暂时没有评论和回复。</div>}
             </> : <div className="article-empty-state">选择一篇文章查看评论。</div>}
           </section>
         </div>
@@ -340,20 +350,4 @@ export default function AdminArticlesPage() {
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );
-}
-
-function buildCommentThreads(comments: ArticleComment[]) {
-  const ids = new Set(comments.map((comment) => comment.id));
-  const children = new Map<number, ArticleComment[]>();
-  const roots: ArticleComment[] = [];
-  for (const comment of comments) {
-    if (comment.parentId && ids.has(comment.parentId)) {
-      const siblings = children.get(comment.parentId) ?? [];
-      siblings.push(comment);
-      children.set(comment.parentId, siblings);
-    } else {
-      roots.push(comment);
-    }
-  }
-  return { roots, children };
 }

@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Bookmark, CalendarDays, Heart, MessageCircle, Send, Tag } from "lucide-react";
+import { Bookmark, CalendarDays, CornerDownRight, Heart, MessageCircle, Reply, Send, Tag, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleAuthorLine, ArticleBody, ArticleStats, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
@@ -17,6 +17,7 @@ import {
   likeArticle,
   listArticleComments,
 } from "@/lib/article-api";
+import { buildArticleCommentThreads } from "@/lib/article-comments";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 
@@ -28,10 +29,14 @@ export default function ArticleDetailPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [comments, setComments] = useState<ArticleComment[]>([]);
   const [commentDraft, setCommentDraft] = useState("");
+  const [replyingTo, setReplyingTo] = useState<ArticleComment | null>(null);
+  const [replyDraft, setReplyDraft] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [isSubmittingReply, setIsSubmittingReply] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const commentThreads = useMemo(() => buildArticleCommentThreads(comments), [comments]);
 
   useEffect(() => {
     const slug = params.slug;
@@ -105,7 +110,7 @@ export default function ArticleDetailPage() {
     try {
       const comment = await createArticleComment(token, article.id, commentDraft.trim());
       setComments((current) => [...current, comment]);
-      setArticle({ ...article, commentCount: article.commentCount + 1 });
+      setArticle((current) => current ? { ...current, commentCount: current.commentCount + 1 } : current);
       setCommentDraft("");
       setNotice("评论已发布。");
     } catch (commentError) {
@@ -113,6 +118,75 @@ export default function ArticleDetailPage() {
     } finally {
       setIsSubmittingComment(false);
     }
+  }
+
+  function beginReply(comment: ArticleComment) {
+    if (!article) return;
+    if (!readAccessToken()) {
+      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      return;
+    }
+    setReplyingTo(comment);
+    setReplyDraft("");
+  }
+
+  async function handleReplySubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!article || !replyingTo || !replyDraft.trim()) return;
+    const token = readAccessToken();
+    if (!token) {
+      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      return;
+    }
+    setIsSubmittingReply(true);
+    try {
+      const reply = await createArticleComment(token, article.id, replyDraft.trim(), replyingTo.id);
+      setComments((current) => [...current, reply]);
+      setArticle((current) => current ? { ...current, commentCount: current.commentCount + 1 } : current);
+      setReplyingTo(null);
+      setReplyDraft("");
+      setNotice("回复已发布。");
+    } catch (replyError) {
+      setError(replyError instanceof Error ? replyError.message : "回复发布失败。");
+    } finally {
+      setIsSubmittingReply(false);
+    }
+  }
+
+  function renderReplyForm(comment: ArticleComment) {
+    if (replyingTo?.id !== comment.id) return null;
+    return (
+      <form className="article-reply-form" onSubmit={handleReplySubmit}>
+        <div className="article-reply-form-heading">
+          <span>回复 <strong>@{comment.author.nickname}</strong></span>
+          <button aria-label="取消回复" onClick={() => { setReplyingTo(null); setReplyDraft(""); }} title="取消回复" type="button"><X aria-hidden="true" size={15} /></button>
+        </div>
+        <textarea aria-label={`回复 ${comment.author.nickname}`} autoFocus maxLength={2000} onChange={(event) => setReplyDraft(event.target.value)} placeholder={`回复 @${comment.author.nickname}`} rows={2} value={replyDraft} />
+        <div className="article-reply-form-footer">
+          <span>{replyDraft.length} / 2000</span>
+          <button className="button" disabled={isSubmittingReply || !replyDraft.trim()} type="submit"><Send aria-hidden="true" size={15} />{isSubmittingReply ? "发布中" : "发布回复"}</button>
+        </div>
+      </form>
+    );
+  }
+
+  function renderComment(comment: ArticleComment, parent: ArticleComment | null = null) {
+    return (
+      <div className={parent ? "article-comment-wrap reply" : "article-comment-wrap"} key={comment.id}>
+        <article className={parent ? "article-comment reply" : "article-comment"}>
+          <div className="article-comment-heading">
+            <ArticleAuthorLine author={comment.author} />
+            {parent ? <span className="article-reply-target"><CornerDownRight aria-hidden="true" size={13} />回复 @{parent.author.nickname}</span> : null}
+            <time>{formatArticleDate(comment.createdAt)}</time>
+          </div>
+          <p>{comment.body}</p>
+          <div className="article-comment-actions">
+            <button onClick={() => beginReply(comment)} type="button"><Reply aria-hidden="true" size={14} />回复</button>
+          </div>
+        </article>
+        {renderReplyForm(comment)}
+      </div>
+    );
   }
 
   if (isLoading) return <section className="page-shell article-detail-page"><div className="article-empty-state">正在读取文章。</div></section>;
@@ -148,7 +222,7 @@ export default function ArticleDetailPage() {
 
       <section className="article-comments-section">
         <div className="article-section-heading"><div><span className="section-label">Conversation</span><h2>评论与回复</h2></div><span>{comments.length} 条</span></div>
-        {comments.length ? <div className="article-comments-list">{comments.map((comment) => <article className="article-comment" key={comment.id}><ArticleAuthorLine author={comment.author} /><time>{formatArticleDate(comment.createdAt)}</time><p>{comment.body}</p></article>)}</div> : <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />还没有评论。</div>}
+        {commentThreads.length ? <div className="article-comments-list">{commentThreads.map((thread) => <section className="article-comment-thread" key={thread.root.id}>{renderComment(thread.root)}{thread.replies.length ? <div className="article-comment-replies">{thread.replies.map(({ comment, parent }) => renderComment(comment, parent ?? thread.root))}</div> : null}</section>)}</div> : <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />还没有评论。</div>}
         <form className="article-comment-form" onSubmit={handleCommentSubmit}>
           <textarea maxLength={2000} onChange={(event) => setCommentDraft(event.target.value)} placeholder="写下你的想法" rows={3} value={commentDraft} />
           <button className="button" disabled={isSubmittingComment || !commentDraft.trim()} type="submit"><Send aria-hidden="true" size={16} />{isSubmittingComment ? "发布中" : "发布评论"}</button>
