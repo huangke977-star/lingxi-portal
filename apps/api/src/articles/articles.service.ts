@@ -14,6 +14,7 @@ import {
   ArticleStatus,
   ArticleVisibility,
   Prisma,
+  UserNotificationType,
 } from "../generated/prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
@@ -761,24 +762,52 @@ export class ArticlesService {
     dto: ModerateArticleCommentReportDto,
   ): Promise<{ success: true }> {
     this.assertCanManageContent(actor);
-    const report = await this.prisma.articleCommentReport.findUnique({
-      where: { id },
-      select: { commentId: true },
-    });
-    if (!report) {
-      throw new NotFoundException("举报记录不存在。");
-    }
     await this.prisma.$transaction(async (transaction) => {
+      const report = await transaction.articleCommentReport.findUnique({
+        where: { id },
+        select: {
+          commentId: true,
+          reporterId: true,
+          status: true,
+          comment: { select: { article: { select: { title: true, slug: true } } } },
+        },
+      });
+      if (!report) {
+        throw new NotFoundException("举报记录不存在。");
+      }
+      if (report.status !== ArticleCommentReportStatus.pending) {
+        throw new BadRequestException("这条举报已经处理，不能重复操作。");
+      }
       if (dto.commentStatus) {
         await this.setCommentStatus(transaction, report.commentId, dto.commentStatus as ArticleCommentStatus);
       }
-      await transaction.articleCommentReport.update({
-        where: { id },
+      const updateResult = await transaction.articleCommentReport.updateMany({
+        where: { id, status: ArticleCommentReportStatus.pending },
         data: {
           status: dto.status as ArticleCommentReportStatus,
           resolution: dto.resolution?.trim() || null,
           handledById: actor.id,
           handledAt: new Date(),
+        },
+      });
+      if (updateResult.count !== 1) {
+        throw new BadRequestException("这条举报已经由其他管理员处理。");
+      }
+      const resolved = dto.status === "resolved";
+      const resolution = dto.resolution?.trim();
+      await transaction.userNotification.create({
+        data: {
+          userId: report.reporterId,
+          actorId: actor.id,
+          type: resolved
+            ? UserNotificationType.comment_report_resolved
+            : UserNotificationType.comment_report_rejected,
+          title: resolved ? "举报已处理" : "举报已驳回",
+          body: (resolution
+            ? `你对《${report.comment.article.title}》中评论的举报处理结果：${resolution}`
+            : `你对《${report.comment.article.title}》中评论的举报已${resolved ? "处理" : "驳回"}。`).slice(0, 500),
+          actionUrl: `/articles/${report.comment.article.slug}?commentId=${report.commentId}`,
+          commentReportId: id,
         },
       });
     });

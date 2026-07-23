@@ -25,6 +25,7 @@ interface ChatSocketData {
 interface SendMessagePayload {
   conversationId?: unknown;
   body?: unknown;
+  attachmentIds?: unknown;
 }
 
 interface ReadConversationPayload {
@@ -121,7 +122,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       this.assertMessageRate(client);
       const conversationId = this.requirePositiveInteger(payload.conversationId, "会话编号无效。");
       const body = typeof payload.body === "string" ? payload.body : "";
-      const message = await this.socialService.createMessage(userId, conversationId, body);
+      const attachmentIds = this.requireAttachmentIds(payload.attachmentIds);
+      const message = await this.socialService.createMessage(userId, conversationId, body, attachmentIds);
       const participantIds = await this.socialService.getConversationParticipantIds(conversationId);
       for (const participantId of participantIds) {
         this.server.to(this.userRoom(participantId)).emit("chat:message", message);
@@ -185,6 +187,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (timestamps.length >= 12) throw new Error("消息发送过于频繁，请稍后再试。");
     timestamps.push(now);
     data.messageTimestamps = timestamps;
+  }
+
+  private requireAttachmentIds(value: unknown): number[] {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value) || value.length > 9) {
+      throw new Error("单条消息最多包含 9 个附件。");
+    }
+    return value.map((item) => this.requirePositiveInteger(item, "附件编号无效。"));
   }
 
   private isAllowedOrigin(origin: string | undefined): boolean {

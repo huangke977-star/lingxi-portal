@@ -130,6 +130,10 @@ The named `avatar_uploads` volume stores user avatars and should also be preserv
 
 命名卷 `avatar_uploads` 保存用户头像，部署时同样需要保留。
 
+The `article_uploads` and `chat_uploads` volumes store article media and authenticated chat attachments. Preserve both volumes during deployment; attachment records in MySQL are not substitutes for the files themselves.
+
+命名卷 `article_uploads` 和 `chat_uploads` 分别保存文章媒体与需要登录鉴权的聊天附件。部署时必须保留这两个卷；MySQL 中的附件记录不能替代实际文件。
+
 Set `NEXT_PUBLIC_API_BASE_URL` to the browser-reachable API URL before building the web image, for example `http://5200918.xyz:3001` for direct port testing or your later reverse-proxy API path.
 
 构建 Web 镜像前，要把 `NEXT_PUBLIC_API_BASE_URL` 设置为浏览器可访问的 API 地址，例如直接端口测试时使用 `http://5200918.xyz:3001`，后续接入反向代理时改为你的 API 路径。

@@ -4,10 +4,16 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { FriendshipStatus, Prisma } from "../generated/prisma/client";
+import {
+  ChatMessageType,
+  FriendshipStatus,
+  Prisma,
+  UserNotificationType,
+} from "../generated/prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
-import { ListMessagesQueryDto } from "./dto/social.dto";
+import { ChatAttachmentsService } from "./chat-attachments.service";
+import { ListMessagesQueryDto, ListNotificationsQueryDto } from "./dto/social.dto";
 import {
   ChatMessageResponse,
   ConversationResponse,
@@ -15,6 +21,7 @@ import {
   PublicProfileResponse,
   SocialSummaryResponse,
   SocialUserResponse,
+  UserNotificationResponse,
 } from "./social.types";
 
 const socialUserSelect = {
@@ -40,13 +47,23 @@ type FriendshipRecord = Prisma.FriendshipGetPayload<{ include: typeof friendship
 
 const messageInclude = {
   sender: { select: socialUserSelect },
+  attachments: { orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }] },
 } satisfies Prisma.ChatMessageInclude;
 
 type MessageRecord = Prisma.ChatMessageGetPayload<{ include: typeof messageInclude }>;
 
+const notificationInclude = {
+  actor: { select: socialUserSelect },
+} satisfies Prisma.UserNotificationInclude;
+
+type NotificationRecord = Prisma.UserNotificationGetPayload<{ include: typeof notificationInclude }>;
+
 @Injectable()
 export class SocialService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly chatAttachmentsService: ChatAttachmentsService,
+  ) {}
 
   async getProfile(viewer: AuthenticatedUser, userId: number): Promise<PublicProfileResponse> {
     const target = await this.prisma.user.findUnique({ where: { id: userId }, select: socialUserSelect });
@@ -67,6 +84,7 @@ export class SocialService {
             id: relationship.id,
             status: relationship.status,
             direction: this.friendshipDirection(relationship, viewer.id),
+            note: relationship.requestNote ?? null,
           }
         : null,
     };
@@ -93,7 +111,11 @@ export class SocialService {
     };
   }
 
-  async requestFriend(user: AuthenticatedUser, targetId: number): Promise<FriendshipResponse> {
+  async requestFriend(
+    user: AuthenticatedUser,
+    targetId: number,
+    rawNote?: string,
+  ): Promise<FriendshipResponse> {
     if (user.id === targetId) {
       throw new BadRequestException("不能添加自己为好友。");
     }
@@ -102,6 +124,7 @@ export class SocialService {
       throw new NotFoundException("用户不存在或当前不可添加。");
     }
     const [userOneId, userTwoId] = this.normalizePair(user.id, targetId);
+    const requestNote = rawNote?.trim() || null;
     const existing = await this.prisma.friendship.findUnique({
       where: { userOneId_userTwoId: { userOneId, userTwoId } },
       include: friendshipInclude,
@@ -113,18 +136,41 @@ export class SocialService {
       if (existing.requestedById !== user.id) {
         throw new BadRequestException("对方已经向你发送好友申请，请先处理申请。");
       }
+      if (existing.requestNote !== requestNote) {
+        const updated = await this.prisma.friendship.update({
+          where: { id: existing.id },
+          data: { requestNote },
+          include: friendshipInclude,
+        });
+        return this.toFriendship(updated, user.id);
+      }
       return this.toFriendship(existing, user.id);
     }
-    const record = await this.prisma.friendship.upsert({
-      where: { userOneId_userTwoId: { userOneId, userTwoId } },
-      create: { userOneId, userTwoId, requestedById: user.id },
-      update: {
-        requestedById: user.id,
-        status: FriendshipStatus.pending,
-        respondedAt: null,
-        acceptedAt: null,
-      },
-      include: friendshipInclude,
+    const record = await this.prisma.$transaction(async (transaction) => {
+      const friendship = await transaction.friendship.upsert({
+        where: { userOneId_userTwoId: { userOneId, userTwoId } },
+        create: { userOneId, userTwoId, requestedById: user.id, requestNote },
+        update: {
+          requestedById: user.id,
+          requestNote,
+          status: FriendshipStatus.pending,
+          respondedAt: null,
+          acceptedAt: null,
+        },
+        include: friendshipInclude,
+      });
+      await transaction.userNotification.create({
+        data: {
+          userId: targetId,
+          actorId: user.id,
+          type: UserNotificationType.friend_request_received,
+          title: "新的好友申请",
+          body: `${user.nickname || user.username} 向你发送了好友申请。`,
+          actionUrl: `/messages?friendshipId=${friendship.id}`,
+          friendshipId: friendship.id,
+        },
+      });
+      return friendship;
     });
     return this.toFriendship(record, user.id);
   }
@@ -139,14 +185,39 @@ export class SocialService {
       throw new ForbiddenException("这条好友申请不能由当前账号处理。");
     }
     const now = new Date();
-    const record = await this.prisma.friendship.update({
-      where: { id: friendshipId },
-      data: {
-        status: status === "accepted" ? FriendshipStatus.accepted : FriendshipStatus.declined,
-        respondedAt: now,
-        acceptedAt: status === "accepted" ? now : null,
-      },
-      include: friendshipInclude,
+    const record = await this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.friendship.update({
+        where: { id: friendshipId },
+        data: {
+          status: status === "accepted" ? FriendshipStatus.accepted : FriendshipStatus.declined,
+          respondedAt: now,
+          acceptedAt: status === "accepted" ? now : null,
+        },
+        include: friendshipInclude,
+      });
+      await transaction.userNotification.updateMany({
+        where: {
+          userId: user.id,
+          friendshipId,
+          type: UserNotificationType.friend_request_received,
+          readAt: null,
+        },
+        data: { readAt: now },
+      });
+      await transaction.userNotification.create({
+        data: {
+          userId: existing.requestedById,
+          actorId: user.id,
+          type: status === "accepted"
+            ? UserNotificationType.friend_request_accepted
+            : UserNotificationType.friend_request_declined,
+          title: status === "accepted" ? "好友申请已通过" : "好友申请未通过",
+          body: `${user.nickname || user.username}${status === "accepted" ? "接受" : "拒绝"}了你的好友申请。`,
+          actionUrl: "/messages",
+          friendshipId,
+        },
+      });
+      return updated;
     });
     return this.toFriendship(record, user.id);
   }
@@ -231,10 +302,11 @@ export class SocialService {
     userId: number,
     conversationId: number,
     rawBody: string,
+    attachmentIds: number[] = [],
   ): Promise<ChatMessageResponse> {
     const body = rawBody.trim();
-    if (!body) {
-      throw new BadRequestException("消息内容不能为空。");
+    if (!body && !attachmentIds.length) {
+      throw new BadRequestException("消息文字和附件不能同时为空。");
     }
     if (Array.from(body).length > 2000) {
       throw new BadRequestException("单条消息不能超过 2000 个字符。");
@@ -242,11 +314,25 @@ export class SocialService {
     await this.assertConversationMember(conversationId, userId);
     const message = await this.prisma.$transaction(async (transaction) => {
       const created = await transaction.chatMessage.create({
-        data: { conversationId, senderId: userId, body },
-        include: messageInclude,
+        data: {
+          conversationId,
+          senderId: userId,
+          body,
+          type: body
+            ? attachmentIds.length ? ChatMessageType.mixed : ChatMessageType.text
+            : ChatMessageType.attachment,
+        },
+        select: { id: true },
       });
+      await this.chatAttachmentsService.bindToMessage(
+        transaction,
+        userId,
+        conversationId,
+        attachmentIds,
+        created.id,
+      );
       await transaction.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
-      return created;
+      return transaction.chatMessage.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude });
     });
     return this.toMessage(message);
   }
@@ -284,7 +370,7 @@ export class SocialService {
       status: FriendshipStatus.accepted,
       OR: [{ userOneId: user.id }, { userTwoId: user.id }],
     };
-    const [unreadMessages, pendingFriendRequests] = await Promise.all([
+    const [unreadMessages, pendingFriendRequests, unreadNotifications] = await Promise.all([
       this.prisma.chatMessage.count({
         where: {
           senderId: { not: user.id },
@@ -299,8 +385,53 @@ export class SocialService {
           OR: [{ userOneId: user.id }, { userTwoId: user.id }],
         },
       }),
+      this.prisma.userNotification.count({ where: { userId: user.id, readAt: null } }),
     ]);
-    return { unreadMessages, pendingFriendRequests };
+    return { unreadMessages, pendingFriendRequests, unreadNotifications };
+  }
+
+  async listNotifications(
+    user: AuthenticatedUser,
+    query: ListNotificationsQueryDto,
+  ): Promise<{ items: UserNotificationResponse[]; hasMore: boolean }> {
+    const notifications = await this.prisma.userNotification.findMany({
+      where: {
+        userId: user.id,
+        ...(query.beforeId ? { id: { lt: query.beforeId } } : {}),
+      },
+      orderBy: [{ id: "desc" }],
+      take: query.limit + 1,
+      include: notificationInclude,
+    });
+    return {
+      items: notifications.slice(0, query.limit).map((notification) => this.toNotification(notification)),
+      hasMore: notifications.length > query.limit,
+    };
+  }
+
+  async markNotificationRead(user: AuthenticatedUser, id: number): Promise<UserNotificationResponse> {
+    const result = await this.prisma.userNotification.updateMany({
+      where: { id, userId: user.id, readAt: null },
+      data: { readAt: new Date() },
+    });
+    const notification = await this.prisma.userNotification.findFirst({
+      where: { id, userId: user.id },
+      include: notificationInclude,
+    });
+    if (!notification) {
+      throw new NotFoundException("通知不存在。");
+    }
+    void result;
+    return this.toNotification(notification);
+  }
+
+  async markAllNotificationsRead(user: AuthenticatedUser): Promise<{ count: number; readAt: string }> {
+    const readAt = new Date();
+    const result = await this.prisma.userNotification.updateMany({
+      where: { userId: user.id, readAt: null },
+      data: { readAt },
+    });
+    return { count: result.count, readAt: readAt.toISOString() };
   }
 
   private async getConversation(userId: number, conversationId: number): Promise<ConversationResponse> {
@@ -378,6 +509,7 @@ export class SocialService {
       id: record.id,
       status: record.status,
       direction: this.friendshipDirection(record, userId),
+      note: record.requestNote ?? null,
       user: this.toSocialUser(this.counterpart(record, userId)),
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
@@ -406,9 +538,26 @@ export class SocialService {
       id: message.id,
       conversationId: message.conversationId,
       body: message.body,
+      type: message.type,
+      attachments: message.attachments.map((attachment) => this.chatAttachmentsService.toResponse(attachment)),
       sender: this.toSocialUser(message.sender),
       readAt: message.readAt?.toISOString() ?? null,
       createdAt: message.createdAt.toISOString(),
+    };
+  }
+
+  private toNotification(notification: NotificationRecord): UserNotificationResponse {
+    return {
+      id: notification.id,
+      type: notification.type,
+      title: notification.title,
+      body: notification.body,
+      actionUrl: notification.actionUrl,
+      friendshipId: notification.friendshipId,
+      commentReportId: notification.commentReportId,
+      actor: notification.actor ? this.toSocialUser(notification.actor) : null,
+      readAt: notification.readAt?.toISOString() ?? null,
+      createdAt: notification.createdAt.toISOString(),
     };
   }
 }

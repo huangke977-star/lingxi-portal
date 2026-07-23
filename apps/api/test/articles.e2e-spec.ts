@@ -250,4 +250,67 @@ describe("ArticlesService article center extensions", () => {
       data: { commentCount: 4 },
     });
   });
+
+  it("updates a report and creates the reporter notification in the same transaction", async () => {
+    const transaction = {
+      articleCommentReport: {
+        findUnique: jest.fn(async () => ({
+          commentId: 44,
+          reporterId: 19,
+          status: "pending",
+          comment: { article: { title: "测试文章", slug: "test-article" } },
+        })),
+        updateMany: jest.fn(async () => ({ count: 1 })),
+      },
+      userNotification: { create: jest.fn(async () => ({ id: 7 })) },
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
+    };
+    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const actor = { ...user, isSuperAdmin: true };
+
+    await expect(service.moderateCommentReport(6, actor, {
+      status: "resolved",
+      resolution: "已处理违规内容",
+    })).resolves.toEqual({ success: true });
+
+    expect(transaction.articleCommentReport.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 6, status: "pending" },
+      data: expect.objectContaining({ status: "resolved", handledById: actor.id }),
+    }));
+    expect(transaction.userNotification.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userId: 19,
+        actorId: actor.id,
+        type: "comment_report_resolved",
+        commentReportId: 6,
+        actionUrl: "/articles/test-article?commentId=44",
+      }),
+    }));
+  });
+
+  it("does not create another notification for an already handled report", async () => {
+    const transaction = {
+      articleCommentReport: {
+        findUnique: jest.fn(async () => ({
+          commentId: 44,
+          reporterId: 19,
+          status: "resolved",
+          comment: { article: { title: "测试文章", slug: "test-article" } },
+        })),
+      },
+      userNotification: { create: jest.fn() },
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
+    };
+    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const actor = { ...user, isSuperAdmin: true };
+
+    await expect(service.moderateCommentReport(6, actor, {
+      status: "resolved",
+    })).rejects.toThrow("已经处理");
+    expect(transaction.userNotification.create).not.toHaveBeenCalled();
+  });
 });

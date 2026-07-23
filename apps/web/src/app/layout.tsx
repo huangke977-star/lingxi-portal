@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AuthSessionController } from "@/components/auth-session-controller";
+import { ChatDock } from "@/components/chat-dock";
 import { ThemeController } from "@/components/theme-controller";
 import { TopNav } from "@/components/top-nav";
 import "@fontsource-variable/noto-sans-sc/index.css";
@@ -32,6 +33,7 @@ export default function RootLayout({
         <ThemeController />
         <TopNav />
         <main className="content-shell">{children}</main>
+        <ChatDock />
       </body>
     </html>
   );

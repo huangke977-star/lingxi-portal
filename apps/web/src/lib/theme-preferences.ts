@@ -104,6 +104,7 @@ export function applyThemePreference(preference: ThemePreference) {
   root.style.removeProperty("--surface");
   root.style.removeProperty("--surface-strong");
   root.style.removeProperty("--surface-soft");
+  root.style.removeProperty("--popover-surface");
   root.style.removeProperty("--foreground");
   root.style.removeProperty("--muted");
   root.style.removeProperty("--muted-strong");
@@ -143,6 +144,7 @@ export function applyThemePreference(preference: ThemePreference) {
     "--surface-soft",
     `rgba(${surfaceRgb}, ${Math.max(0.2, (cardAlpha - 14) / 100)})`,
   );
+  root.style.setProperty("--popover-surface", `rgba(${surfaceRgb}, 0.92)`);
 
   if (normalizedPreference.themeId !== "custom") {
     return;

@@ -282,6 +282,42 @@ export async function requestJson<T>(
   return response.json() as Promise<T>;
 }
 
+export async function requestBlob(
+  path: string,
+  init: RequestInit = {},
+): Promise<Blob> {
+  const headers = new Headers(init.headers);
+  let response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
+    ...init,
+    headers,
+  });
+
+  if (
+    response.status === 401 &&
+    path !== "/auth/refresh" &&
+    headers.has("Authorization") &&
+    readRefreshToken()
+  ) {
+    const session = await refreshStoredSession();
+    if (session) {
+      headers.set("Authorization", `Bearer ${session.accessToken}`);
+      response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
+        ...init,
+        headers,
+      });
+    }
+  }
+
+  if (!response.ok) {
+    throw new ApiRequestError(
+      await readErrorMessage(response),
+      response.status,
+    );
+  }
+
+  return response.blob();
+}
+
 interface StoredSessionTokens {
   accessToken: string;
   refreshToken: string;

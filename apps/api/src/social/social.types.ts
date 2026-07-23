@@ -17,6 +17,7 @@ export interface FriendshipResponse {
   id: number;
   status: string;
   direction: "incoming" | "outgoing" | "accepted";
+  note: string | null;
   user: SocialUserResponse;
   createdAt: string;
   updatedAt: string;
@@ -31,6 +32,8 @@ export interface ChatMessageResponse {
   id: number;
   conversationId: number;
   body: string;
+  type: "text" | "attachment" | "mixed";
+  attachments: ChatAttachmentResponse[];
   sender: SocialUserResponse;
   readAt: string | null;
   createdAt: string;
@@ -47,4 +50,35 @@ export interface ConversationResponse {
 export interface SocialSummaryResponse {
   unreadMessages: number;
   pendingFriendRequests: number;
+  unreadNotifications: number;
+}
+
+export interface ChatAttachmentResponse {
+  id: number;
+  conversationId: number;
+  kind: "image" | "file";
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  downloadUrl: string;
+  createdAt: string;
+}
+
+export interface UserNotificationResponse {
+  id: number;
+  type:
+    | "friend_request_received"
+    | "friend_request_accepted"
+    | "friend_request_declined"
+    | "comment_report_resolved"
+    | "comment_report_rejected"
+    | "system";
+  title: string;
+  body: string;
+  actionUrl: string | null;
+  friendshipId: number | null;
+  commentReportId: number | null;
+  actor: SocialUserResponse | null;
+  readAt: string | null;
+  createdAt: string;
 }

@@ -73,6 +73,26 @@ enum FriendshipStatus {
   removed
 }
 
+enum UserNotificationType {
+  friend_request_received
+  friend_request_accepted
+  friend_request_declined
+  comment_report_resolved
+  comment_report_rejected
+  system
+}
+
+enum ChatMessageType {
+  text
+  attachment
+  mixed
+}
+
+enum ChatAttachmentKind {
+  image
+  file
+}
+
 model Role {
   id                  Int                  @id @default(autoincrement())
   code                String               @unique @db.VarChar(64)
@@ -132,6 +152,9 @@ model User {
   friendshipsAsTwo        Friendship[]           @relation("FriendshipUserTwo")
   friendshipRequests      Friendship[]           @relation("FriendshipRequester")
   chatMessages            ChatMessage[]          @relation("ChatMessageSender")
+  chatAttachments         ChatAttachment[]       @relation("ChatAttachmentUploader")
+  notifications           UserNotification[]     @relation("UserNotificationRecipient")
+  notificationActions     UserNotification[]     @relation("UserNotificationActor")
 
   @@index([roleId])
   @@map("users")
@@ -312,20 +335,21 @@ model ArticleCommentLike {
 }
 
 model ArticleCommentReport {
-  id          Int                        @id @default(autoincrement())
-  commentId   Int                        @map("comment_id")
-  comment     ArticleComment             @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  reporterId  Int                        @map("reporter_id")
-  reporter    User                       @relation("ArticleCommentReporter", fields: [reporterId], references: [id], onDelete: Cascade)
-  reason      ArticleCommentReportReason
-  detail      String?                    @db.VarChar(500)
-  status      ArticleCommentReportStatus @default(pending)
-  handledById Int?                       @map("handled_by_id")
-  handledBy   User?                      @relation("ArticleCommentReportHandler", fields: [handledById], references: [id], onDelete: SetNull)
-  handledAt   DateTime?                  @map("handled_at")
-  resolution  String?                    @db.VarChar(500)
-  createdAt   DateTime                   @default(now()) @map("created_at")
-  updatedAt   DateTime                   @updatedAt @map("updated_at")
+  id            Int                        @id @default(autoincrement())
+  commentId     Int                        @map("comment_id")
+  comment       ArticleComment             @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  reporterId    Int                        @map("reporter_id")
+  reporter      User                       @relation("ArticleCommentReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reason        ArticleCommentReportReason
+  detail        String?                    @db.VarChar(500)
+  status        ArticleCommentReportStatus @default(pending)
+  handledById   Int?                       @map("handled_by_id")
+  handledBy     User?                      @relation("ArticleCommentReportHandler", fields: [handledById], references: [id], onDelete: SetNull)
+  handledAt     DateTime?                  @map("handled_at")
+  resolution    String?                    @db.VarChar(500)
+  createdAt     DateTime                   @default(now()) @map("created_at")
+  updatedAt     DateTime                   @updatedAt @map("updated_at")
+  notifications UserNotification[]
 
   @@unique([commentId, reporterId])
   @@index([status, createdAt])
@@ -374,19 +398,21 @@ model ArticleView {
 }
 
 model Friendship {
-  id            Int              @id @default(autoincrement())
-  userOneId     Int              @map("user_one_id")
-  userOne       User             @relation("FriendshipUserOne", fields: [userOneId], references: [id], onDelete: Cascade)
-  userTwoId     Int              @map("user_two_id")
-  userTwo       User             @relation("FriendshipUserTwo", fields: [userTwoId], references: [id], onDelete: Cascade)
-  requestedById Int              @map("requested_by_id")
-  requestedBy   User             @relation("FriendshipRequester", fields: [requestedById], references: [id], onDelete: Cascade)
-  status        FriendshipStatus @default(pending)
-  respondedAt   DateTime?        @map("responded_at")
-  acceptedAt    DateTime?        @map("accepted_at")
+  id            Int                @id @default(autoincrement())
+  userOneId     Int                @map("user_one_id")
+  userOne       User               @relation("FriendshipUserOne", fields: [userOneId], references: [id], onDelete: Cascade)
+  userTwoId     Int                @map("user_two_id")
+  userTwo       User               @relation("FriendshipUserTwo", fields: [userTwoId], references: [id], onDelete: Cascade)
+  requestedById Int                @map("requested_by_id")
+  requestedBy   User               @relation("FriendshipRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+  requestNote   String?            @map("request_note") @db.VarChar(120)
+  status        FriendshipStatus   @default(pending)
+  respondedAt   DateTime?          @map("responded_at")
+  acceptedAt    DateTime?          @map("accepted_at")
   conversation  Conversation?
-  createdAt     DateTime         @default(now()) @map("created_at")
-  updatedAt     DateTime         @updatedAt @map("updated_at")
+  notifications UserNotification[]
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
 
   @@unique([userOneId, userTwoId])
   @@index([userOneId, status])
@@ -396,28 +422,76 @@ model Friendship {
 }
 
 model Conversation {
-  id           Int           @id @default(autoincrement())
-  friendshipId Int           @unique @map("friendship_id")
-  friendship   Friendship    @relation(fields: [friendshipId], references: [id], onDelete: Cascade)
+  id           Int              @id @default(autoincrement())
+  friendshipId Int              @unique @map("friendship_id")
+  friendship   Friendship       @relation(fields: [friendshipId], references: [id], onDelete: Cascade)
   messages     ChatMessage[]
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
+  attachments  ChatAttachment[]
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
 
   @@index([updatedAt])
   @@map("conversations")
 }
 
 model ChatMessage {
-  id             Int          @id @default(autoincrement())
-  conversationId Int          @map("conversation_id")
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderId       Int          @map("sender_id")
-  sender         User         @relation("ChatMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
-  body           String       @db.Text
-  readAt         DateTime?    @map("read_at")
-  createdAt      DateTime     @default(now()) @map("created_at")
+  id             Int              @id @default(autoincrement())
+  conversationId Int              @map("conversation_id")
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       Int              @map("sender_id")
+  sender         User             @relation("ChatMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  body           String           @db.Text
+  type           ChatMessageType  @default(text)
+  attachments    ChatAttachment[]
+  readAt         DateTime?        @map("read_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
 
   @@index([conversationId, id])
   @@index([senderId, createdAt])
   @@map("chat_messages")
+}
+
+model ChatAttachment {
+  id             Int                @id @default(autoincrement())
+  conversationId Int                @map("conversation_id")
+  conversation   Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  uploadedById   Int                @map("uploaded_by_id")
+  uploadedBy     User               @relation("ChatAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Cascade)
+  messageId      Int?               @map("message_id")
+  message        ChatMessage?       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  kind           ChatAttachmentKind
+  originalName   String             @map("original_name") @db.VarChar(255)
+  storedName     String             @unique @map("stored_name") @db.VarChar(255)
+  mimeType       String             @map("mime_type") @db.VarChar(127)
+  sizeBytes      Int                @map("size_bytes")
+  sortOrder      Int                @default(0) @map("sort_order")
+  usedAt         DateTime?          @map("used_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+
+  @@index([conversationId, messageId])
+  @@index([uploadedById, messageId, createdAt])
+  @@map("chat_attachments")
+}
+
+model UserNotification {
+  id              Int                   @id @default(autoincrement())
+  userId          Int                   @map("user_id")
+  user            User                  @relation("UserNotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actorId         Int?                  @map("actor_id")
+  actor           User?                 @relation("UserNotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  type            UserNotificationType
+  title           String                @db.VarChar(120)
+  body            String                @db.VarChar(500)
+  actionUrl       String?               @map("action_url") @db.VarChar(512)
+  friendshipId    Int?                  @map("friendship_id")
+  friendship      Friendship?           @relation(fields: [friendshipId], references: [id], onDelete: SetNull)
+  commentReportId Int?                  @map("comment_report_id")
+  commentReport   ArticleCommentReport? @relation(fields: [commentReportId], references: [id], onDelete: SetNull)
+  readAt          DateTime?             @map("read_at")
+  createdAt       DateTime              @default(now()) @map("created_at")
+
+  @@index([userId, readAt, id])
+  @@index([friendshipId])
+  @@index([commentReportId])
+  @@map("user_notifications")
 }

@@ -74,12 +74,14 @@ services:
       BACKGROUND_UPLOAD_DIR: /app/uploads/backgrounds
       AVATAR_UPLOAD_DIR: /app/uploads/avatars
       ARTICLE_UPLOAD_DIR: /app/uploads/articles
+      CHAT_UPLOAD_DIR: /app/uploads/chat
     ports:
       - "${API_PORT:-3001}:3001"
     volumes:
       - background_uploads:/app/uploads/backgrounds
       - avatar_uploads:/app/uploads/avatars
       - article_uploads:/app/uploads/articles
+      - chat_uploads:/app/uploads/chat
     depends_on:
       api-bootstrap:
         condition: service_completed_successfully
@@ -106,3 +108,4 @@ volumes:
   background_uploads:
   avatar_uploads:
   article_uploads:
+  chat_uploads:

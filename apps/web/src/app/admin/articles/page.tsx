@@ -75,10 +75,13 @@ export default function AdminArticlesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCommentsLoading, setIsCommentsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isReportQueueOpen, setIsReportQueueOpen] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const composingRef = useRef(false);
   const initializedRef = useRef(false);
+  const reportQueueRef = useRef<HTMLDivElement | null>(null);
+  const reportQueueCloseTimerRef = useRef<number | null>(null);
 
   const commentThreads = useMemo(() => buildArticleCommentThreads(comments), [comments]);
   const visibleCommentThreads = useMemo(() => commentThreads.filter((thread) => {
@@ -120,6 +123,7 @@ export default function AdminArticlesPage() {
     ]);
     setPendingReportCount(summary.pending);
     setReports(reportResult.items);
+    return reportResult;
   }
 
   async function loadArticles(token: string, page: number, search = searchQuery) {
@@ -136,10 +140,11 @@ export default function AdminArticlesPage() {
     if (!nextSelected) {
       setSelected(null);
       setComments([]);
-      return;
+      return result;
     }
     applyArticleSelection(nextSelected);
     if (activeTab === "comments") await loadComments(token, nextSelected.id);
+    return result;
   }
 
   useEffect(() => {
@@ -154,21 +159,63 @@ export default function AdminArticlesPage() {
       window.location.href = "/login?from=%2Fadmin%2Farticles";
       return;
     }
+    const reportId = Number(new URLSearchParams(window.location.search).get("report") ?? 0);
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
     // Initial route hydration starts the protected article workspace.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     Promise.all([getMe(token), loadArticles(token, 1, ""), loadReportQueue(token)])
-      .then(([currentUser]) => {
+      .then(([currentUser, articleResult, reportResult]) => {
         if (!currentUser.isSuperAdmin && currentUser.role.level < 90) {
           window.location.href = "/";
           return;
         }
         setUser(currentUser);
         initializedRef.current = true;
+        const requestedReport = reportId > 0
+          ? reportResult.items.find((report) => report.id === reportId)
+          : null;
+        if (requestedReport) {
+          void locateReportedComment(requestedReport);
+        } else if (requestedTab === "comments" && articleResult.items[0]) {
+          setActiveTab("comments");
+          void loadComments(token, articleResult.items[0].id);
+        }
       })
       .catch(handleLoadError)
       .finally(() => setIsLoading(false));
     // Authentication and initial content are loaded once for the route.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!isReportQueueOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!reportQueueRef.current?.contains(event.target as Node)) {
+        setIsReportQueueOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsReportQueueOpen(false);
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      document.addEventListener("pointerdown", handlePointerDown);
+    });
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isReportQueueOpen]);
+
+  useEffect(() => () => {
+    if (reportQueueCloseTimerRef.current !== null) {
+      window.clearTimeout(reportQueueCloseTimerRef.current);
+    }
   }, []);
 
   useEffect(() => {
@@ -285,6 +332,7 @@ export default function AdminArticlesPage() {
       setCommentFilter("all");
       await loadComments(token, article.id);
       setHighlightCommentId(report.commentId);
+      setIsReportQueueOpen(false);
       window.setTimeout(() => {
         document.getElementById(`admin-comment-${report.commentId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 80);
@@ -292,6 +340,26 @@ export default function AdminArticlesPage() {
     } catch (locateError) {
       setError(locateError instanceof Error ? locateError.message : "无法定位被举报的评论。");
     }
+  }
+
+  function cancelReportQueueClose() {
+    if (reportQueueCloseTimerRef.current !== null) {
+      window.clearTimeout(reportQueueCloseTimerRef.current);
+      reportQueueCloseTimerRef.current = null;
+    }
+  }
+
+  function openReportQueue() {
+    cancelReportQueueClose();
+    setIsReportQueueOpen(true);
+  }
+
+  function scheduleReportQueueClose() {
+    cancelReportQueueClose();
+    reportQueueCloseTimerRef.current = window.setTimeout(() => {
+      setIsReportQueueOpen(false);
+      reportQueueCloseTimerRef.current = null;
+    }, 300);
   }
 
   async function handleReport(
@@ -381,7 +449,26 @@ export default function AdminArticlesPage() {
           <button className={activeTab === "articles" ? "active" : undefined} onClick={() => void changeTab("articles")} type="button"><FileText aria-hidden="true" size={16} />文章 <span>{articleList.total}</span></button>
           <button className={activeTab === "comments" ? "active" : undefined} onClick={() => void changeTab("comments")} type="button"><MessageSquare aria-hidden="true" size={16} />评论与回复 <span>{selected?.commentCount ?? 0}</span></button>
         </div>
-        <details className="admin-report-queue"><summary><AlertTriangle aria-hidden="true" size={15} />待处理举报 <span>{pendingReportCount}</span></summary><div>{reports.length ? reports.map((report) => <button key={report.id} onClick={() => void locateReportedComment(report)} type="button"><strong>{report.article.title}</strong><span>{report.reporter.nickname} · {formatArticleDate(report.createdAt)}</span></button>) : <span>暂无待处理举报。</span>}</div></details>
+        <div
+          className={`admin-report-queue${isReportQueueOpen ? " open" : ""}`}
+          onPointerEnter={(event) => { if (event.pointerType === "mouse") openReportQueue(); }}
+          onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleReportQueueClose(); }}
+          ref={reportQueueRef}
+        >
+          <button
+            aria-expanded={isReportQueueOpen}
+            aria-haspopup="dialog"
+            className="admin-report-trigger"
+            onClick={() => setIsReportQueueOpen((current) => !current)}
+            onFocus={openReportQueue}
+            type="button"
+          >
+            <AlertTriangle aria-hidden="true" size={15} />待处理举报 <span>{pendingReportCount}</span>
+          </button>
+          <div className="admin-report-popover" onFocus={cancelReportQueueClose}>
+            {reports.length ? reports.map((report) => <button key={report.id} onClick={() => void locateReportedComment(report)} type="button"><strong>{report.article.title}</strong><span>{report.reporter.nickname} · {formatArticleDate(report.createdAt)}</span></button>) : <span>暂无待处理举报。</span>}
+          </div>
+        </div>
         <label className="article-search admin-article-search">
           <Search aria-hidden="true" size={16} />
           <input aria-label="搜索管理文章" onChange={(event) => setSearchInput(event.target.value)} onCompositionEnd={(event) => { composingRef.current = false; setSearchInput(event.currentTarget.value); }} onCompositionStart={() => { composingRef.current = true; }} placeholder="搜索标题、作者、分类或正文" value={searchInput} />

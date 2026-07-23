@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleAuthorLine, ArticleBody, ArticleStats, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
+import { LikeBurst } from "@/components/like-burst";
 import { CommentAuthorIdentity } from "@/components/public-profile-popover";
 import {
   Article,
@@ -43,6 +44,9 @@ export default function ArticleDetailPage() {
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [articleLikeBurst, setArticleLikeBurst] = useState(0);
+  const [commentLikeBursts, setCommentLikeBursts] = useState<Record<number, number>>({});
+  const [highlightCommentId, setHighlightCommentId] = useState<number | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const commentThreads = useMemo(() => buildArticleCommentThreads(comments), [comments]);
 
@@ -50,6 +54,7 @@ export default function ArticleDetailPage() {
     const slug = params.slug;
     if (!slug) return;
     const token = readAccessToken();
+    const requestedCommentId = Number(new URLSearchParams(window.location.search).get("commentId") ?? 0);
     // Authentication is stored outside React and must be synchronized after mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoggedIn(Boolean(token));
@@ -62,6 +67,13 @@ export default function ArticleDetailPage() {
         setUser(currentUser);
         setArticle(loadedArticle);
         setComments(loadedComments.items);
+        if (requestedCommentId > 0 && loadedComments.items.some((comment) => comment.id === requestedCommentId)) {
+          setHighlightCommentId(requestedCommentId);
+          window.setTimeout(() => {
+            document.getElementById(`article-comment-${requestedCommentId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 120);
+          window.setTimeout(() => setHighlightCommentId(null), 3600);
+        }
       })
       .catch(async (loadError) => {
         if (isAuthExpiredError(loadError)) {
@@ -94,6 +106,9 @@ export default function ArticleDetailPage() {
       const result = kind === "like"
         ? await likeArticle(token, article.id, !article.liked)
         : await favoriteArticle(token, article.id, !article.favorited);
+      if (kind === "like" && !article.liked && result.liked) {
+        setArticleLikeBurst((current) => current + 1);
+      }
       setArticle({
         ...article,
         liked: kind === "like" ? Boolean(result.liked) : article.liked,
@@ -166,6 +181,12 @@ export default function ArticleDetailPage() {
     try {
       const result = await likeArticleComment(token, comment.id, !comment.liked);
       setComments((current) => current.map((item) => item.id === comment.id ? { ...item, ...result } : item));
+      if (!comment.liked && result.liked) {
+        setCommentLikeBursts((current) => ({
+          ...current,
+          [comment.id]: (current[comment.id] ?? 0) + 1,
+        }));
+      }
     } catch (likeError) {
       setError(likeError instanceof Error ? likeError.message : "点赞失败。");
     }
@@ -191,7 +212,7 @@ export default function ArticleDetailPage() {
 
   function renderComment(comment: ArticleComment, parent: ArticleComment | null = null) {
     return (
-      <div className={parent ? "article-comment-wrap reply" : "article-comment-wrap"} key={comment.id}>
+      <div className={`${parent ? "article-comment-wrap reply" : "article-comment-wrap"}${highlightCommentId === comment.id ? " notification-highlight" : ""}`} id={`article-comment-${comment.id}`} key={comment.id}>
         <article className={`${parent ? "article-comment reply" : "article-comment"}${comment.status !== "active" ? " unavailable" : ""}`}>
           <div className="article-comment-heading">
             <CommentAuthorIdentity author={comment.author} />
@@ -200,7 +221,7 @@ export default function ArticleDetailPage() {
           </div>
           <p>{comment.body}</p>
           {comment.status === "active" ? <div className="article-comment-actions">
-            <button className={comment.liked ? "active" : undefined} onClick={() => void handleCommentLike(comment)} type="button"><ThumbsUp aria-hidden="true" fill={comment.liked ? "currentColor" : "none"} size={14} />{comment.likeCount || "点赞"}</button>
+            <span className="like-action-wrap compact"><button className={comment.liked ? "active" : undefined} onClick={() => void handleCommentLike(comment)} type="button"><ThumbsUp aria-hidden="true" fill={comment.liked ? "currentColor" : "none"} size={14} />{comment.likeCount || "点赞"}</button><LikeBurst burst={commentLikeBursts[comment.id] ?? 0} variant="thumb" /></span>
             <button onClick={() => beginReply(comment)} type="button"><Reply aria-hidden="true" size={14} />回复</button>
             {user?.id !== comment.author.id ? <button className={comment.reported ? "active" : undefined} disabled={comment.reported} onClick={() => setReportingComment(comment)} type="button"><Flag aria-hidden="true" size={14} />{comment.reported ? "已举报" : "举报"}</button> : null}
             {user?.id === comment.author.id ? <button className="text-danger-action" onClick={() => void handleCommentDelete(comment)} type="button"><Trash2 aria-hidden="true" size={14} />删除</button> : null}
@@ -226,7 +247,7 @@ export default function ArticleDetailPage() {
           <aside className="article-reading-aside">
             <div className="article-aside-author"><ArticleAuthorLine author={article.author} /><span>@{article.author.username}</span></div>
             <div className="article-reading-actions">
-              <button className={article.liked ? "active" : undefined} onClick={() => void handleInteraction("like")} type="button"><Heart aria-hidden="true" size={17} />{article.liked ? "已赞" : "点赞"}</button>
+              <span className="like-action-wrap"><button className={article.liked ? "active" : undefined} onClick={() => void handleInteraction("like")} type="button"><Heart aria-hidden="true" fill={article.liked ? "currentColor" : "none"} size={17} />{article.liked ? "已赞" : "点赞"}</button><LikeBurst burst={articleLikeBurst} variant="heart" /></span>
               <button className={article.favorited ? "active" : undefined} onClick={() => void handleInteraction("favorite")} type="button"><Bookmark aria-hidden="true" size={17} />{article.favorited ? "已收藏" : "收藏"}</button>
             </div>
             <ArticleStats article={article} />

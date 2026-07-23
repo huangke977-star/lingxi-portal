@@ -17,6 +17,7 @@ import {
   requestFriend,
   respondFriendRequest,
 } from "@/lib/social-api";
+import { notifySocialStateChange, openChatDock } from "@/lib/social-events";
 import { getAvatarFallbackText } from "@/lib/user-display";
 
 interface Position {
@@ -34,6 +35,8 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isActing, setIsActing] = useState(false);
+  const [isFriendNoteOpen, setIsFriendNoteOpen] = useState(false);
+  const [friendNote, setFriendNote] = useState("");
   const [error, setError] = useState("");
   const avatar = author.avatarUrl ? resolveApiUrl(author.avatarUrl) : null;
   const roleCode = author.isSuperAdmin ? "super_administrator" : author.role.code;
@@ -92,13 +95,17 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
     }
   }
 
-  async function addFriend() {
+  async function addFriend(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     const token = readAccessToken();
     if (!token) return goToLogin();
     setIsActing(true);
     try {
-      await requestFriend(token, author.id);
+      await requestFriend(token, author.id, friendNote.trim() || undefined);
       setProfile(await getPublicProfile(token, author.id));
+      setFriendNote("");
+      setIsFriendNoteOpen(false);
+      notifySocialStateChange();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "好友申请发送失败。");
     } finally {
@@ -114,6 +121,7 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
     try {
       await respondFriendRequest(token, relationshipId, status);
       setProfile(await getPublicProfile(token, author.id));
+      notifySocialStateChange();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "好友申请处理失败。");
     } finally {
@@ -128,7 +136,7 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
     try {
       const conversation = await getOrCreateConversation(token, author.id);
       setIsOpen(false);
-      router.push(`/messages?conversation=${conversation.id}`);
+      openChatDock({ conversationId: conversation.id });
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "会话创建失败。");
     } finally {
@@ -179,11 +187,12 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
           {error ? <span className="public-profile-error">{error}</span> : null}
           <div className="public-profile-actions">
             {!readAccessToken() ? <button onClick={goToLogin} type="button">登录后互动</button> : null}
-            {profile && !profile.isSelf && !relationship ? <button disabled={isActing} onClick={() => void addFriend()} type="button"><UserPlus aria-hidden="true" size={15} />加好友</button> : null}
+            {profile && !profile.isSelf && !relationship && !isFriendNoteOpen ? <button disabled={isActing} onClick={() => setIsFriendNoteOpen(true)} type="button"><UserPlus aria-hidden="true" size={15} />加好友</button> : null}
             {relationship?.direction === "outgoing" ? <span><Clock3 aria-hidden="true" size={14} />等待对方确认</span> : null}
             {relationship?.direction === "incoming" ? <><button disabled={isActing} onClick={() => void respond("accepted")} type="button"><Check aria-hidden="true" size={15} />接受</button><button disabled={isActing} onClick={() => void respond("declined")} type="button"><X aria-hidden="true" size={15} />拒绝</button></> : null}
             {relationship?.direction === "accepted" ? <button disabled={isActing} onClick={() => void startChat()} type="button"><MessageCircle aria-hidden="true" size={15} />发消息</button> : null}
           </div>
+          {profile && !profile.isSelf && !relationship && isFriendNoteOpen ? <form className="friend-request-note-form" onSubmit={addFriend}><textarea autoFocus maxLength={120} onChange={(event) => setFriendNote(event.target.value)} placeholder="申请备注，可不填" rows={2} value={friendNote} /><div><span>{friendNote.length} / 120</span><button disabled={isActing} type="submit">{isActing ? "发送中" : "发送申请"}</button><button onClick={() => { setIsFriendNoteOpen(false); setFriendNote(""); }} type="button">取消</button></div></form> : null}
         </div>,
         document.body,
       ) : null}

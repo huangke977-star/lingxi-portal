@@ -1,4 +1,4 @@
-import { getBrowserApiBaseUrl, requestJson } from "./auth-api";
+import { getBrowserApiBaseUrl, requestBlob, requestJson } from "./auth-api";
 
 export interface SocialUser {
   id: number;
@@ -15,6 +15,7 @@ export interface Friendship {
   id: number;
   status: "pending" | "accepted" | "declined" | "removed";
   direction: "incoming" | "outgoing" | "accepted";
+  note: string | null;
   user: SocialUser;
   createdAt: string;
   updatedAt: string;
@@ -22,13 +23,26 @@ export interface Friendship {
 
 export interface PublicProfile extends SocialUser {
   isSelf: boolean;
-  relationship: Pick<Friendship, "id" | "status" | "direction"> | null;
+  relationship: Pick<Friendship, "id" | "status" | "direction" | "note"> | null;
+}
+
+export interface ChatAttachment {
+  id: number;
+  conversationId: number;
+  kind: "image" | "file";
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  downloadUrl: string;
+  createdAt: string;
 }
 
 export interface ChatMessage {
   id: number;
   conversationId: number;
   body: string;
+  type: "text" | "attachment" | "mixed";
+  attachments: ChatAttachment[];
   sender: SocialUser;
   readAt: string | null;
   createdAt: string;
@@ -40,6 +54,25 @@ export interface Conversation {
   lastMessage: ChatMessage | null;
   unreadCount: number;
   updatedAt: string;
+}
+
+export interface SocialNotification {
+  id: number;
+  type:
+    | "friend_request_received"
+    | "friend_request_accepted"
+    | "friend_request_declined"
+    | "comment_report_resolved"
+    | "comment_report_rejected"
+    | "system";
+  title: string;
+  body: string;
+  actionUrl: string | null;
+  friendshipId: number | null;
+  commentReportId: number | null;
+  actor: SocialUser | null;
+  readAt: string | null;
+  createdAt: string;
 }
 
 function authHeaders(accessToken: string) {
@@ -54,8 +87,12 @@ export function listFriendships(accessToken: string): Promise<{ friends: Friends
   return requestJson("/social/friends", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
-export function requestFriend(accessToken: string, userId: number): Promise<Friendship> {
-  return requestJson(`/social/friends/${userId}/request`, { method: "POST", headers: authHeaders(accessToken) });
+export function requestFriend(accessToken: string, userId: number, note?: string): Promise<Friendship> {
+  return requestJson(`/social/friends/${userId}/request`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ note }),
+  });
 }
 
 export function respondFriendRequest(accessToken: string, friendshipId: number, status: "accepted" | "declined"): Promise<Friendship> {
@@ -70,8 +107,21 @@ export function removeFriendship(accessToken: string, friendshipId: number): Pro
   return requestJson<void>(`/social/friendships/${friendshipId}`, { method: "DELETE", headers: authHeaders(accessToken) });
 }
 
-export function getSocialSummary(accessToken: string): Promise<{ unreadMessages: number; pendingFriendRequests: number }> {
+export function getSocialSummary(accessToken: string): Promise<{ unreadMessages: number; pendingFriendRequests: number; unreadNotifications: number }> {
   return requestJson("/social/summary", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function listNotifications(accessToken: string, beforeId?: number): Promise<{ items: SocialNotification[]; hasMore: boolean }> {
+  const query = beforeId ? `?beforeId=${beforeId}&limit=20` : "?limit=20";
+  return requestJson(`/social/notifications${query}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function markNotificationRead(accessToken: string, notificationId: number): Promise<SocialNotification> {
+  return requestJson<SocialNotification>(`/social/notifications/${notificationId}/read`, { method: "PATCH", headers: authHeaders(accessToken) });
+}
+
+export function markAllNotificationsRead(accessToken: string): Promise<{ count: number; readAt: string }> {
+  return requestJson<{ count: number; readAt: string }>("/social/notifications/read-all", { method: "POST", headers: authHeaders(accessToken) });
 }
 
 export function listConversations(accessToken: string): Promise<{ items: Conversation[] }> {
@@ -89,6 +139,20 @@ export function listMessages(accessToken: string, conversationId: number, before
 
 export function markConversationRead(accessToken: string, conversationId: number): Promise<void> {
   return requestJson<void>(`/social/conversations/${conversationId}/read`, { method: "POST", headers: authHeaders(accessToken) });
+}
+
+export function uploadChatAttachments(accessToken: string, conversationId: number, files: File[]): Promise<ChatAttachment[]> {
+  const body = new FormData();
+  files.forEach((file) => body.append("files", file));
+  return requestJson(`/social/conversations/${conversationId}/attachments`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body,
+  });
+}
+
+export function downloadChatAttachment(accessToken: string, attachment: Pick<ChatAttachment, "downloadUrl">): Promise<Blob> {
+  return requestBlob(attachment.downloadUrl, { headers: authHeaders(accessToken), cache: "no-store" });
 }
 
 export function getChatSocketOrigin(): string {

@@ -1,5 +1,22 @@
 import { Type } from "class-transformer";
-import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from "class-validator";
+
+export class RequestFriendDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  note?: string;
+}
 
 export class RespondFriendRequestDto {
   @IsIn(["accepted", "declined"])
@@ -22,7 +39,29 @@ export class ListMessagesQueryDto {
 }
 
 export class SendChatMessageDto {
+  @IsOptional()
   @IsString()
   @MaxLength(2000)
-  body!: string;
+  body?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(9)
+  @IsInt({ each: true })
+  attachmentIds?: number[];
+}
+
+export class ListNotificationsQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  beforeId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit = 20;
 }
