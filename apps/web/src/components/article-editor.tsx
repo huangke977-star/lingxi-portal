@@ -217,8 +217,10 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     const markdown = accepted
       .map((image) => `![${sanitizeImageAlt(image.file.name)}](${image.marker})`)
       .join("\n\n");
-    const prefix = before && !before.endsWith("\n") ? "\n\n" : "";
-    const suffix = after && !after.startsWith("\n") ? "\n\n" : "";
+    const trailingBreaks = before.match(/\n*$/)?.[0].length ?? 0;
+    const leadingBreaks = after.match(/^\n*/)?.[0].length ?? 0;
+    const prefix = before ? "\n".repeat(Math.max(0, 2 - trailingBreaks)) : "";
+    const suffix = after ? "\n".repeat(Math.max(0, 2 - leadingBreaks)) : "";
     const inserted = `${prefix}${markdown}${suffix}`;
     const nextContent = `${before}${inserted}${after}`;
     const nextCursor = before.length + prefix.length + markdown.length;

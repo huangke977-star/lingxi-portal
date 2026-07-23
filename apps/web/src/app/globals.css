@@ -5786,15 +5786,24 @@ a.entry-item:hover {
 .article-body-image {
   display: block;
   width: 100%;
+  height: auto;
   max-height: 720px;
-  margin: 0 auto;
+  margin: 0.45em auto;
   border-radius: 9px;
   object-fit: contain;
 }
 
 .article-body p:has(> .article-body-image) {
-  line-height: 0;
   margin-bottom: 0.82em;
+}
+
+.article-body br:has(+ .article-body-image),
+.article-body-image + br {
+  display: none;
+}
+
+.article-body p:has(> .article-body-image:only-child) > .article-body-image {
+  margin: 0 auto;
 }
 
 .article-table-wrap {
@@ -5938,16 +5947,32 @@ a.entry-item:hover {
 
 .article-pin-corner {
   position: absolute;
-  top: 8px;
-  left: -7px;
+  top: 0;
+  left: 0;
   z-index: 1;
   display: inline-flex;
-  width: 18px;
-  height: 18px;
-  align-items: center;
-  justify-content: center;
-  color: #d6a21f;
-  filter: drop-shadow(0 1px 3px rgba(103, 70, 4, 0.28));
+  width: 29px;
+  height: 29px;
+  box-sizing: border-box;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 3px;
+  color: #fff8dc;
+  pointer-events: none;
+}
+
+.article-pin-corner::before {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px 0 0;
+  background: linear-gradient(135deg, #e6b93f 0 49%, transparent 50%);
+  content: "";
+}
+
+.article-pin-corner svg {
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 1px 1px rgba(103, 70, 4, 0.32));
 }
 
 .article-card:hover {
