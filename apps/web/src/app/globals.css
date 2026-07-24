@@ -5814,12 +5814,40 @@ a.entry-item:hover {
 
 .article-aside-author {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.article-aside-author-profile {
+  display: grid;
+  min-width: 0;
   gap: 6px;
 }
 
-.article-aside-author > span:last-child {
+.article-aside-author-profile > span:last-child {
   color: var(--muted);
   font-size: 0.75rem;
+}
+
+.article-subscribe-action button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.3);
+  color: var(--muted-strong);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 6px 10px;
+}
+
+.article-subscribe-action button.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 .article-reading-aside .article-reading-actions {
@@ -5832,8 +5860,13 @@ a.entry-item:hover {
 }
 
 .article-reading-aside .article-reading-actions button {
+  width: 100%;
   justify-content: center;
   border-radius: 8px;
+}
+
+.article-reading-aside .article-reading-actions .like-action-wrap {
+  width: 100%;
 }
 
 .article-reading-aside > .article-stats {
@@ -7075,6 +7108,9 @@ a.entry-item:hover {
   pointer-events: none;
 }
 
+.like-burst.bookmark { color: #d68b42; }
+.like-burst.rss { color: #318f78; }
+
 .like-burst-icon {
   position: absolute;
   width: 15px;
@@ -8100,6 +8136,14 @@ a.entry-item:hover {
 
 .header-popover-list > button { width: 100%; cursor: pointer; }
 .header-popover-list > button:hover { background: color-mix(in srgb, var(--accent-soft) 48%, transparent); }
+.header-popover-list > button.header-popover-more {
+  display: block;
+  border-bottom: 0;
+  color: var(--accent-strong);
+  font-size: 0.7rem;
+  padding: 10px 6px;
+  text-align: center;
+}
 .header-popover-list > button:last-child,
 .header-friend-request:last-child { border-bottom: 0; }
 

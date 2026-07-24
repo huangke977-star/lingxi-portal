@@ -67,6 +67,8 @@ const emptySummary = {
   unreadNotifications: 0,
 };
 
+const HEADER_MESSAGE_PREVIEW_LIMIT = 8;
+
 export function TopNav() {
   const router = useRouter();
   const pathname = usePathname();
@@ -205,8 +207,15 @@ export function TopNav() {
     Math.max(socialSummary.unreadMessages, loadedUnreadMessages) +
     Math.max(socialSummary.pendingFriendRequests, friendships.incoming.length) +
     Math.max(socialSummary.unreadNotifications, loadedUnreadNotifications);
-  const unreadConversations = conversations.filter((conversation) => conversation.unreadCount > 0).slice(0, 4);
-  const unreadNotifications = notifications.filter((notification) => !notification.readAt && notification.type !== "friend_request_received").slice(0, 4);
+  const incomingFriendRequests = friendships.incoming.slice(0, 2);
+  const conversationPreviewLimit = Math.max(0, HEADER_MESSAGE_PREVIEW_LIMIT - incomingFriendRequests.length);
+  const unreadConversations = conversations.filter((conversation) => conversation.unreadCount > 0).slice(0, conversationPreviewLimit);
+  const notificationPreviewLimit = Math.max(0, conversationPreviewLimit - unreadConversations.length);
+  const unreadNotifications = notifications.filter((notification) => !notification.readAt && notification.type !== "friend_request_received").slice(0, notificationPreviewLimit);
+  const previewedUnreadCount = incomingFriendRequests.length
+    + unreadConversations.reduce((total, conversation) => total + conversation.unreadCount, 0)
+    + unreadNotifications.length;
+  const hiddenUnreadCount = Math.max(0, socialCount - previewedUnreadCount);
 
   async function handleLogout() {
     if (isLoggingOut) return;
@@ -306,9 +315,10 @@ export function TopNav() {
               <div className={`header-popover message-popover${isMessagePopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(messageCloseTimerRef)}>
                 <div className="header-popover-heading"><strong>消息</strong><button onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">打开聊天</button></div>
                 <div className="header-popover-list">
-                  {friendships.incoming.slice(0, 2).map((friendship) => <div className="header-friend-request" key={`friend-${friendship.id}`}><span className="header-popover-icon"><UserPlus aria-hidden="true" size={16} /></span><span><strong>{friendship.user.nickname} 请求加为好友</strong>{friendship.note ? <small>{friendship.note}</small> : null}</span><div><button aria-label="接受好友申请" onClick={() => void handleFriendRequest(friendship, "accepted")} title="接受" type="button"><Check aria-hidden="true" size={15} /></button><button aria-label="拒绝好友申请" onClick={() => void handleFriendRequest(friendship, "declined")} title="拒绝" type="button"><X aria-hidden="true" size={15} /></button></div></div>)}
+                  {incomingFriendRequests.map((friendship) => <div className="header-friend-request" key={`friend-${friendship.id}`}><span className="header-popover-icon"><UserPlus aria-hidden="true" size={16} /></span><span><strong>{friendship.user.nickname} 请求加为好友</strong>{friendship.note ? <small>{friendship.note}</small> : null}</span><div><button aria-label="接受好友申请" onClick={() => void handleFriendRequest(friendship, "accepted")} title="接受" type="button"><Check aria-hidden="true" size={15} /></button><button aria-label="拒绝好友申请" onClick={() => void handleFriendRequest(friendship, "declined")} title="拒绝" type="button"><X aria-hidden="true" size={15} /></button></div></div>)}
                   {unreadConversations.map((conversation) => <button key={`conversation-${conversation.id}`} onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ conversationId: conversation.id }); }} type="button"><span className="header-popover-icon"><MessageCircleMore aria-hidden="true" size={16} /></span><span><strong>{conversation.user.nickname}</strong><small>{conversation.lastMessage?.body || "发来附件"}</small></span><b>{conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</b></button>)}
                   {unreadNotifications.map((notification) => <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><span><strong>{notification.title}</strong><small>{notification.context?.commentBody ?? notification.body}</small></span></button>)}
+                  {hiddenUnreadCount ? <button className="header-popover-more" onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">还有 {hiddenUnreadCount} 条未读消息，打开聊天查看</button> : null}
                   {!friendships.incoming.length && !unreadConversations.length && !unreadNotifications.length ? <span className="header-popover-empty">暂无新消息。</span> : null}
                 </div>
               </div>

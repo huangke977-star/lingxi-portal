@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Bookmark, CalendarDays, CornerDownRight, Flag, Heart, MessageCircle, Reply, Rss, Send, Tag, ThumbsUp, Trash2, X } from "lucide-react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleAuthorLine, ArticleBody, ArticleStats, formatArticleDate } from "@/components/article-ui";
@@ -32,6 +32,7 @@ import { notifySocialStateChange } from "@/lib/social-events";
 export default function ArticleDetailPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [article, setArticle] = useState<Article | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -47,17 +48,19 @@ export default function ArticleDetailPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [articleLikeBurst, setArticleLikeBurst] = useState(0);
+  const [articleFavoriteBurst, setArticleFavoriteBurst] = useState(0);
+  const [subscriptionBurst, setSubscriptionBurst] = useState(0);
   const [commentLikeBursts, setCommentLikeBursts] = useState<Record<number, number>>({});
   const [highlightCommentId, setHighlightCommentId] = useState<number | null>(null);
   const [authorProfile, setAuthorProfile] = useState<PublicProfile | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const commentThreads = useMemo(() => buildArticleCommentThreads(comments), [comments]);
+  const requestedCommentId = Number(searchParams.get("commentId") ?? 0);
 
   useEffect(() => {
     const slug = params.slug;
     if (!slug) return;
     const token = readAccessToken();
-    const requestedCommentId = Number(new URLSearchParams(window.location.search).get("commentId") ?? 0);
     // Authentication is stored outside React and must be synchronized after mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoggedIn(Boolean(token));
@@ -72,13 +75,6 @@ export default function ArticleDetailPage() {
         setComments(loadedComments.items);
         if (token && currentUser && currentUser.id !== loadedArticle.author.id) {
           void getPublicProfile(token, loadedArticle.author.id).then(setAuthorProfile).catch(() => undefined);
-        }
-        if (requestedCommentId > 0 && loadedComments.items.some((comment) => comment.id === requestedCommentId)) {
-          setHighlightCommentId(requestedCommentId);
-          window.setTimeout(() => {
-            document.getElementById(`article-comment-${requestedCommentId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-          }, 120);
-          window.setTimeout(() => setHighlightCommentId(null), 3600);
         }
       })
       .catch(async (loadError) => {
@@ -101,6 +97,21 @@ export default function ArticleDetailPage() {
       .finally(() => setIsLoading(false));
   }, [params.slug]);
 
+  useEffect(() => {
+    if (requestedCommentId <= 0 || !comments.some((comment) => comment.id === requestedCommentId)) return;
+    // Notification links can change only the query string while staying on the same article.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHighlightCommentId(requestedCommentId);
+    const scrollTimer = window.setTimeout(() => {
+      document.getElementById(`article-comment-${requestedCommentId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+    const clearTimer = window.setTimeout(() => setHighlightCommentId(null), 3600);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [comments, requestedCommentId]);
+
   async function handleInteraction(kind: "like" | "favorite") {
     if (!article) return;
     const token = readAccessToken();
@@ -114,6 +125,9 @@ export default function ArticleDetailPage() {
         : await favoriteArticle(token, article.id, !article.favorited);
       if (kind === "like" && !article.liked && result.liked) {
         setArticleLikeBurst((current) => current + 1);
+      }
+      if (kind === "favorite" && !article.favorited && result.favorited) {
+        setArticleFavoriteBurst((current) => current + 1);
       }
       setArticle({
         ...article,
@@ -138,6 +152,9 @@ export default function ArticleDetailPage() {
       const result = authorProfile?.subscribed
         ? await unsubscribeFromAuthor(token, article.author.id)
         : await subscribeToAuthor(token, article.author.id);
+      if (!authorProfile?.subscribed && result.subscribed) {
+        setSubscriptionBurst((current) => current + 1);
+      }
       setAuthorProfile((current) => current ? { ...current, ...result } : current);
       setNotice(result.subscribed ? "已订阅该作者。" : "已取消订阅。");
       notifySocialStateChange();
@@ -270,11 +287,13 @@ export default function ArticleDetailPage() {
         </header>
         <div className="article-reading-grid">
           <aside className="article-reading-aside">
-            <div className="article-aside-author"><ArticleAuthorLine author={article.author} interactive /><span>@{article.author.username}</span></div>
+            <div className="article-aside-author">
+              <div className="article-aside-author-profile"><ArticleAuthorLine author={article.author} interactive /><span>@{article.author.username}</span></div>
+              {user?.id !== article.author.id ? <span className="like-action-wrap article-subscribe-action"><button className={authorProfile?.subscribed ? "active" : undefined} onClick={() => void handleSubscription()} type="button"><Rss aria-hidden="true" size={16} />{authorProfile?.subscribed ? "已订阅" : "订阅"}{authorProfile?.subscriberCount ? ` ${authorProfile.subscriberCount}` : ""}</button><LikeBurst burst={subscriptionBurst} variant="rss" /></span> : null}
+            </div>
             <div className="article-reading-actions">
               <span className="like-action-wrap"><button className={article.liked ? "active" : undefined} onClick={() => void handleInteraction("like")} type="button"><Heart aria-hidden="true" fill={article.liked ? "currentColor" : "none"} size={17} />{article.liked ? "已赞" : "点赞"}</button><LikeBurst burst={articleLikeBurst} variant="heart" /></span>
-              <button className={article.favorited ? "active" : undefined} onClick={() => void handleInteraction("favorite")} type="button"><Bookmark aria-hidden="true" size={17} />{article.favorited ? "已收藏" : "收藏"}</button>
-              {user?.id !== article.author.id ? <button className={authorProfile?.subscribed ? "active" : undefined} onClick={() => void handleSubscription()} type="button"><Rss aria-hidden="true" size={17} />{authorProfile?.subscribed ? "已订阅" : "订阅"}{authorProfile?.subscriberCount ? ` ${authorProfile.subscriberCount}` : ""}</button> : null}
+              <span className="like-action-wrap"><button className={article.favorited ? "active" : undefined} onClick={() => void handleInteraction("favorite")} type="button"><Bookmark aria-hidden="true" fill={article.favorited ? "currentColor" : "none"} size={17} />{article.favorited ? "已收藏" : "收藏"}</button><LikeBurst burst={articleFavoriteBurst} variant="bookmark" /></span>
             </div>
             <ArticleStats article={article} />
             <dl className="article-aside-meta">
