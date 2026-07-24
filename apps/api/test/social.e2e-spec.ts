@@ -128,6 +128,126 @@ describe("SocialService", () => {
     await expect(service.getOrCreateConversation(user, 8)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it("rejects a new friend request when either side has blocked the relationship", async () => {
+    const prisma = {
+      user: { findUnique: jest.fn(async () => ({ id: 8, status: "active" })) },
+      friendship: {
+        findUnique: jest.fn(async () => ({
+          id: 19,
+          userOneId: 7,
+          userTwoId: 8,
+          requestedById: 7,
+          blockedById: 8,
+          requestNote: null,
+          status: FriendshipStatus.blocked,
+          respondedAt: new Date(),
+          acceptedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          userOne: socialUser(7),
+          userTwo: socialUser(8),
+        })),
+      },
+    };
+    const service = createService(prisma);
+
+    await expect(service.requestFriend(user, 8)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("blocks an accepted friendship and records who performed the action", async () => {
+    const existing = {
+      id: 22,
+      userOneId: 7,
+      userTwoId: 8,
+      requestedById: 7,
+      blockedById: null,
+      requestNote: null,
+      status: FriendshipStatus.accepted,
+      respondedAt: new Date(),
+      acceptedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      userOne: socialUser(7),
+      userTwo: socialUser(8),
+    };
+    const friendshipUpdate = jest.fn(async () => ({ ...existing, status: FriendshipStatus.blocked, blockedById: user.id }));
+    const notificationUpdate = jest.fn(async () => ({ count: 0 }));
+    const prisma = {
+      friendship: { findUnique: jest.fn(async () => existing), update: friendshipUpdate },
+      userNotification: { updateMany: notificationUpdate },
+      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+    };
+    const service = createService(prisma);
+
+    await expect(service.blockFriendship(user, 22)).resolves.toEqual({ success: true });
+    expect(friendshipUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 22 },
+      data: expect.objectContaining({ status: FriendshipStatus.blocked, blockedById: user.id }),
+    }));
+  });
+
+  it("only lists blacklist entries created by the current user", async () => {
+    const blockedByCurrentUser = {
+      id: 23,
+      userOneId: 7,
+      userTwoId: 8,
+      requestedById: 7,
+      blockedById: 7,
+      requestNote: null,
+      status: FriendshipStatus.blocked,
+      respondedAt: new Date(),
+      acceptedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      userOne: socialUser(7),
+      userTwo: socialUser(8),
+    };
+    const blockedByOtherUser = {
+      ...blockedByCurrentUser,
+      id: 24,
+      userTwoId: 9,
+      blockedById: 9,
+      userTwo: socialUser(9),
+    };
+    const prisma = {
+      friendship: { findMany: jest.fn(async () => [blockedByCurrentUser, blockedByOtherUser]) },
+    };
+    const service = createService(prisma);
+
+    const result = await service.listFriendships(user);
+
+    expect(result.blocked).toHaveLength(1);
+    expect(result.blocked[0].user.id).toBe(8);
+  });
+
+  it("unblocks only a blacklist entry created by the current user", async () => {
+    const existing = {
+      id: 25,
+      userOneId: 7,
+      userTwoId: 8,
+      requestedById: 7,
+      blockedById: 7,
+      requestNote: null,
+      status: FriendshipStatus.blocked,
+      respondedAt: new Date(),
+      acceptedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      userOne: socialUser(7),
+      userTwo: socialUser(8),
+    };
+    const update = jest.fn(async () => ({ ...existing, status: FriendshipStatus.removed, blockedById: null }));
+    const prisma = {
+      friendship: { findUnique: jest.fn(async () => existing), update },
+    };
+    const service = createService(prisma);
+
+    await expect(service.unblockFriendship(user, 25)).resolves.toEqual({ success: true });
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: FriendshipStatus.removed, blockedById: null }),
+    }));
+  });
+
   it("creates a response notification when accepting a friend request", async () => {
     const existing = {
       id: 12,
@@ -226,5 +346,29 @@ describe("SocialService", () => {
   it("rejects a message when both text and attachments are empty", async () => {
     const service = createService({});
     await expect(service.createMessage(user.id, 5, "", [])).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("counts friend requests separately from unread system notifications", async () => {
+    const messageCount = jest.fn(async () => 2);
+    const friendshipCount = jest.fn(async () => 3);
+    const notificationCount = jest.fn(async () => 4);
+    const service = createService({
+      chatMessage: { count: messageCount },
+      friendship: { count: friendshipCount },
+      userNotification: { count: notificationCount },
+    });
+
+    await expect(service.getSummary(user)).resolves.toEqual({
+      unreadMessages: 2,
+      pendingFriendRequests: 3,
+      unreadNotifications: 4,
+    });
+    expect(notificationCount).toHaveBeenCalledWith({
+      where: {
+        userId: user.id,
+        readAt: null,
+        type: { not: "friend_request_received" },
+      },
+    });
   });
 });

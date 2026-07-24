@@ -16,7 +16,7 @@ export interface SocialUserResponse {
 export interface FriendshipResponse {
   id: number;
   status: string;
-  direction: "incoming" | "outgoing" | "accepted";
+  direction: "incoming" | "outgoing" | "accepted" | "blocked";
   note: string | null;
   user: SocialUserResponse;
   createdAt: string;

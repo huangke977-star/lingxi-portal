@@ -13,8 +13,8 @@ export interface SocialUser {
 
 export interface Friendship {
   id: number;
-  status: "pending" | "accepted" | "declined" | "removed";
-  direction: "incoming" | "outgoing" | "accepted";
+  status: "pending" | "accepted" | "declined" | "removed" | "blocked";
+  direction: "incoming" | "outgoing" | "accepted" | "blocked";
   note: string | null;
   user: SocialUser;
   createdAt: string;
@@ -91,7 +91,7 @@ export function getPublicProfile(accessToken: string, userId: number): Promise<P
   return requestJson(`/social/profiles/${userId}`, { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
-export function listFriendships(accessToken: string): Promise<{ friends: Friendship[]; incoming: Friendship[]; outgoing: Friendship[] }> {
+export function listFriendships(accessToken: string): Promise<{ friends: Friendship[]; incoming: Friendship[]; outgoing: Friendship[]; blocked: Friendship[] }> {
   return requestJson("/social/friends", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
@@ -113,6 +113,14 @@ export function respondFriendRequest(accessToken: string, friendshipId: number, 
 
 export function removeFriendship(accessToken: string, friendshipId: number): Promise<void> {
   return requestJson<void>(`/social/friendships/${friendshipId}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function blockFriendship(accessToken: string, friendshipId: number): Promise<void> {
+  return requestJson<void>(`/social/friendships/${friendshipId}/block`, { method: "POST", headers: authHeaders(accessToken) });
+}
+
+export function unblockFriendship(accessToken: string, friendshipId: number): Promise<void> {
+  return requestJson<void>(`/social/friendships/${friendshipId}/block`, { method: "DELETE", headers: authHeaders(accessToken) });
 }
 
 export function getSocialSummary(accessToken: string): Promise<{ unreadMessages: number; pendingFriendRequests: number; unreadNotifications: number }> {

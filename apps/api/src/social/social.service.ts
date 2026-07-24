@@ -90,7 +90,8 @@ export class SocialService {
       isSelf: viewer.id === userId,
       relationship: relationship && (
         relationship.status === FriendshipStatus.pending ||
-        relationship.status === FriendshipStatus.accepted
+        relationship.status === FriendshipStatus.accepted ||
+        (relationship.status === FriendshipStatus.blocked && relationship.blockedById === viewer.id)
       )
         ? {
             id: relationship.id,
@@ -106,20 +107,24 @@ export class SocialService {
     friends: FriendshipResponse[];
     incoming: FriendshipResponse[];
     outgoing: FriendshipResponse[];
+    blocked: FriendshipResponse[];
   }> {
     const records = await this.prisma.friendship.findMany({
       where: {
         OR: [{ userOneId: user.id }, { userTwoId: user.id }],
-        status: { in: [FriendshipStatus.pending, FriendshipStatus.accepted] },
+        status: { in: [FriendshipStatus.pending, FriendshipStatus.accepted, FriendshipStatus.blocked] },
       },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       include: friendshipInclude,
     });
-    const responses = records.map((record) => this.toFriendship(record, user.id));
+    const responses = records
+      .filter((record) => record.status !== FriendshipStatus.blocked || record.blockedById === user.id)
+      .map((record) => this.toFriendship(record, user.id));
     return {
       friends: responses.filter((item) => item.status === FriendshipStatus.accepted),
       incoming: responses.filter((item) => item.status === FriendshipStatus.pending && item.direction === "incoming"),
       outgoing: responses.filter((item) => item.status === FriendshipStatus.pending && item.direction === "outgoing"),
+      blocked: responses.filter((item) => item.status === FriendshipStatus.blocked),
     };
   }
 
@@ -144,6 +149,13 @@ export class SocialService {
     if (existing?.status === FriendshipStatus.accepted) {
       return this.toFriendship(existing, user.id);
     }
+    if (existing?.status === FriendshipStatus.blocked) {
+      throw new ForbiddenException(
+        existing.blockedById === user.id
+          ? "请先从黑名单中解除该用户。"
+          : "当前无法向该用户发送好友申请。",
+      );
+    }
     if (existing?.status === FriendshipStatus.pending) {
       if (existing.requestedById !== user.id) {
         throw new BadRequestException("对方已经向你发送好友申请，请先处理申请。");
@@ -166,6 +178,7 @@ export class SocialService {
           requestedById: user.id,
           requestNote,
           status: FriendshipStatus.pending,
+          blockedById: null,
           respondedAt: null,
           acceptedAt: null,
         },
@@ -202,6 +215,7 @@ export class SocialService {
         where: { id: friendshipId },
         data: {
           status: status === "accepted" ? FriendshipStatus.accepted : FriendshipStatus.declined,
+          blockedById: null,
           respondedAt: now,
           acceptedAt: status === "accepted" ? now : null,
         },
@@ -251,10 +265,62 @@ export class SocialService {
   }
 
   async removeFriendship(user: AuthenticatedUser, friendshipId: number): Promise<{ success: true }> {
-    await this.getFriendshipForParticipant(friendshipId, user.id);
+    const friendship = await this.getFriendshipForParticipant(friendshipId, user.id);
+    if (friendship.status !== FriendshipStatus.accepted) {
+      throw new BadRequestException("当前关系不是可删除的好友关系。");
+    }
     await this.prisma.friendship.update({
       where: { id: friendshipId },
-      data: { status: FriendshipStatus.removed, respondedAt: new Date(), acceptedAt: null },
+      data: { status: FriendshipStatus.removed, blockedById: null, respondedAt: new Date(), acceptedAt: null },
+    });
+    return { success: true };
+  }
+
+  async blockFriendship(user: AuthenticatedUser, friendshipId: number): Promise<{ success: true }> {
+    const friendship = await this.getFriendshipForParticipant(friendshipId, user.id);
+    if (friendship.status === FriendshipStatus.blocked) {
+      if (friendship.blockedById === user.id) return { success: true };
+      throw new ForbiddenException("当前好友关系不可操作。");
+    }
+    if (friendship.status !== FriendshipStatus.accepted) {
+      throw new BadRequestException("只能拉黑当前好友。当前关系不是好友状态。");
+    }
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.friendship.update({
+        where: { id: friendshipId },
+        data: {
+          status: FriendshipStatus.blocked,
+          blockedById: user.id,
+          respondedAt: now,
+          acceptedAt: null,
+        },
+      }),
+      this.prisma.userNotification.updateMany({
+        where: {
+          friendshipId,
+          type: UserNotificationType.friend_request_received,
+          readAt: null,
+        },
+        data: { readAt: now },
+      }),
+    ]);
+    return { success: true };
+  }
+
+  async unblockFriendship(user: AuthenticatedUser, friendshipId: number): Promise<{ success: true }> {
+    const friendship = await this.getFriendshipForParticipant(friendshipId, user.id);
+    if (friendship.status !== FriendshipStatus.blocked || friendship.blockedById !== user.id) {
+      throw new ForbiddenException("只能解除自己设置的拉黑关系。");
+    }
+    await this.prisma.friendship.update({
+      where: { id: friendshipId },
+      data: {
+        status: FriendshipStatus.removed,
+        blockedById: null,
+        respondedAt: new Date(),
+        acceptedAt: null,
+      },
     });
     return { success: true };
   }
@@ -413,7 +479,13 @@ export class SocialService {
           OR: [{ userOneId: user.id }, { userTwoId: user.id }],
         },
       }),
-      this.prisma.userNotification.count({ where: { userId: user.id, readAt: null } }),
+      this.prisma.userNotification.count({
+        where: {
+          userId: user.id,
+          readAt: null,
+          type: { not: UserNotificationType.friend_request_received },
+        },
+      }),
     ]);
     return { unreadMessages, pendingFriendRequests, unreadNotifications };
   }
@@ -522,6 +594,7 @@ export class SocialService {
   }
 
   private friendshipDirection(record: FriendshipRecord, userId: number): FriendshipResponse["direction"] {
+    if (record.status === FriendshipStatus.blocked) return "blocked";
     if (record.status === FriendshipStatus.accepted) return "accepted";
     return record.requestedById === userId ? "outgoing" : "incoming";
   }

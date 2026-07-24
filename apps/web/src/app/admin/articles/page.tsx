@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Bookmark,
   AlertTriangle,
@@ -20,7 +21,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleAuthorLine, ArticlePinBadge, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
@@ -54,6 +55,11 @@ const emptyArticleList: ArticleList = {
 };
 
 export default function AdminArticlesPage() {
+  return <Suspense fallback={<div className="article-empty-state">正在打开文章管理。</div>}><AdminArticlesWorkspace /></Suspense>;
+}
+
+function AdminArticlesWorkspace() {
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [articleList, setArticleList] = useState<ArticleList>(emptyArticleList);
   const [comments, setComments] = useState<ArticleComment[]>([]);
@@ -82,6 +88,9 @@ export default function AdminArticlesPage() {
   const initializedRef = useRef(false);
   const reportQueueRef = useRef<HTMLDivElement | null>(null);
   const reportQueueCloseTimerRef = useRef<number | null>(null);
+  const lastLocatedReportIdRef = useRef(0);
+  const requestedReportId = Number(searchParams.get("report") ?? 0);
+  const requestedTab = searchParams.get("tab");
 
   const commentThreads = useMemo(() => buildArticleCommentThreads(comments), [comments]);
   const visibleCommentThreads = useMemo(() => commentThreads.filter((thread) => {
@@ -159,24 +168,17 @@ export default function AdminArticlesPage() {
       window.location.href = "/login?from=%2Fadmin%2Farticles";
       return;
     }
-    const reportId = Number(new URLSearchParams(window.location.search).get("report") ?? 0);
-    const requestedTab = new URLSearchParams(window.location.search).get("tab");
     // Initial route hydration starts the protected article workspace.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     Promise.all([getMe(token), loadArticles(token, 1, ""), loadReportQueue(token)])
-      .then(([currentUser, articleResult, reportResult]) => {
+      .then(([currentUser, articleResult]) => {
         if (!currentUser.isSuperAdmin && currentUser.role.level < 90) {
           window.location.href = "/";
           return;
         }
         setUser(currentUser);
         initializedRef.current = true;
-        const requestedReport = reportId > 0
-          ? reportResult.items.find((report) => report.id === reportId)
-          : null;
-        if (requestedReport) {
-          void locateReportedComment(requestedReport);
-        } else if (requestedTab === "comments" && articleResult.items[0]) {
+        if (requestedReportId <= 0 && requestedTab === "comments" && articleResult.items[0]) {
           setActiveTab("comments");
           void loadComments(token, articleResult.items[0].id);
         }
@@ -186,6 +188,16 @@ export default function AdminArticlesPage() {
     // Authentication and initial content are loaded once for the route.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!initializedRef.current || requestedReportId <= 0 || lastLocatedReportIdRef.current === requestedReportId) return;
+    const requestedReport = reports.find((report) => report.id === requestedReportId);
+    if (!requestedReport) return;
+    lastLocatedReportIdRef.current = requestedReportId;
+    void locateReportedComment(requestedReport);
+    // The report query is an external navigation target and should retrigger when only its id changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reports, requestedReportId]);
 
   useEffect(() => {
     if (!isReportQueueOpen) return;

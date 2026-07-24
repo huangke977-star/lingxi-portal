@@ -76,6 +76,16 @@ export class SocialController {
     return this.socialService.removeFriendship(user, id);
   }
 
+  @Post("friendships/:id/block")
+  blockFriendship(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
+    return this.socialService.blockFriendship(user, id);
+  }
+
+  @Delete("friendships/:id/block")
+  unblockFriendship(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
+    return this.socialService.unblockFriendship(user, id);
+  }
+
   @Get("summary")
   getSummary(@CurrentUser() user: AuthenticatedUser) {
     return this.socialService.getSummary(user);

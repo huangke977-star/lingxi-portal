@@ -86,7 +86,7 @@ export function TopNav() {
   const [isTaskPopoverOpen, setIsTaskPopoverOpen] = useState(false);
   const [socialSummary, setSocialSummary] = useState(emptySummary);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [friendships, setFriendships] = useState<{ friends: Friendship[]; incoming: Friendship[]; outgoing: Friendship[] }>({ friends: [], incoming: [], outgoing: [] });
+  const [friendships, setFriendships] = useState<{ friends: Friendship[]; incoming: Friendship[]; outgoing: Friendship[]; blocked: Friendship[] }>({ friends: [], incoming: [], outgoing: [], blocked: [] });
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
   const [pendingReports, setPendingReports] = useState<ArticleCommentReport[]>([]);
   const [pendingReportCount, setPendingReportCount] = useState(0);
@@ -98,7 +98,7 @@ export function TopNav() {
       setUser(null);
       setSocialSummary(emptySummary);
       setConversations([]);
-      setFriendships({ friends: [], incoming: [], outgoing: [] });
+      setFriendships({ friends: [], incoming: [], outgoing: [], blocked: [] });
       setNotifications([]);
       setPendingReports([]);
       setPendingReportCount(0);
@@ -112,7 +112,7 @@ export function TopNav() {
       const [summary, conversationResult, friendshipResult, notificationResult, reportSummary, reportResult] = await Promise.all([
         getSocialSummary(accessToken).catch(() => emptySummary),
         listConversations(accessToken).catch(() => ({ items: [] })),
-        listFriendships(accessToken).catch(() => ({ friends: [], incoming: [], outgoing: [] })),
+        listFriendships(accessToken).catch(() => ({ friends: [], incoming: [], outgoing: [], blocked: [] })),
         listNotifications(accessToken).catch(() => ({ items: [], hasMore: false })),
         canModerate ? getCommentReportSummary(accessToken).catch(() => ({ pending: 0 })) : Promise.resolve({ pending: 0 }),
         canModerate ? listCommentReports(accessToken, "pending").catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
@@ -199,7 +199,12 @@ export function TopNav() {
     tooltip: user.isSuperAdmin ? "超级管理员" : user.role.name,
   } : null, [user]);
   const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
-  const socialCount = socialSummary.unreadMessages + Math.max(socialSummary.pendingFriendRequests, socialSummary.unreadNotifications);
+  const loadedUnreadMessages = conversations.reduce((total, conversation) => total + conversation.unreadCount, 0);
+  const loadedUnreadNotifications = notifications.filter((notification) => !notification.readAt && notification.type !== "friend_request_received").length;
+  const socialCount =
+    Math.max(socialSummary.unreadMessages, loadedUnreadMessages) +
+    Math.max(socialSummary.pendingFriendRequests, friendships.incoming.length) +
+    Math.max(socialSummary.unreadNotifications, loadedUnreadNotifications);
   const unreadConversations = conversations.filter((conversation) => conversation.unreadCount > 0).slice(0, 4);
   const unreadNotifications = notifications.filter((notification) => !notification.readAt && notification.type !== "friend_request_received").slice(0, 4);
 

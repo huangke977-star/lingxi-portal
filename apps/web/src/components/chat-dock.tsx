@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import {
+  Ban,
   Bell,
   Check,
   ChevronLeft,
@@ -15,10 +16,12 @@ import {
   MessageCircle,
   MessageCircleMore,
   Minus,
+  MoreHorizontal,
   Paperclip,
   Send,
+  ShieldOff,
+  UserMinus,
   UserPlus,
-  Users,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -50,6 +53,7 @@ import {
   type Friendship,
   type SocialNotification,
   type SocialUser,
+  blockFriendship,
   downloadChatAttachment,
   getChatSocketOrigin,
   getOrCreateConversation,
@@ -60,7 +64,9 @@ import {
   markAllNotificationsRead,
   markConversationRead,
   markNotificationRead,
+  removeFriendship,
   respondFriendRequest,
+  unblockFriendship,
   uploadChatAttachments,
 } from "@/lib/social-api";
 import {
@@ -75,6 +81,10 @@ import { getAvatarFallbackText } from "@/lib/user-display";
 const MAX_ATTACHMENTS = 9;
 const SYSTEM_CONVERSATION_ID = -1;
 const DOCK_GEOMETRY_STORAGE_KEY = "hlovet-chat-dock-geometry";
+const DOCK_ICON_POSITION_STORAGE_KEY = "hlovet-chat-dock-icon-position";
+const DOCK_ICON_SIZE = 48;
+const DOCK_EDGE_MARGIN = 12;
+const DOCK_ICON_GAP = 10;
 const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const MAX_BATCH_SIZE = 50 * 1024 * 1024;
@@ -100,13 +110,21 @@ interface PendingAttachment {
   previewUrl: string | null;
 }
 
-type DockTab = "chats" | "friends";
-
 interface DockGeometry {
   x: number;
   y: number;
   width: number;
   height: number;
+}
+
+interface DockIconPosition {
+  x: number;
+  y: number;
+}
+
+interface PendingFriendAction {
+  friendship: Friendship;
+  action: "remove" | "block";
 }
 
 export function ChatDock() {
@@ -120,13 +138,15 @@ export function ChatDock() {
   const openRef = useRef(false);
   const minimizedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const iconDraggedRef = useRef(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [friendships, setFriendships] = useState<{
     friends: Friendship[];
     incoming: Friendship[];
     outgoing: Friendship[];
-  }>({ friends: [], incoming: [], outgoing: [] });
+    blocked: Friendship[];
+  }>({ friends: [], incoming: [], outgoing: [], blocked: [] });
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
   const [selectedId, setSelectedId] = useState(0);
   const [selectedSystemNotificationId, setSelectedSystemNotificationId] = useState(0);
@@ -138,13 +158,16 @@ export function ChatDock() {
   const [isMinimized, setIsMinimized] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [dockGeometry, setDockGeometry] = useState<DockGeometry | null>(null);
-  const [activeTab, setActiveTab] = useState<DockTab>("chats");
+  const [dockIconPosition, setDockIconPosition] = useState<DockIconPosition | null>(null);
   const [isMobileConversationOpen, setIsMobileConversationOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isMessagesLoading, setIsMessagesLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isEmojiOpen, setIsEmojiOpen] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<ChatAttachment | null>(null);
+  const [openFriendActionId, setOpenFriendActionId] = useState(0);
+  const [pendingFriendAction, setPendingFriendAction] = useState<PendingFriendAction | null>(null);
+  const [isFriendActionRunning, setIsFriendActionRunning] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -155,6 +178,18 @@ export function ChatDock() {
   const systemNotifications = useMemo(
     () => notifications.filter((item) => item.type !== "friend_request_received"),
     [notifications],
+  );
+  const friendshipByUserId = useMemo(
+    () => new Map(friendships.friends.map((friendship) => [friendship.user.id, friendship])),
+    [friendships.friends],
+  );
+  const conversationUserIds = useMemo(
+    () => new Set(conversations.map((conversation) => conversation.user.id)),
+    [conversations],
+  );
+  const friendsWithoutConversation = useMemo(
+    () => friendships.friends.filter((friendship) => !conversationUserIds.has(friendship.user.id)),
+    [conversationUserIds, friendships.friends],
   );
   const isSystemSelected = selectedId === SYSTEM_CONVERSATION_ID;
   const draft = selectedId ? drafts[selectedId] ?? "" : "";
@@ -182,6 +217,9 @@ export function ChatDock() {
       setDockGeometry((current) => clampDockGeometry(
         current ?? readDockGeometry() ?? getDefaultDockGeometry(),
       ));
+      setDockIconPosition((current) => clampDockIconPosition(
+        current ?? readDockIconPosition() ?? getDefaultDockIconPosition(),
+      ));
     }
     synchronizeGeometry();
     window.addEventListener("resize", synchronizeGeometry);
@@ -193,6 +231,11 @@ export function ChatDock() {
     window.localStorage.setItem(DOCK_GEOMETRY_STORAGE_KEY, JSON.stringify(dockGeometry));
   }, [dockGeometry, isDesktop]);
 
+  useEffect(() => {
+    if (!isDesktop || !dockIconPosition) return;
+    window.localStorage.setItem(DOCK_ICON_POSITION_STORAGE_KEY, JSON.stringify(dockIconPosition));
+  }, [dockIconPosition, isDesktop]);
+
   const refreshSocialData = useCallback(async (showLoading = false) => {
     const token = readAccessToken();
     if (!token) {
@@ -202,7 +245,7 @@ export function ChatDock() {
       sessionUserIdRef.current = 0;
       setUser(null);
       setConversations([]);
-      setFriendships({ friends: [], incoming: [], outgoing: [] });
+      setFriendships({ friends: [], incoming: [], outgoing: [], blocked: [] });
       setNotifications([]);
       setSelectedId(0);
       setMessages([]);
@@ -264,12 +307,10 @@ export function ChatDock() {
       const detail = (event as CustomEvent<ChatDockOpenDetail>).detail ?? {};
       setIsOpen(true);
       setIsMinimized(false);
-      setActiveTab(detail.tab ?? "chats");
       if (detail.tab === "friends") setIsMobileConversationOpen(false);
       if (detail.systemNotificationId) {
         setSelectedId(SYSTEM_CONVERSATION_ID);
         setSelectedSystemNotificationId(detail.systemNotificationId);
-        setActiveTab("chats");
         setIsMobileConversationOpen(true);
         return;
       }
@@ -317,6 +358,23 @@ export function ChatDock() {
       item?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   }, [isMinimized, isOpen, isSystemSelected, selectedSystemNotificationId]);
+
+  useEffect(() => {
+    if (!openFriendActionId) return;
+    function handlePointerDown(event: PointerEvent) {
+      if ((event.target as HTMLElement).closest("[data-chat-friend-action]")) return;
+      setOpenFriendActionId(0);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpenFriendActionId(0);
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openFriendActionId]);
 
   useEffect(() => {
     const token = readAccessToken();
@@ -584,7 +642,6 @@ export function ChatDock() {
         const conversation = await getOrCreateConversation(token, friendship.user.id);
         setConversations((current) => [conversation, ...current.filter((item) => item.id !== conversation.id)]);
         setSelectedId(conversation.id);
-        setActiveTab("chats");
         setIsMobileConversationOpen(true);
       }
       setNotice(status === "accepted" ? "已成为好友。" : "已拒绝好友申请。");
@@ -603,7 +660,6 @@ export function ChatDock() {
         ? current
         : [conversation, ...current]);
       setSelectedId(conversation.id);
-      setActiveTab("chats");
       setIsMobileConversationOpen(true);
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "会话创建失败。");
@@ -625,14 +681,48 @@ export function ChatDock() {
       }
     }
     if (notification.type === "friend_request_received") {
-      setActiveTab("friends");
       setIsMobileConversationOpen(false);
       return;
     }
     setSelectedId(SYSTEM_CONVERSATION_ID);
     setSelectedSystemNotificationId(notification.id);
-    setActiveTab("chats");
     setIsMobileConversationOpen(true);
+  }
+
+  async function executeFriendAction() {
+    const token = readAccessToken();
+    if (!token || !pendingFriendAction || isFriendActionRunning) return;
+    setIsFriendActionRunning(true);
+    try {
+      if (pendingFriendAction.action === "block") {
+        await blockFriendship(token, pendingFriendAction.friendship.id);
+      } else {
+        await removeFriendship(token, pendingFriendAction.friendship.id);
+      }
+      const completedAction = pendingFriendAction.action;
+      setPendingFriendAction(null);
+      setOpenFriendActionId(0);
+      await refreshSocialData();
+      setNotice(completedAction === "block" ? "已拉黑该用户。" : "已删除好友。");
+      notifySocialStateChange();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "好友关系操作失败。");
+    } finally {
+      setIsFriendActionRunning(false);
+    }
+  }
+
+  async function handleUnblock(friendship: Friendship) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      await unblockFriendship(token, friendship.id);
+      await refreshSocialData();
+      setNotice("已解除拉黑，可以重新发送好友申请。");
+      notifySocialStateChange();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "解除拉黑失败。");
+    }
   }
 
   async function readAllNotifications() {
@@ -683,6 +773,33 @@ export function ChatDock() {
     );
   }
 
+  function beginIconDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!isDesktop || !dockIconPosition || event.button !== 0) return;
+    event.preventDefault();
+    const start = { clientX: event.clientX, clientY: event.clientY, position: dockIconPosition };
+    iconDraggedRef.current = false;
+    trackDockPointer(
+      (pointerEvent) => {
+        const deltaX = pointerEvent.clientX - start.clientX;
+        const deltaY = pointerEvent.clientY - start.clientY;
+        if (Math.hypot(deltaX, deltaY) > 4) iconDraggedRef.current = true;
+        setDockIconPosition(clampDockIconPosition({
+          x: start.position.x + deltaX,
+          y: start.position.y + deltaY,
+        }));
+      },
+      () => window.setTimeout(() => { iconDraggedRef.current = false; }, 0),
+    );
+  }
+
+  function expandFromIcon() {
+    if (iconDraggedRef.current) return;
+    if (isDesktop && dockIconPosition && dockGeometry) {
+      setDockGeometry(placeDockBesideIcon(dockGeometry, dockIconPosition));
+    }
+    setIsMinimized(false);
+  }
+
   const dockStyle: CSSProperties | undefined = isDesktop && dockGeometry ? {
     left: dockGeometry.x,
     top: dockGeometry.y,
@@ -692,9 +809,9 @@ export function ChatDock() {
     height: dockGeometry.height,
   } : undefined;
 
-  const minimizedStyle: CSSProperties | undefined = isDesktop && dockGeometry ? {
-    left: Math.min(window.innerWidth - 58, dockGeometry.x + dockGeometry.width - 48),
-    top: Math.min(window.innerHeight - 58, dockGeometry.y + dockGeometry.height - 48),
+  const minimizedStyle: CSSProperties | undefined = isDesktop && dockIconPosition ? {
+    left: dockIconPosition.x,
+    top: dockIconPosition.y,
     right: "auto",
     bottom: "auto",
   } : undefined;
@@ -703,7 +820,7 @@ export function ChatDock() {
 
   if (isMinimized) {
     return <>
-      <button aria-label="展开聊天窗" className="chat-dock-minimized" onClick={() => setIsMinimized(false)} style={minimizedStyle} title="展开聊天" type="button">
+      <button aria-label="展开聊天窗" className="chat-dock-minimized" onClick={expandFromIcon} onPointerDown={beginIconDrag} style={minimizedStyle} title="拖动调整位置，点击展开聊天" type="button">
         <MessageCircleMore aria-hidden="true" size={23} />
         {dockUnreadCount ? <b>{formatCount(dockUnreadCount)}</b> : null}
       </button>
@@ -715,14 +832,14 @@ export function ChatDock() {
     <>
       <section className={`chat-dock${isMobileConversationOpen ? " mobile-conversation-open" : ""}`} aria-label="消息与聊天" style={dockStyle}>
         <header className="chat-dock-titlebar" onPointerDown={beginDockDrag}>
-          <button
-            aria-label="返回消息列表"
-            className="chat-mobile-back"
-            onClick={() => setIsMobileConversationOpen(false)}
-            type="button"
-          >
-            <ChevronLeft aria-hidden="true" size={19} />
-          </button>
+          {!isDesktop ? <button
+              aria-label="返回消息列表"
+              className="chat-mobile-back"
+              onClick={() => setIsMobileConversationOpen(false)}
+              type="button"
+            >
+              <ChevronLeft aria-hidden="true" size={19} />
+            </button> : null}
           <span><MessageCircleMore aria-hidden="true" size={18} /><strong>{isSystemSelected ? "系统消息" : selected?.user.nickname ?? "消息"}</strong></span>
           <div>
             <button aria-label="最小化聊天窗" onClick={() => setIsMinimized(true)} type="button"><Minus aria-hidden="true" size={17} /></button>
@@ -731,39 +848,69 @@ export function ChatDock() {
         </header>
         <div className={`chat-dock-body${isMobileConversationOpen ? " mobile-conversation-open" : ""}`}>
           <aside className="chat-dock-sidebar">
-            <div className="chat-dock-tabs" role="tablist">
-              <button aria-label="会话" className={activeTab === "chats" ? "active" : ""} onClick={() => setActiveTab("chats")} title="会话" type="button"><MessageCircle aria-hidden="true" size={18} />{unreadMessages ? <b>{formatCount(unreadMessages)}</b> : null}</button>
-              <button aria-label="好友" className={activeTab === "friends" ? "active" : ""} onClick={() => setActiveTab("friends")} title="好友" type="button"><Users aria-hidden="true" size={18} />{friendships.incoming.length ? <b>{formatCount(friendships.incoming.length)}</b> : null}</button>
-            </div>
             <div className="chat-dock-sidebar-content">
               {isLoading ? <span className="chat-state">正在读取。</span> : null}
-              {activeTab === "chats" ? <div className="conversation-list">
-                <button className={isSystemSelected ? "active system-conversation" : "system-conversation"} onClick={() => { setSelectedId(SYSTEM_CONVERSATION_ID); setSelectedSystemNotificationId(0); setIsMobileConversationOpen(true); }} type="button">
+              <div className="chat-unified-list">
+                <button className={isSystemSelected ? "chat-sidebar-primary-row active system-conversation" : "chat-sidebar-primary-row system-conversation"} onClick={() => { setSelectedId(SYSTEM_CONVERSATION_ID); setSelectedSystemNotificationId(0); setIsMobileConversationOpen(true); }} type="button">
                   <span className="chat-system-avatar"><Bell aria-hidden="true" size={17} /></span>
                   <span><strong>系统消息</strong><small>{systemNotifications[0]?.body ?? "通知会集中显示在这里"}</small></span>
                   {unreadNotifications ? <b>{formatCount(unreadNotifications)}</b> : null}
                 </button>
+
+                {friendships.incoming.length ? <section className="chat-sidebar-section friend-request-list">
+                  <h2><UserPlus aria-hidden="true" size={14} />好友申请 <b>{friendships.incoming.length}</b></h2>
+                  {friendships.incoming.map((friendship) => (
+                    <div className="friend-request-card" key={friendship.id}>
+                      <UserAvatar user={friendship.user} />
+                      <span><strong>{friendship.user.nickname}</strong><small>@{friendship.user.username}</small></span>
+                      {friendship.note ? <p>{friendship.note}</p> : null}
+                      <div><button onClick={() => void handleFriendRequest(friendship, "accepted")} title="接受" type="button"><Check aria-hidden="true" size={15} />接受</button><button onClick={() => void handleFriendRequest(friendship, "declined")} title="拒绝" type="button"><X aria-hidden="true" size={15} />拒绝</button></div>
+                    </div>
+                  ))}
+                </section> : null}
+
                 {conversations.map((conversation) => (
-                  <button className={conversation.id === selectedId ? "active" : undefined} key={conversation.id} onClick={() => { setSelectedId(conversation.id); setIsMobileConversationOpen(true); }} type="button">
-                    <UserAvatar user={conversation.user} />
-                    <span><strong className="chat-conversation-name">{conversation.user.nickname}<RoleSymbol code={conversation.user.isSuperAdmin ? "super_administrator" : conversation.user.role.code} /></strong><small>{getConversationPreview(conversation)}</small></span>
-                    {conversation.unreadCount ? <b>{formatCount(conversation.unreadCount)}</b> : null}
-                  </button>
+                  <ChatSidebarContactRow
+                    active={conversation.id === selectedId}
+                    friendship={friendshipByUserId.get(conversation.user.id) ?? null}
+                    key={conversation.id}
+                    menuOpen={openFriendActionId === (friendshipByUserId.get(conversation.user.id)?.id ?? 0)}
+                    onAction={(friendship, action) => { setPendingFriendAction({ friendship, action }); setOpenFriendActionId(0); }}
+                    onOpen={() => { setSelectedId(conversation.id); setIsMobileConversationOpen(true); }}
+                    onToggleMenu={(friendshipId) => setOpenFriendActionId((current) => current === friendshipId ? 0 : friendshipId)}
+                    preview={getConversationPreview(conversation)}
+                    unreadCount={conversation.unreadCount}
+                    user={conversation.user}
+                  />
                 ))}
-              </div> : null}
-              {activeTab === "friends" ? <div className="chat-friendship-pane">
-                {friendships.incoming.length ? <section className="friend-request-list"><h2><UserPlus aria-hidden="true" size={15} />好友申请</h2>{friendships.incoming.map((friendship) => (
-                  <div className="friend-request-card" key={friendship.id}>
-                    <UserAvatar user={friendship.user} />
-                    <span><strong>{friendship.user.nickname}</strong><small>@{friendship.user.username}</small></span>
-                    {friendship.note ? <p>{friendship.note}</p> : null}
-                    <div><button onClick={() => void handleFriendRequest(friendship, "accepted")} title="接受" type="button"><Check aria-hidden="true" size={15} />接受</button><button onClick={() => void handleFriendRequest(friendship, "declined")} title="拒绝" type="button"><X aria-hidden="true" size={15} />拒绝</button></div>
-                  </div>
-                ))}</section> : null}
-                <section className="friend-contact-list"><h2>好友</h2>{friendships.friends.length ? friendships.friends.map((friendship) => (
-                  <button key={friendship.id} onClick={() => void openFriendChat(friendship)} type="button"><UserAvatar user={friendship.user} /><span><strong>{friendship.user.nickname}</strong><small>@{friendship.user.username}</small></span><MessageCircle aria-hidden="true" size={15} /></button>
-                )) : <span className="chat-sidebar-empty">还没有好友。</span>}</section>
-              </div> : null}
+
+                {friendsWithoutConversation.map((friendship) => (
+                  <ChatSidebarContactRow
+                    active={false}
+                    friendship={friendship}
+                    key={`friend-${friendship.id}`}
+                    menuOpen={openFriendActionId === friendship.id}
+                    onAction={(target, action) => { setPendingFriendAction({ friendship: target, action }); setOpenFriendActionId(0); }}
+                    onOpen={() => void openFriendChat(friendship)}
+                    onToggleMenu={(friendshipId) => setOpenFriendActionId((current) => current === friendshipId ? 0 : friendshipId)}
+                    preview="开始聊天"
+                    unreadCount={0}
+                    user={friendship.user}
+                  />
+                ))}
+
+                {friendships.outgoing.length ? <section className="chat-sidebar-section chat-pending-friends">
+                  <h2>等待确认</h2>
+                  {friendships.outgoing.map((friendship) => <div className="chat-pending-friend" key={friendship.id}><UserAvatar user={friendship.user} /><span><strong>{friendship.user.nickname}</strong><small>好友申请等待对方处理</small></span></div>)}
+                </section> : null}
+
+                {friendships.blocked.length ? <details className="chat-blocked-list">
+                  <summary><Ban aria-hidden="true" size={14} />黑名单 <b>{friendships.blocked.length}</b></summary>
+                  {friendships.blocked.map((friendship) => <div className="chat-blocked-row" key={friendship.id}><UserAvatar user={friendship.user} /><span><strong>{friendship.user.nickname}</strong><small>@{friendship.user.username}</small></span><button onClick={() => void handleUnblock(friendship)} title="解除拉黑" type="button"><ShieldOff aria-hidden="true" size={15} /></button></div>)}
+                </details> : null}
+
+                {!isLoading && !conversations.length && !friendships.incoming.length && !friendships.friends.length && !friendships.outgoing.length ? <span className="chat-sidebar-empty">还没有好友或会话。</span> : null}
+              </div>
             </div>
           </aside>
           <main className={`chat-panel${isSystemSelected ? " system-selected" : ""}`}>
@@ -800,12 +947,40 @@ export function ChatDock() {
             </> : <div className="chat-empty"><MessageCircle aria-hidden="true" size={28} /><strong>选择一位好友开始聊天</strong><span>可以发送文字、表情、图片和文件。</span></div>}
           </main>
         </div>
+        {pendingFriendAction ? <div className="chat-confirm-backdrop" onClick={() => { if (!isFriendActionRunning) setPendingFriendAction(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingFriendAction.action === "block" ? <Ban aria-hidden="true" size={20} /> : <UserMinus aria-hidden="true" size={20} />}</span><div><strong>{pendingFriendAction.action === "block" ? `拉黑 ${pendingFriendAction.friendship.user.nickname}` : `删除好友 ${pendingFriendAction.friendship.user.nickname}`}</strong><p>{pendingFriendAction.action === "block" ? "拉黑后双方不能查看或发送聊天消息。历史记录会保留，解除拉黑后仍需重新添加好友。" : "删除后聊天记录会保留，但双方需要重新添加好友才能继续聊天。"}</p></div><footer><button disabled={isFriendActionRunning} onClick={() => setPendingFriendAction(null)} type="button">取消</button><button className="danger" disabled={isFriendActionRunning} onClick={() => void executeFriendAction()} type="button">{isFriendActionRunning ? "处理中" : pendingFriendAction.action === "block" ? "确认拉黑" : "确认删除"}</button></footer></div></div> : null}
         <button aria-label="调整聊天窗大小" className="chat-dock-resize-handle" onPointerDown={beginDockResize} tabIndex={-1} type="button" />
       </section>
       {previewAttachment ? <AttachmentPreview attachment={previewAttachment} onClose={closeAttachmentPreview} /> : null}
       <AppToast duration={error ? 4200 : 2600} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </>
   );
+}
+
+function ChatSidebarContactRow({ active, friendship, menuOpen, preview, unreadCount, user, onAction, onOpen, onToggleMenu }: {
+  active: boolean;
+  friendship: Friendship | null;
+  menuOpen: boolean;
+  preview: string;
+  unreadCount: number;
+  user: SocialUser;
+  onAction: (friendship: Friendship, action: "remove" | "block") => void;
+  onOpen: () => void;
+  onToggleMenu: (friendshipId: number) => void;
+}) {
+  return <div className={`chat-sidebar-contact-row${active ? " active" : ""}`}>
+    <button className="chat-sidebar-primary-row" onClick={onOpen} type="button">
+      <UserAvatar user={user} />
+      <span><strong className="chat-conversation-name">{user.nickname}<RoleSymbol code={user.isSuperAdmin ? "super_administrator" : user.role.code} /></strong><small>{preview}</small></span>
+      {unreadCount ? <b>{formatCount(unreadCount)}</b> : null}
+    </button>
+    {friendship ? <div className="chat-friend-action" data-chat-friend-action>
+      <button aria-expanded={menuOpen} aria-label={`${user.nickname} 的好友操作`} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(friendship.id); }} title="好友操作" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
+      {menuOpen ? <div className="chat-friend-action-menu">
+        <button onClick={() => onAction(friendship, "remove")} type="button"><UserMinus aria-hidden="true" size={15} />删除好友</button>
+        <button onClick={() => onAction(friendship, "block")} type="button"><Ban aria-hidden="true" size={15} />拉黑好友</button>
+      </div> : null}
+    </div> : null}
+  </div>;
 }
 
 function SystemNotificationPanel({ notifications, selectedId, unreadCount, listRef, onMarkAllRead, onOpenArticle, onSelect }: {
@@ -975,6 +1150,22 @@ function readDockGeometry(): DockGeometry | null {
   }
 }
 
+function readDockIconPosition(): DockIconPosition | null {
+  try {
+    const value = window.localStorage.getItem(DOCK_ICON_POSITION_STORAGE_KEY);
+    return value ? JSON.parse(value) as DockIconPosition : null;
+  } catch {
+    return null;
+  }
+}
+
+function getDefaultDockIconPosition(): DockIconPosition {
+  return {
+    x: window.innerWidth - DOCK_ICON_SIZE - 18,
+    y: window.innerHeight - DOCK_ICON_SIZE - 18,
+  };
+}
+
 function clampDockGeometry(value: DockGeometry): DockGeometry {
   const margin = 12;
   const width = Math.min(Math.max(value.width, 520), window.innerWidth - margin * 2);
@@ -987,7 +1178,26 @@ function clampDockGeometry(value: DockGeometry): DockGeometry {
   };
 }
 
-function trackDockPointer(onMove: (event: PointerEvent) => void) {
+function clampDockIconPosition(value: DockIconPosition): DockIconPosition {
+  return {
+    x: Math.min(Math.max(value.x, DOCK_EDGE_MARGIN), window.innerWidth - DOCK_ICON_SIZE - DOCK_EDGE_MARGIN),
+    y: Math.min(Math.max(value.y, DOCK_EDGE_MARGIN), window.innerHeight - DOCK_ICON_SIZE - DOCK_EDGE_MARGIN),
+  };
+}
+
+function placeDockBesideIcon(geometry: DockGeometry, icon: DockIconPosition): DockGeometry {
+  const openToRight = icon.x + DOCK_ICON_SIZE / 2 < window.innerWidth / 2;
+  const x = openToRight
+    ? icon.x + DOCK_ICON_SIZE + DOCK_ICON_GAP
+    : icon.x - geometry.width - DOCK_ICON_GAP;
+  return clampDockGeometry({
+    ...geometry,
+    x,
+    y: icon.y + DOCK_ICON_SIZE - geometry.height,
+  });
+}
+
+function trackDockPointer(onMove: (event: PointerEvent) => void, onFinish?: () => void) {
   const previousUserSelect = document.body.style.userSelect;
   document.body.style.userSelect = "none";
   function finish() {
@@ -995,6 +1205,7 @@ function trackDockPointer(onMove: (event: PointerEvent) => void) {
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", finish);
     window.removeEventListener("pointercancel", finish);
+    onFinish?.();
   }
   window.addEventListener("pointermove", onMove);
   window.addEventListener("pointerup", finish, { once: true });

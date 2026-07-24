@@ -71,6 +71,7 @@ enum FriendshipStatus {
   accepted
   declined
   removed
+  blocked
 }
 
 enum UserNotificationType {
@@ -153,6 +154,7 @@ model User {
   friendshipsAsOne        Friendship[]           @relation("FriendshipUserOne")
   friendshipsAsTwo        Friendship[]           @relation("FriendshipUserTwo")
   friendshipRequests      Friendship[]           @relation("FriendshipRequester")
+  blockedFriendships      Friendship[]           @relation("FriendshipBlocker")
   chatMessages            ChatMessage[]          @relation("ChatMessageSender")
   chatAttachments         ChatAttachment[]       @relation("ChatAttachmentUploader")
   notifications           UserNotification[]     @relation("UserNotificationRecipient")
@@ -407,6 +409,8 @@ model Friendship {
   userTwo       User               @relation("FriendshipUserTwo", fields: [userTwoId], references: [id], onDelete: Cascade)
   requestedById Int                @map("requested_by_id")
   requestedBy   User               @relation("FriendshipRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+  blockedById   Int?               @map("blocked_by_id")
+  blockedBy     User?              @relation("FriendshipBlocker", fields: [blockedById], references: [id], onDelete: SetNull)
   requestNote   String?            @map("request_note") @db.VarChar(120)
   status        FriendshipStatus   @default(pending)
   respondedAt   DateTime?          @map("responded_at")
@@ -420,6 +424,7 @@ model Friendship {
   @@index([userOneId, status])
   @@index([userTwoId, status])
   @@index([requestedById])
+  @@index([blockedById])
   @@map("friendships")
 }
 
