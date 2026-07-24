@@ -101,6 +101,12 @@ export class ArticlesController {
     return this.articlesService.listFavorites(query, user);
   }
 
+  @Get("subscriptions")
+  @UseGuards(JwtAuthGuard)
+  listSubscriptions(@Query() query: ListArticlesQueryDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.listSubscriptions(query, user);
+  }
+
   @Get("liked")
   @UseGuards(JwtAuthGuard)
   listLiked(

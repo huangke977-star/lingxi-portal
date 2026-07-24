@@ -187,6 +187,7 @@ describe("ArticlesService article center extensions", () => {
     const prisma = createPrismaMock();
     prisma.article.count
       .mockResolvedValueOnce(5)
+      .mockResolvedValueOnce(6)
       .mockResolvedValueOnce(4)
       .mockResolvedValueOnce(7);
     prisma.articleFavorite.count.mockResolvedValueOnce(2);
@@ -196,11 +197,56 @@ describe("ArticlesService article center extensions", () => {
 
     await expect(service.getCenterSummary(adminUser)).resolves.toEqual({
       discover: 5,
+      subscriptions: 6,
       mine: 4,
       favorites: 2,
       liked: 3,
       manage: 7,
     });
+  });
+
+  it("aggregates unread article-like notifications and moves the latest actor to the front", async () => {
+    const target = { ...articleRecord(), authorId: 19 };
+    const transaction = {
+      articleLike: { create: jest.fn(async () => ({ articleId: 12, userId: user.id })) },
+      article: { update: jest.fn(async () => target) },
+      userNotification: {
+        findFirst: jest.fn(async () => ({ id: 31, aggregateCount: 2 })),
+        delete: jest.fn(async () => ({ id: 31 })),
+        create: jest.fn(async () => ({ id: 32 })),
+      },
+    };
+    const prisma = {
+      article: { findUnique: jest.fn(async () => target), findUniqueOrThrow: jest.fn(async () => ({ likeCount: 4, favoriteCount: 1 })) },
+      articleLike: { findUnique: jest.fn(async () => null) },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    };
+    const service = new ArticlesService(prisma as unknown as PrismaService);
+    await expect(service.toggleLike(12, user, true)).resolves.toEqual({ liked: true, likeCount: 4, favoriteCount: 1 });
+    expect(transaction.userNotification.delete).toHaveBeenCalledWith({ where: { id: 31 } });
+    expect(transaction.userNotification.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      userId: 19, actorId: user.id, type: "article_liked", channel: "interaction", aggregateCount: 3,
+    }) }));
+  });
+
+  it("notifies readable subscribers only on the first publication", async () => {
+    const draft = { ...articleRecord(ArticleStatus.draft), publishedAt: null };
+    const published = { ...articleRecord(), publishedAt: new Date("2026-07-24T10:00:00.000Z") };
+    const transaction = {
+      article: { update: jest.fn(async () => published) },
+      userSubscription: { findMany: jest.fn(async () => [{ subscriberId: 21 }, { subscriberId: 22 }]) },
+      userNotification: { createMany: jest.fn(async () => ({ count: 2 })) },
+    };
+    const prisma = {
+      article: { findUnique: jest.fn(async () => draft) },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    };
+    const service = new ArticlesService(prisma as unknown as PrismaService);
+    await service.publish(12, user);
+    expect(transaction.userNotification.createMany).toHaveBeenCalledWith({ data: expect.arrayContaining([
+      expect.objectContaining({ userId: 21, type: "subscription_published", channel: "subscription" }),
+      expect.objectContaining({ userId: 22, type: "subscription_published", channel: "subscription" }),
+    ]) });
   });
 
   it("restores deleted articles as unpinned drafts", async () => {

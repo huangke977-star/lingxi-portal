@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bookmark, CalendarDays, CornerDownRight, Flag, Heart, MessageCircle, Reply, Send, Tag, ThumbsUp, Trash2, X } from "lucide-react";
+import { Bookmark, CalendarDays, CornerDownRight, Flag, Heart, MessageCircle, Reply, Rss, Send, Tag, ThumbsUp, Trash2, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
@@ -26,6 +26,8 @@ import {
 import { buildArticleCommentThreads } from "@/lib/article-comments";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { getPublicProfile, PublicProfile, subscribeToAuthor, unsubscribeFromAuthor } from "@/lib/social-api";
+import { notifySocialStateChange } from "@/lib/social-events";
 
 export default function ArticleDetailPage() {
   const params = useParams<{ slug: string }>();
@@ -47,6 +49,7 @@ export default function ArticleDetailPage() {
   const [articleLikeBurst, setArticleLikeBurst] = useState(0);
   const [commentLikeBursts, setCommentLikeBursts] = useState<Record<number, number>>({});
   const [highlightCommentId, setHighlightCommentId] = useState<number | null>(null);
+  const [authorProfile, setAuthorProfile] = useState<PublicProfile | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const commentThreads = useMemo(() => buildArticleCommentThreads(comments), [comments]);
 
@@ -67,6 +70,9 @@ export default function ArticleDetailPage() {
         setUser(currentUser);
         setArticle(loadedArticle);
         setComments(loadedComments.items);
+        if (token && currentUser && currentUser.id !== loadedArticle.author.id) {
+          void getPublicProfile(token, loadedArticle.author.id).then(setAuthorProfile).catch(() => undefined);
+        }
         if (requestedCommentId > 0 && loadedComments.items.some((comment) => comment.id === requestedCommentId)) {
           setHighlightCommentId(requestedCommentId);
           window.setTimeout(() => {
@@ -118,6 +124,25 @@ export default function ArticleDetailPage() {
       });
     } catch (interactionError) {
       setError(interactionError instanceof Error ? interactionError.message : "操作失败。");
+    }
+  }
+
+  async function handleSubscription() {
+    if (!article || user?.id === article.author.id) return;
+    const token = readAccessToken();
+    if (!token) {
+      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      return;
+    }
+    try {
+      const result = authorProfile?.subscribed
+        ? await unsubscribeFromAuthor(token, article.author.id)
+        : await subscribeToAuthor(token, article.author.id);
+      setAuthorProfile((current) => current ? { ...current, ...result } : current);
+      setNotice(result.subscribed ? "已订阅该作者。" : "已取消订阅。");
+      notifySocialStateChange();
+    } catch (subscriptionError) {
+      setError(subscriptionError instanceof Error ? subscriptionError.message : "订阅操作失败。");
     }
   }
 
@@ -241,14 +266,15 @@ export default function ArticleDetailPage() {
       <article className="article-reading-layout">
         <header className="article-reading-header">
           <h1 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h1>
-          <div className="article-reading-author"><ArticleAuthorLine author={article.author} /><span className="article-reading-divider" /><span>发布于 {formatArticleDate(article.publishedAt)}</span></div>
+          <div className="article-reading-author"><ArticleAuthorLine author={article.author} interactive /><span className="article-reading-divider" /><span>发布于 {formatArticleDate(article.publishedAt)}</span></div>
         </header>
         <div className="article-reading-grid">
           <aside className="article-reading-aside">
-            <div className="article-aside-author"><ArticleAuthorLine author={article.author} /><span>@{article.author.username}</span></div>
+            <div className="article-aside-author"><ArticleAuthorLine author={article.author} interactive /><span>@{article.author.username}</span></div>
             <div className="article-reading-actions">
               <span className="like-action-wrap"><button className={article.liked ? "active" : undefined} onClick={() => void handleInteraction("like")} type="button"><Heart aria-hidden="true" fill={article.liked ? "currentColor" : "none"} size={17} />{article.liked ? "已赞" : "点赞"}</button><LikeBurst burst={articleLikeBurst} variant="heart" /></span>
               <button className={article.favorited ? "active" : undefined} onClick={() => void handleInteraction("favorite")} type="button"><Bookmark aria-hidden="true" size={17} />{article.favorited ? "已收藏" : "收藏"}</button>
+              {user?.id !== article.author.id ? <button className={authorProfile?.subscribed ? "active" : undefined} onClick={() => void handleSubscription()} type="button"><Rss aria-hidden="true" size={17} />{authorProfile?.subscribed ? "已订阅" : "订阅"}{authorProfile?.subscriberCount ? ` ${authorProfile.subscriberCount}` : ""}</button> : null}
             </div>
             <ArticleStats article={article} />
             <dl className="article-aside-meta">

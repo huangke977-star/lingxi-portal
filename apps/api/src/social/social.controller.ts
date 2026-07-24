@@ -53,6 +53,16 @@ export class SocialController {
     return this.socialService.listFriendships(user);
   }
 
+  @Post("subscriptions/:id")
+  subscribe(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
+    return this.socialService.subscribe(user, id);
+  }
+
+  @Delete("subscriptions/:id")
+  unsubscribe(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
+    return this.socialService.unsubscribe(user, id);
+  }
+
   @Post("friends/:id/request")
   requestFriend(
     @CurrentUser() user: AuthenticatedUser,
@@ -102,8 +112,11 @@ export class SocialController {
   }
 
   @Post("notifications/read-all")
-  markAllNotificationsRead(@CurrentUser() user: AuthenticatedUser) {
-    return this.socialService.markAllNotificationsRead(user);
+  markAllNotificationsRead(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListNotificationsQueryDto,
+  ) {
+    return this.socialService.markAllNotificationsRead(user, query.channel);
   }
 
   @Get("conversations")

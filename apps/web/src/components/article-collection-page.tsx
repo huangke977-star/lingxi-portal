@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Heart, Search, X } from "lucide-react";
+import { Bookmark, Heart, Rss, Search, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
@@ -12,11 +12,12 @@ import {
   ArticleList,
   listFavoriteArticles,
   listLikedArticles,
+  listSubscribedArticles,
 } from "@/lib/article-api";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 
-type CollectionMode = "favorites" | "liked";
+type CollectionMode = "favorites" | "liked" | "subscriptions";
 
 const emptyList: ArticleList = {
   items: [],
@@ -44,7 +45,7 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
     if (nextSearch.trim()) params.set("q", nextSearch.trim());
     else params.delete("q");
     params.delete("page");
-    router.replace(`${mode === "favorites" ? "/articles/favorites" : "/articles/liked"}${params.size ? `?${params}` : ""}`);
+    router.replace(`${collectionPath(mode)}${params.size ? `?${params}` : ""}`);
   }
 
   useEffect(() => {
@@ -58,14 +59,14 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
   useEffect(() => {
     const token = readAccessToken();
     if (!token) {
-      router.replace(`/login?from=${encodeURIComponent(mode === "favorites" ? "/articles/favorites" : "/articles/liked")}`);
+      router.replace(`/login?from=${encodeURIComponent(collectionPath(mode))}`);
       return;
     }
     // URL changes start a new request cycle for this protected collection.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoading(true);
     setList(emptyList);
-    const request = mode === "favorites" ? listFavoriteArticles : listLikedArticles;
+    const request = collectionRequest(mode);
     Promise.all([
       getMe(token),
       request(token, { page: 1, pageSize: 12, search: querySearch }),
@@ -92,7 +93,7 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
       router.replace("/");
       return;
     }
-    const request = mode === "favorites" ? listFavoriteArticles : listLikedArticles;
+    const request = collectionRequest(mode);
     setIsLoadingMore(true);
     request(token, { page: list.page + 1, pageSize: 12, search: querySearch })
       .then((result) => setList((current) => appendArticlePage(current, result)))
@@ -108,7 +109,8 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
   }, [isLoading, isLoadingMore, list.page, list.totalPages, mode, querySearch, router]);
 
   const isFavorites = mode === "favorites";
-  const Icon = isFavorites ? Bookmark : Heart;
+  const isSubscriptions = mode === "subscriptions";
+  const Icon = isFavorites ? Bookmark : isSubscriptions ? Rss : Heart;
 
   return (
     <section className="page-shell articles-page article-collection-page">
@@ -144,8 +146,8 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
       ) : (
         <div className="article-empty-state">
           <Icon aria-hidden="true" size={24} />
-          <strong>{querySearch ? "没有匹配的文章" : isFavorites ? "还没有收藏文章" : "还没有点赞文章"}</strong>
-          <span>{querySearch ? "试试其他关键词。" : "在文章详情页进行操作后，内容会出现在这里。"}</span>
+          <strong>{querySearch ? "没有匹配的文章" : isFavorites ? "还没有收藏文章" : isSubscriptions ? "还没有订阅内容" : "还没有点赞文章"}</strong>
+          <span>{querySearch ? "试试其他关键词。" : isSubscriptions ? "订阅作者后，他们新发布的内容会集中显示在这里。" : "在文章详情页进行操作后，内容会出现在这里。"}</span>
         </div>
       )}
 
@@ -154,6 +156,18 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );
+}
+
+function collectionPath(mode: CollectionMode): string {
+  if (mode === "favorites") return "/articles/favorites";
+  if (mode === "subscriptions") return "/articles/subscriptions";
+  return "/articles/liked";
+}
+
+function collectionRequest(mode: CollectionMode) {
+  if (mode === "favorites") return listFavoriteArticles;
+  if (mode === "subscriptions") return listSubscribedArticles;
+  return listLikedArticles;
 }
 
 function appendArticlePage(current: ArticleList, next: ArticleList): ArticleList {

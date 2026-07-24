@@ -11,6 +11,7 @@ import remarkGfm from "remark-gfm";
 import type { Article, ArticleAuthor } from "@/lib/article-api";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
+import { PublicProfilePopover } from "@/components/public-profile-popover";
 
 export function formatArticleDate(value: string | null): string {
   if (!value) return "尚未发布";
@@ -20,13 +21,13 @@ export function formatArticleDate(value: string | null): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-export function ArticleAuthorLine({ author }: { author: ArticleAuthor }) {
+export function ArticleAuthorLine({ author, interactive = false }: { author: ArticleAuthor; interactive?: boolean }) {
   const avatar = author.avatarUrl ? resolveApiUrl(author.avatarUrl) : null;
   return (
     <span className="article-author-line">
-      <span className="article-author-avatar">
+      {interactive ? <PublicProfilePopover author={author} /> : <span className="article-author-avatar">
         {avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText({ nickname: author.nickname, username: author.username })}
-      </span>
+      </span>}
       <span>{author.nickname}</span>
     </span>
   );
@@ -91,12 +92,13 @@ export function ArticleCard({
   taxonomyPlacement?: "meta" | "after-stats";
 }) {
   return (
-    <Link className="article-card" href={`/articles/${article.slug}`}>
+    <article className="article-card">
+      <Link aria-label={`阅读 ${article.title}`} className="article-card-link" href={`/articles/${article.slug}`} />
       <ArticlePinBadge isPinned={article.isPinned} />
       <div className="article-card-main">
         <h2 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h2>
         <div className="article-card-meta">
-          <ArticleAuthorLine author={article.author} />
+          <ArticleAuthorLine author={article.author} interactive />
           <span className="article-card-date">{formatArticleDate(article.publishedAt)}</span>
           {taxonomyPlacement === "meta" ? <ArticleTaxonomy article={article} /> : null}
         </div>
@@ -106,7 +108,7 @@ export function ArticleCard({
         <ArticleStats article={article} compact />
         {taxonomyPlacement === "after-stats" ? <ArticleTaxonomy article={article} /> : null}
       </div>
-    </Link>
+    </article>
   );
 }
 

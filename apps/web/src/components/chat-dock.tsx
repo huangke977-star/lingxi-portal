@@ -10,6 +10,7 @@ import {
   ChevronUp,
   Download,
   FileText,
+  Heart,
   Image as ImageIcon,
   Laugh,
   LoaderCircle,
@@ -18,6 +19,7 @@ import {
   Minus,
   MoreHorizontal,
   Paperclip,
+  Rss,
   Send,
   ShieldOff,
   UserMinus,
@@ -53,6 +55,7 @@ import {
   type Friendship,
   type SocialNotification,
   type SocialUser,
+  type NotificationChannel,
   blockFriendship,
   downloadChatAttachment,
   getChatSocketOrigin,
@@ -79,7 +82,11 @@ import {
 import { getAvatarFallbackText } from "@/lib/user-display";
 
 const MAX_ATTACHMENTS = 9;
-const SYSTEM_CONVERSATION_ID = -1;
+const NOTIFICATION_CHANNELS = [
+  { channel: "system", id: -1, label: "系统消息", empty: "好友申请结果和内容处理通知会显示在这里。" },
+  { channel: "subscription", id: -2, label: "订阅更新", empty: "订阅作者发布的新内容会显示在这里。" },
+  { channel: "interaction", id: -3, label: "互动消息", empty: "点赞、收藏、评论和新订阅会显示在这里。" },
+] as const satisfies ReadonlyArray<{ channel: NotificationChannel; id: number; label: string; empty: string }>;
 const DOCK_GEOMETRY_STORAGE_KEY = "hlovet-chat-dock-geometry";
 const DOCK_ICON_POSITION_STORAGE_KEY = "hlovet-chat-dock-icon-position";
 const DOCK_ICON_SIZE = 48;
@@ -175,8 +182,12 @@ export function ChatDock() {
     () => conversations.find((conversation) => conversation.id === selectedId) ?? null,
     [conversations, selectedId],
   );
-  const systemNotifications = useMemo(
-    () => notifications.filter((item) => item.type !== "friend_request_received"),
+  const channelNotifications = useMemo(
+    () => ({
+      system: notifications.filter((item) => item.channel === "system" && item.type !== "friend_request_received"),
+      subscription: notifications.filter((item) => item.channel === "subscription"),
+      interaction: notifications.filter((item) => item.channel === "interaction"),
+    }),
     [notifications],
   );
   const friendshipByUserId = useMemo(
@@ -191,12 +202,19 @@ export function ChatDock() {
     () => friendships.friends.filter((friendship) => !conversationUserIds.has(friendship.user.id)),
     [conversationUserIds, friendships.friends],
   );
-  const isSystemSelected = selectedId === SYSTEM_CONVERSATION_ID;
+  const selectedNotificationConfig = NOTIFICATION_CHANNELS.find((item) => item.id === selectedId) ?? null;
+  const selectedNotifications = selectedNotificationConfig ? channelNotifications[selectedNotificationConfig.channel] : [];
+  const isNotificationSelected = Boolean(selectedNotificationConfig);
   const draft = selectedId ? drafts[selectedId] ?? "" : "";
   const pendingAttachments = selectedId ? pendingAttachmentsByConversation[selectedId] ?? [] : [];
   const unreadMessages = conversations.reduce((total, item) => total + item.unreadCount, 0);
-  const unreadNotifications = systemNotifications.filter((item) => !item.readAt).length;
+  const unreadNotifications = notifications.filter((item) => item.type !== "friend_request_received" && !item.readAt).length;
+  const selectedUnreadNotifications = selectedNotifications.filter((item) => !item.readAt).length;
   const dockUnreadCount = unreadMessages + unreadNotifications + friendships.incoming.length;
+  const primaryEntries = useMemo(() => [
+    ...conversations.map((conversation) => ({ kind: "conversation" as const, id: conversation.id, activityAt: conversation.lastMessage?.createdAt ?? conversation.updatedAt, conversation })),
+    ...NOTIFICATION_CHANNELS.map((config) => ({ kind: "notification" as const, id: config.id, activityAt: channelNotifications[config.channel][0]?.updatedAt ?? channelNotifications[config.channel][0]?.createdAt ?? "", config })),
+  ].sort((left, right) => timestamp(right.activityAt) - timestamp(left.activityAt)), [channelNotifications, conversations]);
   const userId = user?.id ?? 0;
   const closeAttachmentPreview = useCallback(() => setPreviewAttachment(null), []);
 
@@ -275,9 +293,9 @@ export function ChatDock() {
       setFriendships(friendshipResult);
       setNotifications(notificationResult.items);
       setSelectedId((current) => {
-        if (current === SYSTEM_CONVERSATION_ID) return current;
+        if (NOTIFICATION_CHANNELS.some((item) => item.id === current)) return current;
         if (current && conversationResult.items.some((item) => item.id === current)) return current;
-        return conversationResult.items[0]?.id ?? SYSTEM_CONVERSATION_ID;
+        return defaultPrimaryId(conversationResult.items, notificationResult.items);
       });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "消息数据加载失败。");
@@ -309,7 +327,7 @@ export function ChatDock() {
       setIsMinimized(false);
       if (detail.tab === "friends") setIsMobileConversationOpen(false);
       if (detail.systemNotificationId) {
-        setSelectedId(SYSTEM_CONVERSATION_ID);
+        setSelectedId(notificationConversationId(detail.notificationChannel ?? "system"));
         setSelectedSystemNotificationId(detail.systemNotificationId);
         setIsMobileConversationOpen(true);
         return;
@@ -350,14 +368,14 @@ export function ChatDock() {
   }, []);
 
   useEffect(() => {
-    if (!isSystemSelected || !selectedSystemNotificationId || !isOpen || isMinimized) return;
+    if (!isNotificationSelected || !selectedSystemNotificationId || !isOpen || isMinimized) return;
     window.requestAnimationFrame(() => {
       const item = systemMessageListRef.current?.querySelector<HTMLElement>(
         `[data-notification-id="${selectedSystemNotificationId}"]`,
       );
       item?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
-  }, [isMinimized, isOpen, isSystemSelected, selectedSystemNotificationId]);
+  }, [isMinimized, isNotificationSelected, isOpen, selectedSystemNotificationId]);
 
   useEffect(() => {
     if (!openFriendActionId) return;
@@ -684,9 +702,10 @@ export function ChatDock() {
       setIsMobileConversationOpen(false);
       return;
     }
-    setSelectedId(SYSTEM_CONVERSATION_ID);
+    setSelectedId(notificationConversationId(notification.channel));
     setSelectedSystemNotificationId(notification.id);
     setIsMobileConversationOpen(true);
+    if (notification.channel !== "system" && notification.actionUrl) router.push(notification.actionUrl);
   }
 
   async function executeFriendAction() {
@@ -729,9 +748,10 @@ export function ChatDock() {
     const token = readAccessToken();
     if (!token) return;
     try {
-      await markAllNotificationsRead(token);
+      if (!selectedNotificationConfig) return;
+      await markAllNotificationsRead(token, selectedNotificationConfig.channel);
       const readAt = new Date().toISOString();
-      setNotifications((current) => current.map((item) => ({ ...item, readAt: item.readAt ?? readAt })));
+      setNotifications((current) => current.map((item) => item.channel === selectedNotificationConfig.channel ? { ...item, readAt: item.readAt ?? readAt } : item));
       notifySocialStateChange();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "通知状态更新失败。");
@@ -840,7 +860,7 @@ export function ChatDock() {
             >
               <ChevronLeft aria-hidden="true" size={19} />
             </button> : null}
-          <span><MessageCircleMore aria-hidden="true" size={18} /><strong>{isSystemSelected ? "系统消息" : selected?.user.nickname ?? "消息"}</strong></span>
+          <span><MessageCircleMore aria-hidden="true" size={18} /><strong>{selectedNotificationConfig?.label ?? selected?.user.nickname ?? "消息"}</strong></span>
           <div>
             <button aria-label="最小化聊天窗" onClick={() => setIsMinimized(true)} type="button"><Minus aria-hidden="true" size={17} /></button>
             <button aria-label="关闭聊天窗" onClick={closeDock} type="button"><X aria-hidden="true" size={17} /></button>
@@ -851,11 +871,26 @@ export function ChatDock() {
             <div className="chat-dock-sidebar-content">
               {isLoading ? <span className="chat-state">正在读取。</span> : null}
               <div className="chat-unified-list">
-                <button className={isSystemSelected ? "chat-sidebar-primary-row active system-conversation" : "chat-sidebar-primary-row system-conversation"} onClick={() => { setSelectedId(SYSTEM_CONVERSATION_ID); setSelectedSystemNotificationId(0); setIsMobileConversationOpen(true); }} type="button">
-                  <span className="chat-system-avatar"><Bell aria-hidden="true" size={17} /></span>
-                  <span><strong>系统消息</strong><small>{systemNotifications[0]?.body ?? "通知会集中显示在这里"}</small></span>
-                  {unreadNotifications ? <b>{formatCount(unreadNotifications)}</b> : null}
-                </button>
+                {primaryEntries.map((entry) => entry.kind === "notification" ? (() => {
+                  const items = channelNotifications[entry.config.channel];
+                  const unreadCount = items.filter((item) => !item.readAt).length;
+                  return <button className={selectedId === entry.id ? "chat-sidebar-primary-row active system-conversation" : "chat-sidebar-primary-row system-conversation"} key={entry.id} onClick={() => { setSelectedId(entry.id); setSelectedSystemNotificationId(0); setIsMobileConversationOpen(true); }} type="button">
+                    <span className={`chat-system-avatar ${entry.config.channel}`}><NotificationChannelIcon channel={entry.config.channel} size={17} /></span>
+                    <span><strong>{entry.config.label}</strong><small>{items[0]?.body ?? entry.config.empty}</small></span>
+                    {unreadCount ? <b>{formatCount(unreadCount)}</b> : null}
+                  </button>;
+                })() : <ChatSidebarContactRow
+                  active={entry.conversation.id === selectedId}
+                  friendship={friendshipByUserId.get(entry.conversation.user.id) ?? null}
+                  key={entry.conversation.id}
+                  menuOpen={openFriendActionId === (friendshipByUserId.get(entry.conversation.user.id)?.id ?? 0)}
+                  onAction={(friendship, action) => { setPendingFriendAction({ friendship, action }); setOpenFriendActionId(0); }}
+                  onOpen={() => { setSelectedId(entry.conversation.id); setIsMobileConversationOpen(true); }}
+                  onToggleMenu={(friendshipId) => setOpenFriendActionId((current) => current === friendshipId ? 0 : friendshipId)}
+                  preview={getConversationPreview(entry.conversation)}
+                  unreadCount={entry.conversation.unreadCount}
+                  user={entry.conversation.user}
+                />)}
 
                 {friendships.incoming.length ? <section className="chat-sidebar-section friend-request-list">
                   <h2><UserPlus aria-hidden="true" size={14} />好友申请 <b>{friendships.incoming.length}</b></h2>
@@ -868,21 +903,6 @@ export function ChatDock() {
                     </div>
                   ))}
                 </section> : null}
-
-                {conversations.map((conversation) => (
-                  <ChatSidebarContactRow
-                    active={conversation.id === selectedId}
-                    friendship={friendshipByUserId.get(conversation.user.id) ?? null}
-                    key={conversation.id}
-                    menuOpen={openFriendActionId === (friendshipByUserId.get(conversation.user.id)?.id ?? 0)}
-                    onAction={(friendship, action) => { setPendingFriendAction({ friendship, action }); setOpenFriendActionId(0); }}
-                    onOpen={() => { setSelectedId(conversation.id); setIsMobileConversationOpen(true); }}
-                    onToggleMenu={(friendshipId) => setOpenFriendActionId((current) => current === friendshipId ? 0 : friendshipId)}
-                    preview={getConversationPreview(conversation)}
-                    unreadCount={conversation.unreadCount}
-                    user={conversation.user}
-                  />
-                ))}
 
                 {friendsWithoutConversation.map((friendship) => (
                   <ChatSidebarContactRow
@@ -913,14 +933,16 @@ export function ChatDock() {
               </div>
             </div>
           </aside>
-          <main className={`chat-panel${isSystemSelected ? " system-selected" : ""}`}>
-            {isSystemSelected ? <SystemNotificationPanel
-              notifications={systemNotifications}
+          <main className={`chat-panel${isNotificationSelected ? " system-selected" : ""}`}>
+            {selectedNotificationConfig ? <NotificationPanel
+              channel={selectedNotificationConfig.channel}
+              emptyText={selectedNotificationConfig.empty}
+              notifications={selectedNotifications}
               onMarkAllRead={readAllNotifications}
               onOpenArticle={(slug) => router.push(`/articles/${slug}`)}
               onSelect={handleNotification}
               selectedId={selectedSystemNotificationId}
-              unreadCount={unreadNotifications}
+              unreadCount={selectedUnreadNotifications}
               listRef={systemMessageListRef}
             /> : selected ? <>
               <div className="chat-message-list" ref={messageListRef}>
@@ -983,7 +1005,9 @@ function ChatSidebarContactRow({ active, friendship, menuOpen, preview, unreadCo
   </div>;
 }
 
-function SystemNotificationPanel({ notifications, selectedId, unreadCount, listRef, onMarkAllRead, onOpenArticle, onSelect }: {
+function NotificationPanel({ channel, emptyText, notifications, selectedId, unreadCount, listRef, onMarkAllRead, onOpenArticle, onSelect }: {
+  channel: NotificationChannel;
+  emptyText: string;
   notifications: SocialNotification[];
   selectedId: number;
   unreadCount: number;
@@ -998,17 +1022,17 @@ function SystemNotificationPanel({ notifications, selectedId, unreadCount, listR
       {notifications.length ? notifications.map((notification) => (
         <article className={`${notification.readAt ? "" : "unread"}${selectedId === notification.id ? " selected" : ""}`} data-notification-id={notification.id} key={notification.id}>
           <button className="chat-system-notification-main" onClick={() => void onSelect(notification)} type="button">
-            <span className="chat-system-notification-icon"><Bell aria-hidden="true" size={17} /></span>
+            <span className="chat-system-notification-icon"><NotificationChannelIcon channel={channel} size={17} /></span>
             <span>
               <strong>{notification.title}</strong>
               <small>{notification.body}</small>
-              {notification.context?.kind === "comment_report" ? <q>{notification.context.commentBody}</q> : null}
-              <time>{formatChatTime(notification.createdAt)}</time>
+              {notification.context?.commentBody ? <q>{notification.context.commentBody}</q> : null}
+              <time>{formatChatTime(notification.updatedAt || notification.createdAt)}</time>
             </span>
           </button>
-          {notification.context?.kind === "comment_report" ? <button className="chat-system-article-link" onClick={() => onOpenArticle(notification.context!.article.slug)} type="button"><FileText aria-hidden="true" size={15} /><span><small>相关文章</small><strong>{notification.context.article.title}</strong></span><ChevronLeft aria-hidden="true" size={15} /></button> : null}
+          {notification.context?.article ? <button className="chat-system-article-link" onClick={() => onOpenArticle(notification.context!.article.slug)} type="button"><FileText aria-hidden="true" size={15} /><span><small>相关文章</small><strong>{notification.context.article.title}</strong></span><ChevronLeft aria-hidden="true" size={15} /></button> : null}
         </article>
-      )) : <div className="chat-empty"><Bell aria-hidden="true" size={26} /><strong>暂时没有系统消息</strong><span>好友申请结果和内容处理通知会显示在这里。</span></div>}
+      )) : <div className="chat-empty"><NotificationChannelIcon channel={channel} size={26} /><strong>暂时没有消息</strong><span>{emptyText}</span></div>}
     </div>
   </div>;
 }
@@ -1098,6 +1122,29 @@ function AttachmentPreview({ attachment, onClose }: { attachment: ChatAttachment
 function UserAvatar({ user, large = false }: { user: SocialUser; large?: boolean }) {
   const avatar = user.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
   return <span className={`chat-user-avatar${large ? " large" : ""}`}>{avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText(user)}</span>;
+}
+
+function NotificationChannelIcon({ channel, size }: { channel: NotificationChannel; size: number }) {
+  if (channel === "subscription") return <Rss aria-hidden="true" size={size} />;
+  if (channel === "interaction") return <Heart aria-hidden="true" size={size} />;
+  return <Bell aria-hidden="true" size={size} />;
+}
+
+function notificationConversationId(channel: NotificationChannel): number {
+  return NOTIFICATION_CHANNELS.find((item) => item.channel === channel)?.id ?? -1;
+}
+
+function timestamp(value: string | null | undefined): number {
+  if (!value) return 0;
+  const valueOf = new Date(value).getTime();
+  return Number.isNaN(valueOf) ? 0 : valueOf;
+}
+
+function defaultPrimaryId(conversations: Conversation[], notifications: SocialNotification[]): number {
+  const latestConversation = conversations.map((conversation) => ({ id: conversation.id, at: timestamp(conversation.lastMessage?.createdAt ?? conversation.updatedAt) })).sort((left, right) => right.at - left.at)[0];
+  const latestNotification = notifications.filter((notification) => notification.type !== "friend_request_received").map((notification) => ({ id: notificationConversationId(notification.channel), at: timestamp(notification.updatedAt || notification.createdAt) })).sort((left, right) => right.at - left.at)[0];
+  if (latestNotification && (!latestConversation || latestNotification.at > latestConversation.at)) return latestNotification.id;
+  return latestConversation?.id ?? notificationConversationId("system");
 }
 
 function getConversationPreview(conversation: Conversation): string {

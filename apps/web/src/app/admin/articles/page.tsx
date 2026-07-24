@@ -171,13 +171,21 @@ function AdminArticlesWorkspace() {
     // Initial route hydration starts the protected article workspace.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     Promise.all([getMe(token), loadArticles(token, 1, ""), loadReportQueue(token)])
-      .then(([currentUser, articleResult]) => {
+      .then(([currentUser, articleResult, reportResult]) => {
         if (!currentUser.isSuperAdmin && currentUser.role.level < 90) {
           window.location.href = "/";
           return;
         }
         setUser(currentUser);
         initializedRef.current = true;
+        if (requestedReportId > 0) {
+          const requestedReport = reportResult.items.find((report) => report.id === requestedReportId);
+          if (requestedReport) {
+            lastLocatedReportIdRef.current = requestedReportId;
+            void locateReportedComment(requestedReport);
+            return;
+          }
+        }
         if (requestedReportId <= 0 && requestedTab === "comments" && articleResult.items[0]) {
           setActiveTab("comments");
           void loadComments(token, articleResult.items[0].id);

@@ -81,7 +81,19 @@ enum UserNotificationType {
   comment_report_resolved
   comment_report_rejected
   comment_author_moderated
+  article_liked
+  article_favorited
+  article_commented
+  comment_replied
+  author_subscribed
+  subscription_published
   system
+}
+
+enum UserNotificationChannel {
+  system
+  subscription
+  interaction
 }
 
 enum ChatMessageType {
@@ -159,6 +171,8 @@ model User {
   chatAttachments         ChatAttachment[]       @relation("ChatAttachmentUploader")
   notifications           UserNotification[]     @relation("UserNotificationRecipient")
   notificationActions     UserNotification[]     @relation("UserNotificationActor")
+  subscriptionsGiven      UserSubscription[]     @relation("UserSubscriptionSubscriber")
+  subscriptionsReceived   UserSubscription[]     @relation("UserSubscriptionAuthor")
 
   @@index([roleId])
   @@map("users")
@@ -269,6 +283,7 @@ model Article {
   likes         ArticleLike[]
   favorites     ArticleFavorite[]
   views         ArticleView[]
+  notifications UserNotification[]
   createdAt     DateTime             @default(now()) @map("created_at")
   updatedAt     DateTime             @updatedAt @map("updated_at")
 
@@ -318,6 +333,7 @@ model ArticleComment {
   likeCount Int                    @default(0) @map("like_count")
   likes     ArticleCommentLike[]
   reports   ArticleCommentReport[]
+  notifications UserNotification[]
   createdAt DateTime               @default(now()) @map("created_at")
   updatedAt DateTime               @updatedAt @map("updated_at")
 
@@ -399,6 +415,18 @@ model ArticleView {
   @@unique([articleId, visitorKey, viewedOn])
   @@index([articleId, createdAt])
   @@map("article_views")
+}
+
+model UserSubscription {
+  subscriberId Int      @map("subscriber_id")
+  subscriber   User     @relation("UserSubscriptionSubscriber", fields: [subscriberId], references: [id], onDelete: Cascade)
+  authorId     Int      @map("author_id")
+  author       User     @relation("UserSubscriptionAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@id([subscriberId, authorId])
+  @@index([authorId, createdAt])
+  @@map("user_subscriptions")
 }
 
 model Friendship {
@@ -487,17 +515,27 @@ model UserNotification {
   actorId         Int?                  @map("actor_id")
   actor           User?                 @relation("UserNotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
   type            UserNotificationType
+  channel         UserNotificationChannel @default(system)
   title           String                @db.VarChar(120)
   body            String                @db.VarChar(500)
   actionUrl       String?               @map("action_url") @db.VarChar(512)
+  articleId       Int?                  @map("article_id")
+  article         Article?              @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  commentId       Int?                  @map("comment_id")
+  comment         ArticleComment?       @relation(fields: [commentId], references: [id], onDelete: SetNull)
   friendshipId    Int?                  @map("friendship_id")
   friendship      Friendship?           @relation(fields: [friendshipId], references: [id], onDelete: SetNull)
   commentReportId Int?                  @map("comment_report_id")
   commentReport   ArticleCommentReport? @relation(fields: [commentReportId], references: [id], onDelete: SetNull)
+  aggregateCount  Int                   @default(1) @map("aggregate_count")
   readAt          DateTime?             @map("read_at")
   createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
 
-  @@index([userId, readAt, id])
+  @@index([userId, channel, readAt, id])
+  @@index([userId, type, articleId, readAt])
+  @@index([articleId])
+  @@index([commentId])
   @@index([friendshipId])
   @@index([commentReportId])
   @@map("user_notifications")

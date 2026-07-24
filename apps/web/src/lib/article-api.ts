@@ -102,6 +102,7 @@ export interface ArticleMineSummary {
 
 export interface ArticleCenterSummary {
   discover: number;
+  subscriptions: number;
   mine: number;
   favorites: number;
   liked: number;
@@ -203,6 +204,10 @@ export function listLikedArticles(accessToken: string, query?: Parameters<typeof
     cache: "no-store",
     headers: authHeaders(accessToken),
   });
+}
+
+export function listSubscribedArticles(accessToken: string, query?: Parameters<typeof listQuery>[0]): Promise<ArticleList> {
+  return requestJson<ArticleList>(`/articles/subscriptions${listQuery(query)}`, { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
 export function listAdminArticles(accessToken: string, query?: Parameters<typeof listQuery>[0]): Promise<ArticleList> {

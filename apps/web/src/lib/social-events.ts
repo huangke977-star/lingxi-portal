@@ -6,6 +6,7 @@ export interface ChatDockOpenDetail {
   conversationId?: number;
   userId?: number;
   systemNotificationId?: number;
+  notificationChannel?: "system" | "subscription" | "interaction";
   tab?: "chats" | "friends";
 }
 

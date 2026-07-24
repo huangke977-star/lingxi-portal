@@ -82,3 +82,10 @@ Statistics are read-only by default. If correction is needed later, only the sup
 ## Future Extensions
 
 Articles and stable documentation pages can share the same content foundation. Future extensions may include announcements, tutorials, knowledge bases, notifications, and richer analytics.
+
+## Author Subscriptions
+
+- The article center adds a Subscriptions tab after Discover. It lists readable articles from subscribed authors and reuses search, twelve-item pages, and infinite append behavior.
+- Article details place the author-subscription action beside Like and Favorite. Authors do not see a subscribe action on their own articles.
+- Author avatars on Discover cards are independent interactive targets. They open the public-profile popover, friend-request flow, or an existing friend conversation without interfering with card navigation.
+- The article-center summary includes the subscription-feed count for its navigation badge.

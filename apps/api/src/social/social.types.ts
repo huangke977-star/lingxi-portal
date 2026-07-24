@@ -25,6 +25,8 @@ export interface FriendshipResponse {
 
 export interface PublicProfileResponse extends SocialUserResponse {
   isSelf: boolean;
+  subscribed: boolean;
+  subscriberCount: number;
   relationship: Omit<FriendshipResponse, "user" | "createdAt" | "updatedAt"> | null;
 }
 
@@ -73,7 +75,14 @@ export interface UserNotificationResponse {
     | "comment_report_resolved"
     | "comment_report_rejected"
     | "comment_author_moderated"
+    | "article_liked"
+    | "article_favorited"
+    | "article_commented"
+    | "comment_replied"
+    | "author_subscribed"
+    | "subscription_published"
     | "system";
+  channel: "system" | "subscription" | "interaction";
   title: string;
   body: string;
   actionUrl: string | null;
@@ -81,12 +90,14 @@ export interface UserNotificationResponse {
   commentReportId: number | null;
   actor: SocialUserResponse | null;
   context: {
-    kind: "comment_report";
-    commentId: number;
-    commentBody: string;
-    commentStatus: string;
+    kind: "comment_report" | "article" | "article_comment";
     article: { id: number; title: string; slug: string };
+    commentId?: number;
+    commentBody?: string;
+    commentStatus?: string;
   } | null;
+  aggregateCount: number;
   readAt: string | null;
   createdAt: string;
+  updatedAt: string;
 }

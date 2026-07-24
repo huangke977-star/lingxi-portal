@@ -107,6 +107,7 @@ export interface ArticleMineSummaryResponse {
 
 export interface ArticleCenterSummaryResponse {
   discover: number;
+  subscriptions: number;
   mine: number;
   favorites: number;
   liked: number;

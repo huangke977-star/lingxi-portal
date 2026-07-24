@@ -64,4 +64,8 @@ export class ListNotificationsQueryDto {
   @Min(1)
   @Max(50)
   limit = 20;
+
+  @IsOptional()
+  @IsIn(["system", "subscription", "interaction"])
+  channel?: "system" | "subscription" | "interaction";
 }

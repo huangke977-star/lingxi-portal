@@ -154,6 +154,8 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
     profileBio: "登录后可查看公开资料并进行互动。",
     createdAt: "",
     isSelf: false,
+    subscribed: false,
+    subscriberCount: 0,
     relationship: null,
   };
 
@@ -183,6 +185,7 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
           </div>
           <p>{displayProfile.profileBio}</p>
           {displayProfile.createdAt ? <span className="public-profile-since"><Clock3 aria-hidden="true" size={14} />加入于 {new Date(displayProfile.createdAt).toLocaleDateString("zh-CN")}</span> : null}
+          {profile ? <span className="public-profile-since">{profile.subscriberCount} 人订阅</span> : null}
           {isLoading ? <span className="public-profile-state">正在读取公开资料。</span> : null}
           {error ? <span className="public-profile-error">{error}</span> : null}
           <div className="public-profile-actions">

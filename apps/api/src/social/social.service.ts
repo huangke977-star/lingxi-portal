@@ -8,6 +8,7 @@ import {
   ChatMessageType,
   FriendshipStatus,
   Prisma,
+  UserNotificationChannel,
   UserNotificationType,
 } from "../generated/prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -54,6 +55,15 @@ type MessageRecord = Prisma.ChatMessageGetPayload<{ include: typeof messageInclu
 
 const notificationInclude = {
   actor: { select: socialUserSelect },
+  article: { select: { id: true, title: true, slug: true } },
+  comment: {
+    select: {
+      id: true,
+      body: true,
+      status: true,
+      article: { select: { id: true, title: true, slug: true } },
+    },
+  },
   commentReport: {
     select: {
       comment: {
@@ -82,12 +92,21 @@ export class SocialService {
     if (!target || target.status !== "active") {
       throw new NotFoundException("用户不存在或当前不可查看。");
     }
-    const relationship = viewer.id === userId
-      ? null
-      : await this.findFriendship(viewer.id, userId);
+    const [relationship, subscription, subscriberCount] = await Promise.all([
+      viewer.id === userId ? Promise.resolve(null) : this.findFriendship(viewer.id, userId),
+      viewer.id === userId
+        ? Promise.resolve(null)
+        : this.prisma.userSubscription.findUnique({
+            where: { subscriberId_authorId: { subscriberId: viewer.id, authorId: userId } },
+            select: { authorId: true },
+          }),
+      this.prisma.userSubscription.count({ where: { authorId: userId } }),
+    ]);
     return {
       ...this.toSocialUser(target),
       isSelf: viewer.id === userId,
+      subscribed: Boolean(subscription),
+      subscriberCount,
       relationship: relationship && (
         relationship.status === FriendshipStatus.pending ||
         relationship.status === FriendshipStatus.accepted ||
@@ -101,6 +120,37 @@ export class SocialService {
           }
         : null,
     };
+  }
+
+  async subscribe(user: AuthenticatedUser, authorId: number): Promise<{ subscribed: true; subscriberCount: number }> {
+    if (user.id === authorId) throw new BadRequestException("不能订阅自己。");
+    const author = await this.prisma.user.findUnique({ where: { id: authorId }, select: { id: true, status: true } });
+    if (!author || author.status !== "active") throw new NotFoundException("用户不存在或当前不可订阅。");
+    const friendship = await this.findFriendship(user.id, authorId);
+    if (friendship?.status === FriendshipStatus.blocked) throw new ForbiddenException("当前无法订阅该用户。");
+    const existing = await this.prisma.userSubscription.findUnique({
+      where: { subscriberId_authorId: { subscriberId: user.id, authorId } },
+      select: { authorId: true },
+    });
+    if (!existing) {
+      await this.prisma.$transaction([
+        this.prisma.userSubscription.create({ data: { subscriberId: user.id, authorId } }),
+        this.prisma.userNotification.create({ data: {
+          userId: authorId,
+          actorId: user.id,
+          type: UserNotificationType.author_subscribed,
+          channel: UserNotificationChannel.interaction,
+          title: "新的订阅者",
+          body: `${user.nickname || user.username} 订阅了你。`,
+        } }),
+      ]);
+    }
+    return { subscribed: true, subscriberCount: await this.prisma.userSubscription.count({ where: { authorId } }) };
+  }
+
+  async unsubscribe(user: AuthenticatedUser, authorId: number): Promise<{ subscribed: false; subscriberCount: number }> {
+    await this.prisma.userSubscription.deleteMany({ where: { subscriberId: user.id, authorId } });
+    return { subscribed: false, subscriberCount: await this.prisma.userSubscription.count({ where: { authorId } }) };
   }
 
   async listFriendships(user: AuthenticatedUser): Promise<{
@@ -304,6 +354,12 @@ export class SocialService {
         },
         data: { readAt: now },
       }),
+      this.prisma.userSubscription.deleteMany({
+        where: { OR: [
+          { subscriberId: friendship.userOneId, authorId: friendship.userTwoId },
+          { subscriberId: friendship.userTwoId, authorId: friendship.userOneId },
+        ] },
+      }),
     ]);
     return { success: true };
   }
@@ -497,6 +553,7 @@ export class SocialService {
     const notifications = await this.prisma.userNotification.findMany({
       where: {
         userId: user.id,
+        ...(query.channel ? { channel: query.channel as UserNotificationChannel } : {}),
         ...(query.beforeId ? { id: { lt: query.beforeId } } : {}),
       },
       orderBy: [{ id: "desc" }],
@@ -525,10 +582,10 @@ export class SocialService {
     return this.toNotification(notification);
   }
 
-  async markAllNotificationsRead(user: AuthenticatedUser): Promise<{ count: number; readAt: string }> {
+  async markAllNotificationsRead(user: AuthenticatedUser, channel?: "system" | "subscription" | "interaction"): Promise<{ count: number; readAt: string }> {
     const readAt = new Date();
     const result = await this.prisma.userNotification.updateMany({
-      where: { userId: user.id, readAt: null },
+      where: { userId: user.id, readAt: null, ...(channel ? { channel: channel as UserNotificationChannel } : {}) },
       data: { readAt },
     });
     return { count: result.count, readAt: readAt.toISOString() };
@@ -651,6 +708,7 @@ export class SocialService {
     return {
       id: notification.id,
       type: notification.type,
+      channel: notification.channel,
       title: notification.title,
       body: notification.body,
       actionUrl: notification.actionUrl,
@@ -663,9 +721,17 @@ export class SocialService {
         commentBody: notification.commentReport.comment.body,
         commentStatus: notification.commentReport.comment.status,
         article: notification.commentReport.comment.article,
-      } : null,
+      } : notification.comment ? {
+        kind: "article_comment",
+        commentId: notification.comment.id,
+        commentBody: notification.comment.body,
+        commentStatus: notification.comment.status,
+        article: notification.comment.article,
+      } : notification.article ? { kind: "article", article: notification.article } : null,
+      aggregateCount: notification.aggregateCount,
       readAt: notification.readAt?.toISOString() ?? null,
       createdAt: notification.createdAt.toISOString(),
+      updatedAt: notification.updatedAt.toISOString(),
     };
   }
 }

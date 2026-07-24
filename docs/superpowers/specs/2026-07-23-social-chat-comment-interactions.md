@@ -56,3 +56,12 @@ Add author deletion, a shared comment composer, comment likes, report moderation
 ## Resource Boundary
 
 The current server has 2 vCPU and 2 GiB RAM. The first release targets tens of concurrent online users. Pagination, connection limits, and send-rate limits protect API memory, MySQL write load, and network buffers.
+
+## Subscriptions and Interaction Notifications
+
+- Persistent notifications are split into System Messages, Subscription Updates, and Interaction Messages pseudo-conversations. They are sorted with real conversations by latest activity, so System Messages is no longer pinned.
+- Subscriptions are one-way author relationships. A user cannot subscribe to themselves; blocking removes subscriptions in both directions and prevents resubscription.
+- Only the first publication broadcasts a Subscription Update, and only to subscribers who can read that article. Editing, saving, unpublishing, or republishing does not duplicate the broadcast.
+- Article likes and favorites aggregate into one unread notification per article and type. Comments, replies, and new subscribers remain individual notifications, and self-notifications are suppressed.
+- Interaction notifications retain article and comment context. Comment and reply notifications target the exact comment, while likes, favorites, and publication updates target the article.
+- Each notification channel can be marked read independently. The header message entry opens the matching channel and notification.

@@ -14,6 +14,7 @@ import {
   ArticleStatus,
   ArticleVisibility,
   Prisma,
+  UserNotificationChannel,
   UserNotificationType,
 } from "../generated/prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -197,8 +198,13 @@ export class ArticlesService {
   ): Promise<ArticleCenterSummaryResponse> {
     const visibleWhere = this.buildWhere(new ListArticlesQueryDto(), user, false, false);
     const canManage = Boolean(user?.isSuperAdmin || (user?.role.level ?? 0) >= 90);
-    const [discover, mine, favorites, liked, manage] = await Promise.all([
+    const subscriptionWhere: Prisma.ArticleWhereInput = user ? { AND: [
+      visibleWhere,
+      { author: { is: { subscriptionsReceived: { some: { subscriberId: user.id } } } } },
+    ] } : { id: -1 };
+    const [discover, subscriptions, mine, favorites, liked, manage] = await Promise.all([
       this.prisma.article.count({ where: visibleWhere }),
+      user ? this.prisma.article.count({ where: subscriptionWhere }) : Promise.resolve(0),
       user
         ? this.prisma.article.count({
             where: { authorId: user.id, status: { not: ArticleStatus.deleted } },
@@ -217,7 +223,7 @@ export class ArticlesService {
       canManage ? this.prisma.article.count() : Promise.resolve(0),
     ]);
 
-    return { discover, mine, favorites, liked, manage };
+    return { discover, subscriptions, mine, favorites, liked, manage };
   }
 
   listMine(query: ListArticlesQueryDto, user: AuthenticatedUser): Promise<ArticleListResponse> {
@@ -230,6 +236,14 @@ export class ArticlesService {
 
   listLiked(query: ListArticlesQueryDto, user: AuthenticatedUser): Promise<ArticleListResponse> {
     return this.listInteractedArticles(query, user, "like");
+  }
+
+  async listSubscriptions(query: ListArticlesQueryDto, user: AuthenticatedUser): Promise<ArticleListResponse> {
+    const where: Prisma.ArticleWhereInput = { AND: [
+      this.buildWhere(query, user, false, false),
+      { author: { is: { subscriptionsReceived: { some: { subscriberId: user.id } } } } },
+    ] };
+    return this.listArticlesByWhere(query, user, where);
   }
 
   async getMineSummary(user: AuthenticatedUser): Promise<ArticleMineSummaryResponse> {
@@ -320,11 +334,12 @@ export class ArticlesService {
     const visibility = dto.visibility ?? ArticleVisibility.public;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
     const status = this.normalizeAuthorStatus(dto.status);
-    const article = await this.prisma.article.create({
-      data: {
+    const slug = await this.createUniqueSlug(title);
+    const article = await this.prisma.$transaction(async (transaction) => {
+      const created = await transaction.article.create({ data: {
         authorId: user.id,
         title,
-        slug: await this.createUniqueSlug(title),
+        slug,
         summary: dto.summary?.trim() ?? "",
         content,
         category: dto.category?.trim() ?? "",
@@ -334,8 +349,9 @@ export class ArticlesService {
         status,
         publishedAt: status === ArticleStatus.published ? new Date() : null,
         allowedRoles: { create: roles.map((role) => ({ roleId: role.id })) },
-      },
-      include: articleInclude,
+      }, include: articleInclude });
+      if (status === ArticleStatus.published) await this.notifySubscribersOfPublication(transaction, created);
+      return created;
     });
     return this.toResponse(article, user.id);
   }
@@ -352,9 +368,9 @@ export class ArticlesService {
     const status = existing.status === ArticleStatus.blocked && !this.canManageContent(user)
       ? ArticleStatus.blocked
       : requestedStatus;
-    const article = await this.prisma.article.update({
-      where: { id },
-      data: {
+    const isFirstPublication = status === ArticleStatus.published && existing.publishedAt === null;
+    const article = await this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.article.update({ where: { id }, data: {
         title: dto.title?.trim() || existing.title,
         summary: dto.summary === undefined ? existing.summary : dto.summary.trim(),
         content: dto.content === undefined ? existing.content : dto.content.trim(),
@@ -373,8 +389,9 @@ export class ArticlesService {
           deleteMany: {},
           create: roles.map((role) => ({ roleId: role.id })),
         },
-      },
-      include: articleInclude,
+      }, include: articleInclude });
+      if (isFirstPublication) await this.notifySubscribersOfPublication(transaction, updated);
+      return updated;
     });
     return this.toResponse(article, user.id);
   }
@@ -388,10 +405,15 @@ export class ArticlesService {
     if (!existing.title.trim() || !existing.content.trim()) {
       throw new BadRequestException("文章标题和正文不能为空。");
     }
-    const article = await this.prisma.article.update({
-      where: { id },
-      data: { status: ArticleStatus.published, publishedAt: new Date(), blockedReason: null },
-      include: articleInclude,
+    const isFirstPublication = existing.publishedAt === null;
+    const article = await this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.article.update({
+        where: { id },
+        data: { status: ArticleStatus.published, publishedAt: existing.publishedAt ?? new Date(), blockedReason: null },
+        include: articleInclude,
+      });
+      if (isFirstPublication) await this.notifySubscribersOfPublication(transaction, updated);
+      return updated;
     });
     return this.toResponse(article, user.id);
   }
@@ -518,13 +540,17 @@ export class ArticlesService {
   }
 
   async toggleLike(id: number, user: AuthenticatedUser, liked: boolean): Promise<ArticleInteractionResponse> {
-    await this.assertArticleInteractionAllowed(id, user);
+    const target = await this.assertArticleInteractionAllowed(id, user);
     const existing = await this.prisma.articleLike.findUnique({ where: { articleId_userId: { articleId: id, userId: user.id } } });
     if (liked && !existing) {
-      await this.prisma.$transaction([
-        this.prisma.articleLike.create({ data: { articleId: id, userId: user.id } }),
-        this.prisma.article.update({ where: { id }, data: { likeCount: { increment: 1 } } }),
-      ]);
+      await this.prisma.$transaction(async (transaction) => {
+        await transaction.articleLike.create({ data: { articleId: id, userId: user.id } });
+        await transaction.article.update({ where: { id }, data: { likeCount: { increment: 1 } } });
+        if (target.authorId !== user.id) await this.createAggregatedArticleNotification(transaction, {
+          article: target, actor: user, recipientId: target.authorId,
+          type: UserNotificationType.article_liked, verb: "点赞了",
+        });
+      });
     } else if (!liked && existing) {
       await this.prisma.$transaction([
         this.prisma.articleLike.delete({ where: { articleId_userId: { articleId: id, userId: user.id } } }),
@@ -536,13 +562,17 @@ export class ArticlesService {
   }
 
   async toggleFavorite(id: number, user: AuthenticatedUser, favorited: boolean): Promise<ArticleInteractionResponse> {
-    await this.assertArticleInteractionAllowed(id, user);
+    const target = await this.assertArticleInteractionAllowed(id, user);
     const existing = await this.prisma.articleFavorite.findUnique({ where: { articleId_userId: { articleId: id, userId: user.id } } });
     if (favorited && !existing) {
-      await this.prisma.$transaction([
-        this.prisma.articleFavorite.create({ data: { articleId: id, userId: user.id } }),
-        this.prisma.article.update({ where: { id }, data: { favoriteCount: { increment: 1 } } }),
-      ]);
+      await this.prisma.$transaction(async (transaction) => {
+        await transaction.articleFavorite.create({ data: { articleId: id, userId: user.id } });
+        await transaction.article.update({ where: { id }, data: { favoriteCount: { increment: 1 } } });
+        if (target.authorId !== user.id) await this.createAggregatedArticleNotification(transaction, {
+          article: target, actor: user, recipientId: target.authorId,
+          type: UserNotificationType.article_favorited, verb: "收藏了",
+        });
+      });
     } else if (!favorited && existing) {
       await this.prisma.$transaction([
         this.prisma.articleFavorite.delete({ where: { articleId_userId: { articleId: id, userId: user.id } } }),
@@ -560,8 +590,9 @@ export class ArticlesService {
     if (!body) {
       throw new BadRequestException("评论内容不能为空。");
     }
+    let parent: { id: number; authorId: number } | null = null;
     if (dto.parentId) {
-      const parent = await this.prisma.articleComment.findFirst({ where: { id: dto.parentId, articleId: id, status: ArticleCommentStatus.active }, select: { id: true } });
+      parent = await this.prisma.articleComment.findFirst({ where: { id: dto.parentId, articleId: id, status: ArticleCommentStatus.active }, select: { id: true, authorId: true } });
       if (!parent) {
         throw new BadRequestException("回复的评论不存在。");
       }
@@ -572,6 +603,26 @@ export class ArticlesService {
         select: this.commentSelect(),
       });
       await transaction.article.update({ where: { id }, data: { commentCount: { increment: 1 } } });
+      const actionUrl = `/articles/${article.slug}?commentId=${created.id}`;
+      if (parent) {
+        if (parent.authorId !== user.id) await transaction.userNotification.create({ data: {
+          userId: parent.authorId, actorId: user.id,
+          type: UserNotificationType.comment_replied, channel: UserNotificationChannel.interaction,
+          title: "评论有了新回复", body: `${user.nickname || user.username} 回复了你在《${article.title}》中的评论。`,
+          actionUrl, articleId: article.id, commentId: created.id,
+        } });
+        if (article.authorId !== user.id && article.authorId !== parent.authorId) await transaction.userNotification.create({ data: {
+          userId: article.authorId, actorId: user.id,
+          type: UserNotificationType.article_commented, channel: UserNotificationChannel.interaction,
+          title: "文章有了新回复", body: `${user.nickname || user.username} 回复了《${article.title}》中的评论。`,
+          actionUrl, articleId: article.id, commentId: created.id,
+        } });
+      } else if (article.authorId !== user.id) await transaction.userNotification.create({ data: {
+        userId: article.authorId, actorId: user.id,
+        type: UserNotificationType.article_commented, channel: UserNotificationChannel.interaction,
+        title: "文章有了新评论", body: `${user.nickname || user.username} 评论了《${article.title}》。`,
+        actionUrl, articleId: article.id, commentId: created.id,
+      } });
       return created;
     });
     return this.toCommentResponse(comment);
@@ -665,9 +716,9 @@ export class ArticlesService {
     const visibility = dto.visibility ?? existing.visibility;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? this.roleCodes(existing));
     const status = dto.status ? this.toArticleStatus(dto.status) : undefined;
-    const article = await this.prisma.article.update({
-      where: { id },
-      data: {
+    const isFirstPublication = status === ArticleStatus.published && existing.publishedAt === null;
+    const article = await this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.article.update({ where: { id }, data: {
         status,
         isPinned: dto.isPinned,
         pinOrder: dto.pinOrder,
@@ -679,8 +730,9 @@ export class ArticlesService {
           deleteMany: {},
           create: roles.map((role) => ({ roleId: role.id })),
         },
-      },
-      include: articleInclude,
+      }, include: articleInclude });
+      if (isFirstPublication) await this.notifySubscribersOfPublication(transaction, updated);
+      return updated;
     });
     return this.toResponse(article, actor.id);
   }
@@ -865,6 +917,17 @@ export class ArticlesService {
     };
   }
 
+  private async listArticlesByWhere(query: ListArticlesQueryDto, user: AuthenticatedUser, where: Prisma.ArticleWhereInput): Promise<ArticleListResponse> {
+    const total = await this.prisma.article.count({ where });
+    const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+    const page = Math.min(query.page, totalPages);
+    const items = await this.prisma.article.findMany({
+      where, orderBy: this.orderBy(query, false), skip: (page - 1) * query.pageSize,
+      take: query.pageSize, include: articleInclude,
+    });
+    return { items: items.map((article) => this.toResponse(article, user.id)), total, page, pageSize: query.pageSize, totalPages };
+  }
+
   private async listInteractedArticles(
     query: ListArticlesQueryDto,
     user: AuthenticatedUser,
@@ -996,10 +1059,53 @@ export class ArticlesService {
     }
   }
 
-  private async assertArticleInteractionAllowed(id: number, user: AuthenticatedUser): Promise<void> {
+  private async assertArticleInteractionAllowed(id: number, user: AuthenticatedUser): Promise<ArticleRecord> {
     const article = await this.getArticleOrThrow(id);
     this.assertCanRead(article, user);
     if (article.status !== ArticleStatus.published) throw new BadRequestException("文章当前不能互动。");
+    return article;
+  }
+
+  private async createAggregatedArticleNotification(transaction: Prisma.TransactionClient, input: {
+    article: ArticleRecord;
+    actor: AuthenticatedUser;
+    recipientId: number;
+    type: "article_liked" | "article_favorited";
+    verb: "点赞了" | "收藏了";
+  }): Promise<void> {
+    const existing = await transaction.userNotification.findFirst({
+      where: { userId: input.recipientId, type: input.type, articleId: input.article.id, readAt: null },
+      select: { id: true, aggregateCount: true },
+    });
+    if (existing) await transaction.userNotification.delete({ where: { id: existing.id } });
+    const aggregateCount = (existing?.aggregateCount ?? 0) + 1;
+    const actorName = input.actor.nickname || input.actor.username;
+    await transaction.userNotification.create({ data: {
+      userId: input.recipientId, actorId: input.actor.id, type: input.type,
+      channel: UserNotificationChannel.interaction,
+      title: input.type === UserNotificationType.article_liked ? "文章收到点赞" : "文章被收藏",
+      body: aggregateCount > 1 ? `${actorName} 等 ${aggregateCount} 人${input.verb}《${input.article.title}》。` : `${actorName} ${input.verb}《${input.article.title}》。`,
+      actionUrl: `/articles/${input.article.slug}`, articleId: input.article.id, aggregateCount,
+    } });
+  }
+
+  private async notifySubscribersOfPublication(transaction: Prisma.TransactionClient, article: ArticleRecord): Promise<void> {
+    if (article.visibility === ArticleVisibility.private) return;
+    const roleCodes = article.allowedRoles.map(({ role }) => role.code);
+    const subscriptions = await transaction.userSubscription.findMany({ where: {
+      authorId: article.authorId,
+      subscriber: {
+        status: "active",
+        ...(article.visibility === ArticleVisibility.role_restricted ? { role: { code: { in: roleCodes } } } : {}),
+      },
+    }, select: { subscriberId: true } });
+    if (!subscriptions.length) return;
+    await transaction.userNotification.createMany({ data: subscriptions.map(({ subscriberId }) => ({
+      userId: subscriberId, actorId: article.authorId,
+      type: UserNotificationType.subscription_published, channel: UserNotificationChannel.subscription,
+      title: "订阅作者发布了新内容", body: `${article.author.nickname || article.author.username} 发布了《${article.title}》。`,
+      actionUrl: `/articles/${article.slug}`, articleId: article.id,
+    })) });
   }
 
   private canManageContent(user: AuthenticatedUser): boolean {

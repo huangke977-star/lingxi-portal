@@ -23,8 +23,12 @@ export interface Friendship {
 
 export interface PublicProfile extends SocialUser {
   isSelf: boolean;
+  subscribed: boolean;
+  subscriberCount: number;
   relationship: Pick<Friendship, "id" | "status" | "direction" | "note"> | null;
 }
+
+export type NotificationChannel = "system" | "subscription" | "interaction";
 
 export interface ChatAttachment {
   id: number;
@@ -65,7 +69,14 @@ export interface SocialNotification {
     | "comment_report_resolved"
     | "comment_report_rejected"
     | "comment_author_moderated"
+    | "article_liked"
+    | "article_favorited"
+    | "article_commented"
+    | "comment_replied"
+    | "author_subscribed"
+    | "subscription_published"
     | "system";
+  channel: NotificationChannel;
   title: string;
   body: string;
   actionUrl: string | null;
@@ -73,14 +84,16 @@ export interface SocialNotification {
   commentReportId: number | null;
   actor: SocialUser | null;
   context: {
-    kind: "comment_report";
-    commentId: number;
-    commentBody: string;
-    commentStatus: string;
+    kind: "comment_report" | "article" | "article_comment";
     article: { id: number; title: string; slug: string };
+    commentId?: number;
+    commentBody?: string;
+    commentStatus?: string;
   } | null;
+  aggregateCount: number;
   readAt: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 function authHeaders(accessToken: string) {
@@ -101,6 +114,14 @@ export function requestFriend(accessToken: string, userId: number, note?: string
     headers: authHeaders(accessToken),
     body: JSON.stringify({ note }),
   });
+}
+
+export function subscribeToAuthor(accessToken: string, userId: number): Promise<{ subscribed: true; subscriberCount: number }> {
+  return requestJson(`/social/subscriptions/${userId}`, { method: "POST", headers: authHeaders(accessToken) });
+}
+
+export function unsubscribeFromAuthor(accessToken: string, userId: number): Promise<{ subscribed: false; subscriberCount: number }> {
+  return requestJson(`/social/subscriptions/${userId}`, { method: "DELETE", headers: authHeaders(accessToken) });
 }
 
 export function respondFriendRequest(accessToken: string, friendshipId: number, status: "accepted" | "declined"): Promise<Friendship> {
@@ -127,8 +148,11 @@ export function getSocialSummary(accessToken: string): Promise<{ unreadMessages:
   return requestJson("/social/summary", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
-export function listNotifications(accessToken: string, beforeId?: number): Promise<{ items: SocialNotification[]; hasMore: boolean }> {
-  const query = beforeId ? `?beforeId=${beforeId}&limit=20` : "?limit=20";
+export function listNotifications(accessToken: string, beforeId?: number, channel?: NotificationChannel): Promise<{ items: SocialNotification[]; hasMore: boolean }> {
+  const params = new URLSearchParams({ limit: "50" });
+  if (beforeId) params.set("beforeId", String(beforeId));
+  if (channel) params.set("channel", channel);
+  const query = `?${params}`;
   return requestJson(`/social/notifications${query}`, { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
@@ -136,8 +160,9 @@ export function markNotificationRead(accessToken: string, notificationId: number
   return requestJson<SocialNotification>(`/social/notifications/${notificationId}/read`, { method: "PATCH", headers: authHeaders(accessToken) });
 }
 
-export function markAllNotificationsRead(accessToken: string): Promise<{ count: number; readAt: string }> {
-  return requestJson<{ count: number; readAt: string }>("/social/notifications/read-all", { method: "POST", headers: authHeaders(accessToken) });
+export function markAllNotificationsRead(accessToken: string, channel?: NotificationChannel): Promise<{ count: number; readAt: string }> {
+  const query = channel ? `?channel=${channel}` : "";
+  return requestJson<{ count: number; readAt: string }>(`/social/notifications/read-all${query}`, { method: "POST", headers: authHeaders(accessToken) });
 }
 
 export function listConversations(accessToken: string): Promise<{ items: Conversation[] }> {

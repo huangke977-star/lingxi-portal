@@ -172,9 +172,11 @@ describe("SocialService", () => {
     };
     const friendshipUpdate = jest.fn(async () => ({ ...existing, status: FriendshipStatus.blocked, blockedById: user.id }));
     const notificationUpdate = jest.fn(async () => ({ count: 0 }));
+    const subscriptionDelete = jest.fn(async () => ({ count: 2 }));
     const prisma = {
       friendship: { findUnique: jest.fn(async () => existing), update: friendshipUpdate },
       userNotification: { updateMany: notificationUpdate },
+      userSubscription: { deleteMany: subscriptionDelete },
       $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
     };
     const service = createService(prisma);
@@ -184,6 +186,30 @@ describe("SocialService", () => {
       where: { id: 22 },
       data: expect.objectContaining({ status: FriendshipStatus.blocked, blockedById: user.id }),
     }));
+    expect(subscriptionDelete).toHaveBeenCalledWith({ where: { OR: [
+      { subscriberId: 7, authorId: 8 },
+      { subscriberId: 8, authorId: 7 },
+    ] } });
+  });
+
+  it("creates an author subscription and an interaction notification", async () => {
+    const createSubscription = jest.fn(async () => ({ subscriberId: user.id, authorId: 8 }));
+    const createNotification = jest.fn(async () => ({ id: 41 }));
+    const prisma = {
+      user: { findUnique: jest.fn(async () => ({ id: 8, status: "active" })) },
+      friendship: { findUnique: jest.fn(async () => null) },
+      userSubscription: { findUnique: jest.fn(async () => null), create: createSubscription, count: jest.fn(async () => 3) },
+      userNotification: { create: createNotification },
+      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+    };
+    const service = createService(prisma);
+    await expect(service.subscribe(user, 8)).resolves.toEqual({ subscribed: true, subscriberCount: 3 });
+    expect(createSubscription).toHaveBeenCalledWith({ data: { subscriberId: user.id, authorId: 8 } });
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ userId: 8, actorId: user.id, type: "author_subscribed", channel: "interaction" }) }));
+  });
+
+  it("rejects subscribing to the current account", async () => {
+    await expect(createService({}).subscribe(user, user.id)).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("only lists blacklist entries created by the current user", async () => {

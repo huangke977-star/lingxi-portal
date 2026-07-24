@@ -4616,6 +4616,13 @@ a.entry-item:hover {
   transition: background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
+.article-card-link {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+
 .article-card:hover {
   background: rgba(255, 255, 255, 0.54);
   box-shadow: var(--shadow-soft);
@@ -6112,6 +6119,15 @@ a.entry-item:hover {
   gap: 6px;
 }
 
+.article-card-main,
+.article-card-aside { pointer-events: none; }
+
+.article-card .comment-avatar-button {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
+
 .article-card h2 {
   overflow: hidden;
   margin: 0;
@@ -6138,7 +6154,8 @@ a.entry-item:hover {
   font-size: 0.74rem;
 }
 
-.article-card-meta .article-author-avatar {
+.article-card-meta .article-author-avatar,
+.article-card-meta .comment-avatar-button {
   width: 22px;
   height: 22px;
 }
@@ -7275,10 +7292,14 @@ a.entry-item:hover {
 }
 
 .chat-message > div {
+  display: grid;
   min-width: 0;
+  justify-items: start;
 }
 
 .chat-message p {
+  width: fit-content;
+  max-width: 100%;
   margin: 0;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.48);
@@ -7292,6 +7313,8 @@ a.entry-item:hover {
 .chat-message.mine p {
   background: var(--accent-soft);
 }
+
+.chat-message.mine > div { justify-items: end; }
 
 .chat-message > div > span {
   display: block;
@@ -7626,6 +7649,9 @@ a.entry-item:hover {
   background: color-mix(in srgb, var(--accent-soft) 74%, transparent);
   color: var(--accent-strong);
 }
+
+.chat-system-avatar.subscription { background: color-mix(in srgb, #3f8f77 18%, var(--popover-surface)); color: #27745f; }
+.chat-system-avatar.interaction { background: color-mix(in srgb, #d7688a 18%, var(--popover-surface)); color: #b23f68; }
 
 .chat-sidebar-empty {
   display: block;

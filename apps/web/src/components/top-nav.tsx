@@ -254,7 +254,7 @@ export function TopNav() {
     } else if (notification.type === "friend_request_accepted" && notification.actor) {
       openChatDock({ userId: notification.actor.id });
     } else {
-      openChatDock({ systemNotificationId: notification.id });
+      openChatDock({ systemNotificationId: notification.id, notificationChannel: notification.channel });
     }
   }
 
