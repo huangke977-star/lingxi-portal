@@ -146,6 +146,8 @@ describe("SocialService", () => {
     const accepted = { ...existing, status: FriendshipStatus.accepted, respondedAt: new Date(), acceptedAt: new Date() };
     const transaction = {
       friendship: { update: jest.fn(async () => accepted) },
+      conversation: { upsert: jest.fn(async () => ({ id: 21 })) },
+      chatMessage: { create: jest.fn(async () => ({ id: 31 })) },
       userNotification: {
         updateMany: jest.fn(async () => ({ count: 1 })),
         create: jest.fn(async () => ({ id: 2 })),
@@ -165,6 +167,12 @@ describe("SocialService", () => {
     }));
     expect(transaction.userNotification.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ userId: 7, friendshipId: 12, type: "friend_request_received" }),
+    }));
+    expect(transaction.conversation.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { friendshipId: 12 },
+    }));
+    expect(transaction.chatMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ conversationId: 21, type: "system" }),
     }));
   });
 

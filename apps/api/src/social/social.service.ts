@@ -54,6 +54,18 @@ type MessageRecord = Prisma.ChatMessageGetPayload<{ include: typeof messageInclu
 
 const notificationInclude = {
   actor: { select: socialUserSelect },
+  commentReport: {
+    select: {
+      comment: {
+        select: {
+          id: true,
+          body: true,
+          status: true,
+          article: { select: { id: true, title: true, slug: true } },
+        },
+      },
+    },
+  },
 } satisfies Prisma.UserNotificationInclude;
 
 type NotificationRecord = Prisma.UserNotificationGetPayload<{ include: typeof notificationInclude }>;
@@ -204,6 +216,22 @@ export class SocialService {
         },
         data: { readAt: now },
       });
+      if (status === "accepted") {
+        const conversation = await transaction.conversation.upsert({
+          where: { friendshipId },
+          create: { friendshipId },
+          update: { updatedAt: now },
+          select: { id: true },
+        });
+        await transaction.chatMessage.create({
+          data: {
+            conversationId: conversation.id,
+            senderId: user.id,
+            body: "你们已经成为好友，可以开始聊天了。",
+            type: ChatMessageType.system,
+          },
+        });
+      }
       await transaction.userNotification.create({
         data: {
           userId: existing.requestedById,
@@ -556,6 +584,13 @@ export class SocialService {
       friendshipId: notification.friendshipId,
       commentReportId: notification.commentReportId,
       actor: notification.actor ? this.toSocialUser(notification.actor) : null,
+      context: notification.commentReport ? {
+        kind: "comment_report",
+        commentId: notification.commentReport.comment.id,
+        commentBody: notification.commentReport.comment.body,
+        commentStatus: notification.commentReport.comment.status,
+        article: notification.commentReport.comment.article,
+      } : null,
       readAt: notification.readAt?.toISOString() ?? null,
       createdAt: notification.createdAt.toISOString(),
     };

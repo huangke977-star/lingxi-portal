@@ -258,7 +258,7 @@ describe("ArticlesService article center extensions", () => {
           commentId: 44,
           reporterId: 19,
           status: "pending",
-          comment: { article: { title: "测试文章", slug: "test-article" } },
+          comment: { authorId: 23, body: "被举报评论", article: { title: "测试文章", slug: "test-article" } },
         })),
         updateMany: jest.fn(async () => ({ count: 1 })),
       },
@@ -282,10 +282,49 @@ describe("ArticlesService article center extensions", () => {
     expect(transaction.userNotification.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         userId: 19,
-        actorId: actor.id,
+        actorId: null,
         type: "comment_report_resolved",
         commentReportId: 6,
         actionUrl: "/articles/test-article?commentId=44",
+      }),
+    }));
+  });
+
+  it("notifies the comment author when moderation blocks the reported comment", async () => {
+    const transaction = {
+      articleCommentReport: {
+        findUnique: jest.fn(async () => ({
+          commentId: 44,
+          reporterId: 19,
+          status: "pending",
+          comment: { authorId: 23, body: "被举报评论", article: { title: "测试文章", slug: "test-article" } },
+        })),
+        updateMany: jest.fn(async () => ({ count: 1 })),
+      },
+      articleComment: {
+        update: jest.fn(async () => ({ articleId: 12 })),
+        count: jest.fn(async () => 4),
+      },
+      article: { update: jest.fn(async () => ({ id: 12 })) },
+      userNotification: { create: jest.fn(async () => ({ id: 7 })) },
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
+    };
+    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const actor = { ...user, isSuperAdmin: true };
+
+    await service.moderateCommentReport(6, actor, {
+      status: "resolved",
+      commentStatus: "blocked",
+    });
+
+    expect(transaction.userNotification.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userId: 23,
+        actorId: null,
+        type: "comment_author_moderated",
+        commentReportId: 6,
       }),
     }));
   });
@@ -297,7 +336,7 @@ describe("ArticlesService article center extensions", () => {
           commentId: 44,
           reporterId: 19,
           status: "resolved",
-          comment: { article: { title: "测试文章", slug: "test-article" } },
+          comment: { authorId: 23, body: "被举报评论", article: { title: "测试文章", slug: "test-article" } },
         })),
       },
       userNotification: { create: jest.fn() },

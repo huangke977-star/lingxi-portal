@@ -71,6 +71,8 @@ export type ArticleCommentReportStatus = "pending" | "resolved" | "rejected";
 export interface ArticleCommentReport {
   id: number;
   commentId: number;
+  commentBody: string;
+  commentStatus: ArticleComment["status"];
   article: { id: number; title: string; slug: string };
   reporter: ArticleAuthor;
   reason: ArticleCommentReportReason;

@@ -13,6 +13,7 @@ import {
   Laugh,
   LoaderCircle,
   MessageCircle,
+  MessageCircleMore,
   Minus,
   Paperclip,
   Send,
@@ -22,9 +23,12 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
+  type CSSProperties,
   type ClipboardEvent,
   type DragEvent,
   type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
   useCallback,
   useEffect,
   useMemo,
@@ -69,6 +73,8 @@ import {
 import { getAvatarFallbackText } from "@/lib/user-display";
 
 const MAX_ATTACHMENTS = 9;
+const SYSTEM_CONVERSATION_ID = -1;
+const DOCK_GEOMETRY_STORAGE_KEY = "hlovet-chat-dock-geometry";
 const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const MAX_BATCH_SIZE = 50 * 1024 * 1024;
@@ -94,12 +100,20 @@ interface PendingAttachment {
   previewUrl: string | null;
 }
 
-type DockTab = "chats" | "friends" | "notifications";
+type DockTab = "chats" | "friends";
+
+interface DockGeometry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export function ChatDock() {
   const router = useRouter();
   const socketRef = useRef<Socket | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const systemMessageListRef = useRef<HTMLDivElement | null>(null);
   const pendingAttachmentsRef = useRef<PendingAttachment[]>([]);
   const selectedIdRef = useRef(0);
   const sessionUserIdRef = useRef(0);
@@ -115,12 +129,15 @@ export function ChatDock() {
   }>({ friends: [], incoming: [], outgoing: [] });
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
   const [selectedId, setSelectedId] = useState(0);
+  const [selectedSystemNotificationId, setSelectedSystemNotificationId] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [pendingAttachmentsByConversation, setPendingAttachmentsByConversation] = useState<Record<number, PendingAttachment[]>>({});
   const [hasMore, setHasMore] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [dockGeometry, setDockGeometry] = useState<DockGeometry | null>(null);
   const [activeTab, setActiveTab] = useState<DockTab>("chats");
   const [isMobileConversationOpen, setIsMobileConversationOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -135,10 +152,16 @@ export function ChatDock() {
     () => conversations.find((conversation) => conversation.id === selectedId) ?? null,
     [conversations, selectedId],
   );
+  const systemNotifications = useMemo(
+    () => notifications.filter((item) => item.type !== "friend_request_received"),
+    [notifications],
+  );
+  const isSystemSelected = selectedId === SYSTEM_CONVERSATION_ID;
   const draft = selectedId ? drafts[selectedId] ?? "" : "";
   const pendingAttachments = selectedId ? pendingAttachmentsByConversation[selectedId] ?? [] : [];
   const unreadMessages = conversations.reduce((total, item) => total + item.unreadCount, 0);
-  const unreadNotifications = notifications.filter((item) => !item.readAt).length;
+  const unreadNotifications = systemNotifications.filter((item) => !item.readAt).length;
+  const dockUnreadCount = unreadMessages + unreadNotifications + friendships.incoming.length;
   const userId = user?.id ?? 0;
   const closeAttachmentPreview = useCallback(() => setPreviewAttachment(null), []);
 
@@ -150,6 +173,25 @@ export function ChatDock() {
     openRef.current = isOpen;
     minimizedRef.current = isMinimized;
   }, [isMinimized, isOpen]);
+
+  useEffect(() => {
+    function synchronizeGeometry() {
+      const desktop = window.innerWidth > 760;
+      setIsDesktop(desktop);
+      if (!desktop) return;
+      setDockGeometry((current) => clampDockGeometry(
+        current ?? readDockGeometry() ?? getDefaultDockGeometry(),
+      ));
+    }
+    synchronizeGeometry();
+    window.addEventListener("resize", synchronizeGeometry);
+    return () => window.removeEventListener("resize", synchronizeGeometry);
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop || !dockGeometry) return;
+    window.localStorage.setItem(DOCK_GEOMETRY_STORAGE_KEY, JSON.stringify(dockGeometry));
+  }, [dockGeometry, isDesktop]);
 
   const refreshSocialData = useCallback(async (showLoading = false) => {
     const token = readAccessToken();
@@ -190,8 +232,9 @@ export function ChatDock() {
       setFriendships(friendshipResult);
       setNotifications(notificationResult.items);
       setSelectedId((current) => {
+        if (current === SYSTEM_CONVERSATION_ID) return current;
         if (current && conversationResult.items.some((item) => item.id === current)) return current;
-        return conversationResult.items[0]?.id ?? 0;
+        return conversationResult.items[0]?.id ?? SYSTEM_CONVERSATION_ID;
       });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "消息数据加载失败。");
@@ -222,7 +265,14 @@ export function ChatDock() {
       setIsOpen(true);
       setIsMinimized(false);
       setActiveTab(detail.tab ?? "chats");
-      if (detail.tab && detail.tab !== "chats") setIsMobileConversationOpen(false);
+      if (detail.tab === "friends") setIsMobileConversationOpen(false);
+      if (detail.systemNotificationId) {
+        setSelectedId(SYSTEM_CONVERSATION_ID);
+        setSelectedSystemNotificationId(detail.systemNotificationId);
+        setActiveTab("chats");
+        setIsMobileConversationOpen(true);
+        return;
+      }
       if (detail.conversationId) {
         setSelectedId(detail.conversationId);
         setIsMobileConversationOpen(true);
@@ -257,6 +307,16 @@ export function ChatDock() {
       window.removeEventListener(CHAT_DOCK_TOGGLE_EVENT, handleToggle);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isSystemSelected || !selectedSystemNotificationId || !isOpen || isMinimized) return;
+    window.requestAnimationFrame(() => {
+      const item = systemMessageListRef.current?.querySelector<HTMLElement>(
+        `[data-notification-id="${selectedSystemNotificationId}"]`,
+      );
+      item?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [isMinimized, isOpen, isSystemSelected, selectedSystemNotificationId]);
 
   useEffect(() => {
     const token = readAccessToken();
@@ -325,7 +385,7 @@ export function ChatDock() {
 
   useEffect(() => {
     const token = readAccessToken();
-    if (!token || !selectedId) {
+    if (!token || selectedId <= 0) {
       // A cleared session also clears the locally displayed conversation.
       setMessages([]);
       return;
@@ -491,13 +551,42 @@ export function ChatDock() {
     }
   }
 
+  async function sendQuickMessage(body: string) {
+    const socket = socketRef.current;
+    if (!selected || !socket?.connected || isSending) return;
+    setIsSending(true);
+    try {
+      const response = await socket.timeout(10000).emitWithAck("chat:send", {
+        conversationId: selected.id,
+        body,
+        attachmentIds: [],
+      }) as ChatAck;
+      if (!response.ok) throw new Error(response.error || "消息发送失败。");
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "消息发送失败，请重试。");
+    } finally {
+      setIsSending(false);
+    }
+  }
+
   async function handleFriendRequest(friendship: Friendship, status: "accepted" | "declined") {
     const token = readAccessToken();
     if (!token) return;
     try {
       await respondFriendRequest(token, friendship.id, status);
-      setFriendships(await listFriendships(token));
-      setNotifications((await listNotifications(token)).items);
+      const [friendshipResult, notificationResult] = await Promise.all([
+        listFriendships(token),
+        listNotifications(token),
+      ]);
+      setFriendships(friendshipResult);
+      setNotifications(notificationResult.items);
+      if (status === "accepted") {
+        const conversation = await getOrCreateConversation(token, friendship.user.id);
+        setConversations((current) => [conversation, ...current.filter((item) => item.id !== conversation.id)]);
+        setSelectedId(conversation.id);
+        setActiveTab("chats");
+        setIsMobileConversationOpen(true);
+      }
       setNotice(status === "accepted" ? "已成为好友。" : "已拒绝好友申请。");
       notifySocialStateChange();
     } catch (actionError) {
@@ -537,9 +626,13 @@ export function ChatDock() {
     }
     if (notification.type === "friend_request_received") {
       setActiveTab("friends");
+      setIsMobileConversationOpen(false);
       return;
     }
-    if (notification.actionUrl) router.push(notification.actionUrl);
+    setSelectedId(SYSTEM_CONVERSATION_ID);
+    setSelectedSystemNotificationId(notification.id);
+    setActiveTab("chats");
+    setIsMobileConversationOpen(true);
   }
 
   async function readAllNotifications() {
@@ -562,12 +655,66 @@ export function ChatDock() {
     setPreviewAttachment(null);
   }
 
+  function beginDockDrag(event: ReactPointerEvent<HTMLElement>) {
+    if (!isDesktop || !dockGeometry || event.button !== 0) return;
+    if ((event.target as HTMLElement).closest("button")) return;
+    event.preventDefault();
+    const start = { clientX: event.clientX, clientY: event.clientY, geometry: dockGeometry };
+    trackDockPointer(
+      (pointerEvent) => setDockGeometry(clampDockGeometry({
+        ...start.geometry,
+        x: start.geometry.x + pointerEvent.clientX - start.clientX,
+        y: start.geometry.y + pointerEvent.clientY - start.clientY,
+      })),
+    );
+  }
+
+  function beginDockResize(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!isDesktop || !dockGeometry || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const start = { clientX: event.clientX, clientY: event.clientY, geometry: dockGeometry };
+    trackDockPointer(
+      (pointerEvent) => setDockGeometry(clampDockGeometry({
+        ...start.geometry,
+        width: start.geometry.width + pointerEvent.clientX - start.clientX,
+        height: start.geometry.height + pointerEvent.clientY - start.clientY,
+      })),
+    );
+  }
+
+  const dockStyle: CSSProperties | undefined = isDesktop && dockGeometry ? {
+    left: dockGeometry.x,
+    top: dockGeometry.y,
+    right: "auto",
+    bottom: "auto",
+    width: dockGeometry.width,
+    height: dockGeometry.height,
+  } : undefined;
+
+  const minimizedStyle: CSSProperties | undefined = isDesktop && dockGeometry ? {
+    left: Math.min(window.innerWidth - 58, dockGeometry.x + dockGeometry.width - 48),
+    top: Math.min(window.innerHeight - 58, dockGeometry.y + dockGeometry.height - 48),
+    right: "auto",
+    bottom: "auto",
+  } : undefined;
+
   if (!user || !isOpen) return null;
+
+  if (isMinimized) {
+    return <>
+      <button aria-label="展开聊天窗" className="chat-dock-minimized" onClick={() => setIsMinimized(false)} style={minimizedStyle} title="展开聊天" type="button">
+        <MessageCircleMore aria-hidden="true" size={23} />
+        {dockUnreadCount ? <b>{formatCount(dockUnreadCount)}</b> : null}
+      </button>
+      <AppToast duration={error ? 4200 : 2600} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
+    </>;
+  }
 
   return (
     <>
-      <section className={`chat-dock${isMinimized ? " minimized" : ""}${isMobileConversationOpen ? " mobile-conversation-open" : ""}`} aria-label="消息与聊天">
-        <header className="chat-dock-titlebar">
+      <section className={`chat-dock${isMobileConversationOpen ? " mobile-conversation-open" : ""}`} aria-label="消息与聊天" style={dockStyle}>
+        <header className="chat-dock-titlebar" onPointerDown={beginDockDrag}>
           <button
             aria-label="返回消息列表"
             className="chat-mobile-back"
@@ -576,29 +723,33 @@ export function ChatDock() {
           >
             <ChevronLeft aria-hidden="true" size={19} />
           </button>
-          <span><MessageCircle aria-hidden="true" size={18} /><strong>{selected?.user.nickname ?? "消息"}</strong></span>
+          <span><MessageCircleMore aria-hidden="true" size={18} /><strong>{isSystemSelected ? "系统消息" : selected?.user.nickname ?? "消息"}</strong></span>
           <div>
-            <button aria-label={isMinimized ? "展开聊天窗" : "最小化聊天窗"} onClick={() => setIsMinimized((current) => !current)} type="button"><Minus aria-hidden="true" size={17} /></button>
+            <button aria-label="最小化聊天窗" onClick={() => setIsMinimized(true)} type="button"><Minus aria-hidden="true" size={17} /></button>
             <button aria-label="关闭聊天窗" onClick={closeDock} type="button"><X aria-hidden="true" size={17} /></button>
           </div>
         </header>
-        {!isMinimized ? <div className={`chat-dock-body${isMobileConversationOpen ? " mobile-conversation-open" : ""}`}>
+        <div className={`chat-dock-body${isMobileConversationOpen ? " mobile-conversation-open" : ""}`}>
           <aside className="chat-dock-sidebar">
             <div className="chat-dock-tabs" role="tablist">
               <button aria-label="会话" className={activeTab === "chats" ? "active" : ""} onClick={() => setActiveTab("chats")} title="会话" type="button"><MessageCircle aria-hidden="true" size={18} />{unreadMessages ? <b>{formatCount(unreadMessages)}</b> : null}</button>
               <button aria-label="好友" className={activeTab === "friends" ? "active" : ""} onClick={() => setActiveTab("friends")} title="好友" type="button"><Users aria-hidden="true" size={18} />{friendships.incoming.length ? <b>{formatCount(friendships.incoming.length)}</b> : null}</button>
-              <button aria-label="通知" className={activeTab === "notifications" ? "active" : ""} onClick={() => setActiveTab("notifications")} title="通知" type="button"><Bell aria-hidden="true" size={18} />{unreadNotifications ? <b>{formatCount(unreadNotifications)}</b> : null}</button>
             </div>
             <div className="chat-dock-sidebar-content">
               {isLoading ? <span className="chat-state">正在读取。</span> : null}
               {activeTab === "chats" ? <div className="conversation-list">
-                {conversations.length ? conversations.map((conversation) => (
+                <button className={isSystemSelected ? "active system-conversation" : "system-conversation"} onClick={() => { setSelectedId(SYSTEM_CONVERSATION_ID); setSelectedSystemNotificationId(0); setIsMobileConversationOpen(true); }} type="button">
+                  <span className="chat-system-avatar"><Bell aria-hidden="true" size={17} /></span>
+                  <span><strong>系统消息</strong><small>{systemNotifications[0]?.body ?? "通知会集中显示在这里"}</small></span>
+                  {unreadNotifications ? <b>{formatCount(unreadNotifications)}</b> : null}
+                </button>
+                {conversations.map((conversation) => (
                   <button className={conversation.id === selectedId ? "active" : undefined} key={conversation.id} onClick={() => { setSelectedId(conversation.id); setIsMobileConversationOpen(true); }} type="button">
                     <UserAvatar user={conversation.user} />
-                    <span><strong>{conversation.user.nickname}</strong><small>{getConversationPreview(conversation)}</small></span>
+                    <span><strong className="chat-conversation-name">{conversation.user.nickname}<RoleSymbol code={conversation.user.isSuperAdmin ? "super_administrator" : conversation.user.role.code} /></strong><small>{getConversationPreview(conversation)}</small></span>
                     {conversation.unreadCount ? <b>{formatCount(conversation.unreadCount)}</b> : null}
                   </button>
-                )) : <span className="chat-sidebar-empty">还没有会话。</span>}
+                ))}
               </div> : null}
               {activeTab === "friends" ? <div className="chat-friendship-pane">
                 {friendships.incoming.length ? <section className="friend-request-list"><h2><UserPlus aria-hidden="true" size={15} />好友申请</h2>{friendships.incoming.map((friendship) => (
@@ -613,24 +764,22 @@ export function ChatDock() {
                   <button key={friendship.id} onClick={() => void openFriendChat(friendship)} type="button"><UserAvatar user={friendship.user} /><span><strong>{friendship.user.nickname}</strong><small>@{friendship.user.username}</small></span><MessageCircle aria-hidden="true" size={15} /></button>
                 )) : <span className="chat-sidebar-empty">还没有好友。</span>}</section>
               </div> : null}
-              {activeTab === "notifications" ? <div className="chat-notification-pane">
-                {unreadNotifications ? <button className="chat-read-all" onClick={() => void readAllNotifications()} type="button">全部标为已读</button> : null}
-                {notifications.length ? notifications.map((notification) => (
-                  <button className={notification.readAt ? "" : "unread"} key={notification.id} onClick={() => void handleNotification(notification)} type="button">
-                    <span>{notification.actor ? <UserAvatar user={notification.actor} /> : <Bell aria-hidden="true" size={17} />}</span>
-                    <span><strong>{notification.title}</strong><small>{notification.body}</small><time>{formatChatTime(notification.createdAt)}</time></span>
-                  </button>
-                )) : <span className="chat-sidebar-empty">暂时没有通知。</span>}
-              </div> : null}
             </div>
           </aside>
-          <main className="chat-panel">
-            {selected ? <>
-              <header className="chat-heading"><UserAvatar user={selected.user} large /><div><strong>{selected.user.nickname}</strong><span><RoleSymbol code={selected.user.isSuperAdmin ? "super_administrator" : selected.user.role.code} />{selected.user.isSuperAdmin ? "超级管理员" : selected.user.role.name}</span></div></header>
+          <main className={`chat-panel${isSystemSelected ? " system-selected" : ""}`}>
+            {isSystemSelected ? <SystemNotificationPanel
+              notifications={systemNotifications}
+              onMarkAllRead={readAllNotifications}
+              onOpenArticle={(slug) => router.push(`/articles/${slug}`)}
+              onSelect={handleNotification}
+              selectedId={selectedSystemNotificationId}
+              unreadCount={unreadNotifications}
+              listRef={systemMessageListRef}
+            /> : selected ? <>
               <div className="chat-message-list" ref={messageListRef}>
                 {hasMore ? <button className="chat-load-older" onClick={() => void loadOlderMessages()} type="button"><ChevronUp aria-hidden="true" size={14} />更早消息</button> : null}
                 {isMessagesLoading ? <span className="chat-state">正在读取聊天记录。</span> : messages.map((message) => (
-                  <ChatMessageItem key={message.id} message={message} mine={message.sender.id === user.id} onPreview={setPreviewAttachment} />
+                  <ChatMessageItem key={message.id} message={message} mine={message.sender.id === user.id} onGreeting={() => void sendQuickMessage("你好")} onPreview={setPreviewAttachment} />
                 ))}
               </div>
               <form className="chat-composer" onDragOver={(event) => event.preventDefault()} onDrop={handleDrop} onSubmit={sendMessage}>
@@ -646,11 +795,12 @@ export function ChatDock() {
                   <textarea aria-label={`给 ${selected.user.nickname} 发消息`} maxLength={2000} onChange={(event) => updateDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} onPaste={handlePaste} placeholder="输入消息" rows={2} value={draft} />
                   <button aria-label="发送消息" disabled={isSending || (!draft.trim() && !pendingAttachments.length)} title="发送消息" type="submit">{isSending ? <LoaderCircle aria-hidden="true" className="spin" size={18} /> : <Send aria-hidden="true" size={18} />}</button>
                 </div>
-                {isEmojiOpen ? <div className="chat-emoji-picker">{EMOJIS.map((emoji) => <button key={emoji} onClick={() => updateDraft(`${draft}${emoji}`)} type="button">{emoji}</button>)}</div> : null}
+                {isEmojiOpen ? <div className="chat-emoji-picker">{EMOJIS.map((emoji) => <button key={emoji} onClick={() => { updateDraft(`${draft}${emoji}`); setIsEmojiOpen(false); }} type="button">{emoji}</button>)}</div> : null}
               </form>
             </> : <div className="chat-empty"><MessageCircle aria-hidden="true" size={28} /><strong>选择一位好友开始聊天</strong><span>可以发送文字、表情、图片和文件。</span></div>}
           </main>
-        </div> : null}
+        </div>
+        <button aria-label="调整聊天窗大小" className="chat-dock-resize-handle" onPointerDown={beginDockResize} tabIndex={-1} type="button" />
       </section>
       {previewAttachment ? <AttachmentPreview attachment={previewAttachment} onClose={closeAttachmentPreview} /> : null}
       <AppToast duration={error ? 4200 : 2600} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
@@ -658,8 +808,46 @@ export function ChatDock() {
   );
 }
 
-function ChatMessageItem({ message, mine, onPreview }: { message: ChatMessage; mine: boolean; onPreview: (attachment: ChatAttachment) => void }) {
-  return <div className={`chat-message ${mine ? "mine" : "theirs"}`}>
+function SystemNotificationPanel({ notifications, selectedId, unreadCount, listRef, onMarkAllRead, onOpenArticle, onSelect }: {
+  notifications: SocialNotification[];
+  selectedId: number;
+  unreadCount: number;
+  listRef: RefObject<HTMLDivElement | null>;
+  onMarkAllRead: () => Promise<void>;
+  onOpenArticle: (slug: string) => void;
+  onSelect: (notification: SocialNotification) => Promise<void>;
+}) {
+  return <div className="chat-system-panel">
+    {unreadCount ? <button className="chat-read-all" onClick={() => void onMarkAllRead()} type="button">全部标为已读</button> : null}
+    <div className="chat-system-message-list" ref={listRef}>
+      {notifications.length ? notifications.map((notification) => (
+        <article className={`${notification.readAt ? "" : "unread"}${selectedId === notification.id ? " selected" : ""}`} data-notification-id={notification.id} key={notification.id}>
+          <button className="chat-system-notification-main" onClick={() => void onSelect(notification)} type="button">
+            <span className="chat-system-notification-icon"><Bell aria-hidden="true" size={17} /></span>
+            <span>
+              <strong>{notification.title}</strong>
+              <small>{notification.body}</small>
+              {notification.context?.kind === "comment_report" ? <q>{notification.context.commentBody}</q> : null}
+              <time>{formatChatTime(notification.createdAt)}</time>
+            </span>
+          </button>
+          {notification.context?.kind === "comment_report" ? <button className="chat-system-article-link" onClick={() => onOpenArticle(notification.context!.article.slug)} type="button"><FileText aria-hidden="true" size={15} /><span><small>相关文章</small><strong>{notification.context.article.title}</strong></span><ChevronLeft aria-hidden="true" size={15} /></button> : null}
+        </article>
+      )) : <div className="chat-empty"><Bell aria-hidden="true" size={26} /><strong>暂时没有系统消息</strong><span>好友申请结果和内容处理通知会显示在这里。</span></div>}
+    </div>
+  </div>;
+}
+
+function ChatMessageItem({ message, mine, onGreeting, onPreview }: { message: ChatMessage; mine: boolean; onGreeting: () => void; onPreview: (attachment: ChatAttachment) => void }) {
+  if (message.type === "system") {
+    return <div className="chat-system-row">
+      <span>{message.body}</span>
+      <button onClick={onGreeting} type="button">打个招呼</button>
+      <time>{formatChatTime(message.createdAt)}</time>
+    </div>;
+  }
+  const emojiOnly = isEmojiOnly(message.body);
+  return <div className={`chat-message ${mine ? "mine" : "theirs"}${emojiOnly ? " emoji-only" : ""}`}>
     <UserAvatar user={message.sender} />
     <div>
       {message.attachments?.length ? <div className={`chat-message-attachments count-${Math.min(message.attachments.length, 4)}`}>{message.attachments.map((attachment) => attachment.kind === "image"
@@ -765,4 +953,50 @@ function formatFileSize(size: number): string {
 
 function formatCount(count: number): string {
   return count > 99 ? "99+" : String(count);
+}
+
+function isEmojiOnly(value: string): boolean {
+  if (!value.trim()) return false;
+  return value.replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Emoji_Modifier}\u200D\uFE0F\s]/gu, "").length === 0;
+}
+
+function getDefaultDockGeometry(): DockGeometry {
+  const width = Math.min(760, window.innerWidth - 36);
+  const height = Math.min(610, window.innerHeight - 92);
+  return { x: window.innerWidth - width - 18, y: window.innerHeight - height - 18, width, height };
+}
+
+function readDockGeometry(): DockGeometry | null {
+  try {
+    const value = window.localStorage.getItem(DOCK_GEOMETRY_STORAGE_KEY);
+    return value ? JSON.parse(value) as DockGeometry : null;
+  } catch {
+    return null;
+  }
+}
+
+function clampDockGeometry(value: DockGeometry): DockGeometry {
+  const margin = 12;
+  const width = Math.min(Math.max(value.width, 520), window.innerWidth - margin * 2);
+  const height = Math.min(Math.max(value.height, 380), window.innerHeight - margin * 2);
+  return {
+    width,
+    height,
+    x: Math.min(Math.max(value.x, margin), window.innerWidth - width - margin),
+    y: Math.min(Math.max(value.y, margin), window.innerHeight - height - margin),
+  };
+}
+
+function trackDockPointer(onMove: (event: PointerEvent) => void) {
+  const previousUserSelect = document.body.style.userSelect;
+  document.body.style.userSelect = "none";
+  function finish() {
+    document.body.style.userSelect = previousUserSelect;
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", finish);
+    window.removeEventListener("pointercancel", finish);
+  }
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", finish, { once: true });
+  window.addEventListener("pointercancel", finish, { once: true });
 }

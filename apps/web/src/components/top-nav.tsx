@@ -6,7 +6,7 @@ import {
   Bell,
   Check,
   ListTodo,
-  MessageCircle,
+  MessageCircleMore,
   UserPlus,
   X,
 } from "lucide-react";
@@ -226,6 +226,10 @@ export function TopNav() {
       await respondFriendRequest(token, friendship.id, status);
       notifySocialStateChange();
       await refreshHeaderData();
+      if (status === "accepted") {
+        setIsMessagePopoverOpen(false);
+        openChatDock({ userId: friendship.user.id });
+      }
     } catch (actionError) {
       setHeaderError(actionError instanceof Error ? actionError.message : "好友申请处理失败。");
     }
@@ -242,10 +246,10 @@ export function TopNav() {
     }
     if (notification.type === "friend_request_received") {
       openChatDock({ tab: "friends" });
-    } else if (notification.actionUrl) {
-      router.push(notification.actionUrl);
+    } else if (notification.type === "friend_request_accepted" && notification.actor) {
+      openChatDock({ userId: notification.actor.id });
     } else {
-      openChatDock({ tab: "notifications" });
+      openChatDock({ systemNotificationId: notification.id });
     }
   }
 
@@ -289,17 +293,17 @@ export function TopNav() {
               <button aria-expanded={isTaskPopoverOpen} aria-label="待处理举报" className={`header-action-button${isTaskPopoverOpen ? " active" : ""}`} onClick={() => setIsTaskPopoverOpen((current) => !current)} title="待处理举报" type="button"><ListTodo aria-hidden="true" size={19} />{pendingReportCount ? <b>{pendingReportCount > 99 ? "99+" : pendingReportCount}</b> : null}</button>
               <div className={`header-popover task-popover${isTaskPopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(taskCloseTimerRef)}>
                 <div className="header-popover-heading"><strong>待处理举报</strong><button onClick={() => { setIsTaskPopoverOpen(false); router.push("/admin/articles?tab=comments"); }} type="button">进入管理</button></div>
-                <div className="header-popover-list">{pendingReports.length ? pendingReports.slice(0, 6).map((report) => <button key={report.id} onClick={() => { setIsTaskPopoverOpen(false); router.push(`/admin/articles?tab=comments&report=${report.id}`); }} type="button"><span className="header-popover-icon"><ListTodo aria-hidden="true" size={16} /></span><span><strong>{report.article.title}</strong><small>{report.reporter.nickname} · {formatHeaderTime(report.createdAt)}</small></span></button>) : <span className="header-popover-empty">暂无待处理举报。</span>}</div>
+                <div className="header-popover-list">{pendingReports.length ? pendingReports.slice(0, 6).map((report) => <button key={report.id} onClick={() => { setIsTaskPopoverOpen(false); router.push(`/admin/articles?tab=comments&report=${report.id}`); }} type="button"><span className="header-popover-icon"><ListTodo aria-hidden="true" size={16} /></span><span><strong>{report.commentBody || report.article.title}</strong><small>《{report.article.title}》 · {report.reporter.nickname} · {formatHeaderTime(report.createdAt)}</small></span></button>) : <span className="header-popover-empty">暂无待处理举报。</span>}</div>
               </div>
             </div> : null}
             <div className="header-action-wrap" ref={messagePopoverRef} onPointerEnter={(event) => handleHoverOpen(event, messageCloseTimerRef, () => setIsMessagePopoverOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(messageCloseTimerRef, () => setIsMessagePopoverOpen(false)); }}>
-              <button aria-expanded={isMessagePopoverOpen} aria-label="消息通知" className={`header-action-button${isMessagePopoverOpen ? " active" : ""}`} onClick={() => setIsMessagePopoverOpen((current) => !current)} title="消息通知" type="button"><Bell aria-hidden="true" size={19} />{socialCount ? <b>{socialCount > 99 ? "99+" : socialCount}</b> : null}</button>
+              <button aria-expanded={isMessagePopoverOpen} aria-label="消息通知" className={`header-action-button${isMessagePopoverOpen ? " active" : ""}`} onClick={() => setIsMessagePopoverOpen((current) => !current)} title="消息通知" type="button"><MessageCircleMore aria-hidden="true" size={20} />{socialCount ? <b>{socialCount > 99 ? "99+" : socialCount}</b> : null}</button>
               <div className={`header-popover message-popover${isMessagePopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(messageCloseTimerRef)}>
                 <div className="header-popover-heading"><strong>消息</strong><button onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">打开聊天</button></div>
                 <div className="header-popover-list">
                   {friendships.incoming.slice(0, 2).map((friendship) => <div className="header-friend-request" key={`friend-${friendship.id}`}><span className="header-popover-icon"><UserPlus aria-hidden="true" size={16} /></span><span><strong>{friendship.user.nickname} 请求加为好友</strong>{friendship.note ? <small>{friendship.note}</small> : null}</span><div><button aria-label="接受好友申请" onClick={() => void handleFriendRequest(friendship, "accepted")} title="接受" type="button"><Check aria-hidden="true" size={15} /></button><button aria-label="拒绝好友申请" onClick={() => void handleFriendRequest(friendship, "declined")} title="拒绝" type="button"><X aria-hidden="true" size={15} /></button></div></div>)}
-                  {unreadConversations.map((conversation) => <button key={`conversation-${conversation.id}`} onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ conversationId: conversation.id }); }} type="button"><span className="header-popover-icon"><MessageCircle aria-hidden="true" size={16} /></span><span><strong>{conversation.user.nickname}</strong><small>{conversation.lastMessage?.body || "发来附件"}</small></span><b>{conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</b></button>)}
-                  {unreadNotifications.map((notification) => <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><span><strong>{notification.title}</strong><small>{notification.body}</small></span></button>)}
+                  {unreadConversations.map((conversation) => <button key={`conversation-${conversation.id}`} onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ conversationId: conversation.id }); }} type="button"><span className="header-popover-icon"><MessageCircleMore aria-hidden="true" size={16} /></span><span><strong>{conversation.user.nickname}</strong><small>{conversation.lastMessage?.body || "发来附件"}</small></span><b>{conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</b></button>)}
+                  {unreadNotifications.map((notification) => <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><span><strong>{notification.title}</strong><small>{notification.context?.commentBody ?? notification.body}</small></span></button>)}
                   {!friendships.incoming.length && !unreadConversations.length && !unreadNotifications.length ? <span className="header-popover-empty">暂无新消息。</span> : null}
                 </div>
               </div>

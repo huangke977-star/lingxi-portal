@@ -182,7 +182,7 @@ export class ChatAttachmentsService {
     return {
       filePath,
       mimeType: attachment.mimeType,
-      originalName: attachment.originalName,
+      originalName: this.safeOriginalName(attachment.originalName),
       sizeBytes: attachment.sizeBytes,
     };
   }
@@ -293,11 +293,27 @@ export class ChatAttachmentsService {
   }
 
   private safeOriginalName(originalName: string): string {
-    const name = originalName.replace(/\\/g, "/").split("/").at(-1)?.trim().slice(0, 255) ?? "";
+    const decodedName = this.decodeMultipartFilename(originalName);
+    const name = Array.from(decodedName)
+      .filter((character) => character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127)
+      .join("")
+      .replace(/\\/g, "/")
+      .split("/")
+      .at(-1)
+      ?.trim()
+      .slice(0, 255) ?? "";
     if (!name || name === "." || name === "..") {
       throw new BadRequestException("附件文件名无效。");
     }
     return name;
+  }
+
+  private decodeMultipartFilename(originalName: string): string {
+    const bytes = Buffer.from(originalName, "latin1");
+    const decoded = bytes.toString("utf8");
+    return !decoded.includes("\uFFFD") && Buffer.from(decoded, "utf8").equals(bytes)
+      ? decoded
+      : originalName;
   }
 
   private resolveStoredPath(storedName: string): string {
@@ -340,7 +356,7 @@ export class ChatAttachmentsService {
       id: attachment.id,
       conversationId: attachment.conversationId,
       kind: attachment.kind,
-      originalName: attachment.originalName,
+      originalName: this.safeOriginalName(attachment.originalName),
       mimeType: attachment.mimeType,
       sizeBytes: attachment.sizeBytes,
       downloadUrl: `/social/attachments/${attachment.id}/download`,

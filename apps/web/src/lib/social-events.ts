@@ -5,7 +5,8 @@ export const CHAT_DOCK_TOGGLE_EVENT = "hlovet-chat-dock-toggle";
 export interface ChatDockOpenDetail {
   conversationId?: number;
   userId?: number;
-  tab?: "chats" | "friends" | "notifications";
+  systemNotificationId?: number;
+  tab?: "chats" | "friends";
 }
 
 export function notifySocialStateChange(): void {

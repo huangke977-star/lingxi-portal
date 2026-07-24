@@ -41,7 +41,7 @@ export interface ChatMessage {
   id: number;
   conversationId: number;
   body: string;
-  type: "text" | "attachment" | "mixed";
+  type: "text" | "attachment" | "mixed" | "system";
   attachments: ChatAttachment[];
   sender: SocialUser;
   readAt: string | null;
@@ -64,6 +64,7 @@ export interface SocialNotification {
     | "friend_request_declined"
     | "comment_report_resolved"
     | "comment_report_rejected"
+    | "comment_author_moderated"
     | "system";
   title: string;
   body: string;
@@ -71,6 +72,13 @@ export interface SocialNotification {
   friendshipId: number | null;
   commentReportId: number | null;
   actor: SocialUser | null;
+  context: {
+    kind: "comment_report";
+    commentId: number;
+    commentBody: string;
+    commentStatus: string;
+    article: { id: number; title: string; slug: string };
+  } | null;
   readAt: string | null;
   createdAt: string;
 }

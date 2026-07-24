@@ -133,4 +133,22 @@ describe("ChatAttachmentsService", () => {
 
     await expect(service.getDownload(1, 8)).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it("restores UTF-8 Chinese names decoded as latin1 by multipart parsing", () => {
+    const service = new ChatAttachmentsService({} as PrismaService);
+    const originalName = "我的表格.xlsx";
+    const mojibakeName = Buffer.from(originalName, "utf8").toString("latin1");
+
+    const result = service.toResponse({
+      id: 1,
+      conversationId: 5,
+      kind: ChatAttachmentKind.file,
+      originalName: mojibakeName,
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      sizeBytes: 1024,
+      createdAt: new Date("2026-07-24T00:00:00.000Z"),
+    });
+
+    expect(result.originalName).toBe(originalName);
+  });
 });

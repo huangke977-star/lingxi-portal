@@ -152,6 +152,8 @@ type ArticleRecord = Prisma.ArticleGetPayload<{ include: typeof articleInclude }
 const commentReportInclude = {
   comment: {
     select: {
+      body: true,
+      status: true,
       article: { select: { id: true, title: true, slug: true } },
     },
   },
@@ -769,7 +771,13 @@ export class ArticlesService {
           commentId: true,
           reporterId: true,
           status: true,
-          comment: { select: { article: { select: { title: true, slug: true } } } },
+          comment: {
+            select: {
+              authorId: true,
+              body: true,
+              article: { select: { title: true, slug: true } },
+            },
+          },
         },
       });
       if (!report) {
@@ -798,7 +806,7 @@ export class ArticlesService {
       await transaction.userNotification.create({
         data: {
           userId: report.reporterId,
-          actorId: actor.id,
+          actorId: null,
           type: resolved
             ? UserNotificationType.comment_report_resolved
             : UserNotificationType.comment_report_rejected,
@@ -810,6 +818,23 @@ export class ArticlesService {
           commentReportId: id,
         },
       });
+      const commentStatus = dto.commentStatus as ArticleCommentStatus | undefined;
+      if (
+        report.comment.authorId !== report.reporterId &&
+        (commentStatus === ArticleCommentStatus.blocked || commentStatus === ArticleCommentStatus.deleted)
+      ) {
+        await transaction.userNotification.create({
+          data: {
+            userId: report.comment.authorId,
+            actorId: null,
+            type: UserNotificationType.comment_author_moderated,
+            title: commentStatus === ArticleCommentStatus.deleted ? "你的评论已被删除" : "你的评论已被屏蔽",
+            body: `你在《${report.comment.article.title}》中的评论已被${commentStatus === ArticleCommentStatus.deleted ? "删除" : "屏蔽"}。`,
+            actionUrl: `/articles/${report.comment.article.slug}?commentId=${report.commentId}`,
+            commentReportId: id,
+          },
+        });
+      }
     });
     return { success: true };
   }
@@ -1166,6 +1191,8 @@ export class ArticlesService {
     return {
       id: report.id,
       commentId: report.commentId,
+      commentBody: report.comment.body,
+      commentStatus: report.comment.status,
       article: report.comment.article,
       reporter: this.toAuthor(report.reporter),
       reason: report.reason,

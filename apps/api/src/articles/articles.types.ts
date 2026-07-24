@@ -68,6 +68,8 @@ export interface ArticleCommentResponse {
 export interface ArticleCommentReportResponse {
   id: number;
   commentId: number;
+  commentBody: string;
+  commentStatus: string;
   article: {
     id: number;
     title: string;
