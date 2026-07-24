@@ -1167,14 +1167,17 @@ function getDefaultDockIconPosition(): DockIconPosition {
 }
 
 function clampDockGeometry(value: DockGeometry): DockGeometry {
-  const margin = 12;
+  const margin = DOCK_EDGE_MARGIN;
   const width = Math.min(Math.max(value.width, 520), window.innerWidth - margin * 2);
   const height = Math.min(Math.max(value.height, 380), window.innerHeight - margin * 2);
+  const maxY = window.innerHeight - height - margin;
+  const topbarBottom = document.querySelector<HTMLElement>(".topbar")?.getBoundingClientRect().bottom ?? 0;
+  const minY = Math.min(Math.max(Math.ceil(topbarBottom) + margin, margin), maxY);
   return {
     width,
     height,
     x: Math.min(Math.max(value.x, margin), window.innerWidth - width - margin),
-    y: Math.min(Math.max(value.y, margin), window.innerHeight - height - margin),
+    y: Math.min(Math.max(value.y, minY), maxY),
   };
 }
 
