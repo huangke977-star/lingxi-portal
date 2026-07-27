@@ -73,7 +73,6 @@ services:
       - --no-dtls
       - --no-tcp-relay
       - --no-multicast-peers
-      - --no-loopback-peers
       - --fingerprint
       - --stale-nonce=600
       - --use-auth-secret
