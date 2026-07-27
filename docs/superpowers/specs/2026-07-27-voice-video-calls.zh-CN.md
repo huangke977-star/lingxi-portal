@@ -46,6 +46,7 @@ TURN_HOST=turn.5200918.xyz
 TURN_REALM=turn.5200918.xyz
 TURN_SECRET=<服务器生成的高强度随机值>
 TURN_EXTERNAL_IP=<VPS 公网 IP>
+TURN_INTERNAL_IP=<VPS 私网 IP>
 TURN_PORT=3478
 TURN_UDP_MIN=49160
 TURN_UDP_MAX=49200
@@ -53,7 +54,7 @@ TURN_CREDENTIAL_TTL_SECONDS=3600
 STUN_URLS=stun:turn.5200918.xyz:3478
 ```
 
-如果 VPS 公网 IP 通过 NAT 映射，`TURN_EXTERNAL_IP` 使用 `公网IP/私网IP` 格式。不要把 TURN 密钥写入 Git、文档、日志或聊天记录。
+如果 VPS 公网 IP 通过 NAT 映射，`TURN_EXTERNAL_IP` 使用 `公网IP/私网IP` 格式，并将 `TURN_INTERNAL_IP` 设置为同一个私网 IP。显式监听该私网地址可以避免 coturn 误用 Docker 网桥地址。不要把 TURN 密钥写入 Git、文档、日志或聊天记录。
 
 ## 浏览器兼容
 

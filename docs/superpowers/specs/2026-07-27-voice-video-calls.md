@@ -46,6 +46,7 @@ TURN_HOST=turn.5200918.xyz
 TURN_REALM=turn.5200918.xyz
 TURN_SECRET=<strong random value generated on the server>
 TURN_EXTERNAL_IP=<VPS public IP>
+TURN_INTERNAL_IP=<VPS private IP>
 TURN_PORT=3478
 TURN_UDP_MIN=49160
 TURN_UDP_MAX=49200
@@ -53,7 +54,7 @@ TURN_CREDENTIAL_TTL_SECONDS=3600
 STUN_URLS=stun:turn.5200918.xyz:3478
 ```
 
-When the public address is NAT-mapped, set `TURN_EXTERNAL_IP` to `public-ip/private-ip`. Never write the TURN secret to Git, documentation, logs, or chat.
+When the public address is NAT-mapped, set `TURN_EXTERNAL_IP` to `public-ip/private-ip` and set `TURN_INTERNAL_IP` to the same private IP. Explicitly binding that private address prevents coturn from selecting Docker bridge addresses. Never write the TURN secret to Git, documentation, logs, or chat.
 
 ## Browser Compatibility
 

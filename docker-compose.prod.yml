@@ -80,6 +80,8 @@ services:
       - --realm=${TURN_REALM:-turn.5200918.xyz}
       - --server-name=${TURN_REALM:-turn.5200918.xyz}
       - --external-ip=${TURN_EXTERNAL_IP}
+      - --listening-ip=${TURN_INTERNAL_IP}
+      - --relay-ip=${TURN_INTERNAL_IP}
       - --listening-port=${TURN_PORT:-3478}
       - --min-port=${TURN_UDP_MIN:-49160}
       - --max-port=${TURN_UDP_MAX:-49200}
