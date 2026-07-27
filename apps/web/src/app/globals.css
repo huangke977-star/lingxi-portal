@@ -8484,7 +8484,7 @@ a.entry-item:hover {
   top: calc(100% + 5px);
   right: 0;
   display: grid;
-  width: 132px;
+  width: 142px;
   border-radius: 7px;
   padding: 5px;
 }
@@ -8505,7 +8505,12 @@ a.entry-item:hover {
 }
 
 .chat-friend-action-menu button:hover { background: color-mix(in srgb, var(--accent-soft) 58%, transparent); color: var(--accent-strong); }
-.chat-friend-action-menu button:last-child:hover { color: #b4233b; }
+.chat-friend-action-menu button.danger:hover { color: #b4233b; }
+.chat-friend-action-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: color-mix(in srgb, var(--control-line) 58%, transparent);
+}
 
 .chat-sidebar-section {
   display: grid;
@@ -8957,7 +8962,9 @@ a.entry-item:hover {
   align-items: center;
   justify-content: flex-start;
   gap: 7px;
+  border: 0;
   border-radius: 6px;
+  background: transparent;
   color: var(--muted-strong);
   font-size: 0.7rem;
   padding: 0 8px;
@@ -9032,9 +9039,16 @@ a.entry-item:hover {
   gap: 12px;
   border-top: 1px solid color-mix(in srgb, var(--control-line) 54%, transparent);
   background: color-mix(in srgb, var(--popover-surface) 58%, transparent);
+  box-shadow: 0 -12px 34px color-mix(in srgb, rgba(24, 31, 45, 0.18) 70%, transparent);
   padding: 10px 12px;
   backdrop-filter: blur(22px) saturate(132%);
   -webkit-backdrop-filter: blur(22px) saturate(132%);
+  animation: chat-selection-drawer-in 160ms ease-out;
+}
+
+@keyframes chat-selection-drawer-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .chat-message-selection-bar strong { font-size: 0.72rem; }
@@ -9140,4 +9154,8 @@ a.entry-item:hover {
   .chat-message-selection-bar button:last-child { grid-column: 3; }
   .chat-message-selection-bar button:nth-of-type(2) { grid-column: 2 / -1; grid-row: 2; justify-self: end; }
   .chat-add-friend-dialog { max-height: calc(100vh - 28px); }
+}
+
+@media (min-width: 761px) {
+  .chat-message-action-trigger { display: none; }
 }

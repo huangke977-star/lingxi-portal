@@ -464,7 +464,7 @@ describe("SocialService", () => {
     }));
   });
 
-  it("physically deletes the sender's messages for both participants and removes attachment files", async () => {
+  it("physically deletes selected conversation messages for both participants and removes attachment files", async () => {
     const friendship = { userOneId: 7, userTwoId: 8, status: FriendshipStatus.accepted };
     const deleteMany = jest.fn(async () => ({ count: 1 }));
     const transaction = {
@@ -495,28 +495,42 @@ describe("SocialService", () => {
       participantIds: [7, 8],
     });
     expect(deleteMany).toHaveBeenCalledWith({
-      where: { conversationId: 5, id: { in: [61] }, senderId: user.id, type: { not: ChatMessageType.system } },
+      where: { conversationId: 5, id: { in: [61] } },
     });
     expect(attachmentsService.deleteStoredFiles).toHaveBeenCalledWith(["message-file.webp"]);
   });
 
-  it("does not allow a participant to physically delete the other user's message", async () => {
+  it("allows either participant to physically delete the other user's and system messages", async () => {
     const friendship = { userOneId: 7, userTwoId: 8, status: FriendshipStatus.accepted };
+    const deleteMany = jest.fn(async () => ({ count: 2 }));
+    const transaction = {
+      chatMessage: {
+        deleteMany,
+        findFirst: jest.fn(async () => null),
+      },
+      conversation: { update: jest.fn(async () => ({ id: 5 })) },
+    };
     const conversationFindUnique = jest.fn()
       .mockResolvedValueOnce({ friendship })
-      .mockResolvedValueOnce({ createdAt: new Date() });
+      .mockResolvedValueOnce({ createdAt: new Date("2026-07-20T00:00:00.000Z") });
     const prisma = {
       conversation: { findUnique: conversationFindUnique },
-      chatMessage: { findMany: jest.fn(async () => [{
-        id: 62,
-        senderId: 8,
-        type: ChatMessageType.text,
-        attachments: [],
-      }]) },
+      chatMessage: { findMany: jest.fn(async () => [
+        { id: 62, senderId: 8, type: ChatMessageType.text, attachments: [] },
+        { id: 63, senderId: 8, type: ChatMessageType.system, attachments: [] },
+      ]) },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
     };
     const service = createService(prisma);
 
-    await expect(service.deleteMessagesForEveryone(user.id, 5, [62])).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.deleteMessagesForEveryone(user.id, 5, [62, 63])).resolves.toEqual({
+      conversationId: 5,
+      messageIds: [62, 63],
+      participantIds: [7, 8],
+    });
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: { conversationId: 5, id: { in: [62, 63] } },
+    });
   });
 
   it("rejects recalling a message after the two-minute window", async () => {

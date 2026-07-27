@@ -43,6 +43,7 @@ import {
   type ClipboardEvent,
   type DragEvent,
   type FormEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
   useCallback,
@@ -1094,13 +1095,6 @@ export function ChatDock() {
   function requestSelectedMessageDeletion(mode: MessageDeleteMode) {
     const ids = Array.from(selectedMessageIds);
     if (!ids.length) return;
-    if (mode === "everyone") {
-      const selectedMessages = messages.filter((message) => selectedMessageIds.has(message.id));
-      if (selectedMessages.some((message) => message.sender.id !== user?.id || message.type === "system")) {
-        setError("双向删除只能选择自己发送的普通消息。");
-        return;
-      }
-    }
     setPendingMessageOperation({
       operation: mode === "everyone" ? "delete-everyone" : "delete-self",
       messageIds: ids,
@@ -1316,13 +1310,13 @@ export function ChatDock() {
             {selected && (isDesktop || isMobileConversationOpen) ? <>
               <button aria-label="发起语音通话" disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("voice")} title="语音通话" type="button"><Phone aria-hidden="true" size={17} /></button>
               <button aria-label="发起视频通话" disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("video")} title="视频通话" type="button"><Video aria-hidden="true" size={17} /></button>
-              <span className="chat-conversation-action" data-chat-conversation-action>
+              {!isDesktop ? <span className="chat-conversation-action" data-chat-conversation-action>
                 <button aria-expanded={isConversationMenuOpen} aria-label="聊天管理" onClick={() => setIsConversationMenuOpen((current) => !current)} title="聊天管理" type="button"><MoreHorizontal aria-hidden="true" size={17} /></button>
                 {isConversationMenuOpen ? <span className="chat-conversation-action-menu">
                   <button onClick={() => setPendingConversationAction("clear")} type="button"><Eraser aria-hidden="true" size={15} />清空聊天</button>
                   <button className="danger" onClick={() => setPendingConversationAction("delete")} type="button"><Trash2 aria-hidden="true" size={15} />删除聊天</button>
                 </span> : null}
-              </span>
+              </span> : null}
             </> : null}
             <button aria-label="最小化聊天窗" onClick={() => setIsMinimized(true)} type="button"><Minus aria-hidden="true" size={17} /></button>
             <button aria-label="关闭聊天窗" onClick={closeDock} type="button"><X aria-hidden="true" size={17} /></button>
@@ -1352,6 +1346,11 @@ export function ChatDock() {
                   key={entry.conversation.id}
                   menuOpen={openFriendActionId === (friendshipByUserId.get(entry.conversation.user.id)?.id ?? 0)}
                   onAction={(friendship, action) => { setPendingFriendAction({ friendship, action }); setOpenFriendActionId(0); }}
+                  onConversationAction={isDesktop ? (action) => {
+                    setSelectedId(entry.conversation.id);
+                    setPendingConversationAction(action);
+                    setOpenFriendActionId(0);
+                  } : undefined}
                   onOpen={() => { setSelectedId(entry.conversation.id); setIsMobileConversationOpen(true); }}
                   onToggleMenu={(friendshipId) => setOpenFriendActionId((current) => current === friendshipId ? 0 : friendshipId)}
                   preview={getConversationPreview(entry.conversation)}
@@ -1428,6 +1427,7 @@ export function ChatDock() {
                     onPreview={setPreviewAttachment}
                     onRecall={() => setPendingMessageOperation({ operation: "recall", messageIds: [message.id] })}
                     onSelect={() => beginMessageSelection(message.id)}
+                    onOpenActions={() => setOpenMessageActionId(message.id)}
                     onToggleSelection={() => toggleMessageSelection(message.id)}
                     onToggleActions={() => setOpenMessageActionId((current) => current === message.id ? 0 : message.id)}
                     selected={selectedMessageIds.has(message.id)}
@@ -1508,7 +1508,7 @@ export function ChatDock() {
   );
 }
 
-function ChatSidebarContactRow({ active, friendship, menuOpen, preview, unreadCount, user, onAction, onOpen, onToggleMenu }: {
+function ChatSidebarContactRow({ active, friendship, menuOpen, preview, unreadCount, user, onAction, onConversationAction, onOpen, onToggleMenu }: {
   active: boolean;
   friendship: Friendship | null;
   menuOpen: boolean;
@@ -1516,6 +1516,7 @@ function ChatSidebarContactRow({ active, friendship, menuOpen, preview, unreadCo
   unreadCount: number;
   user: SocialUser;
   onAction: (friendship: Friendship, action: "remove" | "block") => void;
+  onConversationAction?: (action: ConversationAction) => void;
   onOpen: () => void;
   onToggleMenu: (friendshipId: number) => void;
 }) {
@@ -1530,6 +1531,11 @@ function ChatSidebarContactRow({ active, friendship, menuOpen, preview, unreadCo
       {menuOpen ? <div className="chat-friend-action-menu">
         <button onClick={() => onAction(friendship, "remove")} type="button"><UserMinus aria-hidden="true" size={15} />删除好友</button>
         <button onClick={() => onAction(friendship, "block")} type="button"><Ban aria-hidden="true" size={15} />拉黑好友</button>
+        {onConversationAction ? <>
+          <span className="chat-friend-action-menu-divider" />
+          <button onClick={() => onConversationAction("clear")} type="button"><Eraser aria-hidden="true" size={15} />清空聊天</button>
+          <button className="danger" onClick={() => onConversationAction("delete")} type="button"><Trash2 aria-hidden="true" size={15} />删除聊天</button>
+        </> : null}
       </div> : null}
     </div> : null}
   </div>;
@@ -1580,6 +1586,7 @@ function ChatMessageItem({
   onPreview,
   onRecall,
   onSelect,
+  onOpenActions,
   onToggleActions,
   onToggleSelection,
 }: {
@@ -1595,12 +1602,22 @@ function ChatMessageItem({
   onPreview: (attachment: ChatAttachment) => void;
   onRecall: () => void;
   onSelect: () => void;
+  onOpenActions: () => void;
   onToggleActions: () => void;
   onToggleSelection: () => void;
 }) {
   const [renderedAt] = useState(() => Date.now());
   const callType = message.type === "system" ? message.call?.type ?? inferCallType(message.body) : null;
   const recallable = mine && message.type !== "system" && renderedAt - timestamp(message.createdAt) <= 2 * 60 * 1000;
+  function handleContextMenu(event: ReactMouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (selectionMode) {
+      onToggleSelection();
+      return;
+    }
+    onOpenActions();
+  }
   const selectionControl = selectionMode ? <button
     aria-label={selected ? "取消选择消息" : "选择消息"}
     aria-pressed={selected}
@@ -1610,7 +1627,7 @@ function ChatMessageItem({
   >{selected ? <Check aria-hidden="true" size={13} /> : null}</button> : null;
 
   if (message.type === "system") {
-    return <div className={`chat-system-row${selected ? " selected" : ""}`}>
+    return <div className={`chat-system-row${selected ? " selected" : ""}`} onContextMenu={handleContextMenu}>
       {selectionControl}
       {callType ? <button className="chat-call-message" onClick={onCall} title={`再次发起${callType === "voice" ? "语音" : "视频"}通话`} type="button">
         {callType === "voice" ? <Phone aria-hidden="true" size={14} /> : <Video aria-hidden="true" size={14} />}
@@ -1621,14 +1638,15 @@ function ChatMessageItem({
       {!selectionMode ? <span className="chat-message-action" data-chat-message-action>
         <button aria-expanded={actionOpen} aria-label="系统消息操作" className="chat-message-action-trigger" onClick={onToggleActions} type="button"><MoreHorizontal aria-hidden="true" size={15} /></button>
         {actionOpen ? <span className="chat-message-action-menu">
-          <button onClick={onSelect} type="button"><Check aria-hidden="true" size={14} />选择消息</button>
+          <button onClick={onSelect} type="button"><Check aria-hidden="true" size={14} />选择</button>
           <button onClick={onDelete} type="button"><Trash2 aria-hidden="true" size={14} />仅自己删除</button>
+          <button className="danger" onClick={onDeleteEveryone} type="button"><Trash2 aria-hidden="true" size={14} />双向删除</button>
         </span> : null}
       </span> : null}
     </div>;
   }
   const emojiOnly = isEmojiOnly(message.body);
-  return <div className={`chat-message ${mine ? "mine" : "theirs"}${emojiOnly ? " emoji-only" : ""}${selected ? " selected" : ""}`}>
+  return <div className={`chat-message ${mine ? "mine" : "theirs"}${emojiOnly ? " emoji-only" : ""}${selected ? " selected" : ""}`} onContextMenu={handleContextMenu}>
     {selectionControl}
     <UserAvatar user={message.sender} />
     <div>
@@ -1643,10 +1661,10 @@ function ChatMessageItem({
     {!selectionMode ? <span className="chat-message-action" data-chat-message-action>
       <button aria-expanded={actionOpen} aria-label="消息操作" className="chat-message-action-trigger" onClick={onToggleActions} type="button"><MoreHorizontal aria-hidden="true" size={15} /></button>
       {actionOpen ? <span className="chat-message-action-menu">
-        <button onClick={onSelect} type="button"><Check aria-hidden="true" size={14} />选择消息</button>
+        <button onClick={onSelect} type="button"><Check aria-hidden="true" size={14} />选择</button>
         {recallable ? <button onClick={onRecall} type="button"><Undo2 aria-hidden="true" size={14} />撤回消息</button> : null}
         <button onClick={onDelete} type="button"><Trash2 aria-hidden="true" size={14} />仅自己删除</button>
-        {mine ? <button className="danger" onClick={onDeleteEveryone} type="button"><Trash2 aria-hidden="true" size={14} />双向删除</button> : null}
+        <button className="danger" onClick={onDeleteEveryone} type="button"><Trash2 aria-hidden="true" size={14} />双向删除</button>
       </span> : null}
     </span> : null}
   </div>;

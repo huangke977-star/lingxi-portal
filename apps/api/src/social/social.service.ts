@@ -753,20 +753,15 @@ export class SocialService {
       where: { conversationId, id: { in: messageIds } },
       select: {
         id: true,
-        senderId: true,
-        type: true,
         attachments: { select: { storedName: true } },
       },
     });
-    if (
-      messages.length !== messageIds.length ||
-      messages.some((message) => message.senderId !== userId || message.type === ChatMessageType.system)
-    ) {
-      throw new ForbiddenException("只能双向删除自己发送的普通消息。");
+    if (messages.length !== messageIds.length) {
+      throw new NotFoundException("部分消息不存在或不属于当前会话。");
     }
     await this.prisma.$transaction(async (transaction) => {
       await transaction.chatMessage.deleteMany({
-        where: { conversationId, id: { in: messageIds }, senderId: userId, type: { not: ChatMessageType.system } },
+        where: { conversationId, id: { in: messageIds } },
       });
       const latestMessage = await transaction.chatMessage.findFirst({
         where: { conversationId },
