@@ -187,6 +187,8 @@ model User {
   friendshipRequests      Friendship[]           @relation("FriendshipRequester")
   blockedFriendships      Friendship[]           @relation("FriendshipBlocker")
   chatMessages            ChatMessage[]          @relation("ChatMessageSender")
+  conversationStates      ConversationParticipantState[]
+  hiddenChatMessages      ChatMessageDeletion[]
   chatAttachments         ChatAttachment[]       @relation("ChatAttachmentUploader")
   callsStarted            CallSession[]           @relation("CallSessionCaller")
   callsReceived           CallSession[]           @relation("CallSessionCallee")
@@ -485,6 +487,7 @@ model Conversation {
   messages     ChatMessage[]
   attachments  ChatAttachment[]
   calls        CallSession[]
+  participantStates ConversationParticipantState[]
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
 
@@ -498,15 +501,45 @@ model ChatMessage {
   conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   senderId       Int              @map("sender_id")
   sender         User             @relation("ChatMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  callSessionId  Int?             @unique @map("call_session_id")
+  callSession    CallSession?     @relation(fields: [callSessionId], references: [id], onDelete: SetNull)
   body           String           @db.Text
   type           ChatMessageType  @default(text)
   attachments    ChatAttachment[]
+  deletions      ChatMessageDeletion[]
   readAt         DateTime?        @map("read_at")
   createdAt      DateTime         @default(now()) @map("created_at")
 
   @@index([conversationId, id])
   @@index([senderId, createdAt])
   @@map("chat_messages")
+}
+
+model ConversationParticipantState {
+  conversationId        Int          @map("conversation_id")
+  conversation          Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId                Int          @map("user_id")
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hidden                Boolean      @default(false)
+  clearedBeforeMessageId Int?        @map("cleared_before_message_id")
+  createdAt             DateTime     @default(now()) @map("created_at")
+  updatedAt             DateTime     @updatedAt @map("updated_at")
+
+  @@id([conversationId, userId])
+  @@index([userId, hidden, updatedAt])
+  @@map("conversation_participant_states")
+}
+
+model ChatMessageDeletion {
+  messageId Int         @map("message_id")
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    Int         @map("user_id")
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  @@id([messageId, userId])
+  @@index([userId, messageId])
+  @@map("chat_message_deletions")
 }
 
 model ChatAttachment {
@@ -547,6 +580,7 @@ model CallSession {
   endedAt         DateTime?    @map("ended_at")
   durationSeconds Int?         @map("duration_seconds")
   failureReason   String?      @map("failure_reason") @db.VarChar(160)
+  message         ChatMessage?
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 

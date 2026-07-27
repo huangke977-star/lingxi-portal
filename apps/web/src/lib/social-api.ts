@@ -28,6 +28,11 @@ export interface PublicProfile extends SocialUser {
   relationship: Pick<Friendship, "id" | "status" | "direction" | "note"> | null;
 }
 
+export interface SocialUserSearchResult extends SocialUser {
+  relationship: Pick<Friendship, "id" | "status" | "direction" | "note"> | null;
+  canRequest: boolean;
+}
+
 export type NotificationChannel = "system" | "subscription" | "interaction";
 
 export interface ChatAttachment {
@@ -70,6 +75,12 @@ export interface ChatMessage {
   body: string;
   type: "text" | "attachment" | "mixed" | "system";
   attachments: ChatAttachment[];
+  call: {
+    id: number;
+    type: CallType;
+    status: CallStatus;
+    durationSeconds: number | null;
+  } | null;
   sender: SocialUser;
   readAt: string | null;
   createdAt: string;
@@ -129,6 +140,18 @@ export function getPublicProfile(accessToken: string, userId: number): Promise<P
 
 export function listFriendships(accessToken: string): Promise<{ friends: Friendship[]; incoming: Friendship[]; outgoing: Friendship[]; blocked: Friendship[] }> {
   return requestJson("/social/friends", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function searchSocialUsers(
+  accessToken: string,
+  query: string,
+  limit = 12,
+): Promise<{ items: SocialUserSearchResult[] }> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  return requestJson(`/social/users/search?${params}`, {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
 }
 
 export function requestFriend(accessToken: string, userId: number, note?: string): Promise<Friendship> {

@@ -43,6 +43,7 @@ const socialUser = (id: number) => ({
 
 const attachmentsService = {
   bindToMessage: jest.fn(async () => undefined),
+  deleteStoredFiles: jest.fn(async () => undefined),
   toResponse: jest.fn((attachment: { id: number; conversationId: number; createdAt: Date }) => ({
     id: attachment.id,
     conversationId: attachment.conversationId,
@@ -63,6 +64,10 @@ function createService(prisma: object) {
 }
 
 describe("SocialService", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it("normalizes the user pair when creating a friend request", async () => {
     const record = {
       id: 9,
@@ -293,6 +298,7 @@ describe("SocialService", () => {
     const transaction = {
       friendship: { update: jest.fn(async () => accepted) },
       conversation: { upsert: jest.fn(async () => ({ id: 21 })) },
+      conversationParticipantState: { createMany: jest.fn(async () => ({ count: 2 })) },
       chatMessage: { create: jest.fn(async () => ({ id: 31 })) },
       userNotification: {
         updateMany: jest.fn(async () => ({ count: 1 })),
@@ -355,6 +361,10 @@ describe("SocialService", () => {
         findUniqueOrThrow: jest.fn(async () => message),
       },
       conversation: { update: jest.fn(async () => ({ id: 5 })) },
+      conversationParticipantState: {
+        createMany: jest.fn(async () => ({ count: 2 })),
+        updateMany: jest.fn(async () => ({ count: 2 })),
+      },
     };
     const prisma = {
       conversation: { findUnique: jest.fn(async () => ({ friendship })) },
@@ -367,6 +377,163 @@ describe("SocialService", () => {
     expect(result.type).toBe("attachment");
     expect(result.attachments).toHaveLength(1);
     expect(attachmentsService.bindToMessage).toHaveBeenCalledWith(transaction, user.id, 5, [41], 31);
+  });
+
+  it("searches by nickname or username and returns the current relationship state", async () => {
+    const accepted = {
+      id: 18,
+      userOneId: 7,
+      userTwoId: 8,
+      requestedById: 7,
+      blockedById: null,
+      requestNote: null,
+      status: FriendshipStatus.accepted,
+      respondedAt: new Date(),
+      acceptedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      userOne: socialUser(7),
+      userTwo: socialUser(8),
+    };
+    const prisma = {
+      user: { findMany: jest.fn(async () => [socialUser(8), socialUser(9)]) },
+      friendship: { findMany: jest.fn(async () => [accepted]) },
+    };
+    const service = createService(prisma);
+
+    const result = await service.searchUsers(user, { q: "user", limit: 12 });
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items.find((item) => item.id === 8)).toEqual(expect.objectContaining({
+      canRequest: false,
+      relationship: expect.objectContaining({ status: FriendshipStatus.accepted, direction: "accepted" }),
+    }));
+    expect(result.items.find((item) => item.id === 9)).toEqual(expect.objectContaining({
+      canRequest: true,
+      relationship: null,
+    }));
+    expect(prisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { not: user.id }, status: "active" }),
+    }));
+  });
+
+  it("clears only the current account history while keeping the conversation visible", async () => {
+    const friendship = { userOneId: 7, userTwoId: 8, status: FriendshipStatus.accepted };
+    const stateUpsert = jest.fn(async () => ({ id: 1 }));
+    const prisma = {
+      conversation: { findUnique: jest.fn(async () => ({ friendship })) },
+      chatMessage: {
+        findFirst: jest.fn(async () => ({ id: 52 })),
+        updateMany: jest.fn(async () => ({ count: 1 })),
+      },
+      conversationParticipantState: { upsert: stateUpsert },
+      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+    };
+    const service = createService(prisma);
+
+    await expect(service.clearConversation(user.id, 5)).resolves.toEqual({
+      conversationId: 5,
+      participantIds: [7, 8],
+    });
+    expect(stateUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ hidden: false, clearedBeforeMessageId: 52 }),
+      update: expect.objectContaining({ hidden: false, clearedBeforeMessageId: 52 }),
+    }));
+  });
+
+  it("hides a deleted conversation only for the current account", async () => {
+    const friendship = { userOneId: 7, userTwoId: 8, status: FriendshipStatus.accepted };
+    const stateUpsert = jest.fn(async () => ({ id: 1 }));
+    const prisma = {
+      conversation: { findUnique: jest.fn(async () => ({ friendship })) },
+      chatMessage: {
+        findFirst: jest.fn(async () => ({ id: 53 })),
+        updateMany: jest.fn(async () => ({ count: 0 })),
+      },
+      conversationParticipantState: { upsert: stateUpsert },
+      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+    };
+    const service = createService(prisma);
+
+    await service.hideConversation(user.id, 5);
+
+    expect(stateUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { conversationId_userId: { conversationId: 5, userId: user.id } },
+      create: expect.objectContaining({ hidden: true, clearedBeforeMessageId: 53 }),
+      update: expect.objectContaining({ hidden: true, clearedBeforeMessageId: 53 }),
+    }));
+  });
+
+  it("physically deletes the sender's messages for both participants and removes attachment files", async () => {
+    const friendship = { userOneId: 7, userTwoId: 8, status: FriendshipStatus.accepted };
+    const deleteMany = jest.fn(async () => ({ count: 1 }));
+    const transaction = {
+      chatMessage: {
+        deleteMany,
+        findFirst: jest.fn(async () => ({ createdAt: new Date("2026-07-26T10:00:00.000Z") })),
+      },
+      conversation: { update: jest.fn(async () => ({ id: 5 })) },
+    };
+    const conversationFindUnique = jest.fn()
+      .mockResolvedValueOnce({ friendship })
+      .mockResolvedValueOnce({ createdAt: new Date("2026-07-20T00:00:00.000Z") });
+    const prisma = {
+      conversation: { findUnique: conversationFindUnique },
+      chatMessage: { findMany: jest.fn(async () => [{
+        id: 61,
+        senderId: user.id,
+        type: ChatMessageType.mixed,
+        attachments: [{ storedName: "message-file.webp" }],
+      }]) },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    };
+    const service = createService(prisma);
+
+    await expect(service.deleteMessagesForEveryone(user.id, 5, [61])).resolves.toEqual({
+      conversationId: 5,
+      messageIds: [61],
+      participantIds: [7, 8],
+    });
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: { conversationId: 5, id: { in: [61] }, senderId: user.id, type: { not: ChatMessageType.system } },
+    });
+    expect(attachmentsService.deleteStoredFiles).toHaveBeenCalledWith(["message-file.webp"]);
+  });
+
+  it("does not allow a participant to physically delete the other user's message", async () => {
+    const friendship = { userOneId: 7, userTwoId: 8, status: FriendshipStatus.accepted };
+    const conversationFindUnique = jest.fn()
+      .mockResolvedValueOnce({ friendship })
+      .mockResolvedValueOnce({ createdAt: new Date() });
+    const prisma = {
+      conversation: { findUnique: conversationFindUnique },
+      chatMessage: { findMany: jest.fn(async () => [{
+        id: 62,
+        senderId: 8,
+        type: ChatMessageType.text,
+        attachments: [],
+      }]) },
+    };
+    const service = createService(prisma);
+
+    await expect(service.deleteMessagesForEveryone(user.id, 5, [62])).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("rejects recalling a message after the two-minute window", async () => {
+    const prisma = {
+      chatMessage: { findUnique: jest.fn(async () => ({
+        id: 71,
+        conversationId: 5,
+        senderId: user.id,
+        type: ChatMessageType.text,
+        createdAt: new Date(Date.now() - 121_000),
+        attachments: [],
+        conversation: { friendship: { userOneId: 7, userTwoId: 8, status: FriendshipStatus.accepted } },
+      })) },
+    };
+    const service = createService(prisma);
+
+    await expect(service.recallMessage(user, 71)).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("rejects a message when both text and attachments are empty", async () => {

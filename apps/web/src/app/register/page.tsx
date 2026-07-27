@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 import { AppToast } from '@/components/app-toast';
+import { PasswordInput } from '@/components/password-input';
 import { register } from '@/lib/auth-api';
 import { saveAuthTokens } from '@/lib/auth-storage';
 
@@ -87,23 +88,21 @@ export default function RegisterPage() {
           </label>
           <label>
             <span>密码</span>
-            <input
+            <PasswordInput
               autoComplete="new-password"
               name="password"
               onChange={(event) => setPassword(event.target.value)}
               required
-              type="password"
               value={password}
             />
           </label>
           <label>
             <span>确认密码</span>
-            <input
+            <PasswordInput
               autoComplete="new-password"
               name="confirmation"
               onChange={(event) => setConfirmation(event.target.value)}
               required
-              type="password"
               value={confirmation}
             />
           </label>

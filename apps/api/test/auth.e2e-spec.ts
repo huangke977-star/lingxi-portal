@@ -498,6 +498,51 @@ describe('AuthController (e2e)', () => {
     expect(prismaState.users.find((item) => item.username === 'bio_user')?.profileBio).toBe('我就喜欢这个范。');
   });
 
+  it('changes the current user password and revokes other sessions', async () => {
+    const registered = await register('password_user', 'password@example.com').expect(200);
+    const registeredTokenId = (registered.body.refreshToken as string).split('.')[0];
+    const currentLogin = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ account: 'password_user', password: 'Secret123!' })
+      .expect(200);
+    const currentTokenId = (currentLogin.body.refreshToken as string).split('.')[0];
+
+    const response = await request(app.getHttpServer())
+      .patch('/auth/me/password')
+      .set('Authorization', `Bearer ${currentLogin.body.accessToken as string}`)
+      .send({ currentPassword: 'Secret123!', newPassword: 'NewSecret456!' })
+      .expect(200);
+
+    expect(response.body).toEqual({ success: true, revokedSessions: 1 });
+    expect(redisState.store.has(`refresh_token:${registeredTokenId}`)).toBe(false);
+    expect(redisState.store.has(`refresh_token:${currentTokenId}`)).toBe(true);
+
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ account: 'password_user', password: 'Secret123!' })
+      .expect(401);
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ account: 'password_user', password: 'NewSecret456!' })
+      .expect(200);
+  });
+
+  it('rejects an incorrect current password and an unchanged new password', async () => {
+    const registered = await register('password_guard', 'password-guard@example.com').expect(200);
+    const authorization = `Bearer ${registered.body.accessToken as string}`;
+
+    await request(app.getHttpServer())
+      .patch('/auth/me/password')
+      .set('Authorization', authorization)
+      .send({ currentPassword: 'not-the-password', newPassword: 'NewSecret456!' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch('/auth/me/password')
+      .set('Authorization', authorization)
+      .send({ currentPassword: 'Secret123!', newPassword: 'Secret123!' })
+      .expect(400);
+  });
+
   it('rejects an email already used by another account', async () => {
     const registered = await register('email_owner', 'owner@example.com').expect(200);
     await register('email_target', 'target@example.com').expect(200);

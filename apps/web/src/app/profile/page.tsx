@@ -7,13 +7,16 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Cropper, { type Area } from "react-easy-crop";
-import { MonitorSmartphone } from "lucide-react";
+import { KeyRound, MonitorSmartphone, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
+import { PasswordInput } from "@/components/password-input";
 import { RoleSymbol } from "@/components/role-symbol";
 import {
   AuthAppearance,
   AuthSession,
   AuthUser,
+  ApiRequestError,
+  changeMyPassword,
   getMe,
   isAuthExpiredError,
   listMySessions,
@@ -81,6 +84,11 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingAppearance, setIsSavingAppearance] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isLevelInfoOpen, setIsLevelInfoOpen] = useState(false);
   const levelHelpTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -493,6 +501,83 @@ export default function ProfilePage() {
     }
   }
 
+  function openPasswordDialog() {
+    setCurrentPassword("");
+    setNewPassword("");
+    setPasswordConfirmation("");
+    setError("");
+    setNotice("");
+    setIsPasswordDialogOpen(true);
+  }
+
+  function closePasswordDialog() {
+    if (isChangingPassword) return;
+    setIsPasswordDialogOpen(false);
+    setCurrentPassword("");
+    setNewPassword("");
+    setPasswordConfirmation("");
+  }
+
+  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const token = readAccessToken();
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    if (!currentPassword) {
+      setError("请输入当前密码。");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError("新密码至少需要 8 位。");
+      return;
+    }
+    if (newPassword !== passwordConfirmation) {
+      setError("两次输入的新密码不一致。");
+      return;
+    }
+
+    setIsChangingPassword(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await changeMyPassword(token, {
+        currentPassword,
+        newPassword,
+      });
+      setIsPasswordDialogOpen(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setPasswordConfirmation("");
+      await loadAccountSessions(readAccessToken());
+      setNotice(
+        result.revokedSessions
+          ? `密码已更新，并退出了 ${result.revokedSessions} 个其他设备会话。`
+          : "密码已更新。",
+      );
+    } catch (passwordError) {
+      if (isAuthExpiredError(passwordError)) {
+        clearAuthTokens();
+        router.replace("/");
+        return;
+      }
+      const message =
+        passwordError instanceof ApiRequestError
+          ? passwordError.message === "Current password is incorrect."
+            ? "当前密码不正确。"
+            : passwordError.message === "New password must be different."
+              ? "新密码不能与当前密码相同。"
+              : passwordError.message
+          : passwordError instanceof Error
+            ? passwordError.message
+            : "密码修改失败。";
+      setError(message);
+    } finally {
+      setIsChangingPassword(false);
+    }
+  }
+
   async function handleRevokeOtherSessions() {
     const token = readAccessToken();
     if (!token) {
@@ -584,7 +669,9 @@ export default function ProfilePage() {
       ? "资料保存中"
       : sessionAction
         ? "会话处理中"
-      : notice;
+      : isChangingPassword
+        ? "密码保存中"
+        : notice;
 
   const previewStyle = {
     "--theme-preview-accent": customAccent,
@@ -718,6 +805,15 @@ export default function ProfilePage() {
             <div className="panel-heading profile-bio-heading">
               <span className="section-label">Personal profile</span>
               <strong>个人资料</strong>
+              <button
+                aria-label="修改密码"
+                className="profile-password-trigger"
+                onClick={openPasswordDialog}
+                title="修改密码"
+                type="button"
+              >
+                <KeyRound aria-hidden="true" size={19} />
+              </button>
             </div>
             <form className="profile-bio-form" onSubmit={handleProfileSubmit}>
               <div className="profile-field-grid">
@@ -1037,6 +1133,102 @@ export default function ProfilePage() {
           )
         : null}
 
+      {isPasswordDialogOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="modal-backdrop password-modal-backdrop"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  closePasswordDialog();
+                }
+              }}
+              role="presentation"
+            >
+              <div
+                aria-labelledby="profile-password-modal-title"
+                aria-modal="true"
+                className="modal-panel password-modal-panel"
+                role="dialog"
+              >
+                <div className="password-modal-heading">
+                  <div className="modal-heading">
+                    <span className="section-label">Account security</span>
+                    <h2 id="profile-password-modal-title">修改密码</h2>
+                    <p>修改后当前设备保持登录，其他设备将退出。</p>
+                  </div>
+                  <button
+                    aria-label="关闭修改密码弹窗"
+                    className="level-modal-close"
+                    disabled={isChangingPassword}
+                    onClick={closePasswordDialog}
+                    type="button"
+                  >
+                    <X aria-hidden="true" size={18} />
+                  </button>
+                </div>
+                <form
+                  className="form-stack modal-form"
+                  onSubmit={(event) => void handlePasswordSubmit(event)}
+                >
+                  <label>
+                    当前密码
+                    <PasswordInput
+                      autoComplete="current-password"
+                      autoFocus
+                      disabled={isChangingPassword}
+                      onChange={(event) => setCurrentPassword(event.target.value)}
+                      required
+                      value={currentPassword}
+                    />
+                  </label>
+                  <label>
+                    新密码
+                    <PasswordInput
+                      autoComplete="new-password"
+                      disabled={isChangingPassword}
+                      minLength={8}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                      required
+                      value={newPassword}
+                    />
+                  </label>
+                  <label>
+                    确认新密码
+                    <PasswordInput
+                      autoComplete="new-password"
+                      disabled={isChangingPassword}
+                      minLength={8}
+                      onChange={(event) =>
+                        setPasswordConfirmation(event.target.value)
+                      }
+                      required
+                      value={passwordConfirmation}
+                    />
+                  </label>
+                  <div className="actions">
+                    <button
+                      className="button"
+                      disabled={isChangingPassword}
+                      type="submit"
+                    >
+                      {isChangingPassword ? "保存中" : "确认修改"}
+                    </button>
+                    <button
+                      className="button secondary"
+                      disabled={isChangingPassword}
+                      onClick={closePasswordDialog}
+                      type="button"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
       <AppToast
         duration={error ? 4200 : 2600}
         message={error || toastMessage}
@@ -1046,7 +1238,10 @@ export default function ProfilePage() {
         }}
         persistent={
           !error &&
-          (isSavingAppearance || isSavingProfile || sessionAction !== null)
+          (isSavingAppearance ||
+            isSavingProfile ||
+            isChangingPassword ||
+            sessionAction !== null)
         }
         tone={error ? "error" : toastMessage === notice ? "success" : "info"}
       />

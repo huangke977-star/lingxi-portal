@@ -96,6 +96,7 @@ describe("CallsService", () => {
       },
       chatMessage: { create: chatMessageCreate },
       conversation: { update: jest.fn(async () => ({ id: 5 })) },
+      conversationParticipantState: { updateMany: jest.fn(async () => ({ count: 2 })) },
     };
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
@@ -109,6 +110,7 @@ describe("CallsService", () => {
       data: expect.objectContaining({
         conversationId: 5,
         senderId: 7,
+        callSessionId: 31,
         type: "system",
         body: expect.stringMatching(/^语音通话 · 01:0[45]$/),
       }),

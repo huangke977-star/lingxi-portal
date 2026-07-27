@@ -312,6 +312,14 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
+  async updateOwnPassword(id: number, password: string): Promise<void> {
+    const passwordHash = await this.passwordService.hashPassword(password);
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash },
+    });
+  }
+
   async resetNickname(
     actor: AuthenticatedUser,
     id: number,

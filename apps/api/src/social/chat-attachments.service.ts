@@ -228,6 +228,16 @@ export class ChatAttachmentsService {
     }
   }
 
+  async deleteStoredFiles(storedNames: string[]): Promise<void> {
+    await Promise.all(
+      Array.from(new Set(storedNames)).map((storedName) =>
+        unlink(this.resolveStoredPath(storedName)).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error;
+        }),
+      ),
+    );
+  }
+
   private async prepareFile(file: UploadedChatAttachment): Promise<PreparedAttachment> {
     if (file.size < 1 || file.size > CHAT_ATTACHMENT_MAX_FILE_SIZE_BYTES) {
       throw new BadRequestException("单个附件不能超过 50MB。");

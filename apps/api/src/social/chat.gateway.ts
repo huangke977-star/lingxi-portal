@@ -36,6 +36,14 @@ interface ReadConversationPayload {
   conversationId?: unknown;
 }
 
+interface MessageMutationPayload extends ReadConversationPayload {
+  messageIds?: unknown;
+}
+
+interface RecallMessagePayload {
+  messageId?: unknown;
+}
+
 interface ReauthenticatePayload {
   token?: unknown;
 }
@@ -197,6 +205,101 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       return { ok: true, count: result.count, readAt: result.readAt };
     } catch (error) {
       return { ok: false, error: this.errorMessage(error, "已读状态更新失败。") };
+    }
+  }
+
+  @SubscribeMessage("chat:conversation:clear")
+  async clearConversation(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: ReadConversationPayload,
+  ) {
+    try {
+      const userId = this.requireUserId(client);
+      const conversationId = this.requirePositiveInteger(payload.conversationId, "会话编号无效。");
+      const result = await this.socialService.clearConversation(userId, conversationId);
+      this.server.to(this.userRoom(userId)).emit("chat:conversation-cleared", { conversationId });
+      return { ok: true, ...result };
+    } catch (error) {
+      return { ok: false, error: this.errorMessage(error, "清空聊天失败。") };
+    }
+  }
+
+  @SubscribeMessage("chat:conversation:delete")
+  async deleteConversation(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: ReadConversationPayload,
+  ) {
+    try {
+      const userId = this.requireUserId(client);
+      const conversationId = this.requirePositiveInteger(payload.conversationId, "会话编号无效。");
+      const result = await this.socialService.hideConversation(userId, conversationId);
+      this.server.to(this.userRoom(userId)).emit("chat:conversation-deleted", { conversationId });
+      return { ok: true, ...result };
+    } catch (error) {
+      return { ok: false, error: this.errorMessage(error, "删除聊天失败。") };
+    }
+  }
+
+  @SubscribeMessage("chat:messages:delete-self")
+  async deleteMessagesForSelf(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: MessageMutationPayload,
+  ) {
+    try {
+      const userId = this.requireUserId(client);
+      const conversationId = this.requirePositiveInteger(payload.conversationId, "会话编号无效。");
+      const messageIds = this.requireMessageIds(payload.messageIds);
+      const result = await this.socialService.deleteMessagesForUser(userId, conversationId, messageIds);
+      this.server.to(this.userRoom(userId)).emit("chat:messages-deleted", result);
+      return { ok: true, ...result };
+    } catch (error) {
+      return { ok: false, error: this.errorMessage(error, "删除消息失败。") };
+    }
+  }
+
+  @SubscribeMessage("chat:messages:delete-everyone")
+  async deleteMessagesForEveryone(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: MessageMutationPayload,
+  ) {
+    try {
+      const userId = this.requireUserId(client);
+      const conversationId = this.requirePositiveInteger(payload.conversationId, "会话编号无效。");
+      const messageIds = this.requireMessageIds(payload.messageIds);
+      const result = await this.socialService.deleteMessagesForEveryone(userId, conversationId, messageIds);
+      for (const participantId of result.participantIds) {
+        this.server.to(this.userRoom(participantId)).emit("chat:messages-deleted", {
+          conversationId,
+          messageIds: result.messageIds,
+        });
+      }
+      return { ok: true, ...result };
+    } catch (error) {
+      return { ok: false, error: this.errorMessage(error, "双向删除消息失败。") };
+    }
+  }
+
+  @SubscribeMessage("chat:message:recall")
+  async recallMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: RecallMessagePayload,
+  ) {
+    try {
+      const userId = this.requireUserId(client);
+      const currentUser = await this.usersService.findActiveById(userId);
+      const messageId = this.requirePositiveInteger(payload.messageId, "消息编号无效。");
+      const result = await this.socialService.recallMessage(currentUser, messageId);
+      for (const participantId of result.participantIds) {
+        const room = this.server.to(this.userRoom(participantId));
+        room.emit("chat:messages-deleted", {
+          conversationId: result.conversationId,
+          messageIds: [result.messageId],
+        });
+        room.emit("chat:message", result.replacement);
+      }
+      return { ok: true, ...result };
+    } catch (error) {
+      return { ok: false, error: this.errorMessage(error, "撤回消息失败。") };
     }
   }
 
@@ -523,6 +626,17 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       throw new Error("单条消息最多包含 9 个附件。");
     }
     return value.map((item) => this.requirePositiveInteger(item, "附件编号无效。"));
+  }
+
+  private requireMessageIds(value: unknown): number[] {
+    if (!Array.isArray(value) || value.length < 1 || value.length > 100) {
+      throw new Error("请选择 1 至 100 条消息。");
+    }
+    const messageIds = value.map((item) => this.requirePositiveInteger(item, "消息编号无效。"));
+    if (new Set(messageIds).size !== messageIds.length) {
+      throw new Error("消息编号不能重复。");
+    }
+    return messageIds;
   }
 
   private isAllowedOrigin(origin: string | undefined): boolean {

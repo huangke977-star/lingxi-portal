@@ -207,6 +207,17 @@ export async function updateMyProfile(
   return normalizedUser;
 }
 
+export async function changeMyPassword(
+  accessToken: string,
+  input: { currentPassword: string; newPassword: string },
+): Promise<{ success: true; revokedSessions: number }> {
+  return requestJson("/auth/me/password", {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function uploadMyAvatar(
   accessToken: string,
   file: File,

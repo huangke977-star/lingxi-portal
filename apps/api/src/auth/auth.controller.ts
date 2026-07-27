@@ -22,6 +22,7 @@ import { AuthService } from './auth.service';
 import { AuthResponse, AuthenticatedUser, AuthSessionSummary, RefreshSessionContext } from './auth.types';
 import { CurrentSessionId } from './current-session-id.decorator';
 import { CurrentUser } from './current-user.decorator';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -113,6 +114,16 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   updateProfile(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateUserProfileDto): Promise<AuthenticatedUser> {
     return this.usersService.updateOwnProfile(user.id, dto);
+  }
+
+  @Patch('me/password')
+  @UseGuards(JwtAuthGuard)
+  changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentSessionId() sessionId: string | null,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<{ success: true; revokedSessions: number }> {
+    return this.authService.changePassword(user, sessionId, dto);
   }
 
   @Post('me/avatar')

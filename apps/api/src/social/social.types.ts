@@ -30,12 +30,23 @@ export interface PublicProfileResponse extends SocialUserResponse {
   relationship: Omit<FriendshipResponse, "user" | "createdAt" | "updatedAt"> | null;
 }
 
+export interface SocialUserSearchResult extends SocialUserResponse {
+  relationship: Omit<FriendshipResponse, "user" | "createdAt" | "updatedAt"> | null;
+  canRequest: boolean;
+}
+
 export interface ChatMessageResponse {
   id: number;
   conversationId: number;
   body: string;
   type: "text" | "attachment" | "mixed" | "system";
   attachments: ChatAttachmentResponse[];
+  call: {
+    id: number;
+    type: "voice" | "video";
+    status: "ringing" | "accepted" | "declined" | "busy" | "cancelled" | "missed" | "active" | "completed" | "failed";
+    durationSeconds: number | null;
+  } | null;
   sender: SocialUserResponse;
   readAt: string | null;
   createdAt: string;

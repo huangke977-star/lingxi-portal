@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { RedisService } from '../redis/redis.service';
 import { UsersService } from '../users/users.service';
@@ -9,6 +9,7 @@ import {
   RefreshSessionContext,
 } from './auth.types';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { PasswordService } from './password.service';
 import { RefreshTokenService } from './refresh-token.service';
@@ -115,6 +116,40 @@ export class AuthService {
 
   me(user: AuthenticatedUser): AuthenticatedUser {
     return user;
+  }
+
+  async changePassword(
+    user: AuthenticatedUser,
+    sessionId: string | null,
+    dto: ChangePasswordDto,
+  ): Promise<{ success: true; revokedSessions: number }> {
+    const storedUser = await this.usersService.findForLogin(user.username);
+    if (!storedUser) {
+      throw new BadRequestException('Current password is incorrect.');
+    }
+
+    const currentPasswordMatches = await this.passwordService.verifyPassword(
+      dto.currentPassword,
+      storedUser.passwordHash,
+    );
+    if (!currentPasswordMatches) {
+      throw new BadRequestException('Current password is incorrect.');
+    }
+
+    const passwordIsUnchanged = await this.passwordService.verifyPassword(
+      dto.newPassword,
+      storedUser.passwordHash,
+    );
+    if (passwordIsUnchanged) {
+      throw new BadRequestException('New password must be different.');
+    }
+
+    await this.usersService.updateOwnPassword(user.id, dto.newPassword);
+    const revokedSessions = await this.refreshTokenService.revokeOtherSessions(
+      user.id,
+      sessionId,
+    );
+    return { success: true, revokedSessions };
   }
 
   private async createAuthResponse(

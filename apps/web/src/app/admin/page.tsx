@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { PasswordInput } from "@/components/password-input";
 import {
   listAdminUsers,
   listRoles,
@@ -614,25 +615,23 @@ export default function AdminPage() {
             >
               <label>
                 新密码
-                <input
+                <PasswordInput
                   autoComplete="new-password"
                   disabled={isPasswordSaving}
                   minLength={8}
                   onChange={(event) => setNewPassword(event.target.value)}
-                  type="password"
                   value={newPassword}
                 />
               </label>
               <label>
                 确认密码
-                <input
+                <PasswordInput
                   autoComplete="new-password"
                   disabled={isPasswordSaving}
                   minLength={8}
                   onChange={(event) =>
                     setPasswordConfirmation(event.target.value)
                   }
-                  type="password"
                   value={passwordConfirmation}
                 />
               </label>

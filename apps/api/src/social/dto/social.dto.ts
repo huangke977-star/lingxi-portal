@@ -9,7 +9,29 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
 } from "class-validator";
+
+export class SearchSocialUsersQueryDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(32)
+  q!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  limit = 12;
+}
+
+export class ChatMessageIdsDto {
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsInt({ each: true })
+  messageIds!: number[];
+}
 
 export class RequestFriendDto {
   @IsOptional()

@@ -25,6 +25,7 @@ import {
   ListNotificationsQueryDto,
   RequestFriendDto,
   RespondFriendRequestDto,
+  SearchSocialUsersQueryDto,
 } from "./dto/social.dto";
 import {
   CHAT_ATTACHMENT_MAX_FILES,
@@ -53,6 +54,14 @@ export class SocialController {
   @Get("friends")
   listFriends(@CurrentUser() user: AuthenticatedUser) {
     return this.socialService.listFriendships(user);
+  }
+
+  @Get("users/search")
+  searchUsers(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: SearchSocialUsersQueryDto,
+  ) {
+    return this.socialService.searchUsers(user, query);
   }
 
   @Post("subscriptions/:id")

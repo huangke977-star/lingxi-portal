@@ -160,6 +160,7 @@ export class CallsService implements OnModuleInit {
         data: {
           conversationId: existing.conversationId,
           senderId: endedById ?? existing.callerId,
+          callSessionId: existing.id,
           body: this.callMessage(existing.type, status, durationSeconds),
           type: ChatMessageType.system,
         },
@@ -168,6 +169,10 @@ export class CallsService implements OnModuleInit {
       await transaction.conversation.update({
         where: { id: existing.conversationId },
         data: { updatedAt: endedAt },
+      });
+      await transaction.conversationParticipantState.updateMany({
+        where: { conversationId: existing.conversationId },
+        data: { hidden: false },
       });
       const updated = await transaction.callSession.findUniqueOrThrow({ where: { id: callId } });
       return { call: this.toDescriptor(updated), messageId: message.id };
