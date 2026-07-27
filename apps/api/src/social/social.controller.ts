@@ -23,6 +23,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import {
   ListMessagesQueryDto,
   ListNotificationsQueryDto,
+  NotificationIdsDto,
   RequestFriendDto,
   RespondFriendRequestDto,
   SearchSocialUsersQueryDto,
@@ -128,6 +129,35 @@ export class SocialController {
     @Query() query: ListNotificationsQueryDto,
   ) {
     return this.socialService.markAllNotificationsRead(user, query.channel);
+  }
+
+  @Post("notifications/read-selected")
+  markSelectedNotificationsRead(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: NotificationIdsDto,
+  ) {
+    return this.socialService.markSelectedNotificationsRead(user, dto.notificationIds);
+  }
+
+  @Post("notifications/delete-selected")
+  deleteSelectedNotifications(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: NotificationIdsDto,
+  ) {
+    return this.socialService.deleteSelectedNotifications(user, dto.notificationIds);
+  }
+
+  @Delete("notifications/:id")
+  deleteNotification(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
+    return this.socialService.deleteNotification(user, id);
+  }
+
+  @Delete("notifications")
+  clearNotifications(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListNotificationsQueryDto,
+  ) {
+    return this.socialService.clearNotifications(user, query.channel);
   }
 
   @Get("conversations")

@@ -43,6 +43,7 @@ const socialUser = (id: number) => ({
 
 const attachmentsService = {
   bindToMessage: jest.fn(async () => undefined),
+  cloneToMessage: jest.fn(async () => ["forwarded-image.webp"]),
   deleteStoredFiles: jest.fn(async () => undefined),
   toResponse: jest.fn((attachment: { id: number; conversationId: number; createdAt: Date }) => ({
     id: attachment.id,
@@ -533,6 +534,94 @@ describe("SocialService", () => {
     });
   });
 
+  it("forwards selected messages in order and clones their attachments", async () => {
+    const sourceFriendship = { userOneId: 7, userTwoId: 8, status: FriendshipStatus.accepted };
+    const targetFriendship = { userOneId: 7, userTwoId: 9, status: FriendshipStatus.accepted };
+    const forwardedRecord = {
+      id: 91,
+      conversationId: 12,
+      senderId: user.id,
+      body: "需要转发的内容",
+      type: ChatMessageType.mixed,
+      readAt: null,
+      createdAt: new Date("2026-07-27T10:00:00.000Z"),
+      sender: socialUser(user.id),
+      attachments: [{
+        id: 101,
+        conversationId: 12,
+        uploadedById: user.id,
+        messageId: 91,
+        kind: "image",
+        originalName: "image.webp",
+        storedName: "forwarded-image.webp",
+        mimeType: "image/webp",
+        sizeBytes: 128,
+        sortOrder: 0,
+        usedAt: new Date(),
+        createdAt: new Date(),
+      }],
+      callSession: null,
+    };
+    const transaction = {
+      chatMessage: {
+        create: jest.fn(async () => ({ id: 91 })),
+        findUniqueOrThrow: jest.fn(async () => forwardedRecord),
+      },
+      conversationParticipantState: {
+        createMany: jest.fn(async () => ({ count: 2 })),
+        updateMany: jest.fn(async () => ({ count: 2 })),
+      },
+      conversation: { update: jest.fn(async () => ({ id: 12 })) },
+    };
+    const prisma = {
+      conversation: {
+        findUnique: jest.fn(async ({ where }: { where: { id: number } }) => ({
+          friendship: where.id === 5 ? sourceFriendship : targetFriendship,
+        })),
+      },
+      conversationParticipantState: { findUnique: jest.fn(async () => null) },
+      chatMessage: { findMany: jest.fn(async () => [{
+        id: 81,
+        conversationId: 5,
+        senderId: 8,
+        body: "需要转发的内容",
+        type: ChatMessageType.mixed,
+        readAt: null,
+        createdAt: new Date("2026-07-27T09:00:00.000Z"),
+        sender: socialUser(8),
+        attachments: [{
+          id: 100,
+          conversationId: 5,
+          uploadedById: 8,
+          messageId: 81,
+          kind: "image",
+          originalName: "image.webp",
+          storedName: "source-image.webp",
+          mimeType: "image/webp",
+          sizeBytes: 128,
+          sortOrder: 0,
+          usedAt: new Date(),
+          createdAt: new Date(),
+        }],
+        callSession: null,
+      }]) },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    };
+    const service = createService(prisma);
+
+    const result = await service.forwardMessages(user.id, 5, 12, [81]);
+
+    expect(result.participantIds).toEqual([7, 9]);
+    expect(result.messages).toHaveLength(1);
+    expect(attachmentsService.cloneToMessage).toHaveBeenCalledWith(
+      transaction,
+      user.id,
+      12,
+      91,
+      expect.arrayContaining([expect.objectContaining({ storedName: "source-image.webp" })]),
+    );
+  });
+
   it("rejects recalling a message after the two-minute window", async () => {
     const prisma = {
       chatMessage: { findUnique: jest.fn(async () => ({
@@ -574,6 +663,44 @@ describe("SocialService", () => {
       where: {
         userId: user.id,
         readAt: null,
+        type: { not: "friend_request_received" },
+      },
+    });
+  });
+
+  it("marks only the current user's selected notifications as read", async () => {
+    const updateMany = jest.fn(async () => ({ count: 2 }));
+    const service = createService({ userNotification: { updateMany } });
+
+    await expect(service.markSelectedNotificationsRead(user, [11, 12, 12])).resolves.toEqual({
+      count: 2,
+      readAt: expect.any(String),
+    });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { userId: user.id, id: { in: [11, 12] }, readAt: null },
+      data: { readAt: expect.any(Date) },
+    });
+  });
+
+  it("deletes selected notifications only for the current user", async () => {
+    const deleteMany = jest.fn(async () => ({ count: 2 }));
+    const service = createService({ userNotification: { deleteMany } });
+
+    await expect(service.deleteSelectedNotifications(user, [21, 22])).resolves.toEqual({ count: 2 });
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: { userId: user.id, id: { in: [21, 22] } },
+    });
+  });
+
+  it("clears a notification channel without deleting pending friend-request notifications", async () => {
+    const deleteMany = jest.fn(async () => ({ count: 3 }));
+    const service = createService({ userNotification: { deleteMany } });
+
+    await expect(service.clearNotifications(user, "system")).resolves.toEqual({ count: 3 });
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: {
+        userId: user.id,
+        channel: "system",
         type: { not: "friend_request_received" },
       },
     });

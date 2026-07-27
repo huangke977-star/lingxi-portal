@@ -620,6 +620,94 @@ export class SocialService {
     return this.toMessage(message);
   }
 
+  async forwardMessages(
+    userId: number,
+    sourceConversationId: number,
+    targetConversationId: number,
+    rawMessageIds: number[],
+  ): Promise<{ messages: ChatMessageResponse[]; participantIds: number[] }> {
+    const messageIds = this.normalizeMessageIds(rawMessageIds);
+    if (messageIds.length > 20) throw new BadRequestException("单次最多转发 20 条消息。");
+    if (sourceConversationId === targetConversationId) throw new BadRequestException("请选择其他好友进行转发。");
+    await this.assertConversationMember(sourceConversationId, userId);
+    const targetFriendship = await this.assertConversationMember(targetConversationId, userId);
+    const sourceState = await this.prisma.conversationParticipantState.findUnique({
+      where: { conversationId_userId: { conversationId: sourceConversationId, userId } },
+      select: { clearedBeforeMessageId: true },
+    });
+    const sourceMessages = await this.prisma.chatMessage.findMany({
+      where: {
+        AND: [
+          this.visibleMessageWhere(userId, sourceConversationId, sourceState?.clearedBeforeMessageId ?? null),
+          { id: { in: messageIds }, type: { not: ChatMessageType.system } },
+        ],
+      },
+      orderBy: [{ id: "asc" }],
+      include: messageInclude,
+    });
+    if (sourceMessages.length !== messageIds.length) {
+      throw new NotFoundException("部分消息不存在、已删除或不能转发。");
+    }
+    const totalAttachmentBytes = sourceMessages.reduce(
+      (total, message) => total + message.attachments.reduce((sum, attachment) => sum + attachment.sizeBytes, 0),
+      0,
+    );
+    if (totalAttachmentBytes > 100 * 1024 * 1024) {
+      throw new BadRequestException("单次转发的附件总大小不能超过 100MB。");
+    }
+
+    const copiedStoredNames: string[] = [];
+    try {
+      const forwarded = await this.prisma.$transaction(async (transaction) => {
+        const records: MessageRecord[] = [];
+        for (const source of sourceMessages) {
+          const created = await transaction.chatMessage.create({
+            data: {
+              conversationId: targetConversationId,
+              senderId: userId,
+              body: source.body,
+              type: source.attachments.length
+                ? source.body ? ChatMessageType.mixed : ChatMessageType.attachment
+                : ChatMessageType.text,
+            },
+            select: { id: true },
+          });
+          copiedStoredNames.push(...await this.chatAttachmentsService.cloneToMessage(
+            transaction,
+            userId,
+            targetConversationId,
+            created.id,
+            source.attachments,
+          ));
+          records.push(await transaction.chatMessage.findUniqueOrThrow({
+            where: { id: created.id },
+            include: messageInclude,
+          }));
+        }
+        await transaction.conversationParticipantState.createMany({
+          data: [
+            { conversationId: targetConversationId, userId: targetFriendship.userOneId },
+            { conversationId: targetConversationId, userId: targetFriendship.userTwoId },
+          ],
+          skipDuplicates: true,
+        });
+        await transaction.conversationParticipantState.updateMany({
+          where: { conversationId: targetConversationId },
+          data: { hidden: false },
+        });
+        await transaction.conversation.update({ where: { id: targetConversationId }, data: { updatedAt: new Date() } });
+        return records;
+      });
+      return {
+        messages: forwarded.map((message) => this.toMessage(message)),
+        participantIds: [targetFriendship.userOneId, targetFriendship.userTwoId],
+      };
+    } catch (error) {
+      await this.chatAttachmentsService.deleteStoredFiles(copiedStoredNames).catch(() => undefined);
+      throw error;
+    }
+  }
+
   async markConversationRead(
     userId: number,
     conversationId: number,
@@ -941,6 +1029,53 @@ export class SocialService {
       data: { readAt },
     });
     return { count: result.count, readAt: readAt.toISOString() };
+  }
+
+  async markSelectedNotificationsRead(user: AuthenticatedUser, notificationIds: number[]): Promise<{ count: number; readAt: string }> {
+    const ids = this.normalizeNotificationIds(notificationIds);
+    const readAt = new Date();
+    const result = await this.prisma.userNotification.updateMany({
+      where: { userId: user.id, id: { in: ids }, readAt: null },
+      data: { readAt },
+    });
+    return { count: result.count, readAt: readAt.toISOString() };
+  }
+
+  async deleteNotification(user: AuthenticatedUser, id: number): Promise<{ count: number }> {
+    const result = await this.prisma.userNotification.deleteMany({ where: { id, userId: user.id } });
+    if (!result.count) throw new NotFoundException("通知不存在。");
+    return { count: result.count };
+  }
+
+  async deleteSelectedNotifications(user: AuthenticatedUser, notificationIds: number[]): Promise<{ count: number }> {
+    const ids = this.normalizeNotificationIds(notificationIds);
+    const result = await this.prisma.userNotification.deleteMany({
+      where: { userId: user.id, id: { in: ids } },
+    });
+    return { count: result.count };
+  }
+
+  async clearNotifications(
+    user: AuthenticatedUser,
+    channel?: "system" | "subscription" | "interaction",
+  ): Promise<{ count: number }> {
+    if (!channel) throw new BadRequestException("请选择要清空的通知频道。");
+    const result = await this.prisma.userNotification.deleteMany({
+      where: {
+        userId: user.id,
+        channel: channel as UserNotificationChannel,
+        type: { not: UserNotificationType.friend_request_received },
+      },
+    });
+    return { count: result.count };
+  }
+
+  private normalizeNotificationIds(notificationIds: number[]): number[] {
+    const ids = [...new Set(notificationIds.filter((id) => Number.isInteger(id) && id > 0))];
+    if (!ids.length || ids.length > 100) {
+      throw new BadRequestException("请选择 1 至 100 条通知。");
+    }
+    return ids;
   }
 
   private async getConversation(userId: number, conversationId: number): Promise<ConversationResponse> {

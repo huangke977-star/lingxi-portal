@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { access, mkdir, open, rename, unlink } from "node:fs/promises";
+import { access, copyFile, mkdir, open, rename, unlink } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import {
   ChatAttachmentKind,
@@ -225,6 +225,50 @@ export class ChatAttachmentsService {
       if (result.count !== 1) {
         throw new BadRequestException("附件已被其他消息使用，请重新上传。");
       }
+    }
+  }
+
+  async cloneToMessage(
+    transaction: Prisma.TransactionClient,
+    userId: number,
+    conversationId: number,
+    messageId: number,
+    attachments: Array<{
+      kind: ChatAttachmentKind;
+      originalName: string;
+      storedName: string;
+      mimeType: string;
+      sizeBytes: number;
+      sortOrder: number;
+    }>,
+  ): Promise<string[]> {
+    if (!attachments.length) return [];
+    await mkdir(this.uploadDirectory, { recursive: true });
+    const copiedStoredNames: string[] = [];
+    try {
+      for (const [index, attachment] of attachments.entries()) {
+        const storedName = `${randomUUID()}${extname(attachment.storedName).toLowerCase()}`;
+        await copyFile(this.resolveStoredPath(attachment.storedName), this.resolveStoredPath(storedName));
+        copiedStoredNames.push(storedName);
+        await transaction.chatAttachment.create({
+          data: {
+            conversationId,
+            uploadedById: userId,
+            messageId,
+            kind: attachment.kind,
+            originalName: attachment.originalName,
+            storedName,
+            mimeType: attachment.mimeType,
+            sizeBytes: attachment.sizeBytes,
+            sortOrder: attachment.sortOrder ?? index,
+            usedAt: new Date(),
+          },
+        });
+      }
+      return copiedStoredNames;
+    } catch (error) {
+      await this.deleteStoredFiles(copiedStoredNames);
+      throw error;
     }
   }
 

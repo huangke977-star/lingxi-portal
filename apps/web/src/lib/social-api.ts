@@ -211,6 +211,30 @@ export function markAllNotificationsRead(accessToken: string, channel?: Notifica
   return requestJson<{ count: number; readAt: string }>(`/social/notifications/read-all${query}`, { method: "POST", headers: authHeaders(accessToken) });
 }
 
+export function markSelectedNotificationsRead(accessToken: string, notificationIds: number[]): Promise<{ count: number; readAt: string }> {
+  return requestJson<{ count: number; readAt: string }>("/social/notifications/read-selected", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ notificationIds }),
+  });
+}
+
+export function deleteNotification(accessToken: string, notificationId: number): Promise<{ count: number }> {
+  return requestJson<{ count: number }>(`/social/notifications/${notificationId}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function deleteSelectedNotifications(accessToken: string, notificationIds: number[]): Promise<{ count: number }> {
+  return requestJson<{ count: number }>("/social/notifications/delete-selected", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ notificationIds }),
+  });
+}
+
+export function clearNotifications(accessToken: string, channel: NotificationChannel): Promise<{ count: number }> {
+  return requestJson<{ count: number }>(`/social/notifications?channel=${channel}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
 export function listConversations(accessToken: string): Promise<{ items: Conversation[] }> {
   return requestJson("/social/conversations", { cache: "no-store", headers: authHeaders(accessToken) });
 }

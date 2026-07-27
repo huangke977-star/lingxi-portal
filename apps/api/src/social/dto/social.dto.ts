@@ -33,6 +33,13 @@ export class ChatMessageIdsDto {
   messageIds!: number[];
 }
 
+export class NotificationIdsDto {
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsInt({ each: true })
+  notificationIds!: number[];
+}
+
 export class RequestFriendDto {
   @IsOptional()
   @IsString()

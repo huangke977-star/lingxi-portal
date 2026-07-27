@@ -21,6 +21,7 @@ import { SocialService } from "./social.service";
 interface ChatSocketData {
   userId?: number;
   messageTimestamps?: number[];
+  forwardTimestamps?: number[];
   callTimestamps?: number[];
   authTimer?: NodeJS.Timeout;
   reauthGraceTimer?: NodeJS.Timeout;
@@ -37,6 +38,12 @@ interface ReadConversationPayload {
 }
 
 interface MessageMutationPayload extends ReadConversationPayload {
+  messageIds?: unknown;
+}
+
+interface ForwardMessagesPayload {
+  sourceConversationId?: unknown;
+  targetConversationId?: unknown;
   messageIds?: unknown;
 }
 
@@ -130,6 +137,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       this.socketsByUser.set(user.id, existingSockets);
       (client.data as ChatSocketData).userId = user.id;
       (client.data as ChatSocketData).messageTimestamps = [];
+      (client.data as ChatSocketData).forwardTimestamps = [];
       (client.data as ChatSocketData).callTimestamps = [];
       if (payload.exp) this.scheduleReauthentication(client, payload.exp);
       await client.join(this.userRoom(user.id));
@@ -205,6 +213,29 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       return { ok: true, count: result.count, readAt: result.readAt };
     } catch (error) {
       return { ok: false, error: this.errorMessage(error, "已读状态更新失败。") };
+    }
+  }
+
+  @SubscribeMessage("chat:messages:forward")
+  async forwardMessages(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: ForwardMessagesPayload,
+  ) {
+    try {
+      const userId = this.requireUserId(client);
+      this.assertForwardRate(client);
+      const sourceConversationId = this.requirePositiveInteger(payload.sourceConversationId, "来源会话编号无效。");
+      const targetConversationId = this.requirePositiveInteger(payload.targetConversationId, "目标会话编号无效。");
+      const messageIds = this.requireMessageIds(payload.messageIds);
+      const result = await this.socialService.forwardMessages(userId, sourceConversationId, targetConversationId, messageIds);
+      for (const message of result.messages) {
+        for (const participantId of result.participantIds) {
+          this.server.to(this.userRoom(participantId)).emit("chat:message", message);
+        }
+      }
+      return { ok: true, messages: result.messages };
+    } catch (error) {
+      return { ok: false, error: this.errorMessage(error, "转发消息失败。") };
     }
   }
 
@@ -618,6 +649,15 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (timestamps.length >= 5) throw new Error("通话发起过于频繁，请稍后再试。");
     timestamps.push(now);
     data.callTimestamps = timestamps;
+  }
+
+  private assertForwardRate(client: Socket): void {
+    const data = client.data as ChatSocketData;
+    const now = Date.now();
+    const timestamps = (data.forwardTimestamps ?? []).filter((timestamp) => now - timestamp < 60_000);
+    if (timestamps.length >= 5) throw new Error("消息转发过于频繁，请稍后再试。");
+    timestamps.push(now);
+    data.forwardTimestamps = timestamps;
   }
 
   private requireAttachmentIds(value: unknown): number[] {
