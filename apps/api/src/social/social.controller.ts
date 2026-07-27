@@ -33,6 +33,7 @@ import {
   createChatAttachmentStorage,
 } from "./chat-attachment.storage";
 import { ChatAttachmentsService } from "./chat-attachments.service";
+import { CallsService } from "./calls.service";
 import { SocialService } from "./social.service";
 
 @Controller("social")
@@ -41,6 +42,7 @@ export class SocialController {
   constructor(
     private readonly socialService: SocialService,
     private readonly chatAttachmentsService: ChatAttachmentsService,
+    private readonly callsService: CallsService,
   ) {}
 
   @Get("profiles/:id")
@@ -122,6 +124,11 @@ export class SocialController {
   @Get("conversations")
   listConversations(@CurrentUser() user: AuthenticatedUser) {
     return this.socialService.listConversations(user);
+  }
+
+  @Get("calls/ice-servers")
+  getCallIceServers(@CurrentUser() user: AuthenticatedUser) {
+    return this.callsService.getIceServers(user.id);
   }
 
   @Post("conversations/with/:id")

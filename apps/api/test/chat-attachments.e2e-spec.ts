@@ -12,12 +12,12 @@ const onePixelPng = Buffer.from(
   "base64",
 );
 
-function uploaded(path: string, originalname: string, size: number): UploadedChatAttachment {
+function uploaded(path: string, originalname: string, size: number, mimetype = "application/octet-stream"): UploadedChatAttachment {
   return {
     fieldname: "files",
     originalname,
     encoding: "7bit",
-    mimetype: "application/octet-stream",
+    mimetype,
     destination: join(path, ".."),
     filename: path.split(/[\\/]/).at(-1) ?? "upload",
     path,
@@ -70,6 +70,34 @@ describe("ChatAttachmentsService", () => {
     })]);
     expect(prisma.chatAttachment.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ uploadedById: 7, originalName: "avatar.png" }),
+    }));
+  });
+
+  it("accepts browser-recorded WebM audio as a voice attachment", async () => {
+    const temporaryPath = join(uploadDirectory, "voice.upload");
+    const webmHeader = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81]);
+    await writeFile(temporaryPath, webmHeader);
+    const createdAt = new Date("2026-07-27T00:00:00.000Z");
+    const prisma = {
+      conversation: {
+        findUnique: jest.fn(async () => ({
+          friendship: { userOneId: 7, userTwoId: 8, status: FriendshipStatus.accepted },
+        })),
+      },
+      chatAttachment: {
+        create: jest.fn(async (args: { data: Record<string, unknown> }) => ({ id: 2, createdAt, ...args.data })),
+      },
+      $transaction: jest.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations)),
+    };
+    const service = new ChatAttachmentsService(prisma as unknown as PrismaService);
+
+    const result = await service.uploadMany(5, 7, [
+      uploaded(temporaryPath, "voice.webm", webmHeader.length, "audio/webm;codecs=opus"),
+    ]);
+
+    expect(result[0]).toEqual(expect.objectContaining({
+      kind: ChatAttachmentKind.audio,
+      mimeType: "audio/webm",
     }));
   });
 

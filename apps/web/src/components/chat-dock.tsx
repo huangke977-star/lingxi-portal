@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import {
+  FileAudio,
   Ban,
   Bell,
   Check,
@@ -10,20 +11,25 @@ import {
   ChevronUp,
   Download,
   FileText,
+  FileVideo,
   Heart,
   Image as ImageIcon,
   Laugh,
   LoaderCircle,
+  Mic,
   MessageCircle,
   MessageCircleMore,
   Minus,
   MoreHorizontal,
   Paperclip,
+  Phone,
   Rss,
   Send,
   ShieldOff,
+  Square,
   UserMinus,
   UserPlus,
+  Video,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -42,8 +48,9 @@ import {
 } from "react";
 import { io, type Socket } from "socket.io-client";
 import { AppToast } from "@/components/app-toast";
+import { ChatCallPanel, useChatCalls } from "@/components/chat-call";
 import { RoleSymbol } from "@/components/role-symbol";
-import { getMe, resolveApiUrl, type AuthUser } from "@/lib/auth-api";
+import { getMe, refreshStoredSession, resolveApiUrl, type AuthUser } from "@/lib/auth-api";
 import {
   AUTH_STATE_CHANGE_EVENT,
   readAccessToken,
@@ -51,6 +58,7 @@ import {
 import {
   type ChatAttachment,
   type ChatMessage,
+  type CallSession,
   type Conversation,
   type Friendship,
   type SocialNotification,
@@ -94,7 +102,10 @@ const DOCK_EDGE_MARGIN = 12;
 const DOCK_ICON_GAP = 10;
 const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const MAX_AUDIO_SIZE = 20 * 1024 * 1024;
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024;
 const MAX_BATCH_SIZE = 50 * 1024 * 1024;
+const MAX_VOICE_RECORDING_SECONDS = 5 * 60;
 const BLOCKED_EXTENSIONS = new Set([
   "bat", "cmd", "com", "cpl", "exe", "hta", "jar", "js", "jse", "msi",
   "msp", "pif", "ps1", "scr", "sh", "vbe", "vbs", "wsf", "wsh",
@@ -115,6 +126,7 @@ interface PendingAttachment {
   id: string;
   file: File;
   previewUrl: string | null;
+  kind: "image" | "audio" | "video" | "file";
 }
 
 interface DockGeometry {
@@ -137,6 +149,11 @@ interface PendingFriendAction {
 export function ChatDock() {
   const router = useRouter();
   const socketRef = useRef<Socket | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const discardVoiceRecordingRef = useRef(false);
+  const voiceTimerRef = useRef<number | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const systemMessageListRef = useRef<HTMLDivElement | null>(null);
   const pendingAttachmentsRef = useRef<PendingAttachment[]>([]);
@@ -147,6 +164,7 @@ export function ChatDock() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const iconDraggedRef = useRef(false);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [chatSocket, setChatSocket] = useState<Socket | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [friendships, setFriendships] = useState<{
     friends: Friendship[];
@@ -170,6 +188,8 @@ export function ChatDock() {
   const [isLoading, setIsLoading] = useState(false);
   const [isMessagesLoading, setIsMessagesLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+  const [voiceRecordingSeconds, setVoiceRecordingSeconds] = useState(0);
   const [isEmojiOpen, setIsEmojiOpen] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<ChatAttachment | null>(null);
   const [openFriendActionId, setOpenFriendActionId] = useState(0);
@@ -217,6 +237,26 @@ export function ChatDock() {
   ].sort((left, right) => timestamp(right.activityAt) - timestamp(left.activityAt)), [channelNotifications, conversations]);
   const userId = user?.id ?? 0;
   const closeAttachmentPreview = useCallback(() => setPreviewAttachment(null), []);
+  const handleIncomingCall = useCallback((call: CallSession) => {
+    discardVoiceRecordingRef.current = true;
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+    setIsOpen(true);
+    setIsMinimized(false);
+    setSelectedId(call.conversationId);
+    setIsMobileConversationOpen(true);
+  }, []);
+  const handleCallError = useCallback((message: string) => setError(message), []);
+  const handleCallNotice = useCallback((message: string) => setNotice(message), []);
+  const chatCalls = useChatCalls({
+    socket: chatSocket,
+    userId,
+    selected,
+    onIncoming: handleIncomingCall,
+    onError: handleCallError,
+    onNotice: handleCallNotice,
+  });
+  const clearActiveCall = chatCalls.clearCall;
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -257,6 +297,10 @@ export function ChatDock() {
   const refreshSocialData = useCallback(async (showLoading = false) => {
     const token = readAccessToken();
     if (!token) {
+      clearActiveCall();
+      discardVoiceRecordingRef.current = true;
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") recorder.stop();
       pendingAttachmentsRef.current.forEach((attachment) => {
         if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
       });
@@ -302,7 +346,7 @@ export function ChatDock() {
     } finally {
       if (showLoading) setIsLoading(false);
     }
-  }, []);
+  }, [clearActiveCall]);
 
   useEffect(() => {
     // Initial loading is an external session synchronization.
@@ -405,6 +449,7 @@ export function ChatDock() {
       reconnectionDelayMax: 8000,
     });
     socketRef.current = socket;
+    setChatSocket(socket);
     socket.on("chat:message", (message: ChatMessage) => {
       const isViewing = message.conversationId === selectedIdRef.current && openRef.current && !minimizedRef.current;
       setConversations((current) => {
@@ -441,8 +486,14 @@ export function ChatDock() {
     });
     socket.on("chat:error", (payload: { message?: string }) => setError(payload.message || "聊天连接出现问题。"));
     socket.on("chat:reauthenticate", () => {
-      const latestToken = readAccessToken();
-      if (latestToken) socket.auth = { token: latestToken };
+      void (async () => {
+        const session = await refreshStoredSession();
+        const latestToken = session?.accessToken ?? readAccessToken();
+        if (!latestToken) return;
+        socket.auth = { token: latestToken };
+        const response = await socket.timeout(10_000).emitWithAck("chat:authenticate", { token: latestToken }) as { ok?: boolean; error?: string };
+        if (!response.ok) setError(response.error || "聊天连接重新认证失败。");
+      })().catch(() => setError("聊天连接重新认证失败，请重新登录。"));
     });
     socket.on("disconnect", (reason) => {
       if (reason !== "io server disconnect") return;
@@ -456,6 +507,7 @@ export function ChatDock() {
     return () => {
       socket.disconnect();
       socketRef.current = null;
+      setChatSocket((current) => current === socket ? null : current);
     };
   }, [refreshSocialData, userId]);
 
@@ -503,6 +555,14 @@ export function ChatDock() {
     });
   }, []);
 
+  useEffect(() => () => {
+    discardVoiceRecordingRef.current = true;
+    if (voiceTimerRef.current !== null) window.clearInterval(voiceTimerRef.current);
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
+
   async function loadOlderMessages() {
     const token = readAccessToken();
     const firstId = messages[0]?.id;
@@ -537,6 +597,90 @@ export function ChatDock() {
     });
   }
 
+  function clearVoiceTimer() {
+    if (voiceTimerRef.current !== null) {
+      window.clearInterval(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+  }
+
+  function releaseVoiceStream() {
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+    voiceStreamRef.current = null;
+  }
+
+  function cancelActiveVoiceRecording(discard: boolean) {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+    discardVoiceRecordingRef.current = discard;
+    if (recorder.state !== "inactive") recorder.stop();
+    else {
+      clearVoiceTimer();
+      releaseVoiceStream();
+      mediaRecorderRef.current = null;
+      setIsVoiceRecording(false);
+      setVoiceRecordingSeconds(0);
+    }
+  }
+
+  async function startVoiceRecording() {
+    if (!selectedId || isVoiceRecording || chatCalls.state || chatCalls.isPreparing) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("当前浏览器不支持语音录制。");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]
+        .find((candidate) => MediaRecorder.isTypeSupported(candidate));
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      voiceStreamRef.current = stream;
+      voiceChunksRef.current = [];
+      discardVoiceRecordingRef.current = false;
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        discardVoiceRecordingRef.current = true;
+        setError("语音录制失败，请重试。");
+      };
+      recorder.onstop = () => {
+        clearVoiceTimer();
+        releaseVoiceStream();
+        mediaRecorderRef.current = null;
+        setIsVoiceRecording(false);
+        setVoiceRecordingSeconds(0);
+        if (discardVoiceRecordingRef.current) {
+          voiceChunksRef.current = [];
+          return;
+        }
+        const blob = new Blob(voiceChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        voiceChunksRef.current = [];
+        if (!blob.size) {
+          setError("没有录到有效的语音内容。");
+          return;
+        }
+        const extension = blob.type.includes("mp4") ? "m4a" : "webm";
+        addFiles([new File([blob], `voice-${Date.now()}.${extension}`, { type: blob.type })]);
+      };
+      recorder.start(1000);
+      setIsVoiceRecording(true);
+      setVoiceRecordingSeconds(0);
+      const startedAt = Date.now();
+      voiceTimerRef.current = window.setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+        setVoiceRecordingSeconds(elapsed);
+        if (elapsed >= MAX_VOICE_RECORDING_SECONDS) cancelActiveVoiceRecording(false);
+      }, 250);
+    } catch (recordError) {
+      releaseVoiceStream();
+      setError(recordError instanceof Error ? recordError.message : "无法使用麦克风。");
+    }
+  }
+
   function addFiles(files: File[]) {
     if (!files.length) return;
     const available = MAX_ATTACHMENTS - pendingAttachments.length;
@@ -552,6 +696,8 @@ export function ChatDock() {
     for (const file of files) {
       const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
       const isImage = file.type.startsWith("image/");
+      const isAudio = file.type.startsWith("audio/");
+      const isVideo = file.type.startsWith("video/");
       if (BLOCKED_EXTENSIONS.has(extension)) {
         setError(`不允许发送可执行文件或脚本：${file.name}`);
         return;
@@ -560,7 +706,15 @@ export function ChatDock() {
         setError(`单张图片不能超过 8MB：${file.name}`);
         return;
       }
-      if (!isImage && file.size > MAX_FILE_SIZE) {
+      if (isAudio && file.size > MAX_AUDIO_SIZE) {
+        setError(`单个音频不能超过 20MB：${file.name}`);
+        return;
+      }
+      if (isVideo && file.size > MAX_VIDEO_SIZE) {
+        setError(`单个视频不能超过 50MB：${file.name}`);
+        return;
+      }
+      if (!isImage && !isAudio && !isVideo && file.size > MAX_FILE_SIZE) {
         setError(`单个普通文件不能超过 20MB：${file.name}`);
         return;
       }
@@ -570,7 +724,14 @@ export function ChatDock() {
       ...files.map((file) => ({
         id: `${Date.now()}-${crypto.randomUUID()}`,
         file,
-        previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+        previewUrl: /^(image|audio|video)\//.test(file.type) ? URL.createObjectURL(file) : null,
+        kind: file.type.startsWith("image/")
+          ? "image" as const
+          : file.type.startsWith("audio/")
+            ? "audio" as const
+            : file.type.startsWith("video/")
+              ? "video" as const
+              : "file" as const,
       })),
     ]);
   }
@@ -836,7 +997,22 @@ export function ChatDock() {
     bottom: "auto",
   } : undefined;
 
-  if (!user || !isOpen) return null;
+  const callPanel = <ChatCallPanel
+    isPreparing={chatCalls.isPreparing}
+    localStream={chatCalls.localStream}
+    onAccept={() => void chatCalls.acceptCall()}
+    onDecline={chatCalls.declineCall}
+    onEnd={chatCalls.endCall}
+    onMinimize={chatCalls.setMinimized}
+    onSwitchCamera={() => void chatCalls.switchCamera()}
+    onToggleCamera={chatCalls.toggleCamera}
+    onToggleMute={chatCalls.toggleMute}
+    remoteStream={chatCalls.remoteStream}
+    state={chatCalls.state}
+  />;
+
+  if (!user) return null;
+  if (!isOpen) return callPanel;
 
   if (isMinimized) {
     return <>
@@ -844,6 +1020,7 @@ export function ChatDock() {
         <MessageCircleMore aria-hidden="true" size={23} />
         {dockUnreadCount ? <b>{formatCount(dockUnreadCount)}</b> : null}
       </button>
+      {callPanel}
       <AppToast duration={error ? 4200 : 2600} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </>;
   }
@@ -862,6 +1039,10 @@ export function ChatDock() {
             </button> : null}
           <span><MessageCircleMore aria-hidden="true" size={18} /><strong>{selectedNotificationConfig?.label ?? selected?.user.nickname ?? "消息"}</strong></span>
           <div>
+            {selected ? <>
+              <button aria-label="发起语音通话" disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("voice")} title="语音通话" type="button"><Phone aria-hidden="true" size={17} /></button>
+              <button aria-label="发起视频通话" disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("video")} title="视频通话" type="button"><Video aria-hidden="true" size={17} /></button>
+            </> : null}
             <button aria-label="最小化聊天窗" onClick={() => setIsMinimized(true)} type="button"><Minus aria-hidden="true" size={17} /></button>
             <button aria-label="关闭聊天窗" onClick={closeDock} type="button"><X aria-hidden="true" size={17} /></button>
           </div>
@@ -953,16 +1134,23 @@ export function ChatDock() {
               </div>
               <form className="chat-composer" onDragOver={(event) => event.preventDefault()} onDrop={handleDrop} onSubmit={sendMessage}>
                 {pendingAttachments.length ? <div className="chat-pending-attachments">{pendingAttachments.map((attachment) => (
-                  <span key={attachment.id}>{attachment.previewUrl ? <img alt="" src={attachment.previewUrl} /> : <FileText aria-hidden="true" size={22} />}<small title={attachment.file.name}>{attachment.file.name}</small><button aria-label={`移除 ${attachment.file.name}`} onClick={() => removePendingAttachment(attachment.id)} type="button"><X aria-hidden="true" size={13} /></button></span>
+                  <span key={attachment.id}>{attachment.kind === "image" && attachment.previewUrl
+                    ? <img alt="" src={attachment.previewUrl} />
+                    : attachment.kind === "audio"
+                      ? <FileAudio aria-hidden="true" size={24} />
+                      : attachment.kind === "video"
+                        ? <FileVideo aria-hidden="true" size={24} />
+                        : <FileText aria-hidden="true" size={22} />}<small title={attachment.file.name}>{attachment.file.name}</small><button aria-label={`移除 ${attachment.file.name}`} onClick={() => removePendingAttachment(attachment.id)} type="button"><X aria-hidden="true" size={13} /></button></span>
                 ))}</div> : null}
                 <div className="chat-composer-row">
-                  <input accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.md,.csv,.json,.xml,.rtf,.zip,.rar,.7z,.gz,.tar" hidden multiple onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} ref={fileInputRef} type="file" />
+                  <input accept=".jpg,.jpeg,.png,.webp,.webm,.m4a,.mp3,.wav,.ogg,.mp4,.mov,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.md,.csv,.json,.xml,.rtf,.zip,.rar,.7z,.gz,.tar" hidden multiple onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} ref={fileInputRef} type="file" />
                   <div className="chat-composer-tools">
                     <button aria-label="添加表情" className={isEmojiOpen ? "active" : ""} onClick={() => setIsEmojiOpen((current) => !current)} title="表情" type="button"><Laugh aria-hidden="true" size={18} /></button>
                     <button aria-label="添加图片或文件" onClick={() => fileInputRef.current?.click()} title="添加图片或文件" type="button"><Paperclip aria-hidden="true" size={18} /></button>
+                    <button aria-label={isVoiceRecording ? "结束语音录制" : "录制语音消息"} className={isVoiceRecording ? "active recording" : ""} disabled={Boolean(chatCalls.state)} onClick={() => isVoiceRecording ? cancelActiveVoiceRecording(false) : void startVoiceRecording()} title={isVoiceRecording ? `结束录制 ${formatDuration(voiceRecordingSeconds)}` : "语音消息"} type="button">{isVoiceRecording ? <Square aria-hidden="true" size={15} /> : <Mic aria-hidden="true" size={18} />}</button>
                   </div>
                   <textarea aria-label={`给 ${selected.user.nickname} 发消息`} maxLength={2000} onChange={(event) => updateDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} onPaste={handlePaste} placeholder="输入消息" rows={2} value={draft} />
-                  <button aria-label="发送消息" disabled={isSending || (!draft.trim() && !pendingAttachments.length)} title="发送消息" type="submit">{isSending ? <LoaderCircle aria-hidden="true" className="spin" size={18} /> : <Send aria-hidden="true" size={18} />}</button>
+                  <button aria-label="发送消息" disabled={isSending || isVoiceRecording || (!draft.trim() && !pendingAttachments.length)} title="发送消息" type="submit">{isSending ? <LoaderCircle aria-hidden="true" className="spin" size={18} /> : <Send aria-hidden="true" size={18} />}</button>
                 </div>
                 {isEmojiOpen ? <div className="chat-emoji-picker">{EMOJIS.map((emoji) => <button key={emoji} onClick={() => { updateDraft(`${draft}${emoji}`); setIsEmojiOpen(false); }} type="button">{emoji}</button>)}</div> : null}
               </form>
@@ -973,6 +1161,7 @@ export function ChatDock() {
         <button aria-label="调整聊天窗大小" className="chat-dock-resize-handle" onPointerDown={beginDockResize} tabIndex={-1} type="button" />
       </section>
       {previewAttachment ? <AttachmentPreview attachment={previewAttachment} onClose={closeAttachmentPreview} /> : null}
+      {callPanel}
       <AppToast duration={error ? 4200 : 2600} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </>
   );
@@ -1041,7 +1230,7 @@ function ChatMessageItem({ message, mine, onGreeting, onPreview }: { message: Ch
   if (message.type === "system") {
     return <div className="chat-system-row">
       <span>{message.body}</span>
-      <button onClick={onGreeting} type="button">打个招呼</button>
+      {message.body === "你们已经成为好友，可以开始聊天了。" ? <button onClick={onGreeting} type="button">打个招呼</button> : null}
       <time>{formatChatTime(message.createdAt)}</time>
     </div>;
   }
@@ -1051,11 +1240,38 @@ function ChatMessageItem({ message, mine, onGreeting, onPreview }: { message: Ch
     <div>
       {message.attachments?.length ? <div className={`chat-message-attachments count-${Math.min(message.attachments.length, 4)}`}>{message.attachments.map((attachment) => attachment.kind === "image"
         ? <AuthenticatedImage attachment={attachment} key={attachment.id} onClick={() => onPreview(attachment)} />
-        : <AttachmentFile attachment={attachment} key={attachment.id} />)}</div> : null}
+        : attachment.kind === "audio" || attachment.kind === "video"
+          ? <AuthenticatedMedia attachment={attachment} key={attachment.id} />
+          : <AttachmentFile attachment={attachment} key={attachment.id} />)}</div> : null}
       {message.body ? <p>{message.body}</p> : null}
       <span>{formatChatTime(message.createdAt)}{mine ? ` · ${message.readAt ? "已读" : "未读"}` : ""}</span>
     </div>
   </div>;
+}
+
+function AuthenticatedMedia({ attachment }: { attachment: ChatAttachment }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    const token = readAccessToken();
+    if (!token) return;
+    let active = true;
+    let objectUrl = "";
+    downloadChatAttachment(token, attachment)
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [attachment]);
+  if (!url) return <span className="chat-media-loading"><LoaderCircle aria-hidden="true" className="spin" size={18} /></span>;
+  return attachment.kind === "audio"
+    ? <audio className="chat-audio-attachment" controls preload="metadata" src={url} />
+    : <video className="chat-video-attachment" controls playsInline preload="metadata" src={url} />;
 }
 
 function AuthenticatedImage({ attachment, onClick }: { attachment: ChatAttachment; onClick: () => void }) {
@@ -1150,8 +1366,17 @@ function defaultPrimaryId(conversations: Conversation[], notifications: SocialNo
 function getConversationPreview(conversation: Conversation): string {
   if (!conversation.lastMessage) return "开始聊天";
   if (conversation.lastMessage.body) return conversation.lastMessage.body;
-  const count = conversation.lastMessage.attachments?.length ?? 0;
+  const attachments = conversation.lastMessage.attachments ?? [];
+  if (attachments.length === 1 && attachments[0].kind === "audio") return "[语音消息]";
+  if (attachments.length === 1 && attachments[0].kind === "video") return "[视频]";
+  const count = attachments.length;
   return count ? `[${count} 个附件]` : "新消息";
+}
+
+function formatDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
 }
 
 function formatChatTime(value: string): string {

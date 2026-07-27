@@ -59,6 +59,36 @@ services:
       timeout: 5s
       retries: 10
 
+  turn:
+    image: coturn/coturn:4.6.3-alpine
+    container_name: lingxi-turn
+    restart: unless-stopped
+    network_mode: host
+    mem_limit: 96m
+    cpus: 0.20
+    pids_limit: 80
+    command:
+      - --no-cli
+      - --no-tls
+      - --no-dtls
+      - --no-tcp-relay
+      - --no-multicast-peers
+      - --no-loopback-peers
+      - --fingerprint
+      - --stale-nonce=600
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET}
+      - --realm=${TURN_REALM:-turn.5200918.xyz}
+      - --server-name=${TURN_REALM:-turn.5200918.xyz}
+      - --external-ip=${TURN_EXTERNAL_IP}
+      - --listening-port=${TURN_PORT:-3478}
+      - --min-port=${TURN_UDP_MIN:-49160}
+      - --max-port=${TURN_UDP_MAX:-49200}
+      - --user-quota=8
+      - --total-quota=80
+      - --log-file=stdout
+      - --simple-log
+
   api-bootstrap:
     image: ghcr.io/huangke977-star/lingxi-portal-api:main
     pull_policy: always
@@ -104,6 +134,12 @@ services:
       REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
       REFRESH_TOKEN_EXPIRES_IN_DAYS: ${REFRESH_TOKEN_EXPIRES_IN_DAYS:-30}
       MAX_REFRESH_SESSIONS_PER_USER: ${MAX_REFRESH_SESSIONS_PER_USER:-10}
+      TURN_HOST: ${TURN_HOST:-turn.5200918.xyz}
+      TURN_REALM: ${TURN_REALM:-turn.5200918.xyz}
+      TURN_SECRET: ${TURN_SECRET}
+      TURN_PORT: ${TURN_PORT:-3478}
+      TURN_CREDENTIAL_TTL_SECONDS: ${TURN_CREDENTIAL_TTL_SECONDS:-3600}
+      STUN_URLS: ${STUN_URLS:-stun:turn.5200918.xyz:3478}
       BACKGROUND_UPLOAD_DIR: /app/uploads/backgrounds
       AVATAR_UPLOAD_DIR: /app/uploads/avatars
       ARTICLE_UPLOAD_DIR: /app/uploads/articles

@@ -515,6 +515,15 @@ export class SocialService {
     return [conversation.friendship.userOneId, conversation.friendship.userTwoId];
   }
 
+  async getMessageForBroadcast(messageId: number): Promise<ChatMessageResponse> {
+    const message = await this.prisma.chatMessage.findUnique({
+      where: { id: messageId },
+      include: messageInclude,
+    });
+    if (!message) throw new NotFoundException("消息不存在。");
+    return this.toMessage(message);
+  }
+
   async getSummary(user: AuthenticatedUser): Promise<SocialSummaryResponse> {
     const friendshipWhere: Prisma.FriendshipWhereInput = {
       status: FriendshipStatus.accepted,

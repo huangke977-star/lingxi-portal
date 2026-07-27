@@ -106,6 +106,25 @@ enum ChatMessageType {
 enum ChatAttachmentKind {
   image
   file
+  audio
+  video
+}
+
+enum CallType {
+  voice
+  video
+}
+
+enum CallStatus {
+  ringing
+  accepted
+  declined
+  busy
+  cancelled
+  missed
+  active
+  completed
+  failed
 }
 
 model Role {
@@ -169,6 +188,9 @@ model User {
   blockedFriendships      Friendship[]           @relation("FriendshipBlocker")
   chatMessages            ChatMessage[]          @relation("ChatMessageSender")
   chatAttachments         ChatAttachment[]       @relation("ChatAttachmentUploader")
+  callsStarted            CallSession[]           @relation("CallSessionCaller")
+  callsReceived           CallSession[]           @relation("CallSessionCallee")
+  callsEnded              CallSession[]           @relation("CallSessionEndedBy")
   notifications           UserNotification[]     @relation("UserNotificationRecipient")
   notificationActions     UserNotification[]     @relation("UserNotificationActor")
   subscriptionsGiven      UserSubscription[]     @relation("UserSubscriptionSubscriber")
@@ -462,6 +484,7 @@ model Conversation {
   friendship   Friendship       @relation(fields: [friendshipId], references: [id], onDelete: Cascade)
   messages     ChatMessage[]
   attachments  ChatAttachment[]
+  calls        CallSession[]
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
 
@@ -506,6 +529,31 @@ model ChatAttachment {
   @@index([conversationId, messageId])
   @@index([uploadedById, messageId, createdAt])
   @@map("chat_attachments")
+}
+
+model CallSession {
+  id              Int          @id @default(autoincrement())
+  conversationId  Int          @map("conversation_id")
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  callerId        Int          @map("caller_id")
+  caller          User         @relation("CallSessionCaller", fields: [callerId], references: [id], onDelete: Cascade)
+  calleeId        Int          @map("callee_id")
+  callee          User         @relation("CallSessionCallee", fields: [calleeId], references: [id], onDelete: Cascade)
+  endedById       Int?         @map("ended_by_id")
+  endedBy         User?        @relation("CallSessionEndedBy", fields: [endedById], references: [id], onDelete: SetNull)
+  type            CallType
+  status          CallStatus   @default(ringing)
+  acceptedAt      DateTime?    @map("accepted_at")
+  endedAt         DateTime?    @map("ended_at")
+  durationSeconds Int?         @map("duration_seconds")
+  failureReason   String?      @map("failure_reason") @db.VarChar(160)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  @@index([conversationId, createdAt])
+  @@index([callerId, status, createdAt])
+  @@index([calleeId, status, createdAt])
+  @@map("call_sessions")
 }
 
 model UserNotification {

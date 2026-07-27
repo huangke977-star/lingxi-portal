@@ -33,12 +33,35 @@ export type NotificationChannel = "system" | "subscription" | "interaction";
 export interface ChatAttachment {
   id: number;
   conversationId: number;
-  kind: "image" | "file";
+  kind: "image" | "file" | "audio" | "video";
   originalName: string;
   mimeType: string;
   sizeBytes: number;
   downloadUrl: string;
   createdAt: string;
+}
+
+export type CallType = "voice" | "video";
+export type CallStatus = "ringing" | "accepted" | "declined" | "busy" | "cancelled" | "missed" | "active" | "completed" | "failed";
+
+export interface CallSession {
+  id: number;
+  conversationId: number;
+  type: CallType;
+  status: CallStatus;
+  callerId: number;
+  calleeId: number;
+  user: SocialUser;
+  acceptedAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CallIceConfig {
+  iceServers: RTCIceServer[];
+  expiresAt: string | null;
 }
 
 export interface ChatMessage {
@@ -180,6 +203,10 @@ export function listMessages(accessToken: string, conversationId: number, before
 
 export function markConversationRead(accessToken: string, conversationId: number): Promise<void> {
   return requestJson<void>(`/social/conversations/${conversationId}/read`, { method: "POST", headers: authHeaders(accessToken) });
+}
+
+export function getCallIceServers(accessToken: string): Promise<CallIceConfig> {
+  return requestJson("/social/calls/ice-servers", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
 export function uploadChatAttachments(accessToken: string, conversationId: number, files: File[]): Promise<ChatAttachment[]> {

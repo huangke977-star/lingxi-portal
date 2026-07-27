@@ -5,9 +5,11 @@ import { join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 
 export const CHAT_ATTACHMENT_MAX_FILES = 9;
-export const CHAT_ATTACHMENT_MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
+export const CHAT_ATTACHMENT_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 export const CHAT_ATTACHMENT_MAX_BATCH_SIZE_BYTES = 50 * 1024 * 1024;
 export const CHAT_IMAGE_MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024;
+export const CHAT_AUDIO_MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
+export const CHAT_VIDEO_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 
 export interface UploadedChatAttachment {
   fieldname: string;

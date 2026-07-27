@@ -17,7 +17,9 @@ import {
   CHAT_ATTACHMENT_MAX_BATCH_SIZE_BYTES,
   CHAT_ATTACHMENT_MAX_FILES,
   CHAT_ATTACHMENT_MAX_FILE_SIZE_BYTES,
+  CHAT_AUDIO_MAX_FILE_SIZE_BYTES,
   CHAT_IMAGE_MAX_FILE_SIZE_BYTES,
+  CHAT_VIDEO_MAX_FILE_SIZE_BYTES,
   UploadedChatAttachment,
   chatUploadDirectory,
 } from "./chat-attachment.storage";
@@ -73,6 +75,8 @@ const DOCUMENT_TYPES = new Map<string, string>([
 const ZIP_EXTENSIONS = new Set([".zip", ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp"]);
 const OLE_EXTENSIONS = new Set([".doc", ".xls", ".ppt"]);
 const TEXT_EXTENSIONS = new Set([".txt", ".md", ".csv", ".json", ".xml", ".rtf"]);
+const AUDIO_EXTENSIONS = new Set([".webm", ".m4a", ".mp3", ".wav", ".ogg"]);
+const VIDEO_EXTENSIONS = new Set([".webm", ".mp4", ".mov"]);
 
 interface PreparedAttachment {
   temporaryPath: string;
@@ -226,7 +230,7 @@ export class ChatAttachmentsService {
 
   private async prepareFile(file: UploadedChatAttachment): Promise<PreparedAttachment> {
     if (file.size < 1 || file.size > CHAT_ATTACHMENT_MAX_FILE_SIZE_BYTES) {
-      throw new BadRequestException("单个普通文件不能超过 20MB。");
+      throw new BadRequestException("单个附件不能超过 50MB。");
     }
     const originalName = this.safeOriginalName(file.originalname);
     const extension = extname(originalName).toLowerCase();
@@ -240,6 +244,30 @@ export class ChatAttachmentsService {
         throw new BadRequestException(`单张图片不能超过 8MB：${originalName}`);
       }
       return this.prepared(file, originalName, imageFormat.extension, imageFormat.mimeType, ChatAttachmentKind.image);
+    }
+    if (file.mimetype.startsWith("audio/") && AUDIO_EXTENSIONS.has(extension) && this.matchesAudio(extension, header)) {
+      if (file.size > CHAT_AUDIO_MAX_FILE_SIZE_BYTES) {
+        throw new BadRequestException(`单个音频不能超过 20MB：${originalName}`);
+      }
+      return this.prepared(
+        file,
+        originalName,
+        extension,
+        this.audioMimeType(extension),
+        ChatAttachmentKind.audio,
+      );
+    }
+    if (file.mimetype.startsWith("video/") && VIDEO_EXTENSIONS.has(extension) && this.matchesVideo(extension, header)) {
+      if (file.size > CHAT_VIDEO_MAX_FILE_SIZE_BYTES) {
+        throw new BadRequestException(`单个视频不能超过 50MB：${originalName}`);
+      }
+      return this.prepared(
+        file,
+        originalName,
+        extension,
+        this.videoMimeType(extension),
+        ChatAttachmentKind.video,
+      );
     }
     const mimeType = DOCUMENT_TYPES.get(extension);
     if (!mimeType || !this.matchesDocument(extension, header)) {
@@ -279,6 +307,49 @@ export class ChatAttachmentsService {
     if (extension === ".tar") return header.length >= 262 && header.subarray(257, 262).toString("ascii") === "ustar";
     if (TEXT_EXTENSIONS.has(extension)) return !header.includes(0);
     return false;
+  }
+
+  private matchesAudio(extension: string, header: Buffer): boolean {
+    if (extension === ".webm") return this.isEbml(header);
+    if (extension === ".m4a") return this.isIsoBaseMedia(header);
+    if (extension === ".mp3") {
+      return header.subarray(0, 3).toString("ascii") === "ID3" ||
+        (header.length >= 2 && header[0] === 0xff && (header[1] & 0xe0) === 0xe0);
+    }
+    if (extension === ".wav") {
+      return header.subarray(0, 4).toString("ascii") === "RIFF" &&
+        header.subarray(8, 12).toString("ascii") === "WAVE";
+    }
+    if (extension === ".ogg") return header.subarray(0, 4).toString("ascii") === "OggS";
+    return false;
+  }
+
+  private matchesVideo(extension: string, header: Buffer): boolean {
+    if (extension === ".webm") return this.isEbml(header);
+    if (extension === ".mp4" || extension === ".mov") return this.isIsoBaseMedia(header);
+    return false;
+  }
+
+  private isEbml(header: Buffer): boolean {
+    return header.length >= 4 && header.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+  }
+
+  private isIsoBaseMedia(header: Buffer): boolean {
+    return header.length >= 12 && header.subarray(4, 8).toString("ascii") === "ftyp";
+  }
+
+  private audioMimeType(extension: string): string {
+    if (extension === ".webm") return "audio/webm";
+    if (extension === ".m4a") return "audio/mp4";
+    if (extension === ".mp3") return "audio/mpeg";
+    if (extension === ".wav") return "audio/wav";
+    return "audio/ogg";
+  }
+
+  private videoMimeType(extension: string): string {
+    if (extension === ".webm") return "video/webm";
+    if (extension === ".mov") return "video/quicktime";
+    return "video/mp4";
   }
 
   private async readHeader(filePath: string): Promise<Buffer> {

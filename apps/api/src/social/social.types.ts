@@ -58,12 +58,36 @@ export interface SocialSummaryResponse {
 export interface ChatAttachmentResponse {
   id: number;
   conversationId: number;
-  kind: "image" | "file";
+  kind: "image" | "file" | "audio" | "video";
   originalName: string;
   mimeType: string;
   sizeBytes: number;
   downloadUrl: string;
   createdAt: string;
+}
+
+export interface CallSessionResponse {
+  id: number;
+  conversationId: number;
+  type: "voice" | "video";
+  status: "ringing" | "accepted" | "declined" | "busy" | "cancelled" | "missed" | "active" | "completed" | "failed";
+  callerId: number;
+  calleeId: number;
+  user: SocialUserResponse;
+  acceptedAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IceServerConfigResponse {
+  iceServers: Array<{
+    urls: string[];
+    username?: string;
+    credential?: string;
+  }>;
+  expiresAt: string | null;
 }
 
 export interface UserNotificationResponse {
