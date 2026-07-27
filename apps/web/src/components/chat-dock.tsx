@@ -155,6 +155,11 @@ interface DockIconPosition {
   y: number;
 }
 
+interface MessageActionPosition {
+  left: number;
+  top: number;
+}
+
 interface PendingFriendAction {
   friendship: Friendship;
   action: "remove" | "block";
@@ -163,6 +168,11 @@ interface PendingFriendAction {
 type ConversationAction = "clear" | "delete";
 type MessageDeleteMode = "self" | "everyone";
 type MessageOperation = "delete-self" | "delete-everyone" | "recall";
+
+const MESSAGE_ACTION_MENU_WIDTH = 154;
+const MESSAGE_ACTION_MENU_HEIGHT = 150;
+const MESSAGE_ACTION_MENU_GAP = 14;
+const MESSAGE_ACTION_MENU_EDGE = 8;
 
 export function ChatDock() {
   const router = useRouter();
@@ -174,6 +184,7 @@ export function ChatDock() {
   const voiceTimerRef = useRef<number | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const systemMessageListRef = useRef<HTMLDivElement | null>(null);
+  const dockRef = useRef<HTMLElement | null>(null);
   const pendingAttachmentsRef = useRef<PendingAttachment[]>([]);
   const selectedIdRef = useRef(0);
   const sessionUserIdRef = useRef(0);
@@ -226,6 +237,8 @@ export function ChatDock() {
   const [pendingConversationAction, setPendingConversationAction] = useState<ConversationAction | null>(null);
   const [isConversationActionRunning, setIsConversationActionRunning] = useState(false);
   const [openMessageActionId, setOpenMessageActionId] = useState(0);
+  const [messageActionPosition, setMessageActionPosition] = useState<MessageActionPosition | null>(null);
+  const [messageActionOpenedAt, setMessageActionOpenedAt] = useState(() => Date.now());
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<number>>(new Set());
   const [isMessageSelectionMode, setIsMessageSelectionMode] = useState(false);
   const [isMessageActionRunning, setIsMessageActionRunning] = useState(false);
@@ -239,6 +252,10 @@ export function ChatDock() {
   const selected = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedId) ?? null,
     [conversations, selectedId],
+  );
+  const actionMessage = useMemo(
+    () => messages.find((message) => message.id === openMessageActionId) ?? null,
+    [messages, openMessageActionId],
   );
   const channelNotifications = useMemo(
     () => ({
@@ -521,11 +538,13 @@ export function ChatDock() {
       if (target.closest("[data-chat-conversation-action]") || target.closest("[data-chat-message-action]")) return;
       setIsConversationMenuOpen(false);
       setOpenMessageActionId(0);
+      setMessageActionPosition(null);
     }
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       setIsConversationMenuOpen(false);
       setOpenMessageActionId(0);
+      setMessageActionPosition(null);
     }
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
@@ -1040,6 +1059,7 @@ export function ChatDock() {
 
   function beginMessageSelection(messageId: number) {
     setOpenMessageActionId(0);
+    setMessageActionPosition(null);
     setIsMessageSelectionMode(true);
     setSelectedMessageIds(new Set([messageId]));
   }
@@ -1057,6 +1077,46 @@ export function ChatDock() {
     setIsMessageSelectionMode(false);
     setSelectedMessageIds(new Set());
     setOpenMessageActionId(0);
+    setMessageActionPosition(null);
+  }
+
+  function openMessageActionsAtPointer(messageId: number, event: ReactMouseEvent<HTMLDivElement>) {
+    const dockBounds = dockRef.current?.getBoundingClientRect();
+    if (!dockBounds) {
+      setOpenMessageActionId(messageId);
+      setMessageActionPosition(null);
+      return;
+    }
+    const pointerX = event.clientX - dockBounds.left;
+    const pointerY = event.clientY - dockBounds.top;
+    const preferredLeft = pointerX + MESSAGE_ACTION_MENU_GAP;
+    const hasRoomOnRight = preferredLeft + MESSAGE_ACTION_MENU_WIDTH <= dockBounds.width - MESSAGE_ACTION_MENU_EDGE;
+    const left = hasRoomOnRight
+      ? preferredLeft
+      : Math.max(MESSAGE_ACTION_MENU_EDGE, pointerX - MESSAGE_ACTION_MENU_WIDTH - MESSAGE_ACTION_MENU_GAP);
+    const preferredTop = pointerY + MESSAGE_ACTION_MENU_GAP;
+    const hasRoomBelow = preferredTop + MESSAGE_ACTION_MENU_HEIGHT <= dockBounds.height - MESSAGE_ACTION_MENU_EDGE;
+    const top = hasRoomBelow
+      ? preferredTop
+      : Math.max(MESSAGE_ACTION_MENU_EDGE, pointerY - MESSAGE_ACTION_MENU_HEIGHT - MESSAGE_ACTION_MENU_GAP);
+    setMessageActionOpenedAt(Date.now());
+    setOpenMessageActionId(messageId);
+    setMessageActionPosition({ left, top });
+  }
+
+  function toggleMobileMessageActions(messageId: number) {
+    setMessageActionPosition(null);
+    setOpenMessageActionId((current) => {
+      if (current === messageId) return 0;
+      setMessageActionOpenedAt(Date.now());
+      return messageId;
+    });
+  }
+
+  function requestMessageOperation(operation: MessageOperation, messageId: number) {
+    setOpenMessageActionId(0);
+    setMessageActionPosition(null);
+    setPendingMessageOperation({ operation, messageIds: [messageId] });
   }
 
   async function executeMessageOperation() {
@@ -1264,6 +1324,12 @@ export function ChatDock() {
     bottom: "auto",
   } : undefined;
 
+  const messageActionStyle: CSSProperties | undefined = messageActionPosition ? {
+    left: messageActionPosition.left,
+    top: messageActionPosition.top,
+    right: "auto",
+  } : undefined;
+
   const callPanel = <ChatCallPanel
     isPreparing={chatCalls.isPreparing}
     localStream={chatCalls.localStream}
@@ -1294,7 +1360,7 @@ export function ChatDock() {
 
   return (
     <>
-      <section className={`chat-dock${isMobileConversationOpen ? " mobile-conversation-open" : ""}`} aria-label="消息与聊天" style={dockStyle}>
+      <section className={`chat-dock${isMobileConversationOpen ? " mobile-conversation-open" : ""}`} aria-label="消息与聊天" ref={dockRef} style={dockStyle}>
         <header className="chat-dock-titlebar" onPointerDown={beginDockDrag}>
           {!isDesktop && isMobileConversationOpen ? <button
               aria-label="返回消息列表"
@@ -1421,15 +1487,11 @@ export function ChatDock() {
                     message={message}
                     mine={message.sender.id === user.id}
                     onCall={() => callFromMessage(message)}
-                    onDelete={() => setPendingMessageOperation({ operation: "delete-self", messageIds: [message.id] })}
-                    onDeleteEveryone={() => setPendingMessageOperation({ operation: "delete-everyone", messageIds: [message.id] })}
                     onGreeting={() => void sendQuickMessage("你好")}
                     onPreview={setPreviewAttachment}
-                    onRecall={() => setPendingMessageOperation({ operation: "recall", messageIds: [message.id] })}
-                    onSelect={() => beginMessageSelection(message.id)}
-                    onOpenActions={() => setOpenMessageActionId(message.id)}
+                    onOpenActions={(event) => openMessageActionsAtPointer(message.id, event)}
                     onToggleSelection={() => toggleMessageSelection(message.id)}
-                    onToggleActions={() => setOpenMessageActionId((current) => current === message.id ? 0 : message.id)}
+                    onToggleActions={() => toggleMobileMessageActions(message.id)}
                     selected={selectedMessageIds.has(message.id)}
                     selectionMode={isMessageSelectionMode}
                   />
@@ -1470,6 +1532,14 @@ export function ChatDock() {
             </> : <div className="chat-empty"><MessageCircle aria-hidden="true" size={28} /><strong>选择一位好友开始聊天</strong><span>可以发送文字、表情、图片和文件。</span></div>}
           </main>
         </div>
+        {actionMessage && !isMessageSelectionMode ? <span className={`chat-message-action-menu${messageActionPosition ? " context-positioned" : ""}`} data-chat-message-action style={messageActionStyle}>
+          <button onClick={() => beginMessageSelection(actionMessage.id)} type="button"><Check aria-hidden="true" size={14} />选择</button>
+          {actionMessage.sender.id === user.id && actionMessage.type !== "system" && messageActionOpenedAt - timestamp(actionMessage.createdAt) <= 2 * 60 * 1000
+            ? <button onClick={() => requestMessageOperation("recall", actionMessage.id)} type="button"><Undo2 aria-hidden="true" size={14} />撤回消息</button>
+            : null}
+          <button onClick={() => requestMessageOperation("delete-self", actionMessage.id)} type="button"><Trash2 aria-hidden="true" size={14} />仅自己删除</button>
+          <button className="danger" onClick={() => requestMessageOperation("delete-everyone", actionMessage.id)} type="button"><Trash2 aria-hidden="true" size={14} />双向删除</button>
+        </span> : null}
         {isAddFriendOpen ? <div className="chat-confirm-backdrop" onClick={() => { if (!isFriendRequestSending) { setIsAddFriendOpen(false); setFriendRequestTarget(null); } }} role="presentation">
           <div aria-modal="true" className="chat-add-friend-dialog" onClick={(event) => event.stopPropagation()} role="dialog">
             <header><span><UserPlus aria-hidden="true" size={18} /><strong>添加好友</strong></span><button aria-label="关闭添加好友" onClick={() => { setIsAddFriendOpen(false); setFriendRequestTarget(null); }} type="button"><X aria-hidden="true" size={17} /></button></header>
@@ -1497,7 +1567,7 @@ export function ChatDock() {
           </div>
         </div> : null}
         {pendingFriendAction ? <div className="chat-confirm-backdrop" onClick={() => { if (!isFriendActionRunning) setPendingFriendAction(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingFriendAction.action === "block" ? <Ban aria-hidden="true" size={20} /> : <UserMinus aria-hidden="true" size={20} />}</span><div><strong>{pendingFriendAction.action === "block" ? `拉黑 ${pendingFriendAction.friendship.user.nickname}` : `删除好友 ${pendingFriendAction.friendship.user.nickname}`}</strong><p>{pendingFriendAction.action === "block" ? "拉黑后双方不能查看或发送聊天消息。历史记录会保留，解除拉黑后仍需重新添加好友。" : "删除后聊天记录会保留，但双方需要重新添加好友才能继续聊天。"}</p></div><footer><button disabled={isFriendActionRunning} onClick={() => setPendingFriendAction(null)} type="button">取消</button><button className="danger" disabled={isFriendActionRunning} onClick={() => void executeFriendAction()} type="button">{isFriendActionRunning ? "处理中" : pendingFriendAction.action === "block" ? "确认拉黑" : "确认删除"}</button></footer></div></div> : null}
-        {pendingConversationAction ? <div className="chat-confirm-backdrop" onClick={() => { if (!isConversationActionRunning) setPendingConversationAction(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingConversationAction === "clear" ? <Eraser aria-hidden="true" size={20} /> : <Trash2 aria-hidden="true" size={20} />}</span><div><strong>{pendingConversationAction === "clear" ? "清空当前聊天记录" : "从聊天列表删除会话"}</strong><p>{pendingConversationAction === "clear" ? "只清空当前账号可见的历史消息，会话入口和好友关系都会保留。" : "只从当前账号移除会话并清空历史，不会删除好友关系。之后可在左侧搜索好友，点击即可重新发起空会话。"}</p></div><footer><button disabled={isConversationActionRunning} onClick={() => setPendingConversationAction(null)} type="button">取消</button><button className="danger" disabled={isConversationActionRunning} onClick={() => void executeConversationAction()} type="button">{isConversationActionRunning ? "处理中" : "确认"}</button></footer></div></div> : null}
+        {pendingConversationAction ? <div className="chat-confirm-backdrop" onClick={() => { if (!isConversationActionRunning) setPendingConversationAction(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingConversationAction === "clear" ? <Eraser aria-hidden="true" size={20} /> : <Trash2 aria-hidden="true" size={20} />}</span><div><strong>{pendingConversationAction === "clear" ? "清空当前聊天记录" : "从聊天列表删除会话"}</strong><p>{pendingConversationAction === "clear" ? "当前账号中的系统消息、文字、图片和文件记录都会被清空，会话入口和好友关系保留。" : "当前账号中的系统消息和全部聊天内容都会被清空，并从聊天列表移除；好友关系保留，可重新发起空会话。"}</p></div><footer><button disabled={isConversationActionRunning} onClick={() => setPendingConversationAction(null)} type="button">取消</button><button className="danger" disabled={isConversationActionRunning} onClick={() => void executeConversationAction()} type="button">{isConversationActionRunning ? "处理中" : "确认"}</button></footer></div></div> : null}
         {pendingMessageOperation ? <div className="chat-confirm-backdrop" onClick={() => { if (!isMessageActionRunning) setPendingMessageOperation(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingMessageOperation.operation === "recall" ? <Undo2 aria-hidden="true" size={20} /> : <Trash2 aria-hidden="true" size={20} />}</span><div><strong>{pendingMessageOperation.operation === "recall" ? "撤回这条消息" : pendingMessageOperation.operation === "delete-everyone" ? `双向删除 ${pendingMessageOperation.messageIds.length} 条消息` : `仅自己删除 ${pendingMessageOperation.messageIds.length} 条消息`}</strong><p>{pendingMessageOperation.operation === "recall" ? "原消息和附件会被物理删除，双方聊天中会保留一条撤回提示。" : pendingMessageOperation.operation === "delete-everyone" ? "消息会从双方记录中永久删除，关联附件也会从磁盘删除，操作无法恢复。" : "这些消息只会从当前账号隐藏，对方仍然可以查看。"}</p></div><footer><button disabled={isMessageActionRunning} onClick={() => setPendingMessageOperation(null)} type="button">取消</button><button className="danger" disabled={isMessageActionRunning} onClick={() => void executeMessageOperation()} type="button">{isMessageActionRunning ? "处理中" : "确认"}</button></footer></div></div> : null}
         <button aria-label="调整聊天窗大小" className="chat-dock-resize-handle" onPointerDown={beginDockResize} tabIndex={-1} type="button" />
       </section>
@@ -1580,12 +1650,8 @@ function ChatMessageItem({
   selected,
   selectionMode,
   onCall,
-  onDelete,
-  onDeleteEveryone,
   onGreeting,
   onPreview,
-  onRecall,
-  onSelect,
   onOpenActions,
   onToggleActions,
   onToggleSelection,
@@ -1596,19 +1662,13 @@ function ChatMessageItem({
   selected: boolean;
   selectionMode: boolean;
   onCall: () => void;
-  onDelete: () => void;
-  onDeleteEveryone: () => void;
   onGreeting: () => void;
   onPreview: (attachment: ChatAttachment) => void;
-  onRecall: () => void;
-  onSelect: () => void;
-  onOpenActions: () => void;
+  onOpenActions: (event: ReactMouseEvent<HTMLDivElement>) => void;
   onToggleActions: () => void;
   onToggleSelection: () => void;
 }) {
-  const [renderedAt] = useState(() => Date.now());
   const callType = message.type === "system" ? message.call?.type ?? inferCallType(message.body) : null;
-  const recallable = mine && message.type !== "system" && renderedAt - timestamp(message.createdAt) <= 2 * 60 * 1000;
   function handleContextMenu(event: ReactMouseEvent<HTMLDivElement>) {
     event.preventDefault();
     event.stopPropagation();
@@ -1616,7 +1676,14 @@ function ChatMessageItem({
       onToggleSelection();
       return;
     }
-    onOpenActions();
+    onOpenActions(event);
+  }
+  function handleSelectionClick(event: ReactMouseEvent<HTMLDivElement>) {
+    if (!selectionMode) return;
+    if ((event.target as HTMLElement).closest(".chat-message-selector")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onToggleSelection();
   }
   const selectionControl = selectionMode ? <button
     aria-label={selected ? "取消选择消息" : "选择消息"}
@@ -1627,7 +1694,7 @@ function ChatMessageItem({
   >{selected ? <Check aria-hidden="true" size={13} /> : null}</button> : null;
 
   if (message.type === "system") {
-    return <div className={`chat-system-row${selected ? " selected" : ""}`} onContextMenu={handleContextMenu}>
+    return <div aria-selected={selectionMode ? selected : undefined} className={`chat-system-row${selectionMode ? " selection-mode" : ""}${selected ? " selected" : ""}`} onClickCapture={handleSelectionClick} onContextMenu={handleContextMenu}>
       {selectionControl}
       {callType ? <button className="chat-call-message" onClick={onCall} title={`再次发起${callType === "voice" ? "语音" : "视频"}通话`} type="button">
         {callType === "voice" ? <Phone aria-hidden="true" size={14} /> : <Video aria-hidden="true" size={14} />}
@@ -1637,16 +1704,11 @@ function ChatMessageItem({
       <time>{formatChatTime(message.createdAt)}</time>
       {!selectionMode ? <span className="chat-message-action" data-chat-message-action>
         <button aria-expanded={actionOpen} aria-label="系统消息操作" className="chat-message-action-trigger" onClick={onToggleActions} type="button"><MoreHorizontal aria-hidden="true" size={15} /></button>
-        {actionOpen ? <span className="chat-message-action-menu">
-          <button onClick={onSelect} type="button"><Check aria-hidden="true" size={14} />选择</button>
-          <button onClick={onDelete} type="button"><Trash2 aria-hidden="true" size={14} />仅自己删除</button>
-          <button className="danger" onClick={onDeleteEveryone} type="button"><Trash2 aria-hidden="true" size={14} />双向删除</button>
-        </span> : null}
       </span> : null}
     </div>;
   }
   const emojiOnly = isEmojiOnly(message.body);
-  return <div className={`chat-message ${mine ? "mine" : "theirs"}${emojiOnly ? " emoji-only" : ""}${selected ? " selected" : ""}`} onContextMenu={handleContextMenu}>
+  return <div aria-selected={selectionMode ? selected : undefined} className={`chat-message ${mine ? "mine" : "theirs"}${selectionMode ? " selection-mode" : ""}${emojiOnly ? " emoji-only" : ""}${selected ? " selected" : ""}`} onClickCapture={handleSelectionClick} onContextMenu={handleContextMenu}>
     {selectionControl}
     <UserAvatar user={message.sender} />
     <div>
@@ -1660,12 +1722,6 @@ function ChatMessageItem({
     </div>
     {!selectionMode ? <span className="chat-message-action" data-chat-message-action>
       <button aria-expanded={actionOpen} aria-label="消息操作" className="chat-message-action-trigger" onClick={onToggleActions} type="button"><MoreHorizontal aria-hidden="true" size={15} /></button>
-      {actionOpen ? <span className="chat-message-action-menu">
-        <button onClick={onSelect} type="button"><Check aria-hidden="true" size={14} />选择</button>
-        {recallable ? <button onClick={onRecall} type="button"><Undo2 aria-hidden="true" size={14} />撤回消息</button> : null}
-        <button onClick={onDelete} type="button"><Trash2 aria-hidden="true" size={14} />仅自己删除</button>
-        <button className="danger" onClick={onDeleteEveryone} type="button"><Trash2 aria-hidden="true" size={14} />双向删除</button>
-      </span> : null}
     </span> : null}
   </div>;
 }
