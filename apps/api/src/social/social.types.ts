@@ -133,6 +133,7 @@ export interface UserNotificationResponse {
   } | null;
   aggregateCount: number;
   readAt: string | null;
+  openedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

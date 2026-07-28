@@ -252,7 +252,7 @@ export function TopNav() {
   async function handleNotification(notification: SocialNotification) {
     const token = readAccessToken();
     setIsMessagePopoverOpen(false);
-    if (token && !notification.readAt) {
+    if (token && !notification.openedAt) {
       await markNotificationRead(token, notification.id).catch((actionError) => {
         setHeaderError(actionError instanceof Error ? actionError.message : "通知状态更新失败。");
       });

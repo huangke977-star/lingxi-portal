@@ -6775,28 +6775,39 @@ a.entry-item:hover {
   margin-top: 14px;
 }
 
-.article-composer-context,
 .article-composer-footer {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
 }
 
-.article-composer-context {
-  margin-bottom: 6px;
+.article-composer-target {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 26px;
+  align-items: center;
+  gap: 4px;
   color: var(--muted-strong);
   font-size: 0.78rem;
 }
 
-.article-composer-context strong {
+.article-composer-target > span {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.article-composer-target strong {
   color: var(--accent-strong);
 }
 
-.article-composer-context button {
+.article-composer-target button {
   display: inline-flex;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   border: 0;
@@ -6815,6 +6826,13 @@ a.entry-item:hover {
 
 .article-composer-footer .button {
   margin: 0;
+}
+
+.article-composer-count { white-space: nowrap; }
+
+@media (max-width: 520px) {
+  .article-composer-footer { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .article-composer-count { display: none; }
 }
 
 .public-profile-popover {
@@ -7815,25 +7833,14 @@ a.entry-item:hover {
 .chat-friendship-pane .friend-contact-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-friendship-pane .friend-contact-list small { color: var(--muted); font-size: 0.68rem; }
 
-.chat-read-all { justify-self: end; border: 0; background: transparent; color: var(--accent-strong); cursor: pointer; font-size: 0.7rem; padding: 4px 7px; }
-
 .chat-system-panel {
   display: grid;
   min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   padding: 7px 8px 9px;
 }
 
-.chat-system-panel.selection-mode { grid-template-rows: auto minmax(0, 1fr) auto; }
-
-.chat-notification-toolbar {
-  position: relative;
-  display: flex;
-  min-height: 30px;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
+.chat-system-panel.selection-mode { grid-template-rows: minmax(0, 1fr) auto; }
 
 .chat-notification-channel-action { position: relative; display: inline-flex; }
 .chat-notification-channel-action > button,
@@ -7882,7 +7889,7 @@ a.entry-item:hover {
   transition: background 160ms ease, box-shadow 160ms ease;
 }
 
-.chat-system-message-list article.unread { background: color-mix(in srgb, var(--accent-soft) 54%, var(--popover-surface)); }
+.chat-system-message-list article.unopened { background: color-mix(in srgb, var(--accent-soft) 54%, var(--popover-surface)); }
 .chat-system-message-list article.selected { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-strong) 42%, transparent); }
 .chat-system-message-list article.selection-mode { cursor: pointer; padding-left: 25px; }
 .chat-system-message-list article.selection-mode:hover { background: color-mix(in srgb, var(--accent-soft) 42%, var(--popover-surface)); }

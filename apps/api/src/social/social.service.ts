@@ -1011,9 +1011,10 @@ export class SocialService {
   }
 
   async markNotificationRead(user: AuthenticatedUser, id: number): Promise<UserNotificationResponse> {
+    const openedAt = new Date();
     const result = await this.prisma.userNotification.updateMany({
-      where: { id, userId: user.id, readAt: null },
-      data: { readAt: new Date() },
+      where: { id, userId: user.id, OR: [{ readAt: null }, { openedAt: null }] },
+      data: { readAt: openedAt, openedAt },
     });
     const notification = await this.prisma.userNotification.findFirst({
       where: { id, userId: user.id },
@@ -1039,8 +1040,8 @@ export class SocialService {
     const ids = this.normalizeNotificationIds(notificationIds);
     const readAt = new Date();
     const result = await this.prisma.userNotification.updateMany({
-      where: { userId: user.id, id: { in: ids }, readAt: null },
-      data: { readAt },
+      where: { userId: user.id, id: { in: ids }, OR: [{ readAt: null }, { openedAt: null }] },
+      data: { readAt, openedAt: readAt },
     });
     return { count: result.count, readAt: readAt.toISOString() };
   }
@@ -1321,6 +1322,7 @@ export class SocialService {
       } : notification.article ? { kind: "article", article: notification.article } : null,
       aggregateCount: notification.aggregateCount,
       readAt: notification.readAt?.toISOString() ?? null,
+      openedAt: notification.openedAt?.toISOString() ?? null,
       createdAt: notification.createdAt.toISOString(),
       updatedAt: notification.updatedAt.toISOString(),
     };

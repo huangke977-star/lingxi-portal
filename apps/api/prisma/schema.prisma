@@ -613,6 +613,7 @@ model UserNotification {
   commentReport   ArticleCommentReport? @relation(fields: [commentReportId], references: [id], onDelete: SetNull)
   aggregateCount  Int                   @default(1) @map("aggregate_count")
   readAt          DateTime?             @map("read_at")
+  openedAt        DateTime?             @map("opened_at")
   createdAt       DateTime              @default(now()) @map("created_at")
   updatedAt       DateTime              @updatedAt @map("updated_at")
 

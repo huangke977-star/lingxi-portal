@@ -677,8 +677,8 @@ describe("SocialService", () => {
       readAt: expect.any(String),
     });
     expect(updateMany).toHaveBeenCalledWith({
-      where: { userId: user.id, id: { in: [11, 12] }, readAt: null },
-      data: { readAt: expect.any(Date) },
+      where: { userId: user.id, id: { in: [11, 12] }, OR: [{ readAt: null }, { openedAt: null }] },
+      data: { readAt: expect.any(Date), openedAt: expect.any(Date) },
     });
   });
 

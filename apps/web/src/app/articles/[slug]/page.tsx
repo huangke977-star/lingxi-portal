@@ -194,8 +194,13 @@ export default function ArticleDetailPage() {
     }
     setReplyingTo(comment);
     window.requestAnimationFrame(() => {
-      composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      composerRef.current?.focus({ preventScroll: true });
+      const composer = composerRef.current;
+      if (!composer) return;
+      const bounds = composer.getBoundingClientRect();
+      if (bounds.top < 72 || bounds.bottom > window.innerHeight - 24) {
+        composer.scrollIntoView({ behavior: "auto", block: "nearest" });
+      }
+      composer.focus({ preventScroll: true });
     });
   }
 
@@ -311,9 +316,12 @@ export default function ArticleDetailPage() {
         <div className="article-section-heading"><div><span className="section-label">Conversation</span><h2>评论与回复</h2></div><span>{article.commentCount} 条</span></div>
         {commentThreads.length ? <div className="article-comments-list">{commentThreads.map((thread) => <section className="article-comment-thread" key={thread.root.id}>{renderComment(thread.root)}{thread.replies.length ? <div className="article-comment-replies">{thread.replies.map(({ comment, parent }) => renderComment(comment, parent ?? thread.root))}</div> : null}</section>)}</div> : <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />还没有评论。</div>}
         <form className="article-comment-form" onSubmit={handleCommentSubmit}>
-          {replyingTo ? <div className="article-composer-context"><span>回复 <strong>@{replyingTo.author.nickname}</strong></span><button aria-label="取消回复" onClick={() => setReplyingTo(null)} title="取消回复" type="button"><X aria-hidden="true" size={15} /></button></div> : null}
           <textarea aria-label={replyingTo ? `回复 ${replyingTo.author.nickname}` : "评论文章"} maxLength={2000} onChange={(event) => setCommentDraft(event.target.value)} placeholder={replyingTo ? `回复 @${replyingTo.author.nickname}` : "写下你的想法"} ref={composerRef} rows={3} value={commentDraft} />
-          <div className="article-composer-footer"><span>{commentDraft.length} / 2000</span><button className="button" disabled={isSubmittingComment || !commentDraft.trim()} type="submit"><Send aria-hidden="true" size={16} />{isSubmittingComment ? "发布中" : replyingTo ? "发布回复" : "发布评论"}</button></div>
+          <div className="article-composer-footer">
+            <span className="article-composer-target">{replyingTo ? <><span title={`回复 @${replyingTo.author.nickname}`}>回复 <strong>@{replyingTo.author.nickname}</strong></span><button aria-label="取消回复" onClick={() => setReplyingTo(null)} title="取消回复" type="button"><X aria-hidden="true" size={14} /></button></> : null}</span>
+            <span className="article-composer-count">{commentDraft.length} / 2000</span>
+            <button className="button" disabled={isSubmittingComment || !commentDraft.trim()} type="submit"><Send aria-hidden="true" size={16} />{isSubmittingComment ? "发布中" : replyingTo ? "发布回复" : "发布评论"}</button>
+          </div>
         </form>
       </section>
       {reportingComment ? <div className="comment-report-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setReportingComment(null); }}><form className="comment-report-dialog" onSubmit={handleReportSubmit}><div><strong>举报评论</strong><button aria-label="关闭举报窗口" onClick={() => setReportingComment(null)} type="button"><X aria-hidden="true" size={17} /></button></div><label>举报原因<select onChange={(event) => setReportReason(event.target.value as ArticleCommentReportReason)} value={reportReason}><option value="spam">垃圾广告</option><option value="harassment">辱骂骚扰</option><option value="illegal">违法违规</option><option value="privacy">隐私泄露</option><option value="misinformation">不实内容</option><option value="other">其他</option></select></label><label>补充说明<textarea maxLength={500} onChange={(event) => setReportDetail(event.target.value)} placeholder="可选，帮助管理员判断具体问题" rows={3} value={reportDetail} /></label><button className="button" disabled={isSubmittingReport} type="submit">{isSubmittingReport ? "提交中" : "提交举报"}</button></form></div> : null}

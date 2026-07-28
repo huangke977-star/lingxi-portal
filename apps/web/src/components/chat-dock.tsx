@@ -587,6 +587,29 @@ export function ChatDock() {
   }, [isMinimized, isNotificationSelected, isOpen, selectedSystemNotificationId]);
 
   useEffect(() => {
+    if (!selectedNotificationConfig || !selectedUnreadNotifications || !isOpen || isMinimized) return;
+    if (!isDesktop && !isMobileConversationOpen) return;
+    const token = readAccessToken();
+    if (!token) return;
+    let active = true;
+    const channel = selectedNotificationConfig.channel;
+    markAllNotificationsRead(token, channel)
+      .then((result) => {
+        if (!active) return;
+        setNotifications((current) => current.map((item) =>
+          item.channel === channel && !item.readAt ? { ...item, readAt: result.readAt } : item,
+        ));
+        notifySocialStateChange();
+      })
+      .catch((actionError) => {
+        if (active) setError(actionError instanceof Error ? actionError.message : "通知状态更新失败。");
+      });
+    return () => {
+      active = false;
+    };
+  }, [isDesktop, isMinimized, isMobileConversationOpen, isOpen, selectedNotificationConfig, selectedUnreadNotifications]);
+
+  useEffect(() => {
     if (!openFriendActionId) return;
     function handlePointerDown(event: PointerEvent) {
       if ((event.target as HTMLElement).closest("[data-chat-friend-action]")) return;
@@ -1291,11 +1314,15 @@ export function ChatDock() {
   async function handleNotification(notification: SocialNotification) {
     const token = readAccessToken();
     if (!token) return;
-    if (!notification.readAt) {
+    if (!notification.openedAt) {
       try {
-        await markNotificationRead(token, notification.id);
+        const updatedNotification = await markNotificationRead(token, notification.id);
         setNotifications((current) => current.map((item) =>
-          item.id === notification.id ? { ...item, readAt: new Date().toISOString() } : item,
+          item.id === notification.id ? {
+            ...item,
+            readAt: updatedNotification.readAt,
+            openedAt: updatedNotification.openedAt,
+          } : item,
         ));
         notifySocialStateChange();
       } catch {
@@ -1345,20 +1372,6 @@ export function ChatDock() {
       notifySocialStateChange();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "解除拉黑失败。");
-    }
-  }
-
-  async function readAllNotifications(channel: NotificationChannel) {
-    const token = readAccessToken();
-    if (!token) return;
-    try {
-      setOpenNotificationChannelMenuId(0);
-      await markAllNotificationsRead(token, channel);
-      const readAt = new Date().toISOString();
-      setNotifications((current) => current.map((item) => item.channel === channel ? { ...item, readAt: item.readAt ?? readAt } : item));
-      notifySocialStateChange();
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "通知状态更新失败。");
     }
   }
 
@@ -1421,8 +1434,8 @@ export function ChatDock() {
     try {
       const result = await markSelectedNotificationsRead(token, notificationIds);
       const selectedIds = new Set(notificationIds);
-      setNotifications((current) => current.map((item) => selectedIds.has(item.id) && !item.readAt
-        ? { ...item, readAt: result.readAt }
+      setNotifications((current) => current.map((item) => selectedIds.has(item.id) && !item.openedAt
+        ? { ...item, readAt: result.readAt, openedAt: result.readAt }
         : item));
       cancelNotificationSelection();
       setNotice(result.count ? `已将 ${result.count} 条通知标为已读。` : "所选通知均已是已读状态。");
@@ -1605,7 +1618,6 @@ export function ChatDock() {
 
   const openNotificationChannel = NOTIFICATION_CHANNELS.find((item) => item.id === openNotificationChannelMenuId) ?? null;
   const openNotificationChannelItems = openNotificationChannel ? channelNotifications[openNotificationChannel.channel] : [];
-  const openNotificationChannelUnreadCount = openNotificationChannelItems.filter((item) => !item.readAt).length;
 
   const callPanel = <ChatCallPanel
     isPreparing={chatCalls.isPreparing}
@@ -1682,7 +1694,6 @@ export function ChatDock() {
                       <button aria-expanded={openNotificationChannelMenuId === entry.id} aria-label={`${entry.config.label}管理`} onClick={(event) => { event.stopPropagation(); setOpenNotificationChannelMenuId((current) => current === entry.id ? 0 : entry.id); }} title="频道管理" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
                       {isDesktop && openNotificationChannelMenuId === entry.id ? <span className="chat-notification-channel-menu">
                         <button className="danger" onClick={() => requestNotificationChannelHide(entry.config.channel, entry.id, entry.config.label)} type="button"><Trash2 aria-hidden="true" size={14} />删除频道通知</button>
-                        {unreadCount ? <button onClick={() => void readAllNotifications(entry.config.channel)} type="button"><Bell aria-hidden="true" size={14} />全部标为已读</button> : null}
                         {items.length ? <button className="danger" onClick={() => requestNotificationChannelClear(entry.config.channel, entry.config.label)} type="button"><Eraser aria-hidden="true" size={14} />清空当前频道</button> : null}
                       </span> : null}
                     </span>
@@ -1756,7 +1767,6 @@ export function ChatDock() {
               notifications={selectedNotifications}
               onCancelSelection={cancelNotificationSelection}
               onDeleteSelected={() => requestNotificationDeletion(Array.from(selectedNotificationIds))}
-              onMarkAllRead={() => readAllNotifications(selectedNotificationConfig.channel)}
               onMarkSelectedRead={() => void markNotificationSelectionRead(Array.from(selectedNotificationIds))}
               onOpenArticle={(slug) => router.push(`/articles/${slug}`)}
               onOpenActions={openNotificationActionsAtPointer}
@@ -1765,7 +1775,6 @@ export function ChatDock() {
               onToggleSelection={toggleNotificationSelection}
               selectedId={selectedSystemNotificationId}
               selectedIds={selectedNotificationIds}
-              unreadCount={selectedUnreadNotifications}
               listRef={systemMessageListRef}
             /> : selected ? <>
               <div className="chat-message-list" ref={messageListRef}>
@@ -1885,7 +1894,6 @@ export function ChatDock() {
       {!isDesktop && openNotificationChannel && typeof document !== "undefined" ? createPortal(
         <div className="chat-mobile-channel-sheet" data-chat-notification-action>
           <button className="danger" onClick={() => requestNotificationChannelHide(openNotificationChannel.channel, openNotificationChannel.id, openNotificationChannel.label)} type="button"><Trash2 aria-hidden="true" size={15} />删除频道通知</button>
-          {openNotificationChannelUnreadCount ? <button onClick={() => void readAllNotifications(openNotificationChannel.channel)} type="button"><Bell aria-hidden="true" size={15} />全部标为已读</button> : null}
           {openNotificationChannelItems.length ? <button className="danger" onClick={() => requestNotificationChannelClear(openNotificationChannel.channel, openNotificationChannel.label)} type="button"><Eraser aria-hidden="true" size={15} />清空当前频道</button> : null}
         </div>,
         document.body,
@@ -1940,11 +1948,9 @@ function NotificationPanel({
   notifications,
   selectedId,
   selectedIds,
-  unreadCount,
   listRef,
   onCancelSelection,
   onDeleteSelected,
-  onMarkAllRead,
   onMarkSelectedRead,
   onOpenActions,
   onOpenArticle,
@@ -1959,11 +1965,9 @@ function NotificationPanel({
   notifications: SocialNotification[];
   selectedId: number;
   selectedIds: Set<number>;
-  unreadCount: number;
   listRef: RefObject<HTMLDivElement | null>;
   onCancelSelection: () => void;
   onDeleteSelected: () => void;
-  onMarkAllRead: () => Promise<void>;
   onMarkSelectedRead: () => void;
   onOpenActions: (notificationId: number, event: ReactMouseEvent<HTMLElement>) => void;
   onOpenArticle: (slug: string) => void;
@@ -1974,7 +1978,7 @@ function NotificationPanel({
   const longPressTimerRef = useRef<number | null>(null);
   const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
   const longPressTriggeredIdRef = useRef(0);
-  const selectedUnreadCount = notifications.filter((notification) => selectedIds.has(notification.id) && !notification.readAt).length;
+  const selectedUnopenedCount = notifications.filter((notification) => selectedIds.has(notification.id) && !notification.openedAt).length;
   function clearLongPressTimer() {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = null;
@@ -2001,9 +2005,6 @@ function NotificationPanel({
     clearLongPressTimer();
   }
   return <div className={`chat-system-panel${isSelectionMode ? " selection-mode" : ""}`}>
-    <div className="chat-notification-toolbar">
-      {unreadCount ? <button className="chat-read-all" onClick={() => void onMarkAllRead()} type="button">全部标为已读</button> : <span />}
-    </div>
     <div className="chat-system-message-list" ref={listRef}>
       {notifications.length ? notifications.map((notification) => {
         const selected = selectedIds.has(notification.id);
@@ -2028,7 +2029,7 @@ function NotificationPanel({
           else if (longPressTriggeredIdRef.current !== notification.id) onOpenActions(notification.id, event);
         }
         return <article
-          className={`${notification.readAt ? "" : "unread"}${selectedId === notification.id ? " selected" : ""}${isSelectionMode ? " selection-mode" : ""}${selected ? " batch-selected" : ""}`}
+          className={`${notification.openedAt ? "" : "unopened"}${selectedId === notification.id ? " selected" : ""}${isSelectionMode ? " selection-mode" : ""}${selected ? " batch-selected" : ""}`}
           data-notification-id={notification.id}
           key={notification.id}
           onClickCapture={handleSelectionClick}
@@ -2055,7 +2056,7 @@ function NotificationPanel({
     {isSelectionMode ? <div className="chat-message-selection-bar chat-notification-selection-bar">
       <button disabled={isActionRunning} onClick={onCancelSelection} type="button"><X aria-hidden="true" size={14} />取消</button>
       <strong>已选 {selectedIds.size} 条</strong>
-      <button disabled={isActionRunning || !selectedUnreadCount} onClick={onMarkSelectedRead} type="button"><Bell aria-hidden="true" size={14} />标为已读</button>
+      <button disabled={isActionRunning || !selectedUnopenedCount} onClick={onMarkSelectedRead} type="button"><Bell aria-hidden="true" size={14} />标为已读</button>
       <button className="danger" disabled={isActionRunning || !selectedIds.size} onClick={onDeleteSelected} type="button"><Trash2 aria-hidden="true" size={14} />删除</button>
     </div> : null}
   </div>;
