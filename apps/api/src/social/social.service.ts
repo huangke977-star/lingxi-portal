@@ -989,20 +989,24 @@ export class SocialService {
   async listNotifications(
     user: AuthenticatedUser,
     query: ListNotificationsQueryDto,
-  ): Promise<{ items: UserNotificationResponse[]; hasMore: boolean }> {
-    const notifications = await this.prisma.userNotification.findMany({
-      where: {
-        userId: user.id,
-        ...(query.channel ? { channel: query.channel as UserNotificationChannel } : {}),
-        ...(query.beforeId ? { id: { lt: query.beforeId } } : {}),
-      },
-      orderBy: [{ id: "desc" }],
-      take: query.limit + 1,
-      include: notificationInclude,
-    });
+  ): Promise<{ items: UserNotificationResponse[]; hasMore: boolean; hiddenChannels: UserNotificationChannel[] }> {
+    const [notifications, hiddenChannels] = await Promise.all([
+      this.prisma.userNotification.findMany({
+        where: {
+          userId: user.id,
+          ...(query.channel ? { channel: query.channel as UserNotificationChannel } : {}),
+          ...(query.beforeId ? { id: { lt: query.beforeId } } : {}),
+        },
+        orderBy: [{ id: "desc" }],
+        take: query.limit + 1,
+        include: notificationInclude,
+      }),
+      this.listHiddenNotificationChannels(user.id),
+    ]);
     return {
       items: notifications.slice(0, query.limit).map((notification) => this.toNotification(notification)),
       hasMore: notifications.length > query.limit,
+      hiddenChannels,
     };
   }
 
@@ -1070,12 +1074,77 @@ export class SocialService {
     return { count: result.count };
   }
 
+  async hideNotificationChannel(
+    user: AuthenticatedUser,
+    rawChannel: string,
+  ): Promise<{ channel: UserNotificationChannel; hiddenThroughNotificationId: number; readAt: string }> {
+    const channel = this.normalizeNotificationChannel(rawChannel);
+    const contentWhere = this.notificationChannelContentWhere(user.id, channel);
+    const latestNotification = await this.prisma.userNotification.findFirst({
+      where: contentWhere,
+      orderBy: [{ id: "desc" }],
+      select: { id: true },
+    });
+    const hiddenThroughNotificationId = latestNotification?.id ?? 0;
+    const readAt = new Date();
+    await this.prisma.$transaction([
+      this.prisma.userNotificationChannelState.upsert({
+        where: { userId_channel: { userId: user.id, channel } },
+        create: { userId: user.id, channel, hiddenThroughNotificationId },
+        update: { hiddenThroughNotificationId },
+      }),
+      this.prisma.userNotification.updateMany({
+        where: { ...contentWhere, readAt: null },
+        data: { readAt },
+      }),
+    ]);
+    return { channel, hiddenThroughNotificationId, readAt: readAt.toISOString() };
+  }
+
   private normalizeNotificationIds(notificationIds: number[]): number[] {
     const ids = [...new Set(notificationIds.filter((id) => Number.isInteger(id) && id > 0))];
     if (!ids.length || ids.length > 100) {
       throw new BadRequestException("请选择 1 至 100 条通知。");
     }
     return ids;
+  }
+
+  private async listHiddenNotificationChannels(userId: number): Promise<UserNotificationChannel[]> {
+    const states = await this.prisma.userNotificationChannelState.findMany({
+      where: { userId },
+      select: { channel: true, hiddenThroughNotificationId: true },
+    });
+    const hiddenChannels = await Promise.all(states.map(async (state) => {
+      const newerNotification = await this.prisma.userNotification.findFirst({
+        where: {
+          ...this.notificationChannelContentWhere(userId, state.channel),
+          id: { gt: state.hiddenThroughNotificationId },
+        },
+        select: { id: true },
+      });
+      return newerNotification ? null : state.channel;
+    }));
+    return hiddenChannels.filter((channel): channel is UserNotificationChannel => channel !== null);
+  }
+
+  private notificationChannelContentWhere(
+    userId: number,
+    channel: UserNotificationChannel,
+  ): Prisma.UserNotificationWhereInput {
+    return {
+      userId,
+      channel,
+      ...(channel === UserNotificationChannel.system
+        ? { type: { not: UserNotificationType.friend_request_received } }
+        : {}),
+    };
+  }
+
+  private normalizeNotificationChannel(channel: string): UserNotificationChannel {
+    if (!Object.values(UserNotificationChannel).includes(channel as UserNotificationChannel)) {
+      throw new BadRequestException("通知频道无效。");
+    }
+    return channel as UserNotificationChannel;
   }
 
   private async getConversation(userId: number, conversationId: number): Promise<ConversationResponse> {

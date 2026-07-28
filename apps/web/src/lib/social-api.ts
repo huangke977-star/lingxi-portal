@@ -194,12 +194,16 @@ export function getSocialSummary(accessToken: string): Promise<{ unreadMessages:
   return requestJson("/social/summary", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
-export function listNotifications(accessToken: string, beforeId?: number, channel?: NotificationChannel): Promise<{ items: SocialNotification[]; hasMore: boolean }> {
+export function listNotifications(accessToken: string, beforeId?: number, channel?: NotificationChannel): Promise<{ items: SocialNotification[]; hasMore: boolean; hiddenChannels: NotificationChannel[] }> {
   const params = new URLSearchParams({ limit: "50" });
   if (beforeId) params.set("beforeId", String(beforeId));
   if (channel) params.set("channel", channel);
   const query = `?${params}`;
   return requestJson(`/social/notifications${query}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function hideNotificationChannel(accessToken: string, channel: NotificationChannel): Promise<{ channel: NotificationChannel; hiddenThroughNotificationId: number; readAt: string }> {
+  return requestJson(`/social/notification-channels/${channel}`, { method: "DELETE", headers: authHeaders(accessToken) });
 }
 
 export function markNotificationRead(accessToken: string, notificationId: number): Promise<SocialNotification> {

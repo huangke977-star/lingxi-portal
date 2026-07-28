@@ -152,15 +152,16 @@ model User {
   role                    Role                   @relation(fields: [roleId], references: [id])
   isSuperAdmin            Boolean                @default(false) @map("is_super_admin")
   status                  UserStatus             @default(active)
-  appearanceThemeId       String                 @default("sakura-mist") @map("appearance_theme_id") @db.VarChar(64)
-  customAccent            String                 @default("#db2777") @map("custom_accent") @db.VarChar(7)
-  customSurface           String                 @default("#ffffff") @map("custom_surface") @db.VarChar(7)
+  appearanceThemeId       String                 @default("cloud-blue") @map("appearance_theme_id") @db.VarChar(64)
+  customAccent            String                 @default("#1814f0") @map("custom_accent") @db.VarChar(7)
+  customSurface           String                 @default("#dfc8c8") @map("custom_surface") @db.VarChar(7)
   customForeground        String                 @default("#2b2530") @map("custom_foreground") @db.VarChar(7)
   customMuted             String                 @default("#665867") @map("custom_muted") @db.VarChar(7)
-  cardAlpha               Int                    @default(52) @map("card_alpha")
-  glassBlur               Int                    @default(22) @map("glass_blur")
+  cardAlpha               Int                    @default(50) @map("card_alpha")
+  glassBlur               Int                    @default(18) @map("glass_blur")
   glassTint               String                 @default("#fff3f6") @map("glass_tint") @db.VarChar(7)
-  glassTintAlpha          Int                    @default(72) @map("glass_tint_alpha")
+  glassTintAlpha          Int                    @default(0) @map("glass_tint_alpha")
+  appearanceCustomized    Boolean                @default(false) @map("appearance_customized")
   avatarOriginalName      String?                @map("avatar_original_name") @db.VarChar(255)
   avatarStoredName        String?                @unique @map("avatar_stored_name") @db.VarChar(255)
   avatarMimeType          String?                @map("avatar_mime_type") @db.VarChar(64)
@@ -195,6 +196,7 @@ model User {
   callsEnded              CallSession[]           @relation("CallSessionEndedBy")
   notifications           UserNotification[]     @relation("UserNotificationRecipient")
   notificationActions     UserNotification[]     @relation("UserNotificationActor")
+  notificationChannelStates UserNotificationChannelState[]
   subscriptionsGiven      UserSubscription[]     @relation("UserSubscriptionSubscriber")
   subscriptionsReceived   UserSubscription[]     @relation("UserSubscriptionAuthor")
 
@@ -621,4 +623,16 @@ model UserNotification {
   @@index([friendshipId])
   @@index([commentReportId])
   @@map("user_notifications")
+}
+
+model UserNotificationChannelState {
+  userId                      Int                     @map("user_id")
+  user                        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel                     UserNotificationChannel
+  hiddenThroughNotificationId Int                     @default(0) @map("hidden_through_notification_id")
+  createdAt                   DateTime                @default(now()) @map("created_at")
+  updatedAt                   DateTime                @updatedAt @map("updated_at")
+
+  @@id([userId, channel])
+  @@map("user_notification_channel_states")
 }

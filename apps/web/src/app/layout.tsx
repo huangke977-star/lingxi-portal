@@ -27,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html data-portal-theme="cloud-blue" lang="zh-CN">
       <body>
         <AuthSessionController />
         <ThemeController />

@@ -356,6 +356,7 @@ export class UsersService {
         glassBlur: appearance.glassBlur,
         glassTint: appearance.glassTint,
         glassTintAlpha: appearance.glassTintAlpha,
+        appearanceCustomized: true,
       },
       select: this.userSelect(),
     });

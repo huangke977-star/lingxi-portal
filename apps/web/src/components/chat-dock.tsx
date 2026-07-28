@@ -80,6 +80,7 @@ import {
   downloadChatAttachment,
   getChatSocketOrigin,
   getOrCreateConversation,
+  hideNotificationChannel,
   listConversations,
   listFriendships,
   listMessages,
@@ -183,6 +184,12 @@ interface PendingNotificationDeletion {
   notificationIds: number[];
 }
 
+interface PendingNotificationChannelHide {
+  channel: NotificationChannel;
+  channelId: number;
+  channelLabel: string;
+}
+
 interface PendingMessageForward {
   sourceConversationId: number;
   messageIds: number[];
@@ -226,6 +233,7 @@ export function ChatDock() {
     blocked: Friendship[];
   }>({ friends: [], incoming: [], outgoing: [], blocked: [] });
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
+  const [hiddenNotificationChannels, setHiddenNotificationChannels] = useState<NotificationChannel[]>([]);
   const [selectedId, setSelectedId] = useState(0);
   const [selectedSystemNotificationId, setSelectedSystemNotificationId] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -280,6 +288,7 @@ export function ChatDock() {
   const [isNotificationSelectionMode, setIsNotificationSelectionMode] = useState(false);
   const [isNotificationActionRunning, setIsNotificationActionRunning] = useState(false);
   const [pendingNotificationDeletion, setPendingNotificationDeletion] = useState<PendingNotificationDeletion | null>(null);
+  const [pendingNotificationChannelHide, setPendingNotificationChannelHide] = useState<PendingNotificationChannelHide | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -347,8 +356,8 @@ export function ChatDock() {
   const dockUnreadCount = unreadMessages + unreadNotifications + friendships.incoming.length;
   const primaryEntries = useMemo(() => [
     ...conversations.filter((conversation) => matchesFriendSearch(conversation.user)).map((conversation) => ({ kind: "conversation" as const, id: conversation.id, activityAt: conversation.lastMessage?.createdAt ?? conversation.updatedAt, conversation })),
-    ...(!normalizedFriendSearch ? NOTIFICATION_CHANNELS.map((config) => ({ kind: "notification" as const, id: config.id, activityAt: channelNotifications[config.channel][0]?.updatedAt ?? channelNotifications[config.channel][0]?.createdAt ?? "", config })) : []),
-  ].sort((left, right) => timestamp(right.activityAt) - timestamp(left.activityAt)), [channelNotifications, conversations, matchesFriendSearch, normalizedFriendSearch]);
+    ...(!normalizedFriendSearch ? NOTIFICATION_CHANNELS.filter((config) => !hiddenNotificationChannels.includes(config.channel)).map((config) => ({ kind: "notification" as const, id: config.id, activityAt: channelNotifications[config.channel][0]?.updatedAt ?? channelNotifications[config.channel][0]?.createdAt ?? "", config })) : []),
+  ].sort((left, right) => timestamp(right.activityAt) - timestamp(left.activityAt)), [channelNotifications, conversations, hiddenNotificationChannels, matchesFriendSearch, normalizedFriendSearch]);
   const userId = user?.id ?? 0;
   const closeAttachmentPreview = useCallback(() => setPreviewAttachment(null), []);
   const handleIncomingCall = useCallback((call: CallSession) => {
@@ -462,6 +471,7 @@ export function ChatDock() {
       setConversations([]);
       setFriendships({ friends: [], incoming: [], outgoing: [], blocked: [] });
       setNotifications([]);
+      setHiddenNotificationChannels([]);
       setSelectedId(0);
       setMessages([]);
       setDrafts({});
@@ -489,10 +499,12 @@ export function ChatDock() {
       setConversations(conversationResult.items);
       setFriendships(friendshipResult);
       setNotifications(notificationResult.items);
+      const nextHiddenChannels = notificationResult.hiddenChannels ?? [];
+      setHiddenNotificationChannels(nextHiddenChannels);
       setSelectedId((current) => {
-        if (NOTIFICATION_CHANNELS.some((item) => item.id === current)) return current;
+        if (NOTIFICATION_CHANNELS.some((item) => item.id === current && !nextHiddenChannels.includes(item.channel))) return current;
         if (current && conversationResult.items.some((item) => item.id === current)) return current;
-        return defaultPrimaryId(conversationResult.items, notificationResult.items);
+        return defaultPrimaryId(conversationResult.items, notificationResult.items, nextHiddenChannels);
       });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "消息数据加载失败。");
@@ -1443,6 +1455,38 @@ export function ChatDock() {
     });
   }
 
+  function requestNotificationChannelHide(channel: NotificationChannel, channelId: number, channelLabel: string) {
+    setOpenNotificationChannelMenuId(0);
+    setPendingNotificationChannelHide({ channel, channelId, channelLabel });
+  }
+
+  async function executeNotificationChannelHide() {
+    const token = readAccessToken();
+    if (!token || !pendingNotificationChannelHide || isNotificationActionRunning) return;
+    setIsNotificationActionRunning(true);
+    try {
+      const target = pendingNotificationChannelHide;
+      const result = await hideNotificationChannel(token, target.channel);
+      setNotifications((current) => current.map((item) =>
+        item.channel === target.channel && item.type !== "friend_request_received" && !item.readAt
+          ? { ...item, readAt: result.readAt }
+          : item));
+      setHiddenNotificationChannels((current) => current.includes(target.channel) ? current : [...current, target.channel]);
+      setPendingNotificationChannelHide(null);
+      if (selectedId === target.channelId) {
+        setSelectedId(0);
+        setSelectedSystemNotificationId(0);
+        setIsMobileConversationOpen(false);
+      }
+      setNotice(`${target.channelLabel}已从消息列表删除，新通知到达后会重新显示。`);
+      notifySocialStateChange();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "通知频道删除失败。");
+    } finally {
+      setIsNotificationActionRunning(false);
+    }
+  }
+
   async function executeNotificationDeletion() {
     const token = readAccessToken();
     if (!token || !pendingNotificationDeletion || isNotificationActionRunning) return;
@@ -1645,7 +1689,7 @@ export function ChatDock() {
                     <span className="chat-notification-channel-action" data-chat-notification-action>
                       <button aria-expanded={openNotificationChannelMenuId === entry.id} aria-label={`${entry.config.label}管理`} onClick={(event) => { event.stopPropagation(); setSelectedId(entry.id); setSelectedSystemNotificationId(0); setOpenNotificationChannelMenuId((current) => current === entry.id ? 0 : entry.id); }} title="频道管理" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
                       {openNotificationChannelMenuId === entry.id ? <span className="chat-notification-channel-menu">
-                        {items.length ? <button onClick={() => { beginNotificationSelection(); setIsMobileConversationOpen(true); }} type="button"><Check aria-hidden="true" size={14} />删除频道通知</button> : null}
+                        <button className="danger" onClick={() => requestNotificationChannelHide(entry.config.channel, entry.id, entry.config.label)} type="button"><Trash2 aria-hidden="true" size={14} />删除频道通知</button>
                         {unreadCount ? <button onClick={() => void readAllNotifications()} type="button"><Bell aria-hidden="true" size={14} />全部标为已读</button> : null}
                         {items.length ? <button className="danger" onClick={requestNotificationChannelClear} type="button"><Eraser aria-hidden="true" size={14} />清空当前频道</button> : null}
                       </span> : null}
@@ -1843,6 +1887,7 @@ export function ChatDock() {
         {pendingConversationAction ? <div className="chat-confirm-backdrop" onClick={() => { if (!isConversationActionRunning) setPendingConversationAction(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingConversationAction === "clear" ? <Eraser aria-hidden="true" size={20} /> : <Trash2 aria-hidden="true" size={20} />}</span><div><strong>{pendingConversationAction === "clear" ? "清空当前聊天记录" : "从聊天列表删除会话"}</strong><p>{pendingConversationAction === "clear" ? "当前账号中的系统消息、文字、图片和文件记录都会被清空，会话入口和好友关系保留。" : "当前账号中的系统消息和全部聊天内容都会被清空，并从聊天列表移除；好友关系保留，可重新发起空会话。"}</p></div><footer><button disabled={isConversationActionRunning} onClick={() => setPendingConversationAction(null)} type="button">取消</button><button className="danger" disabled={isConversationActionRunning} onClick={() => void executeConversationAction()} type="button">{isConversationActionRunning ? "处理中" : "确认"}</button></footer></div></div> : null}
         {pendingMessageOperation ? <div className="chat-confirm-backdrop" onClick={() => { if (!isMessageActionRunning) setPendingMessageOperation(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingMessageOperation.operation === "recall" ? <Undo2 aria-hidden="true" size={20} /> : <Trash2 aria-hidden="true" size={20} />}</span><div><strong>{pendingMessageOperation.operation === "recall" ? "撤回这条消息" : pendingMessageOperation.operation === "delete-everyone" ? `双向删除 ${pendingMessageOperation.messageIds.length} 条消息` : `删除 ${pendingMessageOperation.messageIds.length} 条消息`}</strong><p>{pendingMessageOperation.operation === "recall" ? "原消息和附件会被物理删除，双方聊天中会保留一条撤回提示。" : pendingMessageOperation.operation === "delete-everyone" ? "消息会从双方记录中永久删除，关联附件也会从磁盘删除，操作无法恢复。" : "这些消息只会从当前账号隐藏，对方仍然可以查看。"}</p></div><footer><button disabled={isMessageActionRunning} onClick={() => setPendingMessageOperation(null)} type="button">取消</button><button className="danger" disabled={isMessageActionRunning} onClick={() => void executeMessageOperation()} type="button">{isMessageActionRunning ? "处理中" : "确认"}</button></footer></div></div> : null}
         {pendingNotificationDeletion ? <div className="chat-confirm-backdrop" onClick={() => { if (!isNotificationActionRunning) setPendingNotificationDeletion(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon"><Trash2 aria-hidden="true" size={20} /></span><div><strong>{pendingNotificationDeletion.channel ? `清空${pendingNotificationDeletion.channelLabel}` : `删除 ${pendingNotificationDeletion.notificationIds.length} 条通知`}</strong><p>{pendingNotificationDeletion.channel ? "当前频道中显示的通知会从该账号永久删除，待处理好友申请不会受影响。" : "所选通知会从当前账号永久删除，操作无法恢复。"}</p></div><footer><button disabled={isNotificationActionRunning} onClick={() => setPendingNotificationDeletion(null)} type="button">取消</button><button className="danger" disabled={isNotificationActionRunning} onClick={() => void executeNotificationDeletion()} type="button">{isNotificationActionRunning ? "处理中" : "确认删除"}</button></footer></div></div> : null}
+        {pendingNotificationChannelHide ? <div className="chat-confirm-backdrop" onClick={() => { if (!isNotificationActionRunning) setPendingNotificationChannelHide(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon"><Trash2 aria-hidden="true" size={20} /></span><div><strong>从消息列表删除{pendingNotificationChannelHide.channelLabel}</strong><p>频道会从当前账号的消息列表隐藏，已有通知不会删除；收到新的频道通知后会自动重新显示。</p></div><footer><button disabled={isNotificationActionRunning} onClick={() => setPendingNotificationChannelHide(null)} type="button">取消</button><button className="danger" disabled={isNotificationActionRunning} onClick={() => void executeNotificationChannelHide()} type="button">{isNotificationActionRunning ? "处理中" : "确认删除"}</button></footer></div></div> : null}
         <button aria-label="调整聊天窗大小" className="chat-dock-resize-handle" onPointerDown={beginDockResize} tabIndex={-1} type="button" />
       </section>
       {previewAttachment ? <AttachmentPreview attachment={previewAttachment} onClose={closeAttachmentPreview} /> : null}
@@ -2241,11 +2286,12 @@ function timestamp(value: string | null | undefined): number {
   return Number.isNaN(valueOf) ? 0 : valueOf;
 }
 
-function defaultPrimaryId(conversations: Conversation[], notifications: SocialNotification[]): number {
+function defaultPrimaryId(conversations: Conversation[], notifications: SocialNotification[], hiddenChannels: NotificationChannel[] = []): number {
   const latestConversation = conversations.map((conversation) => ({ id: conversation.id, at: timestamp(conversation.lastMessage?.createdAt ?? conversation.updatedAt) })).sort((left, right) => right.at - left.at)[0];
-  const latestNotification = notifications.filter((notification) => notification.type !== "friend_request_received").map((notification) => ({ id: notificationConversationId(notification.channel), at: timestamp(notification.updatedAt || notification.createdAt) })).sort((left, right) => right.at - left.at)[0];
+  const latestNotification = notifications.filter((notification) => notification.type !== "friend_request_received" && !hiddenChannels.includes(notification.channel)).map((notification) => ({ id: notificationConversationId(notification.channel), at: timestamp(notification.updatedAt || notification.createdAt) })).sort((left, right) => right.at - left.at)[0];
   if (latestNotification && (!latestConversation || latestNotification.at > latestConversation.at)) return latestNotification.id;
-  return latestConversation?.id ?? notificationConversationId("system");
+  if (latestConversation) return latestConversation.id;
+  return NOTIFICATION_CHANNELS.find((item) => !hiddenChannels.includes(item.channel))?.id ?? 0;
 }
 
 function getConversationPreview(conversation: Conversation): string {

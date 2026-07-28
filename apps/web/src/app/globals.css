@@ -53,16 +53,18 @@ html[data-portal-theme="cloud-blue"] {
   --muted: #52616f;
   --muted-strong: #344554;
   --surface: rgba(255, 255, 255, 0.5);
-  --surface-strong: rgba(255, 255, 255, 0.62);
+  --surface-strong: rgba(255, 255, 255, 0.6);
   --surface-soft: rgba(255, 255, 255, 0.36);
   --accent: #0284c7;
   --accent-strong: #0369a1;
   --accent-soft: rgba(2, 132, 199, 0.12);
+  --glass-blur: blur(18px) saturate(138%);
+  --portal-bg-blur: 17px;
   --portal-bg-brightness: 1.08;
   --portal-bg-contrast: 0.92;
   --portal-bg-saturation: 0.72;
-  --portal-bg-wash: rgba(238, 248, 255, 0.68);
-  --portal-bg-edge: rgba(70, 92, 110, 0.16);
+  --portal-bg-wash: rgba(255, 243, 246, 0);
+  --portal-bg-edge: rgba(133, 126, 128, 0.16);
   --shadow-soft: 0 12px 30px rgba(70, 96, 120, 0.12);
   --shadow-hover: 0 20px 52px rgba(70, 96, 120, 0.18);
 }

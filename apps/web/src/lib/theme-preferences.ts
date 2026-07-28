@@ -5,13 +5,13 @@ export const portalThemes = [
   {
     id: "sakura-mist",
     name: "浅樱暖雾",
-    description: "默认主题，柔和、浅色、适合长期使用。",
+    description: "柔和、浅色，适合长期使用。",
     swatches: ["#fff3f6", "#f7dce6", "#db2777"],
   },
   {
     id: "cloud-blue",
     name: "浅云蓝白",
-    description: "更清爽的蓝白氛围，适合工具与导航密集页面。",
+    description: "默认主题，更清爽的蓝白氛围，适合工具与导航密集页面。",
     swatches: ["#eef8ff", "#d6efff", "#0284c7"],
   },
   {
@@ -39,15 +39,15 @@ export interface ThemePreference {
 }
 
 export const defaultThemePreference: ThemePreference = {
-  cardAlpha: 52,
-  customAccent: "#db2777",
+  cardAlpha: 50,
+  customAccent: "#1814f0",
   customForeground: "#2b2530",
   customMuted: "#665867",
-  customSurface: "#ffffff",
-  glassBlur: 22,
+  customSurface: "#dfc8c8",
+  glassBlur: 18,
   glassTint: "#fff3f6",
-  glassTintAlpha: 72,
-  themeId: "sakura-mist",
+  glassTintAlpha: 0,
+  themeId: "cloud-blue",
 };
 
 export function readThemePreference(): ThemePreference {
@@ -112,10 +112,10 @@ export function applyThemePreference(preference: ThemePreference) {
   root.style.removeProperty("--line-strong");
   root.style.removeProperty("--control-line");
 
-  const cardAlpha = normalizeCardAlpha(normalizedPreference.cardAlpha ?? 52);
-  const glassBlur = normalizeGlassBlur(normalizedPreference.glassBlur ?? 22);
-  const glassTint = normalizeHexColor(normalizedPreference.glassTint ?? "#fff3f6", "#fff3f6");
-  const glassTintAlpha = normalizeGlassTintAlpha(normalizedPreference.glassTintAlpha ?? 72);
+  const cardAlpha = normalizeCardAlpha(normalizedPreference.cardAlpha ?? defaultThemePreference.cardAlpha!);
+  const glassBlur = normalizeGlassBlur(normalizedPreference.glassBlur ?? defaultThemePreference.glassBlur!);
+  const glassTint = normalizeHexColor(normalizedPreference.glassTint ?? defaultThemePreference.glassTint!, defaultThemePreference.glassTint!);
+  const glassTintAlpha = normalizeGlassTintAlpha(normalizedPreference.glassTintAlpha ?? defaultThemePreference.glassTintAlpha!);
   const surface = normalizeHexColor(
     normalizedPreference.themeId === "custom"
       ? (normalizedPreference.customSurface ?? "#ffffff")
@@ -190,21 +190,18 @@ export function normalizeThemePreference(
 
   return {
     cardAlpha: normalizeCardAlpha(
-      preference.cardAlpha ?? preference.customCardAlpha ?? 52,
+      preference.cardAlpha ?? preference.customCardAlpha ?? defaultThemePreference.cardAlpha!,
     ),
-    customAccent: normalizeHexColor(preference.customAccent ?? "#db2777", "#db2777"),
+    customAccent: normalizeHexColor(preference.customAccent ?? defaultThemePreference.customAccent!, defaultThemePreference.customAccent!),
     customForeground: normalizeHexColor(
       preference.customForeground ?? "#2b2530",
       "#2b2530",
     ),
     customMuted: normalizeHexColor(preference.customMuted ?? "#665867", "#665867"),
-    customSurface: normalizeHexColor(
-      preference.customSurface ?? "#ffffff",
-      "#ffffff",
-    ),
-    glassBlur: normalizeGlassBlur(preference.glassBlur ?? 22),
-    glassTint: normalizeHexColor(preference.glassTint ?? "#fff3f6", "#fff3f6"),
-    glassTintAlpha: normalizeGlassTintAlpha(preference.glassTintAlpha ?? 72),
+    customSurface: normalizeHexColor(preference.customSurface ?? defaultThemePreference.customSurface!, defaultThemePreference.customSurface!),
+    glassBlur: normalizeGlassBlur(preference.glassBlur ?? defaultThemePreference.glassBlur!),
+    glassTint: normalizeHexColor(preference.glassTint ?? defaultThemePreference.glassTint!, defaultThemePreference.glassTint!),
+    glassTintAlpha: normalizeGlassTintAlpha(preference.glassTintAlpha ?? defaultThemePreference.glassTintAlpha!),
     themeId,
   };
 }
@@ -215,7 +212,7 @@ function normalizeHexColor(value: string, fallback: string): string {
 
 function normalizeCardAlpha(value: number): number {
   if (!Number.isFinite(value)) {
-    return 52;
+    return defaultThemePreference.cardAlpha!;
   }
 
   return Math.min(76, Math.max(38, Math.round(value)));
@@ -223,7 +220,7 @@ function normalizeCardAlpha(value: number): number {
 
 function normalizeGlassBlur(value: number): number {
   if (!Number.isFinite(value)) {
-    return 22;
+    return defaultThemePreference.glassBlur!;
   }
 
   return Math.min(36, Math.max(0, Math.round(value)));
@@ -231,7 +228,7 @@ function normalizeGlassBlur(value: number): number {
 
 function normalizeGlassTintAlpha(value: number): number {
   if (!Number.isFinite(value)) {
-    return 72;
+    return defaultThemePreference.glassTintAlpha!;
   }
 
   return Math.min(100, Math.max(0, Math.round(value)));

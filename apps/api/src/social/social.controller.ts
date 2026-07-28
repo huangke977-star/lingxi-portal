@@ -160,6 +160,14 @@ export class SocialController {
     return this.socialService.clearNotifications(user, query.channel);
   }
 
+  @Delete("notification-channels/:channel")
+  hideNotificationChannel(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("channel") channel: string,
+  ) {
+    return this.socialService.hideNotificationChannel(user, channel);
+  }
+
   @Get("conversations")
   listConversations(@CurrentUser() user: AuthenticatedUser) {
     return this.socialService.listConversations(user);

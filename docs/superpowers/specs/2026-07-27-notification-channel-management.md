@@ -14,7 +14,8 @@
 - Keep cancel, selected count, forward, self-delete, and shared-delete controls on one mobile selection row.
 - Place notification channel management on every System, Subscription, and Interaction row in the sidebar instead of inside the message pane.
 - On desktop, reveal friend-conversation and notification-channel three-dot actions only while their row is hovered or keyboard-focused; keep them visible on mobile.
-- Label the notification multi-select entry as Delete Channel Notifications.
+- Make Delete Channel Notifications behave like Delete Chat: hide the whole channel from the current account's conversation list without entering multi-select mode or deleting existing notifications.
+- Mark existing channel notifications as read when hiding the channel, and automatically reveal it when a newer notification arrives.
 - Remove notification-card action buttons; use desktop right-click and mobile long-press for individual notification actions.
 - Suppress the mobile browser text-selection callout while the custom long-press action sheet is active.
 - Reset message and notification multi-select state whenever the active conversation or notification channel changes.

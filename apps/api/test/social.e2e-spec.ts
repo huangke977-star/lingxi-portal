@@ -705,4 +705,62 @@ describe("SocialService", () => {
       },
     });
   });
+
+  it("hides a notification channel without deleting its notifications", async () => {
+    const findFirst = jest.fn(async () => ({ id: 48 }));
+    const stateUpsert = jest.fn(async () => ({}));
+    const updateMany = jest.fn(async () => ({ count: 3 }));
+    const service = createService({
+      userNotification: { findFirst, updateMany },
+      userNotificationChannelState: { upsert: stateUpsert },
+      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+    });
+
+    await expect(service.hideNotificationChannel(user, "system")).resolves.toEqual({
+      channel: "system",
+      hiddenThroughNotificationId: 48,
+      readAt: expect.any(String),
+    });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        userId: user.id,
+        channel: "system",
+        type: { not: "friend_request_received" },
+      },
+      orderBy: [{ id: "desc" }],
+      select: { id: true },
+    });
+    expect(stateUpsert).toHaveBeenCalledWith({
+      where: { userId_channel: { userId: user.id, channel: "system" } },
+      create: { userId: user.id, channel: "system", hiddenThroughNotificationId: 48 },
+      update: { hiddenThroughNotificationId: 48 },
+    });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: user.id,
+        channel: "system",
+        type: { not: "friend_request_received" },
+        readAt: null,
+      },
+      data: { readAt: expect.any(Date) },
+    });
+  });
+
+  it("reveals a hidden notification channel after a newer notification arrives", async () => {
+    const service = createService({
+      userNotification: {
+        findMany: jest.fn(async () => []),
+        findFirst: jest.fn(async () => ({ id: 49 })),
+      },
+      userNotificationChannelState: {
+        findMany: jest.fn(async () => [{ channel: "subscription", hiddenThroughNotificationId: 48 }]),
+      },
+    });
+
+    await expect(service.listNotifications(user, { limit: 20 })).resolves.toEqual({
+      items: [],
+      hasMore: false,
+      hiddenChannels: [],
+    });
+  });
 });

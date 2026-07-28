@@ -9,6 +9,9 @@
 
 ## Appearance Settings
 
+- Change the system default to the super administrator's current Cloud Blue appearance: card opacity 50, glass blur 18, glass tint `#fff3f6`, and glass tint opacity 0.
+- Apply the new default to new registrations; during migration, update only accounts that still have the complete legacy default and have never explicitly saved appearance settings.
+- Mark an account as customized after its first appearance save so future default changes do not overwrite it.
 - Recommended themes and custom colors are mutually exclusive.
 - Card transparency, glass blur, glass tint, and glass tint opacity are saved at the same level as the theme.
 - Glass blur can be `0`, which sets background blur to `0px`.
