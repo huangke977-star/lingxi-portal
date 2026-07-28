@@ -377,6 +377,10 @@ export function ChatDock() {
   }, [selectedId]);
 
   useEffect(() => {
+    setIsMessageSelectionMode(false);
+    setSelectedMessageIds(new Set());
+    setOpenMessageActionId(0);
+    setMessageActionPosition(null);
     setIsNotificationSelectionMode(false);
     setSelectedNotificationIds(new Set());
     setIsNotificationChannelMenuOpen(false);
@@ -1632,11 +1636,22 @@ export function ChatDock() {
                 {primaryEntries.map((entry) => entry.kind === "notification" ? (() => {
                   const items = channelNotifications[entry.config.channel];
                   const unreadCount = items.filter((item) => !item.readAt).length;
-                  return <button className={selectedId === entry.id ? "chat-sidebar-primary-row active system-conversation" : "chat-sidebar-primary-row system-conversation"} key={entry.id} onClick={() => { setSelectedId(entry.id); setSelectedSystemNotificationId(0); setIsMobileConversationOpen(true); }} type="button">
-                    <span className={`chat-system-avatar ${entry.config.channel}`}><NotificationChannelIcon channel={entry.config.channel} size={17} /></span>
-                    <span><strong>{entry.config.label}</strong><small>{items[0]?.body ?? entry.config.empty}</small></span>
-                    {unreadCount ? <b>{formatCount(unreadCount)}</b> : null}
-                  </button>;
+                  const active = selectedId === entry.id;
+                  return <div className={`chat-sidebar-notification-row${active ? " active" : ""}`} key={entry.id}>
+                    <button className={active ? "chat-sidebar-primary-row active system-conversation" : "chat-sidebar-primary-row system-conversation"} onClick={() => { setSelectedId(entry.id); setSelectedSystemNotificationId(0); setIsMobileConversationOpen(true); }} type="button">
+                      <span className={`chat-system-avatar ${entry.config.channel}`}><NotificationChannelIcon channel={entry.config.channel} size={17} /></span>
+                      <span><strong>{entry.config.label}</strong><small>{items[0]?.body ?? entry.config.empty}</small></span>
+                      {unreadCount ? <b>{formatCount(unreadCount)}</b> : null}
+                    </button>
+                    {active ? <span className="chat-notification-channel-action" data-chat-notification-action>
+                      <button aria-expanded={isNotificationChannelMenuOpen} aria-label={`${entry.config.label}管理`} onClick={() => setIsNotificationChannelMenuOpen((current) => !current)} title="频道管理" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
+                      {isNotificationChannelMenuOpen ? <span className="chat-notification-channel-menu">
+                        {items.length ? <button onClick={() => { beginNotificationSelection(); setIsMobileConversationOpen(true); }} type="button"><Check aria-hidden="true" size={14} />批量管理</button> : null}
+                        {unreadCount ? <button onClick={() => void readAllNotifications()} type="button"><Bell aria-hidden="true" size={14} />全部标为已读</button> : null}
+                        {items.length ? <button className="danger" onClick={requestNotificationChannelClear} type="button"><Eraser aria-hidden="true" size={14} />清空当前频道</button> : null}
+                      </span> : null}
+                    </span> : null}
+                  </div>;
                 })() : <ChatSidebarContactRow
                   active={entry.conversation.id === selectedId}
                   friendship={friendshipByUserId.get(entry.conversation.user.id) ?? null}
@@ -1699,16 +1714,12 @@ export function ChatDock() {
           </aside>
           <main className={`chat-panel${isNotificationSelected ? " system-selected" : ""}`}>
             {selectedNotificationConfig ? <NotificationPanel
-              actionOpenId={openNotificationActionId}
               channel={selectedNotificationConfig.channel}
-              channelMenuOpen={isNotificationChannelMenuOpen}
               emptyText={selectedNotificationConfig.empty}
               isActionRunning={isNotificationActionRunning}
               isSelectionMode={isNotificationSelectionMode}
               notifications={selectedNotifications}
-              onBeginSelection={() => beginNotificationSelection()}
               onCancelSelection={cancelNotificationSelection}
-              onClear={requestNotificationChannelClear}
               onDeleteSelected={() => requestNotificationDeletion(Array.from(selectedNotificationIds))}
               onMarkAllRead={readAllNotifications}
               onMarkSelectedRead={() => void markNotificationSelectionRead(Array.from(selectedNotificationIds))}
@@ -1716,7 +1727,6 @@ export function ChatDock() {
               onOpenActions={openNotificationActionsAtPointer}
               onSelect={handleNotification}
               onToggleActions={toggleMobileNotificationActions}
-              onToggleChannelMenu={() => setIsNotificationChannelMenuOpen((current) => !current)}
               onToggleSelection={toggleNotificationSelection}
               selectedId={selectedSystemNotificationId}
               selectedIds={selectedNotificationIds}
@@ -1746,7 +1756,7 @@ export function ChatDock() {
                 <button onClick={cancelMessageSelection} type="button">取消</button>
                 <strong>已选择 {selectedMessageIds.size} 条</strong>
                 <button disabled={!selectedMessagesCanForward || isMessageActionRunning} onClick={() => openMessageForward(Array.from(selectedMessageIds))} title={selectedMessagesCanForward ? "逐条转发所选消息" : "系统消息不能转发"} type="button"><Forward aria-hidden="true" size={15} />转发</button>
-                <button disabled={!selectedMessageIds.size || isMessageActionRunning} onClick={() => requestSelectedMessageDeletion("self")} type="button"><Trash2 aria-hidden="true" size={15} />仅自己删除</button>
+                <button disabled={!selectedMessageIds.size || isMessageActionRunning} onClick={() => requestSelectedMessageDeletion("self")} type="button"><Trash2 aria-hidden="true" size={15} />删除</button>
                 <button className="danger" disabled={!selectedMessageIds.size || isMessageActionRunning} onClick={() => requestSelectedMessageDeletion("everyone")} type="button"><Trash2 aria-hidden="true" size={15} />双向删除</button>
               </div> : <form className="chat-composer" onDragOver={(event) => event.preventDefault()} onDrop={handleDrop} onSubmit={sendMessage}>
                 {pendingAttachments.length ? <div className="chat-pending-attachments">{pendingAttachments.map((attachment) => (
@@ -1785,7 +1795,7 @@ export function ChatDock() {
           {actionMessage.sender.id === user.id && actionMessage.type !== "system" && messageActionOpenedAt - timestamp(actionMessage.createdAt) <= 2 * 60 * 1000
             ? <button onClick={() => requestMessageOperation("recall", actionMessage.id)} type="button"><Undo2 aria-hidden="true" size={14} />撤回消息</button>
             : null}
-          <button onClick={() => requestMessageOperation("delete-self", actionMessage.id)} type="button"><Trash2 aria-hidden="true" size={14} />仅自己删除</button>
+          <button onClick={() => requestMessageOperation("delete-self", actionMessage.id)} type="button"><Trash2 aria-hidden="true" size={14} />删除</button>
           <button className="danger" onClick={() => requestMessageOperation("delete-everyone", actionMessage.id)} type="button"><Trash2 aria-hidden="true" size={14} />双向删除</button>
         </span> : null}
         {actionNotification && !isNotificationSelectionMode ? <span className={`chat-notification-action-menu${notificationActionPosition ? " context-positioned" : ""}`} data-chat-notification-action style={notificationActionStyle}>
@@ -1832,7 +1842,7 @@ export function ChatDock() {
         </div> : null}
         {pendingFriendAction ? <div className="chat-confirm-backdrop" onClick={() => { if (!isFriendActionRunning) setPendingFriendAction(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingFriendAction.action === "block" ? <Ban aria-hidden="true" size={20} /> : <UserMinus aria-hidden="true" size={20} />}</span><div><strong>{pendingFriendAction.action === "block" ? `拉黑 ${pendingFriendAction.friendship.user.nickname}` : `删除好友 ${pendingFriendAction.friendship.user.nickname}`}</strong><p>{pendingFriendAction.action === "block" ? "拉黑后双方不能查看或发送聊天消息。历史记录会保留，解除拉黑后仍需重新添加好友。" : "删除后聊天记录会保留，但双方需要重新添加好友才能继续聊天。"}</p></div><footer><button disabled={isFriendActionRunning} onClick={() => setPendingFriendAction(null)} type="button">取消</button><button className="danger" disabled={isFriendActionRunning} onClick={() => void executeFriendAction()} type="button">{isFriendActionRunning ? "处理中" : pendingFriendAction.action === "block" ? "确认拉黑" : "确认删除"}</button></footer></div></div> : null}
         {pendingConversationAction ? <div className="chat-confirm-backdrop" onClick={() => { if (!isConversationActionRunning) setPendingConversationAction(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingConversationAction === "clear" ? <Eraser aria-hidden="true" size={20} /> : <Trash2 aria-hidden="true" size={20} />}</span><div><strong>{pendingConversationAction === "clear" ? "清空当前聊天记录" : "从聊天列表删除会话"}</strong><p>{pendingConversationAction === "clear" ? "当前账号中的系统消息、文字、图片和文件记录都会被清空，会话入口和好友关系保留。" : "当前账号中的系统消息和全部聊天内容都会被清空，并从聊天列表移除；好友关系保留，可重新发起空会话。"}</p></div><footer><button disabled={isConversationActionRunning} onClick={() => setPendingConversationAction(null)} type="button">取消</button><button className="danger" disabled={isConversationActionRunning} onClick={() => void executeConversationAction()} type="button">{isConversationActionRunning ? "处理中" : "确认"}</button></footer></div></div> : null}
-        {pendingMessageOperation ? <div className="chat-confirm-backdrop" onClick={() => { if (!isMessageActionRunning) setPendingMessageOperation(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingMessageOperation.operation === "recall" ? <Undo2 aria-hidden="true" size={20} /> : <Trash2 aria-hidden="true" size={20} />}</span><div><strong>{pendingMessageOperation.operation === "recall" ? "撤回这条消息" : pendingMessageOperation.operation === "delete-everyone" ? `双向删除 ${pendingMessageOperation.messageIds.length} 条消息` : `仅自己删除 ${pendingMessageOperation.messageIds.length} 条消息`}</strong><p>{pendingMessageOperation.operation === "recall" ? "原消息和附件会被物理删除，双方聊天中会保留一条撤回提示。" : pendingMessageOperation.operation === "delete-everyone" ? "消息会从双方记录中永久删除，关联附件也会从磁盘删除，操作无法恢复。" : "这些消息只会从当前账号隐藏，对方仍然可以查看。"}</p></div><footer><button disabled={isMessageActionRunning} onClick={() => setPendingMessageOperation(null)} type="button">取消</button><button className="danger" disabled={isMessageActionRunning} onClick={() => void executeMessageOperation()} type="button">{isMessageActionRunning ? "处理中" : "确认"}</button></footer></div></div> : null}
+        {pendingMessageOperation ? <div className="chat-confirm-backdrop" onClick={() => { if (!isMessageActionRunning) setPendingMessageOperation(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingMessageOperation.operation === "recall" ? <Undo2 aria-hidden="true" size={20} /> : <Trash2 aria-hidden="true" size={20} />}</span><div><strong>{pendingMessageOperation.operation === "recall" ? "撤回这条消息" : pendingMessageOperation.operation === "delete-everyone" ? `双向删除 ${pendingMessageOperation.messageIds.length} 条消息` : `删除 ${pendingMessageOperation.messageIds.length} 条消息`}</strong><p>{pendingMessageOperation.operation === "recall" ? "原消息和附件会被物理删除，双方聊天中会保留一条撤回提示。" : pendingMessageOperation.operation === "delete-everyone" ? "消息会从双方记录中永久删除，关联附件也会从磁盘删除，操作无法恢复。" : "这些消息只会从当前账号隐藏，对方仍然可以查看。"}</p></div><footer><button disabled={isMessageActionRunning} onClick={() => setPendingMessageOperation(null)} type="button">取消</button><button className="danger" disabled={isMessageActionRunning} onClick={() => void executeMessageOperation()} type="button">{isMessageActionRunning ? "处理中" : "确认"}</button></footer></div></div> : null}
         {pendingNotificationDeletion ? <div className="chat-confirm-backdrop" onClick={() => { if (!isNotificationActionRunning) setPendingNotificationDeletion(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon"><Trash2 aria-hidden="true" size={20} /></span><div><strong>{pendingNotificationDeletion.channel ? `清空${pendingNotificationDeletion.channelLabel}` : `删除 ${pendingNotificationDeletion.notificationIds.length} 条通知`}</strong><p>{pendingNotificationDeletion.channel ? "当前频道中显示的通知会从该账号永久删除，待处理好友申请不会受影响。" : "所选通知会从当前账号永久删除，操作无法恢复。"}</p></div><footer><button disabled={isNotificationActionRunning} onClick={() => setPendingNotificationDeletion(null)} type="button">取消</button><button className="danger" disabled={isNotificationActionRunning} onClick={() => void executeNotificationDeletion()} type="button">{isNotificationActionRunning ? "处理中" : "确认删除"}</button></footer></div></div> : null}
         <button aria-label="调整聊天窗大小" className="chat-dock-resize-handle" onPointerDown={beginDockResize} tabIndex={-1} type="button" />
       </section>
@@ -1877,9 +1887,7 @@ function ChatSidebarContactRow({ active, friendship, menuOpen, preview, unreadCo
 }
 
 function NotificationPanel({
-  actionOpenId,
   channel,
-  channelMenuOpen,
   emptyText,
   isActionRunning,
   isSelectionMode,
@@ -1888,9 +1896,7 @@ function NotificationPanel({
   selectedIds,
   unreadCount,
   listRef,
-  onBeginSelection,
   onCancelSelection,
-  onClear,
   onDeleteSelected,
   onMarkAllRead,
   onMarkSelectedRead,
@@ -1898,12 +1904,9 @@ function NotificationPanel({
   onOpenArticle,
   onSelect,
   onToggleActions,
-  onToggleChannelMenu,
   onToggleSelection,
 }: {
-  actionOpenId: number;
   channel: NotificationChannel;
-  channelMenuOpen: boolean;
   emptyText: string;
   isActionRunning: boolean;
   isSelectionMode: boolean;
@@ -1912,9 +1915,7 @@ function NotificationPanel({
   selectedIds: Set<number>;
   unreadCount: number;
   listRef: RefObject<HTMLDivElement | null>;
-  onBeginSelection: () => void;
   onCancelSelection: () => void;
-  onClear: () => void;
   onDeleteSelected: () => void;
   onMarkAllRead: () => Promise<void>;
   onMarkSelectedRead: () => void;
@@ -1922,26 +1923,51 @@ function NotificationPanel({
   onOpenArticle: (slug: string) => void;
   onSelect: (notification: SocialNotification) => Promise<void>;
   onToggleActions: (notificationId: number) => void;
-  onToggleChannelMenu: () => void;
   onToggleSelection: (notificationId: number) => void;
 }) {
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
+  const longPressTriggeredIdRef = useRef(0);
   const selectedUnreadCount = notifications.filter((notification) => selectedIds.has(notification.id) && !notification.readAt).length;
+  function clearLongPressTimer() {
+    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+    longPressOriginRef.current = null;
+  }
+  useEffect(() => () => clearLongPressTimer(), []);
+  function handlePointerDown(notificationId: number, event: ReactPointerEvent<HTMLElement>) {
+    longPressTriggeredIdRef.current = 0;
+    if (isSelectionMode || event.pointerType === "mouse" || event.button !== 0) return;
+    clearLongPressTimer();
+    longPressOriginRef.current = { x: event.clientX, y: event.clientY };
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null;
+      longPressTriggeredIdRef.current = notificationId;
+      onToggleActions(notificationId);
+    }, 520);
+  }
+  function handlePointerMove(event: ReactPointerEvent<HTMLElement>) {
+    const origin = longPressOriginRef.current;
+    if (!origin || Math.hypot(event.clientX - origin.x, event.clientY - origin.y) <= 10) return;
+    clearLongPressTimer();
+  }
+  function handlePointerEnd() {
+    clearLongPressTimer();
+  }
   return <div className={`chat-system-panel${isSelectionMode ? " selection-mode" : ""}`}>
     <div className="chat-notification-toolbar">
       {unreadCount ? <button className="chat-read-all" onClick={() => void onMarkAllRead()} type="button">全部标为已读</button> : <span />}
-      <span className="chat-notification-channel-action" data-chat-notification-action>
-        <button aria-expanded={channelMenuOpen} aria-label="通知管理" onClick={onToggleChannelMenu} title="通知管理" type="button"><MoreHorizontal aria-hidden="true" size={17} /></button>
-        {channelMenuOpen ? <span className="chat-notification-channel-menu">
-          {notifications.length ? <button onClick={onBeginSelection} type="button"><Check aria-hidden="true" size={14} />批量管理</button> : null}
-          {unreadCount ? <button onClick={() => void onMarkAllRead()} type="button"><Bell aria-hidden="true" size={14} />全部标为已读</button> : null}
-          {notifications.length ? <button className="danger" onClick={onClear} type="button"><Eraser aria-hidden="true" size={14} />清空当前频道</button> : null}
-        </span> : null}
-      </span>
     </div>
     <div className="chat-system-message-list" ref={listRef}>
       {notifications.length ? notifications.map((notification) => {
         const selected = selectedIds.has(notification.id);
         function handleSelectionClick(event: ReactMouseEvent<HTMLElement>) {
+          if (longPressTriggeredIdRef.current === notification.id) {
+            longPressTriggeredIdRef.current = 0;
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
           if (!isSelectionMode) return;
           if ((event.target as HTMLElement).closest(".chat-notification-selector")) return;
           event.preventDefault();
@@ -1951,8 +1977,9 @@ function NotificationPanel({
         function handleContextMenu(event: ReactMouseEvent<HTMLElement>) {
           event.preventDefault();
           event.stopPropagation();
+          clearLongPressTimer();
           if (isSelectionMode) onToggleSelection(notification.id);
-          else onOpenActions(notification.id, event);
+          else if (longPressTriggeredIdRef.current !== notification.id) onOpenActions(notification.id, event);
         }
         return <article
           className={`${notification.readAt ? "" : "unread"}${selectedId === notification.id ? " selected" : ""}${isSelectionMode ? " selection-mode" : ""}${selected ? " batch-selected" : ""}`}
@@ -1960,6 +1987,10 @@ function NotificationPanel({
           key={notification.id}
           onClickCapture={handleSelectionClick}
           onContextMenu={handleContextMenu}
+          onPointerCancel={handlePointerEnd}
+          onPointerDown={(event) => handlePointerDown(notification.id, event)}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerEnd}
         >
           {isSelectionMode ? <button aria-label={selected ? "取消选择通知" : "选择通知"} aria-pressed={selected} className="chat-notification-selector" onClick={() => onToggleSelection(notification.id)} type="button">{selected ? <Check aria-hidden="true" size={13} /> : null}</button> : null}
           <button className="chat-system-notification-main" onClick={() => void onSelect(notification)} type="button">
@@ -1972,7 +2003,6 @@ function NotificationPanel({
             </span>
           </button>
           {notification.context?.article ? <button className="chat-system-article-link" onClick={() => onOpenArticle(notification.context!.article.slug)} type="button"><FileText aria-hidden="true" size={15} /><span><small>相关文章</small><strong>{notification.context.article.title}</strong></span><ChevronLeft aria-hidden="true" size={15} /></button> : null}
-          {!isSelectionMode ? <button aria-expanded={actionOpenId === notification.id} aria-label="通知操作" className="chat-notification-action-trigger" data-chat-notification-action onClick={() => onToggleActions(notification.id)} type="button"><MoreHorizontal aria-hidden="true" size={15} /></button> : null}
         </article>;
       }) : <div className="chat-empty"><NotificationChannelIcon channel={channel} size={26} /><strong>暂时没有消息</strong><span>{emptyText}</span></div>}
     </div>
