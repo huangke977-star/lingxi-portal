@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { AuthSessionController } from "@/components/auth-session-controller";
 import { ChatDock } from "@/components/chat-dock";
 import { ThemeController } from "@/components/theme-controller";
@@ -19,6 +19,13 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
   },
+};
+
+export const viewport: Viewport = {
+  initialScale: 1,
+  interactiveWidget: "resizes-content",
+  viewportFit: "cover",
+  width: "device-width",
 };
 
 export default function RootLayout({

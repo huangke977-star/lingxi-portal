@@ -39,6 +39,7 @@ import {
   Video,
   X,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   type CSSProperties,
@@ -1347,15 +1348,14 @@ export function ChatDock() {
     }
   }
 
-  async function readAllNotifications() {
+  async function readAllNotifications(channel: NotificationChannel) {
     const token = readAccessToken();
     if (!token) return;
     try {
-      if (!selectedNotificationConfig) return;
       setOpenNotificationChannelMenuId(0);
-      await markAllNotificationsRead(token, selectedNotificationConfig.channel);
+      await markAllNotificationsRead(token, channel);
       const readAt = new Date().toISOString();
-      setNotifications((current) => current.map((item) => item.channel === selectedNotificationConfig.channel ? { ...item, readAt: item.readAt ?? readAt } : item));
+      setNotifications((current) => current.map((item) => item.channel === channel ? { ...item, readAt: item.readAt ?? readAt } : item));
       notifySocialStateChange();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "通知状态更新失败。");
@@ -1441,12 +1441,11 @@ export function ChatDock() {
     setPendingNotificationDeletion({ channel: null, channelLabel: "", notificationIds });
   }
 
-  function requestNotificationChannelClear() {
-    if (!selectedNotificationConfig) return;
+  function requestNotificationChannelClear(channel: NotificationChannel, channelLabel: string) {
     setOpenNotificationChannelMenuId(0);
     setPendingNotificationDeletion({
-      channel: selectedNotificationConfig.channel,
-      channelLabel: selectedNotificationConfig.label,
+      channel,
+      channelLabel,
       notificationIds: [],
     });
   }
@@ -1604,6 +1603,10 @@ export function ChatDock() {
     right: "auto",
   } : undefined;
 
+  const openNotificationChannel = NOTIFICATION_CHANNELS.find((item) => item.id === openNotificationChannelMenuId) ?? null;
+  const openNotificationChannelItems = openNotificationChannel ? channelNotifications[openNotificationChannel.channel] : [];
+  const openNotificationChannelUnreadCount = openNotificationChannelItems.filter((item) => !item.readAt).length;
+
   const callPanel = <ChatCallPanel
     isPreparing={chatCalls.isPreparing}
     localStream={chatCalls.localStream}
@@ -1676,11 +1679,11 @@ export function ChatDock() {
                       {unreadCount ? <b>{formatCount(unreadCount)}</b> : null}
                     </button>
                     <span className="chat-notification-channel-action" data-chat-notification-action>
-                      <button aria-expanded={openNotificationChannelMenuId === entry.id} aria-label={`${entry.config.label}管理`} onClick={(event) => { event.stopPropagation(); setSelectedId(entry.id); setSelectedSystemNotificationId(0); setOpenNotificationChannelMenuId((current) => current === entry.id ? 0 : entry.id); }} title="频道管理" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
-                      {openNotificationChannelMenuId === entry.id ? <span className="chat-notification-channel-menu">
+                      <button aria-expanded={openNotificationChannelMenuId === entry.id} aria-label={`${entry.config.label}管理`} onClick={(event) => { event.stopPropagation(); setOpenNotificationChannelMenuId((current) => current === entry.id ? 0 : entry.id); }} title="频道管理" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
+                      {isDesktop && openNotificationChannelMenuId === entry.id ? <span className="chat-notification-channel-menu">
                         <button className="danger" onClick={() => requestNotificationChannelHide(entry.config.channel, entry.id, entry.config.label)} type="button"><Trash2 aria-hidden="true" size={14} />删除频道通知</button>
-                        {unreadCount ? <button onClick={() => void readAllNotifications()} type="button"><Bell aria-hidden="true" size={14} />全部标为已读</button> : null}
-                        {items.length ? <button className="danger" onClick={requestNotificationChannelClear} type="button"><Eraser aria-hidden="true" size={14} />清空当前频道</button> : null}
+                        {unreadCount ? <button onClick={() => void readAllNotifications(entry.config.channel)} type="button"><Bell aria-hidden="true" size={14} />全部标为已读</button> : null}
+                        {items.length ? <button className="danger" onClick={() => requestNotificationChannelClear(entry.config.channel, entry.config.label)} type="button"><Eraser aria-hidden="true" size={14} />清空当前频道</button> : null}
                       </span> : null}
                     </span>
                   </div>;
@@ -1753,7 +1756,7 @@ export function ChatDock() {
               notifications={selectedNotifications}
               onCancelSelection={cancelNotificationSelection}
               onDeleteSelected={() => requestNotificationDeletion(Array.from(selectedNotificationIds))}
-              onMarkAllRead={readAllNotifications}
+              onMarkAllRead={() => readAllNotifications(selectedNotificationConfig.channel)}
               onMarkSelectedRead={() => void markNotificationSelectionRead(Array.from(selectedNotificationIds))}
               onOpenArticle={(slug) => router.push(`/articles/${slug}`)}
               onOpenActions={openNotificationActionsAtPointer}
@@ -1879,6 +1882,14 @@ export function ChatDock() {
         {pendingNotificationChannelHide ? <div className="chat-confirm-backdrop" onClick={() => { if (!isNotificationActionRunning) setPendingNotificationChannelHide(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon"><Trash2 aria-hidden="true" size={20} /></span><div><strong>从消息列表删除{pendingNotificationChannelHide.channelLabel}</strong><p>频道会从当前账号的消息列表隐藏，已有通知不会删除；收到新的频道通知后会自动重新显示。</p></div><footer><button disabled={isNotificationActionRunning} onClick={() => setPendingNotificationChannelHide(null)} type="button">取消</button><button className="danger" disabled={isNotificationActionRunning} onClick={() => void executeNotificationChannelHide()} type="button">{isNotificationActionRunning ? "处理中" : "确认删除"}</button></footer></div></div> : null}
         <button aria-label="调整聊天窗大小" className="chat-dock-resize-handle" onPointerDown={beginDockResize} tabIndex={-1} type="button" />
       </section>
+      {!isDesktop && openNotificationChannel && typeof document !== "undefined" ? createPortal(
+        <div className="chat-mobile-channel-sheet" data-chat-notification-action>
+          <button className="danger" onClick={() => requestNotificationChannelHide(openNotificationChannel.channel, openNotificationChannel.id, openNotificationChannel.label)} type="button"><Trash2 aria-hidden="true" size={15} />删除频道通知</button>
+          {openNotificationChannelUnreadCount ? <button onClick={() => void readAllNotifications(openNotificationChannel.channel)} type="button"><Bell aria-hidden="true" size={15} />全部标为已读</button> : null}
+          {openNotificationChannelItems.length ? <button className="danger" onClick={() => requestNotificationChannelClear(openNotificationChannel.channel, openNotificationChannel.label)} type="button"><Eraser aria-hidden="true" size={15} />清空当前频道</button> : null}
+        </div>,
+        document.body,
+      ) : null}
       {previewAttachment ? <AttachmentPreview attachment={previewAttachment} onClose={closeAttachmentPreview} /> : null}
       {callPanel}
       <AppToast duration={error ? 4200 : 2600} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
