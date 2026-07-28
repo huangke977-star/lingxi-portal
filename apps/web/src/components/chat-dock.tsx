@@ -273,7 +273,7 @@ export function ChatDock() {
   const [pendingMessageForward, setPendingMessageForward] = useState<PendingMessageForward | null>(null);
   const [forwardTargetSearch, setForwardTargetSearch] = useState("");
   const [isForwardingMessages, setIsForwardingMessages] = useState(false);
-  const [isNotificationChannelMenuOpen, setIsNotificationChannelMenuOpen] = useState(false);
+  const [openNotificationChannelMenuId, setOpenNotificationChannelMenuId] = useState(0);
   const [openNotificationActionId, setOpenNotificationActionId] = useState(0);
   const [notificationActionPosition, setNotificationActionPosition] = useState<MessageActionPosition | null>(null);
   const [selectedNotificationIds, setSelectedNotificationIds] = useState<Set<number>>(new Set());
@@ -383,7 +383,6 @@ export function ChatDock() {
     setMessageActionPosition(null);
     setIsNotificationSelectionMode(false);
     setSelectedNotificationIds(new Set());
-    setIsNotificationChannelMenuOpen(false);
     setOpenNotificationActionId(0);
     setNotificationActionPosition(null);
   }, [selectedId]);
@@ -593,14 +592,14 @@ export function ChatDock() {
   }, [openFriendActionId]);
 
   useEffect(() => {
-    if (!isConversationMenuOpen && !openMessageActionId && !isNotificationChannelMenuOpen && !openNotificationActionId) return;
+    if (!isConversationMenuOpen && !openMessageActionId && !openNotificationChannelMenuId && !openNotificationActionId) return;
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as HTMLElement;
       if (target.closest("[data-chat-conversation-action]") || target.closest("[data-chat-message-action]") || target.closest("[data-chat-notification-action]")) return;
       setIsConversationMenuOpen(false);
       setOpenMessageActionId(0);
       setMessageActionPosition(null);
-      setIsNotificationChannelMenuOpen(false);
+      setOpenNotificationChannelMenuId(0);
       setOpenNotificationActionId(0);
       setNotificationActionPosition(null);
     }
@@ -609,7 +608,7 @@ export function ChatDock() {
       setIsConversationMenuOpen(false);
       setOpenMessageActionId(0);
       setMessageActionPosition(null);
-      setIsNotificationChannelMenuOpen(false);
+      setOpenNotificationChannelMenuId(0);
       setOpenNotificationActionId(0);
       setNotificationActionPosition(null);
     }
@@ -619,7 +618,7 @@ export function ChatDock() {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isConversationMenuOpen, isNotificationChannelMenuOpen, openMessageActionId, openNotificationActionId]);
+  }, [isConversationMenuOpen, openMessageActionId, openNotificationActionId, openNotificationChannelMenuId]);
 
   useEffect(() => {
     const token = readAccessToken();
@@ -1345,7 +1344,7 @@ export function ChatDock() {
     if (!token) return;
     try {
       if (!selectedNotificationConfig) return;
-      setIsNotificationChannelMenuOpen(false);
+      setOpenNotificationChannelMenuId(0);
       await markAllNotificationsRead(token, selectedNotificationConfig.channel);
       const readAt = new Date().toISOString();
       setNotifications((current) => current.map((item) => item.channel === selectedNotificationConfig.channel ? { ...item, readAt: item.readAt ?? readAt } : item));
@@ -1356,7 +1355,7 @@ export function ChatDock() {
   }
 
   function beginNotificationSelection(notificationId?: number) {
-    setIsNotificationChannelMenuOpen(false);
+    setOpenNotificationChannelMenuId(0);
     setOpenNotificationActionId(0);
     setNotificationActionPosition(null);
     setIsNotificationSelectionMode(true);
@@ -1436,7 +1435,7 @@ export function ChatDock() {
 
   function requestNotificationChannelClear() {
     if (!selectedNotificationConfig) return;
-    setIsNotificationChannelMenuOpen(false);
+    setOpenNotificationChannelMenuId(0);
     setPendingNotificationDeletion({
       channel: selectedNotificationConfig.channel,
       channelLabel: selectedNotificationConfig.label,
@@ -1638,19 +1637,19 @@ export function ChatDock() {
                   const unreadCount = items.filter((item) => !item.readAt).length;
                   const active = selectedId === entry.id;
                   return <div className={`chat-sidebar-notification-row${active ? " active" : ""}`} key={entry.id}>
-                    <button className={active ? "chat-sidebar-primary-row active system-conversation" : "chat-sidebar-primary-row system-conversation"} onClick={() => { setSelectedId(entry.id); setSelectedSystemNotificationId(0); setIsMobileConversationOpen(true); }} type="button">
+                    <button className={active ? "chat-sidebar-primary-row active system-conversation" : "chat-sidebar-primary-row system-conversation"} onClick={() => { setOpenNotificationChannelMenuId(0); setSelectedId(entry.id); setSelectedSystemNotificationId(0); setIsMobileConversationOpen(true); }} type="button">
                       <span className={`chat-system-avatar ${entry.config.channel}`}><NotificationChannelIcon channel={entry.config.channel} size={17} /></span>
                       <span><strong>{entry.config.label}</strong><small>{items[0]?.body ?? entry.config.empty}</small></span>
                       {unreadCount ? <b>{formatCount(unreadCount)}</b> : null}
                     </button>
-                    {active ? <span className="chat-notification-channel-action" data-chat-notification-action>
-                      <button aria-expanded={isNotificationChannelMenuOpen} aria-label={`${entry.config.label}管理`} onClick={() => setIsNotificationChannelMenuOpen((current) => !current)} title="频道管理" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
-                      {isNotificationChannelMenuOpen ? <span className="chat-notification-channel-menu">
-                        {items.length ? <button onClick={() => { beginNotificationSelection(); setIsMobileConversationOpen(true); }} type="button"><Check aria-hidden="true" size={14} />批量管理</button> : null}
+                    <span className="chat-notification-channel-action" data-chat-notification-action>
+                      <button aria-expanded={openNotificationChannelMenuId === entry.id} aria-label={`${entry.config.label}管理`} onClick={(event) => { event.stopPropagation(); setSelectedId(entry.id); setSelectedSystemNotificationId(0); setOpenNotificationChannelMenuId((current) => current === entry.id ? 0 : entry.id); }} title="频道管理" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
+                      {openNotificationChannelMenuId === entry.id ? <span className="chat-notification-channel-menu">
+                        {items.length ? <button onClick={() => { beginNotificationSelection(); setIsMobileConversationOpen(true); }} type="button"><Check aria-hidden="true" size={14} />删除频道通知</button> : null}
                         {unreadCount ? <button onClick={() => void readAllNotifications()} type="button"><Bell aria-hidden="true" size={14} />全部标为已读</button> : null}
                         {items.length ? <button className="danger" onClick={requestNotificationChannelClear} type="button"><Eraser aria-hidden="true" size={14} />清空当前频道</button> : null}
                       </span> : null}
-                    </span> : null}
+                    </span>
                   </div>;
                 })() : <ChatSidebarContactRow
                   active={entry.conversation.id === selectedId}

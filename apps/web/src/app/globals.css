@@ -7845,6 +7845,7 @@ a.entry-item:hover {
   color: var(--muted);
   cursor: pointer;
   padding: 0;
+  transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease;
 }
 
 .chat-notification-channel-action > button:hover,
@@ -8553,6 +8554,7 @@ a.entry-item:hover {
   color: var(--muted);
   cursor: pointer;
   padding: 0;
+  transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease;
 }
 
 .chat-friend-action-trigger:hover,
@@ -9357,4 +9359,20 @@ a.entry-item:hover {
 @media (min-width: 761px) {
   .chat-message-action-trigger { display: none; }
   .chat-notification-action-trigger { display: none; }
+
+  .chat-friend-action-trigger,
+  .chat-sidebar-notification-row > .chat-notification-channel-action > button {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .chat-sidebar-contact-row:hover .chat-friend-action-trigger,
+  .chat-sidebar-contact-row:focus-within .chat-friend-action-trigger,
+  .chat-friend-action-trigger[aria-expanded="true"],
+  .chat-sidebar-notification-row:hover > .chat-notification-channel-action > button,
+  .chat-sidebar-notification-row:focus-within > .chat-notification-channel-action > button,
+  .chat-sidebar-notification-row > .chat-notification-channel-action > button[aria-expanded="true"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }

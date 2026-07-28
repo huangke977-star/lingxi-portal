@@ -12,7 +12,9 @@
 - Forward selected messages in their original order, with a maximum of 20 messages and 100MB of attachments per operation.
 - Clone forwarded attachments so they remain available independently of the source message.
 - Keep cancel, selected count, forward, self-delete, and shared-delete controls on one mobile selection row.
-- Place notification channel management on the active System, Subscription, or Interaction row in the sidebar instead of inside the message pane.
+- Place notification channel management on every System, Subscription, and Interaction row in the sidebar instead of inside the message pane.
+- On desktop, reveal friend-conversation and notification-channel three-dot actions only while their row is hovered or keyboard-focused; keep them visible on mobile.
+- Label the notification multi-select entry as Delete Channel Notifications.
 - Remove notification-card action buttons; use desktop right-click and mobile long-press for individual notification actions.
 - Suppress the mobile browser text-selection callout while the custom long-press action sheet is active.
 - Reset message and notification multi-select state whenever the active conversation or notification channel changes.
