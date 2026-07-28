@@ -265,7 +265,6 @@ export function ChatDock() {
   const [friendRequestTarget, setFriendRequestTarget] = useState<SocialUserSearchResult | null>(null);
   const [friendRequestNote, setFriendRequestNote] = useState("");
   const [isFriendRequestSending, setIsFriendRequestSending] = useState(false);
-  const [isConversationMenuOpen, setIsConversationMenuOpen] = useState(false);
   const [pendingConversationAction, setPendingConversationAction] = useState<ConversationAction | null>(null);
   const [isConversationActionRunning, setIsConversationActionRunning] = useState(false);
   const [openMessageActionId, setOpenMessageActionId] = useState(0);
@@ -604,11 +603,10 @@ export function ChatDock() {
   }, [openFriendActionId]);
 
   useEffect(() => {
-    if (!isConversationMenuOpen && !openMessageActionId && !openNotificationChannelMenuId && !openNotificationActionId) return;
+    if (!openMessageActionId && !openNotificationChannelMenuId && !openNotificationActionId) return;
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as HTMLElement;
-      if (target.closest("[data-chat-conversation-action]") || target.closest("[data-chat-message-action]") || target.closest("[data-chat-notification-action]")) return;
-      setIsConversationMenuOpen(false);
+      if (target.closest("[data-chat-message-action]") || target.closest("[data-chat-notification-action]")) return;
       setOpenMessageActionId(0);
       setMessageActionPosition(null);
       setOpenNotificationChannelMenuId(0);
@@ -617,7 +615,6 @@ export function ChatDock() {
     }
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
-      setIsConversationMenuOpen(false);
       setOpenMessageActionId(0);
       setMessageActionPosition(null);
       setOpenNotificationChannelMenuId(0);
@@ -630,7 +627,7 @@ export function ChatDock() {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isConversationMenuOpen, openMessageActionId, openNotificationActionId, openNotificationChannelMenuId]);
+  }, [openMessageActionId, openNotificationActionId, openNotificationChannelMenuId]);
 
   useEffect(() => {
     const token = readAccessToken();
@@ -1118,7 +1115,6 @@ export function ChatDock() {
       if (!response.ok) throw new Error(response.error || "聊天操作失败。");
       const completedAction = pendingConversationAction;
       setPendingConversationAction(null);
-      setIsConversationMenuOpen(false);
       setMessages([]);
       if (completedAction === "delete") {
         setConversations((current) => current.filter((item) => item.id !== selected.id));
@@ -1654,13 +1650,6 @@ export function ChatDock() {
             {selected && (isDesktop || isMobileConversationOpen) ? <>
               <button aria-label="发起语音通话" disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("voice")} title="语音通话" type="button"><Phone aria-hidden="true" size={17} /></button>
               <button aria-label="发起视频通话" disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("video")} title="视频通话" type="button"><Video aria-hidden="true" size={17} /></button>
-              {!isDesktop ? <span className="chat-conversation-action" data-chat-conversation-action>
-                <button aria-expanded={isConversationMenuOpen} aria-label="聊天管理" onClick={() => setIsConversationMenuOpen((current) => !current)} title="聊天管理" type="button"><MoreHorizontal aria-hidden="true" size={17} /></button>
-                {isConversationMenuOpen ? <span className="chat-conversation-action-menu">
-                  <button onClick={() => setPendingConversationAction("clear")} type="button"><Eraser aria-hidden="true" size={15} />清空聊天</button>
-                  <button className="danger" onClick={() => setPendingConversationAction("delete")} type="button"><Trash2 aria-hidden="true" size={15} />删除聊天</button>
-                </span> : null}
-              </span> : null}
             </> : null}
             <button aria-label="最小化聊天窗" onClick={() => setIsMinimized(true)} type="button"><Minus aria-hidden="true" size={17} /></button>
             <button aria-label="关闭聊天窗" onClick={closeDock} type="button"><X aria-hidden="true" size={17} /></button>
@@ -1699,13 +1688,13 @@ export function ChatDock() {
                   active={entry.conversation.id === selectedId}
                   friendship={friendshipByUserId.get(entry.conversation.user.id) ?? null}
                   key={entry.conversation.id}
-                  menuOpen={openFriendActionId === (friendshipByUserId.get(entry.conversation.user.id)?.id ?? 0)}
+                  menuOpen={openFriendActionId === (friendshipByUserId.get(entry.conversation.user.id)?.id ?? -entry.conversation.user.id)}
                   onAction={(friendship, action) => { setPendingFriendAction({ friendship, action }); setOpenFriendActionId(0); }}
-                  onConversationAction={isDesktop ? (action) => {
+                  onConversationAction={(action) => {
                     setSelectedId(entry.conversation.id);
                     setPendingConversationAction(action);
                     setOpenFriendActionId(0);
-                  } : undefined}
+                  }}
                   onOpen={() => { setSelectedId(entry.conversation.id); setIsMobileConversationOpen(true); }}
                   onToggleMenu={(friendshipId) => setOpenFriendActionId((current) => current === friendshipId ? 0 : friendshipId)}
                   preview={getConversationPreview(entry.conversation)}
@@ -1915,13 +1904,15 @@ function ChatSidebarContactRow({ active, friendship, menuOpen, preview, unreadCo
       <span><strong className="chat-conversation-name">{user.nickname}<RoleSymbol code={user.isSuperAdmin ? "super_administrator" : user.role.code} /></strong><small>{preview}</small></span>
       {unreadCount ? <b>{formatCount(unreadCount)}</b> : null}
     </button>
-    {friendship ? <div className="chat-friend-action" data-chat-friend-action>
-      <button aria-expanded={menuOpen} aria-label={`${user.nickname} 的好友操作`} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(friendship.id); }} title="好友操作" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
+    {friendship || onConversationAction ? <div className="chat-friend-action" data-chat-friend-action>
+      <button aria-expanded={menuOpen} aria-label={`${user.nickname} 的聊天管理`} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(friendship?.id ?? -user.id); }} title="聊天管理" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
       {menuOpen ? <div className="chat-friend-action-menu">
-        <button onClick={() => onAction(friendship, "remove")} type="button"><UserMinus aria-hidden="true" size={15} />删除好友</button>
-        <button onClick={() => onAction(friendship, "block")} type="button"><Ban aria-hidden="true" size={15} />拉黑好友</button>
+        {friendship ? <>
+          <button onClick={() => onAction(friendship, "remove")} type="button"><UserMinus aria-hidden="true" size={15} />删除好友</button>
+          <button onClick={() => onAction(friendship, "block")} type="button"><Ban aria-hidden="true" size={15} />拉黑好友</button>
+        </> : null}
         {onConversationAction ? <>
-          <span className="chat-friend-action-menu-divider" />
+          {friendship ? <span className="chat-friend-action-menu-divider" /> : null}
           <button onClick={() => onConversationAction("clear")} type="button"><Eraser aria-hidden="true" size={15} />清空聊天</button>
           <button className="danger" onClick={() => onConversationAction("delete")} type="button"><Trash2 aria-hidden="true" size={15} />删除聊天</button>
         </> : null}

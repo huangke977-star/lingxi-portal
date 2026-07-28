@@ -8958,8 +8958,12 @@ a.entry-item:hover {
   .chat-dock-sidebar { grid-template-rows: minmax(0, 1fr); }
   .chat-sidebar-contact-row .chat-sidebar-primary-row { padding-right: 38px; }
   .chat-friend-action-trigger { width: 31px; height: 31px; }
-  .chat-friend-action-menu { position: fixed; top: auto; right: 14px; bottom: 14px; left: 14px; width: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 7px; }
-  .chat-friend-action-menu button { justify-content: center; }
+  .chat-friend-action-menu,
+  .chat-notification-channel-menu { position: fixed; top: auto; right: 14px; bottom: 14px; left: 14px; width: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 7px; }
+  .chat-friend-action-menu button,
+  .chat-notification-channel-menu button { justify-content: center; }
+  .chat-friend-action-menu-divider { grid-column: 1 / -1; }
+  .chat-notification-channel-menu > button:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .chat-confirm-backdrop { position: fixed; }
   .chat-call-panel,
   .chat-call-panel.voice {
