@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { memo } from "react";
 import type { Article, ArticleAuthor } from "@/lib/article-api";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
@@ -112,7 +113,7 @@ export function ArticleCard({
   );
 }
 
-export function ArticleBody({
+export const ArticleBody = memo(function ArticleBody({
   content,
   pendingImageUrls,
 }: {
@@ -141,7 +142,7 @@ export function ArticleBody({
       </ReactMarkdown>
     </div>
   );
-}
+});
 
 function safeArticleUrl(value: unknown): value is string {
   return typeof value === "string" && (value.startsWith("/") || /^https?:\/\//i.test(value));

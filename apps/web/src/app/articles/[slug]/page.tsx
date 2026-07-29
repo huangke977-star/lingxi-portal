@@ -192,15 +192,16 @@ export default function ArticleDetailPage() {
       router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
       return;
     }
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
     setReplyingTo(comment);
     window.requestAnimationFrame(() => {
       const composer = composerRef.current;
       if (!composer) return;
-      const bounds = composer.getBoundingClientRect();
-      if (bounds.top < 72 || bounds.bottom > window.innerHeight - 24) {
-        composer.scrollIntoView({ behavior: "auto", block: "nearest" });
-      }
       composer.focus({ preventScroll: true });
+      if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
+        window.scrollTo({ left: scrollX, top: scrollY, behavior: "auto" });
+      }
     });
   }
 
@@ -316,9 +317,11 @@ export default function ArticleDetailPage() {
         <div className="article-section-heading"><div><span className="section-label">Conversation</span><h2>评论与回复</h2></div><span>{article.commentCount} 条</span></div>
         {commentThreads.length ? <div className="article-comments-list">{commentThreads.map((thread) => <section className="article-comment-thread" key={thread.root.id}>{renderComment(thread.root)}{thread.replies.length ? <div className="article-comment-replies">{thread.replies.map(({ comment, parent }) => renderComment(comment, parent ?? thread.root))}</div> : null}</section>)}</div> : <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />还没有评论。</div>}
         <form className="article-comment-form" onSubmit={handleCommentSubmit}>
+          <div aria-hidden={!replyingTo} className={`article-composer-context${replyingTo ? " active" : ""}`}>
+            {replyingTo ? <><span title={`回复 @${replyingTo.author.nickname}`}>回复 <strong>@{replyingTo.author.nickname}</strong></span><button aria-label="取消回复" onClick={() => setReplyingTo(null)} title="取消回复" type="button"><X aria-hidden="true" size={14} /></button></> : null}
+          </div>
           <textarea aria-label={replyingTo ? `回复 ${replyingTo.author.nickname}` : "评论文章"} maxLength={2000} onChange={(event) => setCommentDraft(event.target.value)} placeholder={replyingTo ? `回复 @${replyingTo.author.nickname}` : "写下你的想法"} ref={composerRef} rows={3} value={commentDraft} />
           <div className="article-composer-footer">
-            <span className="article-composer-target">{replyingTo ? <><span title={`回复 @${replyingTo.author.nickname}`}>回复 <strong>@{replyingTo.author.nickname}</strong></span><button aria-label="取消回复" onClick={() => setReplyingTo(null)} title="取消回复" type="button"><X aria-hidden="true" size={14} /></button></> : null}</span>
             <span className="article-composer-count">{commentDraft.length} / 2000</span>
             <button className="button" disabled={isSubmittingComment || !commentDraft.trim()} type="submit"><Send aria-hidden="true" size={16} />{isSubmittingComment ? "发布中" : replyingTo ? "发布回复" : "发布评论"}</button>
           </div>

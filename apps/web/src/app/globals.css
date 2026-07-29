@@ -6773,37 +6773,42 @@ a.entry-item:hover {
 .article-comment-form {
   position: relative;
   margin-top: 14px;
+  overflow-anchor: none;
 }
 
+.article-composer-context,
 .article-composer-footer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
 
-.article-composer-target {
-  display: inline-flex;
+.article-composer-context {
   min-width: 0;
   min-height: 26px;
-  align-items: center;
-  gap: 4px;
+  margin-bottom: 6px;
   color: var(--muted-strong);
   font-size: 0.78rem;
+  visibility: hidden;
 }
 
-.article-composer-target > span {
+.article-composer-context.active {
+  visibility: visible;
+}
+
+.article-composer-context > span {
   overflow: hidden;
   min-width: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.article-composer-target strong {
+.article-composer-context strong {
   color: var(--accent-strong);
 }
 
-.article-composer-target button {
+.article-composer-context button {
   display: inline-flex;
   width: 24px;
   height: 24px;
@@ -6831,8 +6836,12 @@ a.entry-item:hover {
 .article-composer-count { white-space: nowrap; }
 
 @media (max-width: 520px) {
-  .article-composer-footer { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .article-composer-footer { gap: 8px; }
   .article-composer-count { display: none; }
+}
+
+html:has(.article-comment-form) {
+  scrollbar-gutter: stable;
 }
 
 .public-profile-popover {
