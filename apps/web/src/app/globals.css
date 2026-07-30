@@ -9734,6 +9734,113 @@ html:has(.article-comment-form) {
   margin-top: 2px;
 }
 
+.install-guide-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1900;
+  display: grid;
+  place-items: center;
+  background: rgba(34, 44, 58, 0.18);
+  padding: 18px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.install-guide-dialog {
+  display: grid;
+  width: min(460px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--popover-surface);
+  box-shadow: 0 28px 70px rgba(21, 31, 47, 0.26);
+  padding: 14px;
+  backdrop-filter: blur(30px) saturate(142%);
+  -webkit-backdrop-filter: blur(30px) saturate(142%);
+}
+
+.install-guide-dialog header,
+.install-guide-dialog footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.install-guide-dialog header {
+  padding: 2px 2px 12px;
+}
+
+.install-guide-dialog header strong {
+  font-size: 1rem;
+  font-weight: 680;
+}
+
+.install-guide-dialog header button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.install-guide-dialog header button:hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.install-guide-steps {
+  display: grid;
+  gap: 8px;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-color: color-mix(in srgb, var(--accent-strong) 38%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.install-guide-steps article {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-strong) 60%, transparent);
+  padding: 11px;
+}
+
+.install-guide-steps article > span {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  grid-row: span 2;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.install-guide-steps strong {
+  font-size: 0.88rem;
+  font-weight: 660;
+}
+
+.install-guide-steps p {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.install-guide-dialog footer {
+  justify-content: flex-end;
+  padding-top: 13px;
+}
+
 @media (max-width: 760px) {
   html { scrollbar-gutter: auto; }
   .install-hero {
@@ -9779,6 +9886,13 @@ html:has(.article-comment-form) {
   }
   .diagnostic-item strong {
     white-space: normal;
+  }
+  .install-guide-backdrop {
+    align-items: end;
+    padding: 12px;
+  }
+  .install-guide-dialog {
+    width: 100%;
   }
   .chat-dock:not(.mobile-conversation-open) .chat-mobile-back { display: none; }
   .chat-dock.mobile-conversation-open .chat-mobile-back { display: inline-flex; }

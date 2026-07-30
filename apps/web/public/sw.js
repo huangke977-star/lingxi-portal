@@ -1,4 +1,4 @@
-const VERSION = "hlovet-pwa-v1";
+const VERSION = "hlovet-pwa-v2";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -14,7 +14,12 @@ self.addEventListener("message", (event) => {
   }
 });
 
-self.addEventListener("fetch", () => {
-  // Keep the app fully network-driven. This service worker only enables the
-  // installable app lifecycle and does not cache authenticated or realtime data.
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  if (request.method !== "GET" || !request.url.startsWith("http")) return;
+
+  // Keep the app fully network-driven. This pass-through fetch handler gives
+  // Chromium an installable service-worker lifecycle without caching auth,
+  // uploads, or realtime data.
+  event.respondWith(fetch(request));
 });

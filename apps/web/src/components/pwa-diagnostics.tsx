@@ -8,9 +8,12 @@ import {
   Image as ImageIcon,
   LoaderCircle,
   MonitorSmartphone,
+  MoreVertical,
   RefreshCw,
   ShieldCheck,
+  Share2,
   Smartphone,
+  X,
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
@@ -213,6 +216,7 @@ export function PwaDiagnostics() {
   const [hasGesture, setHasGesture] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [notice, setNotice] = useState("");
 
   const runDiagnostics = useCallback(async () => {
@@ -395,6 +399,7 @@ export function PwaDiagnostics() {
       setNotice(choice.outcome === "accepted" ? "HLOVET 已开始安装。" : "安装已取消。");
       return;
     }
+    setIsGuideOpen(true);
     setNotice(getFallbackInstallMessage(Boolean(browser?.isIos), Boolean(browser?.isAndroid)));
   }
 
@@ -479,9 +484,9 @@ export function PwaDiagnostics() {
           {browser?.isAndroid ? (
             <ol className="install-guide-list">
               <li>确认地址栏是 <strong>https://5200918.xyz</strong>，不要在微信或其它内置浏览器里打开。</li>
-              <li>点一下页面并停留片刻，然后刷新一次。</li>
+              <li>点一下页面并停留 30 秒左右，然后刷新一次。</li>
               <li>如果本页显示“可以安装”，点上方“立即安装”。</li>
-              <li>如果仍未出现弹窗，点 Chrome 右上角三个点，选择“添加到主屏幕”或“安装应用”。</li>
+              <li>如果右上角菜单没有安装项，点菜单里的“分享...”，再在分享面板中找“添加到主屏幕”。</li>
             </ol>
           ) : browser?.isIos ? (
             <ol className="install-guide-list">
@@ -502,6 +507,48 @@ export function PwaDiagnostics() {
           </div>
         </aside>
       </div>
+
+      {isGuideOpen ? <div className="install-guide-backdrop" role="presentation" onClick={() => setIsGuideOpen(false)}>
+        <section aria-modal="true" className="install-guide-dialog" role="dialog" onClick={(event) => event.stopPropagation()}>
+          <header>
+            <strong>安装 HLOVET</strong>
+            <button aria-label="关闭安装说明" onClick={() => setIsGuideOpen(false)} type="button"><X aria-hidden="true" size={18} /></button>
+          </header>
+          {browser?.isAndroid ? <div className="install-guide-steps">
+            <article>
+              <span><RefreshCw aria-hidden="true" size={18} /></span>
+              <strong>先刷新并等待</strong>
+              <p>返回首页或当前页，点一下页面，停留 30 秒左右，再刷新一次。</p>
+            </article>
+            <article>
+              <span><MoreVertical aria-hidden="true" size={18} /></span>
+              <strong>检查右上角菜单</strong>
+              <p>打开 Chrome 右上角三个点，找“安装应用”“安装 HLOVET”或“添加到主屏幕”。</p>
+            </article>
+            <article>
+              <span><Share2 aria-hidden="true" size={18} /></span>
+              <strong>菜单没有时点分享</strong>
+              <p>如果你的菜单像截图一样没有安装项，点“分享...”，再看分享面板里有没有“添加到主屏幕”。</p>
+            </article>
+          </div> : browser?.isIos ? <div className="install-guide-steps">
+            <article>
+              <span><Share2 aria-hidden="true" size={18} /></span>
+              <strong>使用 Safari 分享按钮</strong>
+              <p>iPhone/iPad 不会弹安装窗口，需要在 Safari 分享菜单中选择“添加到主屏幕”。</p>
+            </article>
+          </div> : <div className="install-guide-steps">
+            <article>
+              <span><MoreVertical aria-hidden="true" size={18} /></span>
+              <strong>从浏览器菜单安装</strong>
+              <p>桌面 Chrome 或 Edge 通常在地址栏或右上角菜单里显示“安装 HLOVET”。</p>
+            </article>
+          </div>}
+          <footer>
+            <button className="text-action" onClick={() => { setIsGuideOpen(false); void runDiagnostics(); }} type="button">我已操作，重新检测</button>
+            <button className="text-action primary" onClick={() => setIsGuideOpen(false)} type="button">知道了</button>
+          </footer>
+        </section>
+      </div> : null}
 
       <AppToast duration={4200} message={notice} onDismiss={() => setNotice("")} tone="info" />
     </section>
