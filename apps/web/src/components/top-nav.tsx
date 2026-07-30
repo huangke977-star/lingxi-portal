@@ -22,6 +22,7 @@ import {
   useState,
 } from "react";
 import { AppToast } from "@/components/app-toast";
+import { PwaInstallButton } from "@/components/pwa-install-button";
 import { RoleSymbol } from "@/components/role-symbol";
 import {
   type ArticleCommentReport,
@@ -300,6 +301,7 @@ export function TopNav() {
         <Link className="brand" href="/"><span className="brand-mark brand-logo-mark"><img alt="" src="/favicon.svg" /></span><span className="brand-copy"><strong>HLOVET</strong><span>Personal Portal</span></span></Link>
         <div className="top-links desktop-links">{navItems.map((item) => <Link className={isActiveRoute(item.href) ? "active" : undefined} href={item.href} key={item.href}>{item.label}</Link>)}</div>
         <div className="account-zone">
+          <PwaInstallButton />
           {isLoading ? <span className="login-chip">读取中</span> : null}
           {!isLoading && !user ? <Link className="login-chip login-chip-action" href={`/login?from=${encodeURIComponent(pathname)}`}>登录</Link> : null}
           {user && roleBadge ? <>
