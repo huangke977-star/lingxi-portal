@@ -117,8 +117,32 @@ function detectBrowser(): BrowserSnapshot {
 }
 
 async function checkUrl(url: string) {
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetchWithTimeout(url, { cache: "no-store" }, 4200);
   return response.ok;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 5200) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string) {
+  let timer = 0;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
 }
 
 function resolveManifestIcon(icon: WebManifestIcon) {
@@ -219,7 +243,7 @@ export function PwaDiagnostics() {
     const manifestUrl = new URL(manifestLink?.href || "/site.webmanifest", window.location.href).href;
 
     try {
-      const response = await fetch(`${manifestUrl}${manifestUrl.includes("?") ? "&" : "?"}diagnostics=${Date.now()}`, { cache: "no-store" });
+      const response = await fetchWithTimeout(`${manifestUrl}${manifestUrl.includes("?") ? "&" : "?"}diagnostics=${Date.now()}`, { cache: "no-store" });
       manifestData = await response.json();
       const hasName = Boolean(manifestData?.name || manifestData?.short_name);
       const display = manifestData?.display ?? "";
@@ -289,8 +313,8 @@ export function PwaDiagnostics() {
       });
     } else {
       try {
-        const existing = await navigator.serviceWorker.getRegistration("/");
-        const registration = existing ?? await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        const existing = await withTimeout(navigator.serviceWorker.getRegistration("/"), 2600, "service worker registration timeout");
+        const registration = existing ?? await withTimeout(navigator.serviceWorker.register("/sw.js", { scope: "/" }), 4200, "service worker register timeout");
         await Promise.race([
           navigator.serviceWorker.ready,
           new Promise((resolve) => window.setTimeout(resolve, 2400)),
@@ -309,9 +333,9 @@ export function PwaDiagnostics() {
         next.push({
           id: "service-worker",
           title: "Service Worker",
-          value: "注册失败",
-          detail: "浏览器无法注册 /sw.js。",
-          status: "error",
+          value: "检测超时",
+          detail: "浏览器没有及时返回 Service Worker 状态，可以刷新后重试。",
+          status: "warn",
         });
       }
     }
