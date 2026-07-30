@@ -289,13 +289,18 @@ export function PwaDiagnostics() {
         return iconUrl ? [iconUrl] : [];
       });
       const iconResults = await Promise.all(iconUrls.map((url) => checkUrl(url).catch(() => false)));
-      const iconsOk = Boolean(icon192 && icon512 && iconResults.every(Boolean));
+      const hasRequiredIconConfig = Boolean(icon192 && icon512);
+      const iconsOk = Boolean(hasRequiredIconConfig && iconResults.every(Boolean));
       next.push({
         id: "icons",
         title: "应用图标",
-        value: iconsOk ? "图标正常" : "图标缺失",
-        detail: iconsOk ? "192 和 512 图标都可以访问。" : "需要同时提供可访问的 192 和 512 图标。",
-        status: iconsOk ? "ok" : "error",
+        value: iconsOk ? "图标正常" : hasRequiredIconConfig ? "访问超时" : "图标缺失",
+        detail: iconsOk
+          ? "192 和 512 图标都可以访问。"
+          : hasRequiredIconConfig
+            ? "manifest 已配置 192 和 512 图标，但浏览器这次没有及时读取成功。"
+            : "需要同时提供可访问的 192 和 512 图标。",
+        status: iconsOk ? "ok" : hasRequiredIconConfig ? "warn" : "error",
       });
     } else {
       next.push({
