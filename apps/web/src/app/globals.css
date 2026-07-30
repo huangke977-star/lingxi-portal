@@ -9450,8 +9450,336 @@ html:has(.article-comment-form) {
 .chat-friend-request-form footer { display: flex; justify-content: flex-end; gap: 16px; }
 .chat-friend-request-form footer button:disabled { cursor: default; opacity: 0.5; }
 
+.install-page {
+  gap: 16px;
+}
+
+.install-hero,
+.install-actions-panel,
+.install-mini-card,
+.install-panel {
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.install-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 22px;
+}
+
+.install-hero > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.install-hero h1 {
+  max-width: 760px;
+  font-size: 1.72rem;
+  line-height: 1.18;
+}
+
+.install-hero p {
+  font-size: 0.94rem;
+  line-height: 1.65;
+}
+
+.install-score {
+  display: grid;
+  min-width: 142px;
+  justify-items: center;
+  gap: 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-strong) 74%, transparent);
+  color: var(--muted-strong);
+  padding: 16px 18px;
+}
+
+.install-score strong {
+  color: var(--accent-strong);
+  font-size: 1.65rem;
+  font-weight: 720;
+  line-height: 1;
+}
+
+.install-score span {
+  font-size: 0.78rem;
+  font-weight: 620;
+}
+
+.install-score[data-state="ok"] strong { color: var(--success); }
+.install-score[data-state="error"] strong { color: var(--danger); }
+
+.install-actions-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+}
+
+.install-primary-action {
+  gap: 7px;
+}
+
+.install-actions-panel .text-action {
+  gap: 5px;
+}
+
+.install-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.install-mini-card {
+  display: grid;
+  min-height: 98px;
+  align-content: space-between;
+  gap: 8px;
+  padding: 15px;
+}
+
+.install-mini-card svg {
+  color: var(--accent-strong);
+}
+
+.install-mini-card span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.install-mini-card strong {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.98rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.install-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.install-panel {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding: 16px;
+}
+
+.install-panel-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+}
+
+.install-panel-head strong {
+  font-size: 1rem;
+  font-weight: 680;
+}
+
+.install-panel-head span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostic-list {
+  display: grid;
+  gap: 8px;
+}
+
+.diagnostic-item {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-strong) 58%, transparent);
+  padding: 11px 12px;
+}
+
+.diagnostic-icon {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent-soft) 68%, transparent);
+  color: var(--accent-strong);
+}
+
+.diagnostic-item[data-state="ok"] .diagnostic-icon {
+  background: color-mix(in srgb, var(--success-soft) 72%, transparent);
+  color: var(--success);
+}
+
+.diagnostic-item[data-state="warn"] .diagnostic-icon {
+  background: color-mix(in srgb, var(--warning-soft) 72%, transparent);
+  color: var(--warning);
+}
+
+.diagnostic-item[data-state="error"] .diagnostic-icon {
+  background: color-mix(in srgb, var(--danger-soft) 72%, transparent);
+  color: var(--danger);
+}
+
+.diagnostic-item > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.diagnostic-item strong {
+  overflow: hidden;
+  font-size: 0.9rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostic-item small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.diagnostic-item b {
+  color: var(--foreground);
+  font-size: 0.78rem;
+  font-weight: 660;
+  white-space: nowrap;
+}
+
+.diagnostic-item em {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-soft) 64%, transparent);
+  color: var(--accent-strong);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 660;
+  padding: 5px 7px;
+  white-space: nowrap;
+}
+
+.diagnostic-item[data-state="ok"] em {
+  background: color-mix(in srgb, var(--success-soft) 78%, transparent);
+  color: var(--success);
+}
+
+.diagnostic-item[data-state="warn"] em {
+  background: color-mix(in srgb, var(--warning-soft) 78%, transparent);
+  color: var(--warning);
+}
+
+.diagnostic-item[data-state="error"] em {
+  background: color-mix(in srgb, var(--danger-soft) 78%, transparent);
+  color: var(--danger);
+}
+
+.install-guide-panel {
+  position: sticky;
+  top: 92px;
+}
+
+.install-guide-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.install-guide-list li {
+  color: var(--muted-strong);
+  font-size: 0.84rem;
+  line-height: 1.58;
+}
+
+.install-guide-list strong {
+  color: var(--foreground);
+  font-weight: 650;
+}
+
+.install-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent-soft) 54%, transparent);
+  color: var(--muted-strong);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  padding: 11px;
+}
+
+.install-note svg {
+  color: var(--accent-strong);
+  margin-top: 2px;
+}
+
 @media (max-width: 760px) {
   html { scrollbar-gutter: auto; }
+  .install-hero {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
+  }
+  .install-hero h1 {
+    font-size: 1.28rem;
+  }
+  .install-hero p {
+    font-size: 0.84rem;
+  }
+  .install-score {
+    width: 100%;
+    min-width: 0;
+    justify-items: start;
+  }
+  .install-actions-panel {
+    gap: 12px;
+    padding: 12px;
+  }
+  .install-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .install-mini-card {
+    min-height: 88px;
+    padding: 13px;
+  }
+  .install-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .install-guide-panel {
+    position: static;
+  }
+  .diagnostic-item {
+    grid-template-columns: 30px minmax(0, 1fr);
+    align-items: start;
+  }
+  .diagnostic-item b,
+  .diagnostic-item em {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .diagnostic-item strong {
+    white-space: normal;
+  }
   .chat-dock:not(.mobile-conversation-open) .chat-mobile-back { display: none; }
   .chat-dock.mobile-conversation-open .chat-mobile-back { display: inline-flex; }
   .chat-message-action-trigger { opacity: 0.7; }
@@ -9483,6 +9811,13 @@ html:has(.article-comment-form) {
 }
 
 @media (max-width: 430px) {
+  .install-summary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .install-actions-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
   .chat-message-selection-bar { gap: 5px; padding-inline: 8px; }
   .chat-message-selection-bar button { font-size: 0.62rem; }
   .chat-message-selection-bar button svg { width: 12px; height: 12px; }
