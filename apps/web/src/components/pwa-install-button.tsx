@@ -24,17 +24,39 @@ function isIosDevice() {
     || (platform === "macintel" && window.navigator.maxTouchPoints > 1);
 }
 
+function isAndroidDevice() {
+  return /android/.test(window.navigator.userAgent.toLowerCase());
+}
+
+function isMobileLikeDevice() {
+  return isIosDevice()
+    || isAndroidDevice()
+    || window.matchMedia("(pointer: coarse)").matches
+    || window.matchMedia("(max-width: 760px)").matches;
+}
+
+function getFallbackInstallMessage(isIos: boolean, isAndroid: boolean) {
+  if (isIos) return "iPhone/iPad 请点 Safari 分享按钮，再选择添加到主屏幕。";
+  if (isAndroid) return "请用 Chrome 打开本站；若未弹出安装窗口，刷新一次后点右上角菜单，选择添加到主屏幕。";
+  return "请在浏览器地址栏或菜单中选择安装应用或添加到主屏幕。";
+}
+
 export function PwaInstallButton() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIos, setIsIos] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(false);
+  const [isMobileLike, setIsMobileLike] = useState(false);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    // Browser install support is event-driven, so the header only appears when useful.
+    // Browser install support is event-driven; mobile still gets a visible guide
+    // because some Android browsers hide the install menu until Chrome trusts the app.
     const frame = window.requestAnimationFrame(() => {
       setIsStandalone(isStandaloneDisplay());
       setIsIos(isIosDevice());
+      setIsAndroid(isAndroidDevice());
+      setIsMobileLike(isMobileLikeDevice());
     });
 
     function handleBeforeInstallPrompt(event: Event) {
@@ -71,12 +93,10 @@ export function PwaInstallButton() {
       return;
     }
 
-    setNotice(isIos
-      ? "iPhone/iPad 请点 Safari 分享按钮，再选择添加到主屏幕。"
-      : "请在浏览器菜单中选择安装应用或添加到主屏幕。");
+    setNotice(getFallbackInstallMessage(isIos, isAndroid));
   }
 
-  if (isStandalone || (!installPrompt && !isIos)) {
+  if (isStandalone || (!installPrompt && !isMobileLike)) {
     return <AppToast duration={3600} message={notice} onDismiss={() => setNotice("")} tone="info" />;
   }
 
@@ -86,7 +106,7 @@ export function PwaInstallButton() {
         aria-label="安装 HLOVET"
         className="header-action-button pwa-install-button"
         onClick={() => void handleInstall()}
-        title="安装 HLOVET"
+        title="安装到主屏幕"
         type="button"
       >
         <Download aria-hidden="true" size={18} />
