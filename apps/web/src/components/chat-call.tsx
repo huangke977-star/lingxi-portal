@@ -68,6 +68,8 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const iceConfigRef = useRef<{ iceServers: RTCIceServer[]; expiresAt: number } | null>(null);
+  const requestedFullscreenRef = useRef(false);
+  const fullscreenRequestVersionRef = useRef(0);
 
   useEffect(() => {
     stateRef.current = state;
@@ -83,12 +85,40 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
     setRemoteStream(null);
   }, []);
 
+  const requestVideoFullscreen = useCallback(() => {
+    if (typeof document === "undefined" || document.fullscreenElement) return;
+    const requestFullscreen = document.documentElement.requestFullscreen;
+    if (!requestFullscreen) return;
+    const requestVersion = fullscreenRequestVersionRef.current + 1;
+    fullscreenRequestVersionRef.current = requestVersion;
+    requestedFullscreenRef.current = true;
+    void requestFullscreen.call(document.documentElement)
+      .then(() => {
+        if (fullscreenRequestVersionRef.current === requestVersion && requestedFullscreenRef.current) return;
+        if (document.fullscreenElement === document.documentElement && document.exitFullscreen) {
+          void document.exitFullscreen().catch(() => {});
+        }
+      })
+      .catch(() => {
+        if (fullscreenRequestVersionRef.current === requestVersion) requestedFullscreenRef.current = false;
+      });
+  }, []);
+
+  const exitVideoFullscreen = useCallback(() => {
+    if (!requestedFullscreenRef.current || typeof document === "undefined") return;
+    fullscreenRequestVersionRef.current += 1;
+    requestedFullscreenRef.current = false;
+    if (!document.fullscreenElement || !document.exitFullscreen) return;
+    void document.exitFullscreen().catch(() => {});
+  }, []);
+
   const clearCall = useCallback(() => {
     disposeMedia();
+    exitVideoFullscreen();
     stateRef.current = null;
     setState(null);
     setIsPreparing(false);
-  }, [disposeMedia]);
+  }, [disposeMedia, exitVideoFullscreen]);
 
   const getIceConfig = useCallback(async (): Promise<RTCIceServer[]> => {
     const cached = iceConfigRef.current;
@@ -275,6 +305,7 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
     if (!socket?.connected || !selected || stateRef.current || isPreparing) return;
     setIsPreparing(true);
     try {
+      if (type === "video") requestVideoFullscreen();
       await acquireMedia(type, "user");
       const response = await socket.timeout(12_000).emitWithAck("call:start", {
         conversationId: selected.id,
@@ -293,17 +324,19 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
       setState(next);
     } catch (error) {
       disposeMedia();
+      if (type === "video") exitVideoFullscreen();
       onError(error instanceof Error ? error.message : "通话发起失败。");
     } finally {
       setIsPreparing(false);
     }
-  }, [acquireMedia, disposeMedia, isPreparing, onError, selected, socket]);
+  }, [acquireMedia, disposeMedia, exitVideoFullscreen, isPreparing, onError, requestVideoFullscreen, selected, socket]);
 
   const acceptCall = useCallback(async () => {
     const current = stateRef.current;
     if (!socket?.connected || !current || current.phase !== "incoming" || isPreparing) return;
     setIsPreparing(true);
     try {
+      if (current.call.type === "video") requestVideoFullscreen();
       await acquireMedia(current.call.type, current.facingMode);
       const response = await socket.timeout(12_000).emitWithAck("call:respond", {
         callId: current.call.id,
@@ -315,12 +348,13 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
       setState(next);
     } catch (error) {
       disposeMedia();
+      if (current.call.type === "video") exitVideoFullscreen();
       socket.emit("call:respond", { callId: current.call.id, accepted: false });
       onError(error instanceof Error ? error.message : "无法使用麦克风或摄像头。");
     } finally {
       setIsPreparing(false);
     }
-  }, [acquireMedia, disposeMedia, isPreparing, onError, socket]);
+  }, [acquireMedia, disposeMedia, exitVideoFullscreen, isPreparing, onError, requestVideoFullscreen, socket]);
 
   const declineCall = useCallback(() => {
     const current = stateRef.current;
@@ -333,9 +367,10 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
     const current = stateRef.current;
     if (!current) return;
     setState((value) => value ? { ...value, phase: "ending" } : value);
+    exitVideoFullscreen();
     if (socket?.connected) socket.emit("call:end", { callId: current.call.id });
     else clearCall();
-  }, [clearCall, socket]);
+  }, [clearCall, exitVideoFullscreen, socket]);
 
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;

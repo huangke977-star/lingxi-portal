@@ -21,7 +21,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleAuthorLine, ArticlePinBadge, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
@@ -79,6 +79,7 @@ function AdminArticlesWorkspace() {
   const [titleColor, setTitleColor] = useState("");
   const [blockedReason, setBlockedReason] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isAppendingArticles, setIsAppendingArticles] = useState(false);
   const [isCommentsLoading, setIsCommentsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isReportQueueOpen, setIsReportQueueOpen] = useState(false);
@@ -342,6 +343,41 @@ function AdminArticlesWorkspace() {
     }
   }
 
+  async function loadMoreArticles() {
+    const token = readAccessToken();
+    if (!token || isLoading || isAppendingArticles || articleList.page >= articleList.totalPages) return;
+    setIsAppendingArticles(true);
+    try {
+      const result = await listAdminArticles(token, {
+        page: articleList.page + 1,
+        pageSize: 12,
+        search: searchQuery,
+        sort: "latest",
+      });
+      setArticleList((current) => {
+        const existingIds = new Set(current.items.map((article) => article.id));
+        return {
+          ...result,
+          items: [
+            ...current.items,
+            ...result.items.filter((article) => !existingIds.has(article.id)),
+          ],
+        };
+      });
+    } catch (loadError) {
+      handleLoadError(loadError);
+    } finally {
+      setIsAppendingArticles(false);
+    }
+  }
+
+  function handleArticleListScroll(event: UIEvent<HTMLElement>) {
+    const target = event.currentTarget;
+    const remaining = target.scrollHeight - target.scrollTop - target.clientHeight;
+    if (remaining > 72) return;
+    void loadMoreArticles();
+  }
+
   async function locateReportedComment(report: ArticleCommentReport) {
     const token = readAccessToken();
     if (!token) return;
@@ -401,7 +437,7 @@ function AdminArticlesWorkspace() {
 
   function renderArticleList() {
     return (
-      <aside className="admin-article-list">
+      <aside className="admin-article-list" onScroll={handleArticleListScroll}>
         {articleList.items.map((article) => (
           <button
             className={`admin-article-row${selected?.id === article.id ? " active" : ""}`}
@@ -420,6 +456,7 @@ function AdminArticlesWorkspace() {
           </button>
         ))}
         {!articleList.items.length ? <div className="article-empty-inline">暂时没有文章。</div> : null}
+        {articleList.totalPages > 1 ? <div className="admin-article-list-footer">{isAppendingArticles ? "正在加载更多" : articleList.page < articleList.totalPages ? "继续下滑加载更多" : "已经到底了"}</div> : null}
         {articleList.totalPages > 1 ? (
           <nav aria-label="文章分页" className="article-pagination admin-article-pagination">
             <button disabled={articleList.page <= 1} onClick={() => void changeArticlePage(articleList.page - 1)} title="上一页" type="button"><ChevronLeft aria-hidden="true" size={17} /></button>

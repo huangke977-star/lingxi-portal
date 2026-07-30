@@ -5401,7 +5401,7 @@ a.entry-item:hover {
   .article-sort-tabs { justify-content: flex-start; }
   .article-feed-grid { grid-template-columns: minmax(0, 1fr); }
   .article-reading-layout { padding: 28px 18px; }
-  .article-reading-header h1 { font-size: 2rem; }
+  .article-reading-header h1 { font-size: 1.34rem; }
   .article-reading-actions { flex-wrap: wrap; margin-bottom: 26px; }
   .article-reading-actions .article-stats { width: 100%; margin-left: 0; }
   .article-comments-section { padding: 24px 18px; }
@@ -5851,7 +5851,7 @@ a.entry-item:hover {
 .article-reading-header h1 {
   max-width: 100%;
   margin: 0 0 6px;
-  font-size: 2.2rem;
+  font-size: 1.47rem;
   overflow-wrap: anywhere;
   text-wrap: pretty;
   word-break: normal;
@@ -6092,6 +6092,7 @@ a.entry-item:hover {
   .article-mine-row-actions { justify-content: flex-start; }
   .article-editor-workspace { grid-template-columns: minmax(0, 1fr); }
   .article-editor-workspace .article-editor-preview { position: static; max-height: none; }
+  .article-reading-header h1 { font-size: 1.34rem; }
   .article-reading-grid { grid-template-areas: "main" "aside"; grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .article-reading-aside { position: static; }
 }
@@ -6113,7 +6114,7 @@ a.entry-item:hover {
   .articles-header { padding: 12px 15px; }
   .articles-header h1 { font-size: 1.65rem; }
   .article-reading-header { padding: 8px 4px 12px; }
-  .article-reading-header h1 { font-size: 1.75rem; }
+  .article-reading-header h1 { font-size: 1.17rem; }
   .article-body { font-size: 0.98rem; line-height: 1.7; }
 }
 
@@ -6542,6 +6543,15 @@ a.entry-item:hover {
   gap: 8px;
 }
 
+.admin-article-list-footer {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
 .admin-article-row {
   position: relative;
   min-height: 54px;
@@ -6636,6 +6646,13 @@ a.entry-item:hover {
   .article-mine-row-meta .article-recent-commenters { margin-left: 0; }
   .article-editor-taxonomy-grid { grid-template-columns: minmax(0, 1fr); }
   .article-back-to-top { right: 16px; bottom: 86px; }
+  .admin-article-list {
+    max-height: min(58vh, 520px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .admin-article-list-footer { display: flex; }
+  .admin-article-pagination { display: none; }
   .admin-comment-row { grid-template-columns: minmax(0, 1fr); }
   .admin-comment-row-actions { justify-content: flex-start; }
   .admin-comment-row.reply { margin-left: 12px; padding-left: 10px; }
