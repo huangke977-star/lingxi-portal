@@ -9,6 +9,11 @@
     reverse_proxy api:3001
   }
 
+  handle /_next/static/* {
+    header Cache-Control "public, max-age=0, must-revalidate"
+    reverse_proxy web:3000
+  }
+
   handle {
     reverse_proxy web:3000
   }
