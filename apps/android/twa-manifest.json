@@ -1,0 +1,64 @@
+{
+  "packageId": "xyz.hlovet.portal",
+  "host": "5200918.xyz",
+  "name": "HLOVET",
+  "launcherName": "HLOVET",
+  "display": "standalone",
+  "themeColor": "#EEF8FF",
+  "themeColorDark": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#EEF8FF",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://5200918.xyz/icon-512.png",
+  "maskableIconUrl": "https://5200918.xyz/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "../../output/android/hlovet-twa-test.p12",
+    "alias": "hlovet"
+  },
+  "appVersionName": "1",
+  "appVersionCode": 1,
+  "shortcuts": [
+    {
+      "name": "发现",
+      "shortName": "发现",
+      "url": "https://5200918.xyz/articles",
+      "chosenIconUrl": "https://5200918.xyz/icon-192.png"
+    },
+    {
+      "name": "导航",
+      "shortName": "导航",
+      "url": "https://5200918.xyz/nav",
+      "chosenIconUrl": "https://5200918.xyz/icon-192.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://5200918.xyz/site.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://5200918.xyz/",
+  "minSdkVersion": 21,
+  "orientation": "any",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "",
+  "displayOverride": [
+    "standalone",
+    "minimal-ui",
+    "browser"
+  ],
+  "appVersion": "1"
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "xyz.hlovet.portal",
+      "sha256_cert_fingerprints": [
+        "83:9C:63:80:4A:F3:76:30:31:9F:5C:46:BD:6E:4C:AD:E7:87:19:7A:CA:03:D7:F5:59:21:59:10:70:60:9F:42"
+      ]
+    }
+  }
+]
