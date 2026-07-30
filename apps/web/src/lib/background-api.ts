@@ -1,6 +1,7 @@
 import { requestJson, resolveApiUrl } from './auth-api';
 
 export const BACKGROUND_CHANGE_EVENT = 'hlovet-background-change';
+export const ACTIVE_BACKGROUND_CACHE_KEY = 'hlovet.active-background.url';
 
 export interface ManagedBackground {
   id: number;
@@ -66,8 +67,51 @@ export function resolveBackgroundUrl(background: Pick<ManagedBackground, 'url'>)
   return resolveApiUrl(background.url);
 }
 
+export function readCachedActiveBackgroundUrl(): string | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  return normalizeBackgroundUrl(window.localStorage.getItem(ACTIVE_BACKGROUND_CACHE_KEY));
+}
+
+export function cacheActiveBackgroundUrl(url: string): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const normalizedUrl = normalizeBackgroundUrl(url);
+  if (!normalizedUrl) {
+    clearActiveBackgroundCache();
+    return;
+  }
+
+  window.localStorage.setItem(ACTIVE_BACKGROUND_CACHE_KEY, normalizedUrl);
+}
+
+export function clearActiveBackgroundCache(): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.removeItem(ACTIVE_BACKGROUND_CACHE_KEY);
+}
+
 export function notifyBackgroundChange() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(BACKGROUND_CHANGE_EVENT));
+  }
+}
+
+function normalizeBackgroundUrl(url: string | null): string | null {
+  if (!url || typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const parsedUrl = new URL(url, window.location.origin);
+    return ['http:', 'https:'].includes(parsedUrl.protocol) ? parsedUrl.href : null;
+  } catch {
+    return null;
   }
 }

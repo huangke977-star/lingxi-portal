@@ -2488,6 +2488,221 @@ a.entry-item:hover {
   font-size: 0.9rem;
 }
 
+.android-release-admin-shell {
+  padding-bottom: 20px;
+}
+
+.android-release-upload-panel {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.42fr) minmax(0, 1fr);
+  gap: 22px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  padding: 22px;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.android-release-upload-copy {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.android-release-upload-copy p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.58;
+}
+
+.android-release-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.android-release-form-grid label {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.android-release-form-grid label > span:first-child {
+  color: var(--muted-strong);
+  font-size: 0.8rem;
+  font-weight: 620;
+}
+
+.android-release-form-grid input:not([type="checkbox"]),
+.android-release-form-grid textarea {
+  width: 100%;
+  border: 1px solid var(--control-line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--foreground);
+  font: inherit;
+  outline: none;
+}
+
+.android-release-form-grid input:not([type="checkbox"]) {
+  min-height: 42px;
+  padding: 0 13px;
+}
+
+.android-release-form-grid textarea {
+  min-height: 102px;
+  resize: vertical;
+  line-height: 1.55;
+  padding: 10px 13px;
+}
+
+.android-release-form-grid input:focus,
+.android-release-form-grid textarea:focus {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--control-line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.android-release-notes-field {
+  grid-column: 1 / -1;
+}
+
+.android-release-active-check {
+  display: inline-flex !important;
+  width: fit-content;
+  grid-template-columns: auto auto;
+  align-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-strong) 74%, transparent);
+  color: var(--muted-strong);
+  font-size: 0.84rem;
+  font-weight: 620;
+  padding: 9px 12px;
+}
+
+.android-release-active-check input {
+  accent-color: var(--accent-strong);
+}
+
+.android-release-submit {
+  justify-self: end;
+  gap: 7px;
+}
+
+.android-release-list {
+  display: grid;
+  gap: 10px;
+}
+
+.android-release-card {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  padding: 14px;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  transition:
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.android-release-card:hover {
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-hover);
+}
+
+.android-release-card.active {
+  background: color-mix(in srgb, var(--surface-strong) 82%, var(--accent-soft));
+}
+
+.android-release-icon {
+  display: inline-flex;
+  width: 46px;
+  height: 46px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent-soft) 64%, transparent);
+  color: var(--accent-strong);
+}
+
+.android-release-main {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.android-release-title-row {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.android-release-title-row strong {
+  max-width: min(280px, 100%);
+  overflow: hidden;
+  font-size: 1rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.android-release-title-row span,
+.android-release-title-row em,
+.android-release-title-row b {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 650;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.android-release-title-row span,
+.android-release-title-row em {
+  background: color-mix(in srgb, var(--surface-strong) 74%, transparent);
+  color: var(--muted-strong);
+}
+
+.android-release-title-row b {
+  background: color-mix(in srgb, var(--success-soft) 80%, transparent);
+  color: var(--success);
+}
+
+.android-release-file-line,
+.android-release-main small,
+.android-release-main p {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.android-release-main p {
+  color: var(--muted-strong);
+}
+
+.android-release-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+}
+
+.android-release-actions .text-action {
+  gap: 4px;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
 .admin-table {
   width: 100%;
   min-width: 820px;
@@ -4434,6 +4649,48 @@ a.entry-item:hover {
 @media (max-width: 620px) {
   .background-gallery {
     grid-template-columns: 1fr;
+  }
+
+  .android-release-upload-panel {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+
+  .android-release-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .android-release-submit,
+  .android-release-file-picker {
+    width: 100%;
+  }
+
+  .android-release-submit {
+    justify-content: center;
+    justify-self: stretch;
+  }
+
+  .android-release-card {
+    grid-template-columns: 40px minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .android-release-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .android-release-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .android-release-file-line,
+  .android-release-main small,
+  .android-release-main p {
+    white-space: normal;
   }
 
   .background-upload-panel {

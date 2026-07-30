@@ -142,6 +142,7 @@ services:
       TURN_CREDENTIAL_TTL_SECONDS: ${TURN_CREDENTIAL_TTL_SECONDS:-3600}
       STUN_URLS: ${STUN_URLS:-stun:turn.5200918.xyz:3478}
       BACKGROUND_UPLOAD_DIR: /app/uploads/backgrounds
+      ANDROID_RELEASE_UPLOAD_DIR: /app/uploads/android-releases
       AVATAR_UPLOAD_DIR: /app/uploads/avatars
       ARTICLE_UPLOAD_DIR: /app/uploads/articles
       CHAT_UPLOAD_DIR: /app/uploads/chat
@@ -149,6 +150,7 @@ services:
       - "127.0.0.1:${API_PORT:-3001}:3001"
     volumes:
       - background_uploads:/app/uploads/backgrounds
+      - android_release_uploads:/app/uploads/android-releases
       - avatar_uploads:/app/uploads/avatars
       - article_uploads:/app/uploads/articles
       - chat_uploads:/app/uploads/chat
@@ -177,6 +179,7 @@ volumes:
   mysql_data:
   redis_data:
   background_uploads:
+  android_release_uploads:
   avatar_uploads:
   article_uploads:
   chat_uploads:

@@ -10,14 +10,31 @@ import {
 import { getMe } from "@/lib/auth-api";
 import { AUTH_STATE_CHANGE_EVENT, readAccessToken } from "@/lib/auth-storage";
 import {
+  cacheActiveBackgroundUrl,
+  clearActiveBackgroundCache,
   BACKGROUND_CHANGE_EVENT,
   getActiveBackground,
+  readCachedActiveBackgroundUrl,
   resolveBackgroundUrl,
 } from "@/lib/background-api";
 
 export function ThemeController() {
   useEffect(() => {
     let isMounted = true;
+
+    function applyBackgroundUrl(url: string) {
+      document.documentElement.style.setProperty("--portal-bg-image", `url("${escapeCssUrl(url)}")`);
+      cacheActiveBackgroundUrl(url);
+    }
+
+    function preloadBackground(url: string): Promise<void> {
+      return new Promise((resolve) => {
+        const image = new Image();
+        image.onload = () => resolve();
+        image.onerror = () => resolve();
+        image.src = url;
+      });
+    }
 
     function syncTheme() {
       applyThemePreference(readThemePreference());
@@ -44,21 +61,32 @@ export function ThemeController() {
 
     async function syncBackground() {
       try {
+        const cachedUrl = readCachedActiveBackgroundUrl();
+        if (cachedUrl) {
+          applyBackgroundUrl(cachedUrl);
+        }
+
         const background = await getActiveBackground();
         if (!isMounted) {
           return;
         }
 
         if (background) {
-          document.documentElement.style.setProperty(
-            "--portal-bg-image",
-            `url("${resolveBackgroundUrl(background)}")`,
-          );
+          const nextUrl = resolveBackgroundUrl(background);
+          cacheActiveBackgroundUrl(nextUrl);
+          await preloadBackground(nextUrl);
+          if (isMounted) {
+            applyBackgroundUrl(nextUrl);
+          }
         } else {
+          clearActiveBackgroundCache();
           document.documentElement.style.removeProperty("--portal-bg-image");
         }
       } catch {
-        document.documentElement.style.removeProperty("--portal-bg-image");
+        const cachedUrl = readCachedActiveBackgroundUrl();
+        if (cachedUrl) {
+          applyBackgroundUrl(cachedUrl);
+        }
       }
     }
 
@@ -84,4 +112,8 @@ export function ThemeController() {
   }, []);
 
   return null;
+}
+
+function escapeCssUrl(url: string): string {
+  return url.replace(/["\\\n\r\f]/g, "\\$&");
 }

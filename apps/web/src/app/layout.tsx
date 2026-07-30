@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { AuthSessionController } from "@/components/auth-session-controller";
 import { ChatDock } from "@/components/chat-dock";
 import { PwaController } from "@/components/pwa-controller";
@@ -41,6 +42,30 @@ export const viewport: Viewport = {
   width: "device-width",
 };
 
+const themeBootScript = String.raw`
+(() => {
+  try {
+    const root = document.documentElement;
+    const storedTheme = window.localStorage.getItem("hlovet.theme.preference");
+    if (storedTheme) {
+      const parsedTheme = JSON.parse(storedTheme);
+      const themeId = parsedTheme && typeof parsedTheme.themeId === "string" ? parsedTheme.themeId : "";
+      if (["sakura-mist", "cloud-blue", "night-purple", "custom"].includes(themeId)) {
+        root.dataset.portalTheme = themeId;
+      }
+    }
+
+    const cachedBackground = window.localStorage.getItem("hlovet.active-background.url");
+    if (!cachedBackground) return;
+    const backgroundUrl = new URL(cachedBackground, window.location.origin);
+    if (!["http:", "https:"].includes(backgroundUrl.protocol)) return;
+    const escapedUrl = backgroundUrl.href.replace(/["\\\n\r\f]/g, "\\$&");
+    root.style.setProperty("--portal-bg-image", 'url("' + escapedUrl + '")');
+  } catch {
+  }
+})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -49,6 +74,11 @@ export default function RootLayout({
   return (
     <html data-portal-theme="cloud-blue" lang="zh-CN">
       <body>
+        <Script
+          dangerouslySetInnerHTML={{ __html: themeBootScript }}
+          id="hlovet-theme-boot"
+          strategy="beforeInteractive"
+        />
         <AuthSessionController />
         <PwaController />
         <ThemeController />

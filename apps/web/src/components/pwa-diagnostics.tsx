@@ -21,6 +21,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import {
+  type AndroidRelease,
+  getLatestAndroidRelease,
+  resolveAndroidReleaseUrl,
+} from "@/lib/android-release-api";
+import {
   PWA_INSTALL_PROMPT_CHANGE_EVENT,
   getFallbackInstallMessage,
   isAndroidDevice,
@@ -67,7 +72,7 @@ interface BrowserSnapshot {
   isStandalone: boolean;
 }
 
-interface AndroidApkRelease {
+interface StaticAndroidApkRelease {
   versionName: string;
   versionCode: number;
   fileName: string;
@@ -250,7 +255,7 @@ export function PwaDiagnostics() {
   const [browser, setBrowser] = useState<BrowserSnapshot | null>(null);
   const [checks, setChecks] = useState<DiagnosticItem[]>(initialChecks);
   const [manifest, setManifest] = useState<WebManifestSnapshot | null>(null);
-  const [androidRelease, setAndroidRelease] = useState<AndroidApkRelease | null>(null);
+  const [androidRelease, setAndroidRelease] = useState<AndroidRelease | StaticAndroidApkRelease | null>(null);
   const [hasInstallPrompt, setHasInstallPrompt] = useState(false);
   const [hasGesture, setHasGesture] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -417,13 +422,27 @@ export function PwaDiagnostics() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/downloads/android/latest.json", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() as Promise<AndroidApkRelease> : null)
+    getLatestAndroidRelease()
+      .then(async (release) => {
+        if (release) {
+          return release;
+        }
+
+        const response = await fetch("/downloads/android/latest.json", { cache: "no-store" });
+        return response.ok ? response.json() as Promise<StaticAndroidApkRelease> : null;
+      })
       .then((release) => {
         if (!cancelled) setAndroidRelease(release);
       })
       .catch(() => {
-        if (!cancelled) setAndroidRelease(null);
+        fetch("/downloads/android/latest.json", { cache: "no-store" })
+          .then((response) => response.ok ? response.json() as Promise<StaticAndroidApkRelease> : null)
+          .then((release) => {
+            if (!cancelled) setAndroidRelease(release);
+          })
+          .catch(() => {
+            if (!cancelled) setAndroidRelease(null);
+          });
       });
     return () => {
       cancelled = true;
@@ -481,7 +500,7 @@ export function PwaDiagnostics() {
           <AppWindow aria-hidden="true" size={17} />
           <span>{canPromptInstall ? "立即安装" : browser?.isStandalone ? "已安装" : "查看安装方式"}</span>
         </button>
-        <a className="button install-apk-action" download={androidRelease?.fileName ?? true} href={androidRelease?.apkUrl ?? "/downloads/android/hlovet-latest.apk"}>
+        <a className="button install-apk-action" download={androidRelease?.fileName ?? true} href={getAndroidReleaseDownloadUrl(androidRelease)}>
           <PackagePlus aria-hidden="true" size={17} />
           <span>下载 Android APK</span>
         </a>
@@ -577,7 +596,7 @@ export function PwaDiagnostics() {
             <strong>Android APK v{androidRelease.versionName}</strong>
             <span>{formatFileSize(androidRelease.sizeBytes)} · {formatReleaseTime(androidRelease.updatedAt)}</span>
             <small>SHA256 {androidRelease.sha256.slice(0, 12)}...{androidRelease.sha256.slice(-8)}</small>
-            {androidRelease.notes.length ? <ul>{androidRelease.notes.map((note) => <li key={note}>{note}</li>)}</ul> : null}
+            {getAndroidReleaseNotes(androidRelease).length ? <ul>{getAndroidReleaseNotes(androidRelease).map((note) => <li key={note}>{note}</li>)}</ul> : null}
           </div> : null}
         </aside>
       </div>
@@ -627,4 +646,20 @@ export function PwaDiagnostics() {
       <AppToast duration={4200} message={notice} onDismiss={() => setNotice("")} tone="info" />
     </section>
   );
+}
+
+function getAndroidReleaseDownloadUrl(release: AndroidRelease | StaticAndroidApkRelease | null): string {
+  if (!release) {
+    return "/downloads/android/hlovet-latest.apk";
+  }
+
+  if ("apkUrl" in release && release.apkUrl.startsWith("/android-releases/")) {
+    return resolveAndroidReleaseUrl(release);
+  }
+
+  return release.apkUrl;
+}
+
+function getAndroidReleaseNotes(release: AndroidRelease | StaticAndroidApkRelease): string[] {
+  return "releaseNotes" in release ? release.releaseNotes : release.notes;
 }

@@ -72,6 +72,7 @@ services:
       REFRESH_TOKEN_EXPIRES_IN_DAYS: ${REFRESH_TOKEN_EXPIRES_IN_DAYS:-30}
       MAX_REFRESH_SESSIONS_PER_USER: ${MAX_REFRESH_SESSIONS_PER_USER:-10}
       BACKGROUND_UPLOAD_DIR: /app/uploads/backgrounds
+      ANDROID_RELEASE_UPLOAD_DIR: /app/uploads/android-releases
       AVATAR_UPLOAD_DIR: /app/uploads/avatars
       ARTICLE_UPLOAD_DIR: /app/uploads/articles
       CHAT_UPLOAD_DIR: /app/uploads/chat
@@ -79,6 +80,7 @@ services:
       - "${API_PORT:-3001}:3001"
     volumes:
       - background_uploads:/app/uploads/backgrounds
+      - android_release_uploads:/app/uploads/android-releases
       - avatar_uploads:/app/uploads/avatars
       - article_uploads:/app/uploads/articles
       - chat_uploads:/app/uploads/chat
@@ -106,6 +108,7 @@ volumes:
   mysql_data:
   redis_data:
   background_uploads:
+  android_release_uploads:
   avatar_uploads:
   article_uploads:
   chat_uploads:

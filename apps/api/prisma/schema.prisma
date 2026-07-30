@@ -171,6 +171,7 @@ model User {
   createdAt               DateTime               @default(now()) @map("created_at")
   updatedAt               DateTime               @updatedAt @map("updated_at")
   backgroundImages        BackgroundImage[]
+  androidReleases         AndroidRelease[]
   portalCategoriesCreated PortalCategory[]       @relation("PortalCategoryCreatedBy")
   portalCategoriesUpdated PortalCategory[]       @relation("PortalCategoryUpdatedBy")
   portalEntriesCreated    PortalEntry[]          @relation("PortalEntryCreatedBy")
@@ -219,6 +220,29 @@ model BackgroundImage {
   @@index([isActive])
   @@index([uploadedById])
   @@map("background_images")
+}
+
+model AndroidRelease {
+  id           Int      @id @default(autoincrement())
+  versionName  String   @map("version_name") @db.VarChar(40)
+  versionCode  Int      @map("version_code")
+  channel      String   @default("stable") @db.VarChar(40)
+  originalName String   @map("original_name") @db.VarChar(255)
+  storedName   String   @unique @map("stored_name") @db.VarChar(255)
+  mimeType     String   @map("mime_type") @db.VarChar(80)
+  sizeBytes    Int      @map("size_bytes")
+  sha256       String   @db.Char(64)
+  releaseNotes String   @default("") @map("release_notes") @db.Text
+  isActive     Boolean  @default(false) @map("is_active")
+  uploadedById Int      @map("uploaded_by_id")
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive, updatedAt])
+  @@index([versionCode])
+  @@index([uploadedById])
+  @@map("android_releases")
 }
 
 model PortalCategory {
