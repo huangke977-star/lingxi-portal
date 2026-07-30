@@ -39,3 +39,14 @@ npx --yes @bubblewrap/cli build --skipPwaValidation
 ```
 
 构建完成后会生成 `app-release-signed.apk`，可以复制到 `../../output/android/hlovet-twa-test.apk` 用于本地安装测试。
+
+## 网站下载
+
+网站会从下面的位置提供当前 Android 测试 APK 下载：
+
+```text
+../web/public/downloads/android/hlovet-latest.apk
+../web/public/downloads/android/latest.json
+```
+
+以后构建新版 APK 后，把签名后的 APK 复制为 `hlovet-latest.apk`，同时更新 `latest.json` 中的 `versionCode`、`sizeBytes`、`sha256` 和更新说明，然后重新部署 Web 应用。

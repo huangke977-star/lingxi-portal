@@ -1,6 +1,6 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { AppWindow } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import {
@@ -9,7 +9,6 @@ import {
   getFallbackInstallMessage,
   isAndroidDevice,
   isIosDevice,
-  isMobileLikeDevice,
   isStandaloneDisplay,
   promptPwaInstall,
   readInstallPrompt,
@@ -21,7 +20,6 @@ export function PwaInstallButton() {
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIos, setIsIos] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
-  const [isMobileLike, setIsMobileLike] = useState(false);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -31,7 +29,6 @@ export function PwaInstallButton() {
       setIsStandalone(isStandaloneDisplay());
       setIsIos(isIosDevice());
       setIsAndroid(isAndroidDevice());
-      setIsMobileLike(isMobileLikeDevice());
       setHasInstallPrompt(Boolean(readInstallPrompt()));
     });
 
@@ -61,6 +58,11 @@ export function PwaInstallButton() {
   }, []);
 
   async function handleInstall() {
+    if (isStandalone) {
+      if (window.location.pathname !== "/install") window.location.href = "/install";
+      return;
+    }
+
     if (hasInstallPrompt) {
       const choice = await promptPwaInstall();
       if (!choice) {
@@ -85,20 +87,16 @@ export function PwaInstallButton() {
     }
   }
 
-  if (isStandalone || (!hasInstallPrompt && !isMobileLike)) {
-    return <AppToast duration={3600} message={notice} onDismiss={() => setNotice("")} tone="info" />;
-  }
-
   return (
     <>
       <button
-        aria-label="安装 HLOVET"
+        aria-label="安装与下载 HLOVET"
         className="header-action-button pwa-install-button"
         onClick={() => void handleInstall()}
-        title="安装到主屏幕"
+        title={hasInstallPrompt ? "安装 HLOVET" : "安装与下载 HLOVET"}
         type="button"
       >
-        <Download aria-hidden="true" size={18} />
+        <AppWindow aria-hidden="true" size={18} />
       </button>
       <AppToast duration={5200} message={notice} onDismiss={() => setNotice("")} tone="info" />
     </>

@@ -8279,6 +8279,10 @@ html:has(.article-comment-form) {
   outline: 0;
 }
 
+.pwa-install-button {
+  color: color-mix(in srgb, var(--accent-strong) 72%, var(--muted));
+}
+
 .header-action-button > b {
   position: absolute;
   top: -2px;
@@ -9528,13 +9532,24 @@ html:has(.article-comment-form) {
   gap: 7px;
 }
 
+.install-apk-action {
+  gap: 7px;
+  background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+  color: var(--foreground);
+}
+
+.install-apk-action:hover,
+.install-apk-action:focus-visible {
+  color: var(--accent-strong);
+}
+
 .install-actions-panel .text-action {
   gap: 5px;
 }
 
 .install-summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
 }
 
@@ -9732,6 +9747,34 @@ html:has(.article-comment-form) {
 .install-note svg {
   color: var(--accent-strong);
   margin-top: 2px;
+}
+
+.install-apk-release {
+  display: grid;
+  gap: 7px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
+  color: var(--muted-strong);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  padding: 12px;
+}
+
+.install-apk-release strong {
+  color: var(--foreground);
+  font-size: 0.9rem;
+}
+
+.install-apk-release span,
+.install-apk-release small {
+  color: var(--muted);
+}
+
+.install-apk-release ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 16px;
 }
 
 .install-guide-backdrop {

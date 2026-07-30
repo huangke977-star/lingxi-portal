@@ -1,0 +1,15 @@
+{
+  "platform": "android",
+  "channel": "test",
+  "versionName": "1",
+  "versionCode": 1,
+  "fileName": "hlovet-latest.apk",
+  "apkUrl": "/downloads/android/hlovet-latest.apk",
+  "sizeBytes": 1569834,
+  "sha256": "09434806D909C7BE7C731BA91A13E7723E6DD3EBD6986A69FB7A7A604B13FF0F",
+  "updatedAt": "2026-07-30T16:07:38+08:00",
+  "notes": [
+    "Android TWA 测试包，打开 https://5200918.xyz。",
+    "适合在 Android 手机或模拟器中侧载安装。"
+  ]
+}

@@ -2,13 +2,14 @@
 
 import {
   AlertTriangle,
+  AppWindow,
   CheckCircle2,
-  Download,
   FileJson,
   Image as ImageIcon,
   LoaderCircle,
   MonitorSmartphone,
   MoreVertical,
+  PackagePlus,
   RefreshCw,
   ShieldCheck,
   Share2,
@@ -64,6 +65,17 @@ interface BrowserSnapshot {
   isIos: boolean;
   isChromeLike: boolean;
   isStandalone: boolean;
+}
+
+interface AndroidApkRelease {
+  versionName: string;
+  versionCode: number;
+  fileName: string;
+  apkUrl: string;
+  sizeBytes: number;
+  sha256: string;
+  updatedAt: string;
+  notes: string[];
 }
 
 const initialChecks: DiagnosticItem[] = [
@@ -153,6 +165,32 @@ function resolveManifestIcon(icon: WebManifestIcon) {
   return new URL(icon.src, window.location.href).href;
 }
 
+function formatFileSize(sizeBytes: number) {
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return "未知大小";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = sizeBytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function formatReleaseTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "未知时间";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 function getInstallCheck(browser: BrowserSnapshot | null, hasInstallPrompt: boolean): DiagnosticItem {
   if (!browser) {
     return {
@@ -212,6 +250,7 @@ export function PwaDiagnostics() {
   const [browser, setBrowser] = useState<BrowserSnapshot | null>(null);
   const [checks, setChecks] = useState<DiagnosticItem[]>(initialChecks);
   const [manifest, setManifest] = useState<WebManifestSnapshot | null>(null);
+  const [androidRelease, setAndroidRelease] = useState<AndroidApkRelease | null>(null);
   const [hasInstallPrompt, setHasInstallPrompt] = useState(false);
   const [hasGesture, setHasGesture] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -377,6 +416,21 @@ export function PwaDiagnostics() {
   }, [runDiagnostics]);
 
   useEffect(() => {
+    let cancelled = false;
+    fetch("/downloads/android/latest.json", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() as Promise<AndroidApkRelease> : null)
+      .then((release) => {
+        if (!cancelled) setAndroidRelease(release);
+      })
+      .catch(() => {
+        if (!cancelled) setAndroidRelease(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     const startedAt = Date.now();
     const timer = window.setInterval(() => {
       setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
@@ -424,9 +478,13 @@ export function PwaDiagnostics() {
 
       <div className="install-actions-panel">
         <button className="button install-primary-action" disabled={browser?.isStandalone} onClick={() => void handleInstall()} type="button">
-          <Download aria-hidden="true" size={17} />
+          <AppWindow aria-hidden="true" size={17} />
           <span>{canPromptInstall ? "立即安装" : browser?.isStandalone ? "已安装" : "查看安装方式"}</span>
         </button>
+        <a className="button install-apk-action" download={androidRelease?.fileName ?? true} href={androidRelease?.apkUrl ?? "/downloads/android/hlovet-latest.apk"}>
+          <PackagePlus aria-hidden="true" size={17} />
+          <span>下载 Android APK</span>
+        </a>
         <button className="text-action" disabled={isRunning} onClick={() => void runDiagnostics()} type="button">
           <RefreshCw aria-hidden="true" className={isRunning ? "spin" : undefined} size={16} />
           重新检测
@@ -454,6 +512,11 @@ export function PwaDiagnostics() {
           <FileJson aria-hidden="true" size={20} />
           <span>清单</span>
           <strong>{manifest?.display ?? "读取中"}</strong>
+        </div>
+        <div className="install-mini-card">
+          <PackagePlus aria-hidden="true" size={20} />
+          <span>APK</span>
+          <strong>{androidRelease ? `v${androidRelease.versionName}` : "读取中"}</strong>
         </div>
       </div>
 
@@ -508,8 +571,14 @@ export function PwaDiagnostics() {
           )}
           <div className="install-note">
             <ImageIcon aria-hidden="true" size={18} />
-            <span>PWA 不是 APK 下载，不会出现在下载列表。成功后它会作为桌面图标打开。</span>
+            <span>PWA 不需要下载 APK；如果浏览器没有安装入口，可以下载 Android APK 手动安装。</span>
           </div>
+          {androidRelease ? <div className="install-apk-release">
+            <strong>Android APK v{androidRelease.versionName}</strong>
+            <span>{formatFileSize(androidRelease.sizeBytes)} · {formatReleaseTime(androidRelease.updatedAt)}</span>
+            <small>SHA256 {androidRelease.sha256.slice(0, 12)}...{androidRelease.sha256.slice(-8)}</small>
+            {androidRelease.notes.length ? <ul>{androidRelease.notes.map((note) => <li key={note}>{note}</li>)}</ul> : null}
+          </div> : null}
         </aside>
       </div>
 

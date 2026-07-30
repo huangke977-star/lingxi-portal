@@ -39,3 +39,14 @@ npx --yes @bubblewrap/cli build --skipPwaValidation
 ```
 
 The signed APK is generated as `app-release-signed.apk`. Copy it to `../../output/android/hlovet-twa-test.apk` for local installation testing.
+
+## Website Download
+
+The public website serves the current Android test APK from:
+
+```text
+../web/public/downloads/android/hlovet-latest.apk
+../web/public/downloads/android/latest.json
+```
+
+After building a new APK, copy the signed APK to `hlovet-latest.apk`, update `latest.json` with the new `versionCode`, `sizeBytes`, `sha256`, and release notes, then deploy the web app.
