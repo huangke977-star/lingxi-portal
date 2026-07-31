@@ -137,10 +137,21 @@ export class SiteAssetsService {
   async delete(id: number): Promise<void> {
     const asset = await this.prisma.siteAsset.findUnique({
       where: { id },
-      select: { storedName: true },
+      select: { kind: true, storedName: true },
     });
     if (!asset) {
       throw new NotFoundException("站点资源不存在。");
+    }
+    const settings = await this.prisma.siteSetting.findUnique({
+      where: { id: 1 },
+      select: { logoPath: true, pwaIconPath: true },
+    });
+    const configuredPath = asset.kind === SiteAssetKind.logo
+      ? settings?.logoPath
+      : settings?.pwaIconPath;
+    const publicPath = `/site-settings/assets/files/${asset.storedName}`;
+    if (configuredPath === publicPath || configuredPath === `/api${publicPath}`) {
+      throw new BadRequestException("该资源正在使用，请先选择并保存其他资源后再删除。");
     }
     const filePath = this.resolveStoredPath(asset.storedName);
     try {

@@ -333,7 +333,13 @@ export default function SiteSettingsPage() {
   }
 
   async function handleDeleteAsset(asset: SiteAsset) {
-    if (!accessToken || !window.confirm(`确定删除“${asset.originalName}”吗？如果正在使用，请先切换到其他资源。`)) return;
+    const configuredPath = toConfiguredApiAssetPath(asset.url);
+    const activePath = asset.kind === "logo" ? draft?.logoPath : draft?.pwaIconPath;
+    if (activePath === configuredPath) {
+      setError("该资源正在使用，请先选择并保存其他资源后再删除。");
+      return;
+    }
+    if (!accessToken || !window.confirm(`确定永久删除“${asset.originalName}”吗？`)) return;
     setBusyAssetId(asset.id);
     setError("");
     setNotice("");
@@ -725,7 +731,7 @@ function SiteResourcePicker({
           {currentPreviewUrl ? <img alt="" src={currentPreviewUrl} /> : <ImageIcon aria-hidden="true" size={18} />}
         </span>
         <span>
-          <strong>{label}</strong>
+          <strong>{label}<em>正在使用</em></strong>
           <small title={currentPath}>{currentPath}</small>
         </span>
         <label className="site-resource-upload" htmlFor={inputId}>
@@ -742,39 +748,50 @@ function SiteResourcePicker({
           {isUploading ? "上传中" : "上传"}
         </label>
       </div>
-      <div className="site-resource-options">
-        {builtins.map((item) => (
-          <button
-            className={currentPath === item.path ? "active" : ""}
-            key={item.path}
-            onClick={() => onSelect(item.path)}
-            type="button"
-          >
-            <img alt="" src={item.path} />
-            <span>{item.label}</span>
-          </button>
-        ))}
-        {assets.map((asset) => {
-          const configuredPath = toConfiguredApiAssetPath(asset.url);
-          return (
-            <span className={`site-resource-option uploaded${currentPath === configuredPath ? " active" : ""}`} key={asset.id}>
-              <button onClick={() => onSelect(configuredPath)} title={asset.originalName} type="button">
-                <img alt="" src={resolveSiteAssetUrl(asset)} />
-                <span>{asset.originalName}</span>
-              </button>
-              <button
-                aria-label={`删除 ${asset.originalName}`}
-                disabled={busyAssetId === asset.id}
-                onClick={() => onDelete(asset)}
-                title="删除资源"
-                type="button"
-              >
-                <Trash2 aria-hidden="true" size={13} />
-              </button>
-            </span>
-          );
-        })}
-        {!assets.length ? <span className="site-resource-empty"><FolderOpen aria-hidden="true" size={14} />暂无上传资源</span> : null}
+      <div className="site-resource-group">
+        <span className="site-resource-group-title">内置资源</span>
+        <div className="site-resource-options">
+          {builtins.map((item) => (
+            <button
+              className={currentPath === item.path ? "active" : ""}
+              key={item.path}
+              onClick={() => onSelect(item.path)}
+              type="button"
+            >
+              <img alt="" src={item.path} />
+              <span>{item.label}</span>
+              {currentPath === item.path ? <Check aria-hidden="true" size={13} /> : null}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="site-resource-group">
+        <span className="site-resource-group-title">已上传</span>
+        <div className="site-resource-options">
+          {assets.map((asset) => {
+            const configuredPath = toConfiguredApiAssetPath(asset.url);
+            const isActive = currentPath === configuredPath;
+            return (
+              <span className={`site-resource-option uploaded${isActive ? " active" : ""}`} key={asset.id}>
+                <button onClick={() => onSelect(configuredPath)} title={asset.originalName} type="button">
+                  <img alt="" src={resolveSiteAssetUrl(asset)} />
+                  <span><b>{asset.originalName}</b><small>{formatBytes(asset.sizeBytes)}</small></span>
+                  {isActive ? <Check aria-hidden="true" size={13} /> : null}
+                </button>
+                <button
+                  aria-label={`删除 ${asset.originalName}`}
+                  disabled={busyAssetId === asset.id || isActive}
+                  onClick={() => onDelete(asset)}
+                  title={isActive ? "正在使用，保存其他资源后可删除" : "永久删除资源"}
+                  type="button"
+                >
+                  <Trash2 aria-hidden="true" size={13} />
+                </button>
+              </span>
+            );
+          })}
+          {!assets.length ? <span className="site-resource-empty"><FolderOpen aria-hidden="true" size={14} />暂无上传资源</span> : null}
+        </div>
       </div>
     </section>
   );
@@ -827,6 +844,14 @@ function BackgroundPicker({
       })}
     </div>
   );
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const unitIndex = Math.min(units.length - 1, Math.floor(Math.log(value) / Math.log(1024)));
+  const amount = value / 1024 ** unitIndex;
+  return `${amount >= 10 || unitIndex === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function SummaryTile({ label, value }: { label: string; value: string }) {

@@ -98,6 +98,22 @@ Users can save account-level appearance settings at `/profile`, including theme,
 
 Super administrators can use the avatar menu or `/admin/cache` to inspect Redis metrics, browse keys with cursor-based scans, view redacted values, revoke login sessions, and clear login failure counters. Administrator-role users are denied. The page exposes no arbitrary Redis commands, `KEYS *`, or database flush actions, and Redis remains internal to the Docker network.
 
+## 系统运行概览 / System Operations Overview
+
+超级管理员可以通过头像菜单或 `/admin/system` 查看 API 运行时间与内存、MySQL 和 Redis 连通性、最新 Prisma 迁移、各类上传文件占用，以及最近的数据库备份。生产 Compose 会把项目下的 `./backups` 目录只读挂载到 API 容器的 `/app/backups`，页面不会提供下载、删除或执行备份的能力。
+
+Super administrators can use the avatar menu or `/admin/system` to inspect API uptime and memory, MySQL and Redis connectivity, the latest Prisma migration, uploaded-file usage, and recent database backups. Production Compose mounts the project `./backups` directory read-only at `/app/backups`; the page cannot download, delete, or execute backups.
+
+The API intentionally has no Docker socket access. Container lifecycle and host-level resource information remain in 1Panel or SSH, preventing the public-facing API from gaining host control.
+
+API 不会挂载 Docker Socket。容器生命周期与宿主机资源仍通过 1Panel 或 SSH 查看，避免面向公网的 API 获得宿主机控制权限。
+
+## 消息偏好 / Message Preferences
+
+登录用户可以在聊天悬浮窗标题栏打开“消息设置”，分别暂停系统、订阅和互动频道的未读提醒，查看已开启免打扰的好友会话，并按会话恢复提醒或一键恢复默认。设置保存在账号级数据中，切换设备后仍然生效。
+
+Signed-in users can open Message Settings from the chat dock title bar, pause unread indicators for system, subscription, and interaction channels, review muted friend conversations, restore individual conversations, or reset all preferences. These account-level settings remain effective across devices.
+
 ## 登录续期与设备管理 / Session Renewal And Device Management
 
 登录后的 Access Token 会在到期前自动续期，受保护接口遇到 `401` 时也会刷新并重试一次。普通 `403` 权限错误不会清除登录状态。个人中心的“登录设备”区域可查看当前账号的有效会话，并支持退出其他设备或退出全部设备。每个账号默认最多保留 10 个 Refresh Token 会话，超出时自动撤销较旧会话。
@@ -129,6 +145,10 @@ The named `background_uploads` volume survives normal container recreation. Do n
 The named `site_asset_uploads` volume stores uploaded Logo and PWA icon resources selected in site settings. Preserve it during deployment just like uploaded backgrounds.
 
 命名卷 `site_asset_uploads` 保存站点设置中上传并选择的 Logo 与 PWA 图标资源。部署时需要像保留背景图一样保留它。
+
+站点设置会标明当前正在使用的 Logo 与 PWA 图标。正在使用的上传资源不能删除；需要先选择其他资源并保存设置，服务端才允许永久删除原文件。
+
+Site settings clearly mark the active Logo and PWA icon. An uploaded asset cannot be deleted while active; select and save another resource before permanently deleting the old file.
 
 The named `avatar_uploads` volume stores user avatars and should also be preserved during deployment.
 

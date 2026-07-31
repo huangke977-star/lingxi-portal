@@ -29,8 +29,10 @@ import {
   Phone,
   Plus,
   Rss,
+  RotateCcw,
   Search,
   Send,
+  Settings2,
   ShieldOff,
   Square,
   Trash2,
@@ -265,6 +267,8 @@ export function ChatDock() {
   const [isFriendActionRunning, setIsFriendActionRunning] = useState(false);
   const [friendSearch, setFriendSearch] = useState("");
   const [isAddFriendOpen, setIsAddFriendOpen] = useState(false);
+  const [isMessageSettingsOpen, setIsMessageSettingsOpen] = useState(false);
+  const [messageSettingsBusyKey, setMessageSettingsBusyKey] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [userSearchResults, setUserSearchResults] = useState<SocialUserSearchResult[]>([]);
   const [isUserSearching, setIsUserSearching] = useState(false);
@@ -350,6 +354,10 @@ export function ChatDock() {
     () => new Set(notificationChannelStates.filter((state) => !state.pushEnabled).map((state) => state.channel)),
     [notificationChannelStates],
   );
+  const mutedConversations = useMemo(
+    () => conversations.filter((conversation) => conversation.muted),
+    [conversations],
+  );
   const draft = selectedId ? drafts[selectedId] ?? "" : "";
   const pendingAttachments = selectedId ? pendingAttachmentsByConversation[selectedId] ?? [] : [];
   const unreadMessages = conversations.reduce((total, item) => total + (item.muted ? 0 : item.unreadCount), 0);
@@ -403,6 +411,7 @@ export function ChatDock() {
   }, [selectedId]);
 
   useEffect(() => {
+    setIsMessageSettingsOpen(false);
     setIsMessageSelectionMode(false);
     setSelectedMessageIds(new Set());
     setOpenMessageActionId(0);
@@ -1178,6 +1187,7 @@ export function ChatDock() {
   async function toggleConversationMute(conversation: Conversation, muted: boolean) {
     const token = readAccessToken();
     if (!token) return;
+    setMessageSettingsBusyKey(`conversation:${conversation.id}`);
     try {
       const updated = await updateConversationSettings(token, conversation.id, { muted });
       setConversations((current) => current.map((item) =>
@@ -1188,12 +1198,15 @@ export function ChatDock() {
       notifySocialStateChange();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "免打扰设置失败。");
+    } finally {
+      setMessageSettingsBusyKey("");
     }
   }
 
   async function toggleNotificationChannelPush(channel: NotificationChannel, channelLabel: string, pushEnabled: boolean) {
     const token = readAccessToken();
     if (!token) return;
+    setMessageSettingsBusyKey(`channel:${channel}`);
     try {
       const state = await updateNotificationChannelSettings(token, channel, { pushEnabled });
       setNotificationChannelStates((current) => [
@@ -1205,6 +1218,40 @@ export function ChatDock() {
       notifySocialStateChange();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "频道推送设置失败。");
+    } finally {
+      setMessageSettingsBusyKey("");
+    }
+  }
+
+  async function resetMessagePreferences() {
+    const token = readAccessToken();
+    if (!token || messageSettingsBusyKey) return;
+    setMessageSettingsBusyKey("reset");
+    try {
+      const [conversationResults, channelResults] = await Promise.all([
+        Promise.all(mutedConversations.map((conversation) =>
+          updateConversationSettings(token, conversation.id, { muted: false })
+        )),
+        Promise.all(NOTIFICATION_CHANNELS.map((config) =>
+          updateNotificationChannelSettings(token, config.channel, { pushEnabled: true })
+        )),
+      ]);
+      const conversationMap = new Map(conversationResults.map((conversation) => [conversation.id, conversation]));
+      setConversations((current) => current.map((conversation) =>
+        conversationMap.has(conversation.id)
+          ? { ...conversation, muted: false }
+          : conversation
+      ));
+      setNotificationChannelStates((current) => {
+        const resetChannels = new Set(channelResults.map((state) => state.channel));
+        return [...channelResults, ...current.filter((state) => !resetChannels.has(state.channel))];
+      });
+      setNotice("消息设置已恢复默认。");
+      notifySocialStateChange();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "消息设置恢复失败。");
+    } finally {
+      setMessageSettingsBusyKey("");
     }
   }
 
@@ -1581,6 +1628,7 @@ export function ChatDock() {
   function closeDock() {
     setIsOpen(false);
     setIsMinimized(false);
+    setIsMessageSettingsOpen(false);
     setIsEmojiOpen(false);
     setIsMobileToolsOpen(false);
     setPreviewAttachment(null);
@@ -1718,14 +1766,62 @@ export function ChatDock() {
           <span><MessageCircleMore aria-hidden="true" size={18} /><strong>{selectedNotificationConfig?.label ?? selected?.user.nickname ?? "消息"}</strong></span>
           <div>
             {isDesktop || !isMobileConversationOpen ? <button aria-label="添加好友" onClick={() => { setIsAddFriendOpen(true); setUserSearch(""); setUserSearchResults([]); }} title="添加好友" type="button"><UserPlus aria-hidden="true" size={17} /></button> : null}
+            {isDesktop || !isMobileConversationOpen ? <button aria-expanded={isMessageSettingsOpen} aria-label="消息设置" onClick={() => setIsMessageSettingsOpen((current) => !current)} title="消息设置" type="button"><Settings2 aria-hidden="true" size={17} /></button> : null}
             {selected && (isDesktop || isMobileConversationOpen) ? <>
               <button aria-label="发起语音通话" disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("voice")} title="语音通话" type="button"><Phone aria-hidden="true" size={17} /></button>
               <button aria-label="发起视频通话" disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("video")} title="视频通话" type="button"><Video aria-hidden="true" size={17} /></button>
             </> : null}
-            <button aria-label="最小化聊天窗" onClick={() => setIsMinimized(true)} type="button"><Minus aria-hidden="true" size={17} /></button>
+            <button aria-label="最小化聊天窗" onClick={() => { setIsMessageSettingsOpen(false); setIsMinimized(true); }} type="button"><Minus aria-hidden="true" size={17} /></button>
             <button aria-label="关闭聊天窗" onClick={closeDock} type="button"><X aria-hidden="true" size={17} /></button>
           </div>
         </header>
+        {isMessageSettingsOpen ? <section className="chat-message-settings" onPointerDown={(event) => event.stopPropagation()}>
+          <header>
+            <span><Settings2 aria-hidden="true" size={17} /><strong>消息设置</strong></span>
+            <button aria-label="关闭消息设置" onClick={() => setIsMessageSettingsOpen(false)} type="button"><X aria-hidden="true" size={16} /></button>
+          </header>
+          <div className="chat-message-settings-section">
+            <span className="chat-message-settings-label">通知频道</span>
+            {NOTIFICATION_CHANNELS.map((config) => {
+              const pushEnabled = notificationChannelStateMap.get(config.channel)?.pushEnabled ?? true;
+              const busy = messageSettingsBusyKey === `channel:${config.channel}`;
+              return <button
+                aria-pressed={pushEnabled}
+                className="chat-message-setting-row"
+                disabled={Boolean(messageSettingsBusyKey)}
+                key={config.channel}
+                onClick={() => void toggleNotificationChannelPush(config.channel, config.label, !pushEnabled)}
+                type="button"
+              >
+                <span><strong>{config.label}</strong><small>{pushEnabled ? "接收右上角未读提醒" : "已暂停未读提醒"}</small></span>
+                <i className={pushEnabled ? "active" : ""}>{busy ? <LoaderCircle aria-hidden="true" className="spin" size={13} /> : null}</i>
+              </button>;
+            })}
+          </div>
+          <div className="chat-message-settings-section">
+            <span className="chat-message-settings-label">免打扰会话</span>
+            {mutedConversations.map((conversation) => <button
+              className="chat-message-setting-row conversation"
+              disabled={Boolean(messageSettingsBusyKey)}
+              key={conversation.id}
+              onClick={() => void toggleConversationMute(conversation, false)}
+              type="button"
+            >
+              <UserAvatar user={conversation.user} />
+              <span><strong>{conversation.user.nickname}</strong><small>点击恢复消息提醒</small></span>
+              {messageSettingsBusyKey === `conversation:${conversation.id}`
+                ? <LoaderCircle aria-hidden="true" className="spin" size={14} />
+                : <Bell aria-hidden="true" size={14} />}
+            </button>)}
+            {!mutedConversations.length ? <span className="chat-message-settings-empty">当前没有免打扰会话。</span> : null}
+          </div>
+          <footer>
+            <button disabled={Boolean(messageSettingsBusyKey)} onClick={() => void resetMessagePreferences()} type="button">
+              {messageSettingsBusyKey === "reset" ? <LoaderCircle aria-hidden="true" className="spin" size={14} /> : <RotateCcw aria-hidden="true" size={14} />}
+              恢复默认
+            </button>
+          </footer>
+        </section> : null}
         <div className={`chat-dock-body${isMobileConversationOpen ? " mobile-conversation-open" : ""}`}>
           <aside className="chat-dock-sidebar">
             <div className="chat-dock-sidebar-content">

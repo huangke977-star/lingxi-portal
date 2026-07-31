@@ -9,8 +9,9 @@ import { PortalModule } from './portal/portal.module';
 import { RolesModule } from './roles/roles.module';
 import { SiteSettingsModule } from './site-settings/site-settings.module';
 import { SocialModule } from './social/social.module';
+import { SystemStatusModule } from './system-status/system-status.module';
 
 @Module({
-  imports: [HealthModule, RolesModule, SiteSettingsModule, AuthModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, PortalModule, ArticlesModule, SocialModule],
+  imports: [HealthModule, RolesModule, SiteSettingsModule, AuthModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, SystemStatusModule, PortalModule, ArticlesModule, SocialModule],
 })
 export class AppModule {}
