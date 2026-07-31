@@ -7060,14 +7060,18 @@ a.entry-item:hover {
 
 .article-composer-context {
   min-width: 0;
-  min-height: 26px;
-  margin-bottom: 6px;
+  height: 0;
+  min-height: 0;
+  margin-bottom: 0;
+  overflow: hidden;
   color: var(--muted-strong);
   font-size: 0.78rem;
   visibility: hidden;
 }
 
 .article-composer-context.active {
+  height: 26px;
+  margin-bottom: 6px;
   visibility: visible;
 }
 
@@ -10335,6 +10339,7 @@ html:has(.article-comment-form) {
 }
 
 .site-settings-card {
+  align-content: start;
   background: var(--surface);
   border-radius: 8px;
   box-shadow: 0 16px 50px rgba(44, 52, 72, 0.08);
@@ -11292,6 +11297,29 @@ html:has(.article-comment-form) {
   flex: 1 1 auto;
 }
 
+.taxonomy-create-row input[type="color"],
+.taxonomy-row input[type="color"] {
+  flex: 0 0 54px;
+  width: 54px;
+}
+
+.taxonomy-create-row input[type="color"]::-webkit-color-swatch-wrapper,
+.taxonomy-row input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 3px;
+}
+
+.taxonomy-create-row input[type="color"]::-webkit-color-swatch,
+.taxonomy-row input[type="color"]::-webkit-color-swatch {
+  border: 1px solid rgba(75, 84, 104, 0.34);
+  border-radius: 2px;
+}
+
+.taxonomy-create-row .text-action {
+  flex: 0 0 76px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
 .taxonomy-list {
   display: grid;
   gap: 8px;
@@ -11323,9 +11351,9 @@ html:has(.article-comment-form) {
 
 .taxonomy-enabled {
   color: var(--muted);
-  flex: 0 0 auto;
+  flex: 0 0 22px;
   font-size: 12px;
-  gap: 5px;
+  justify-content: center;
 }
 
 .taxonomy-actions {
@@ -11509,7 +11537,7 @@ html:has(.article-comment-form) {
 
   .taxonomy-create-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 42px;
+    grid-template-columns: minmax(0, 1fr) 54px;
   }
 
   .taxonomy-create-row button {
@@ -11519,7 +11547,7 @@ html:has(.article-comment-form) {
 
   .taxonomy-row {
     display: grid;
-    grid-template-columns: 10px minmax(0, 1fr) 42px;
+    grid-template-columns: 10px minmax(0, 1fr) 54px;
   }
 
   .taxonomy-row input[type="number"],

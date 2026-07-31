@@ -972,7 +972,7 @@ function TaxonomyPanel({
               <input maxLength={80} onChange={(event) => onDraftChange(taxonomy.id, { name: event.target.value })} value={draft.name} />
               <input aria-label={`${taxonomy.name} 颜色`} onChange={(event) => onDraftChange(taxonomy.id, { color: event.target.value })} type="color" value={draft.color} />
               <input aria-label={`${taxonomy.name} 排序`} min={0} onChange={(event) => onDraftChange(taxonomy.id, { sortOrder: Number(event.target.value) })} type="number" value={draft.sortOrder} />
-              <label className="taxonomy-enabled"><input checked={draft.enabled} onChange={(event) => onDraftChange(taxonomy.id, { enabled: event.target.checked })} type="checkbox" />启用</label>
+              <label className="taxonomy-enabled" title={draft.enabled ? "已启用" : "未启用"}><input aria-label={`${taxonomy.name} 是否启用`} checked={draft.enabled} onChange={(event) => onDraftChange(taxonomy.id, { enabled: event.target.checked })} type="checkbox" /></label>
               <div className="taxonomy-actions">
                 <button aria-label={`保存 ${taxonomy.name}`} disabled={isBusy} onClick={() => onUpdate(taxonomy)} title="保存" type="button"><Check aria-hidden="true" size={15} /></button>
                 <button aria-label={`删除 ${taxonomy.name}`} disabled={isBusy} onClick={() => onDelete(taxonomy)} title="删除" type="button"><Trash2 aria-hidden="true" size={15} /></button>
