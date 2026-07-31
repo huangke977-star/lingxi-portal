@@ -6,6 +6,7 @@ import {
   FileAudio,
   Ban,
   Bell,
+  BellOff,
   Check,
   ChevronLeft,
   ChevronUp,
@@ -74,6 +75,7 @@ import {
   type SocialUserSearchResult,
   type SocialUser,
   type NotificationChannel,
+  type NotificationChannelState,
   blockFriendship,
   clearNotifications,
   deleteNotification,
@@ -95,6 +97,8 @@ import {
   respondFriendRequest,
   searchSocialUsers,
   unblockFriendship,
+  updateConversationSettings,
+  updateNotificationChannelSettings,
   uploadChatAttachments,
 } from "@/lib/social-api";
 import {
@@ -234,6 +238,7 @@ export function ChatDock() {
     blocked: Friendship[];
   }>({ friends: [], incoming: [], outgoing: [], blocked: [] });
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
+  const [notificationChannelStates, setNotificationChannelStates] = useState<NotificationChannelState[]>([]);
   const [hiddenNotificationChannels, setHiddenNotificationChannels] = useState<NotificationChannel[]>([]);
   const [selectedId, setSelectedId] = useState(0);
   const [selectedSystemNotificationId, setSelectedSystemNotificationId] = useState(0);
@@ -337,10 +342,22 @@ export function ChatDock() {
   const selectedNotificationConfig = NOTIFICATION_CHANNELS.find((item) => item.id === selectedId) ?? null;
   const selectedNotifications = selectedNotificationConfig ? channelNotifications[selectedNotificationConfig.channel] : [];
   const isNotificationSelected = Boolean(selectedNotificationConfig);
+  const notificationChannelStateMap = useMemo(
+    () => new Map(notificationChannelStates.map((state) => [state.channel, state])),
+    [notificationChannelStates],
+  );
+  const pushDisabledChannels = useMemo(
+    () => new Set(notificationChannelStates.filter((state) => !state.pushEnabled).map((state) => state.channel)),
+    [notificationChannelStates],
+  );
   const draft = selectedId ? drafts[selectedId] ?? "" : "";
   const pendingAttachments = selectedId ? pendingAttachmentsByConversation[selectedId] ?? [] : [];
-  const unreadMessages = conversations.reduce((total, item) => total + item.unreadCount, 0);
-  const unreadNotifications = notifications.filter((item) => item.type !== "friend_request_received" && !item.readAt).length;
+  const unreadMessages = conversations.reduce((total, item) => total + (item.muted ? 0 : item.unreadCount), 0);
+  const unreadNotifications = notifications.filter((item) =>
+    item.type !== "friend_request_received" &&
+    !item.readAt &&
+    !pushDisabledChannels.has(item.channel),
+  ).length;
   const selectedUnreadNotifications = selectedNotifications.filter((item) => !item.readAt).length;
   const selectedMessagesForAction = messages.filter((message) => selectedMessageIds.has(message.id));
   const selectedMessagesCanForward = Boolean(selectedMessageIds.size) &&
@@ -471,6 +488,7 @@ export function ChatDock() {
       setConversations([]);
       setFriendships({ friends: [], incoming: [], outgoing: [], blocked: [] });
       setNotifications([]);
+      setNotificationChannelStates([]);
       setHiddenNotificationChannels([]);
       setSelectedId(0);
       setMessages([]);
@@ -499,6 +517,7 @@ export function ChatDock() {
       setConversations(conversationResult.items);
       setFriendships(friendshipResult);
       setNotifications(notificationResult.items);
+      setNotificationChannelStates(notificationResult.channelStates ?? []);
       const nextHiddenChannels = notificationResult.hiddenChannels ?? [];
       setHiddenNotificationChannels(nextHiddenChannels);
       setSelectedId((current) => {
@@ -1060,6 +1079,7 @@ export function ChatDock() {
       ]);
       setFriendships(friendshipResult);
       setNotifications(notificationResult.items);
+      setNotificationChannelStates(notificationResult.channelStates ?? []);
       if (status === "accepted") {
         const conversation = await getOrCreateConversation(token, friendship.user.id);
         setConversations((current) => [conversation, ...current.filter((item) => item.id !== conversation.id)]);
@@ -1152,6 +1172,39 @@ export function ChatDock() {
       setError(actionError instanceof Error ? actionError.message : "聊天操作失败。");
     } finally {
       setIsConversationActionRunning(false);
+    }
+  }
+
+  async function toggleConversationMute(conversation: Conversation, muted: boolean) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      const updated = await updateConversationSettings(token, conversation.id, { muted });
+      setConversations((current) => current.map((item) =>
+        item.id === updated.id ? { ...item, muted: updated.muted, unreadCount: updated.unreadCount } : item,
+      ));
+      setOpenFriendActionId(0);
+      setNotice(muted ? "已开启消息免打扰。" : "已关闭消息免打扰。");
+      notifySocialStateChange();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "免打扰设置失败。");
+    }
+  }
+
+  async function toggleNotificationChannelPush(channel: NotificationChannel, channelLabel: string, pushEnabled: boolean) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      const state = await updateNotificationChannelSettings(token, channel, { pushEnabled });
+      setNotificationChannelStates((current) => [
+        state,
+        ...current.filter((item) => item.channel !== channel),
+      ]);
+      setOpenNotificationChannelMenuId(0);
+      setNotice(pushEnabled ? `${channelLabel}已接收推送。` : `${channelLabel}已暂停推送。`);
+      notifySocialStateChange();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "频道推送设置失败。");
     }
   }
 
@@ -1618,6 +1671,9 @@ export function ChatDock() {
 
   const openNotificationChannel = NOTIFICATION_CHANNELS.find((item) => item.id === openNotificationChannelMenuId) ?? null;
   const openNotificationChannelItems = openNotificationChannel ? channelNotifications[openNotificationChannel.channel] : [];
+  const openNotificationChannelPushEnabled = openNotificationChannel
+    ? notificationChannelStateMap.get(openNotificationChannel.channel)?.pushEnabled ?? true
+    : true;
 
   const callPanel = <ChatCallPanel
     isPreparing={chatCalls.isPreparing}
@@ -1683,16 +1739,18 @@ export function ChatDock() {
                 {primaryEntries.map((entry) => entry.kind === "notification" ? (() => {
                   const items = channelNotifications[entry.config.channel];
                   const unreadCount = items.filter((item) => !item.readAt).length;
+                  const pushEnabled = notificationChannelStateMap.get(entry.config.channel)?.pushEnabled ?? true;
                   const active = selectedId === entry.id;
                   return <div className={`chat-sidebar-notification-row${active ? " active" : ""}`} key={entry.id}>
                     <button className={active ? "chat-sidebar-primary-row active system-conversation" : "chat-sidebar-primary-row system-conversation"} onClick={() => { setOpenNotificationChannelMenuId(0); setSelectedId(entry.id); setSelectedSystemNotificationId(0); setIsMobileConversationOpen(true); }} type="button">
                       <span className={`chat-system-avatar ${entry.config.channel}`}><NotificationChannelIcon channel={entry.config.channel} size={17} /></span>
-                      <span><strong>{entry.config.label}</strong><small>{items[0]?.body ?? entry.config.empty}</small></span>
-                      {unreadCount ? <b>{formatCount(unreadCount)}</b> : null}
+                      <span><strong>{entry.config.label}{!pushEnabled ? <BellOff aria-hidden="true" className="chat-muted-inline" size={13} /> : null}</strong><small>{items[0]?.body ?? entry.config.empty}</small></span>
+                      {unreadCount && pushEnabled ? <b>{formatCount(unreadCount)}</b> : null}
                     </button>
                     <span className="chat-notification-channel-action" data-chat-notification-action>
                       <button aria-expanded={openNotificationChannelMenuId === entry.id} aria-label={`${entry.config.label}管理`} onClick={(event) => { event.stopPropagation(); setOpenNotificationChannelMenuId((current) => current === entry.id ? 0 : entry.id); }} title="频道管理" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
                       {isDesktop && openNotificationChannelMenuId === entry.id ? <span className="chat-notification-channel-menu">
+                        <button onClick={() => void toggleNotificationChannelPush(entry.config.channel, entry.config.label, !pushEnabled)} type="button">{pushEnabled ? <BellOff aria-hidden="true" size={14} /> : <Bell aria-hidden="true" size={14} />}{pushEnabled ? "暂停推送" : "接收推送"}</button>
                         <button className="danger" onClick={() => requestNotificationChannelHide(entry.config.channel, entry.id, entry.config.label)} type="button"><Trash2 aria-hidden="true" size={14} />删除频道通知</button>
                         {items.length ? <button className="danger" onClick={() => requestNotificationChannelClear(entry.config.channel, entry.config.label)} type="button"><Eraser aria-hidden="true" size={14} />清空当前频道</button> : null}
                       </span> : null}
@@ -1709,9 +1767,11 @@ export function ChatDock() {
                     setPendingConversationAction(action);
                     setOpenFriendActionId(0);
                   }}
+                  onToggleMute={(muted) => void toggleConversationMute(entry.conversation, muted)}
                   onOpen={() => { setSelectedId(entry.conversation.id); setIsMobileConversationOpen(true); }}
                   onToggleMenu={(friendshipId) => setOpenFriendActionId((current) => current === friendshipId ? 0 : friendshipId)}
                   preview={getConversationPreview(entry.conversation)}
+                  muted={entry.conversation.muted}
                   unreadCount={entry.conversation.unreadCount}
                   user={entry.conversation.user}
                 />)}
@@ -1738,6 +1798,7 @@ export function ChatDock() {
                     onOpen={() => void openFriendChat(friendship)}
                     onToggleMenu={(friendshipId) => setOpenFriendActionId((current) => current === friendshipId ? 0 : friendshipId)}
                     preview="开始聊天"
+                    muted={false}
                     unreadCount={0}
                     user={friendship.user}
                   />
@@ -1893,6 +1954,7 @@ export function ChatDock() {
       </section>
       {!isDesktop && openNotificationChannel && typeof document !== "undefined" ? createPortal(
         <div className="chat-mobile-channel-sheet" data-chat-notification-action>
+          <button onClick={() => void toggleNotificationChannelPush(openNotificationChannel.channel, openNotificationChannel.label, !openNotificationChannelPushEnabled)} type="button">{openNotificationChannelPushEnabled ? <BellOff aria-hidden="true" size={15} /> : <Bell aria-hidden="true" size={15} />}{openNotificationChannelPushEnabled ? "暂停推送" : "接收推送"}</button>
           <button className="danger" onClick={() => requestNotificationChannelHide(openNotificationChannel.channel, openNotificationChannel.id, openNotificationChannel.label)} type="button"><Trash2 aria-hidden="true" size={15} />删除频道通知</button>
           {openNotificationChannelItems.length ? <button className="danger" onClick={() => requestNotificationChannelClear(openNotificationChannel.channel, openNotificationChannel.label)} type="button"><Eraser aria-hidden="true" size={15} />清空当前频道</button> : null}
         </div>,
@@ -1905,23 +1967,25 @@ export function ChatDock() {
   );
 }
 
-function ChatSidebarContactRow({ active, friendship, menuOpen, preview, unreadCount, user, onAction, onConversationAction, onOpen, onToggleMenu }: {
+function ChatSidebarContactRow({ active, friendship, menuOpen, muted, preview, unreadCount, user, onAction, onConversationAction, onOpen, onToggleMenu, onToggleMute }: {
   active: boolean;
   friendship: Friendship | null;
   menuOpen: boolean;
+  muted: boolean;
   preview: string;
   unreadCount: number;
   user: SocialUser;
   onAction: (friendship: Friendship, action: "remove" | "block") => void;
   onConversationAction?: (action: ConversationAction) => void;
+  onToggleMute?: (muted: boolean) => void;
   onOpen: () => void;
   onToggleMenu: (friendshipId: number) => void;
 }) {
   return <div className={`chat-sidebar-contact-row${active ? " active" : ""}`}>
     <button className="chat-sidebar-primary-row" onClick={onOpen} type="button">
       <UserAvatar user={user} />
-      <span><strong className="chat-conversation-name">{user.nickname}<RoleSymbol code={user.isSuperAdmin ? "super_administrator" : user.role.code} /></strong><small>{preview}</small></span>
-      {unreadCount ? <b>{formatCount(unreadCount)}</b> : null}
+      <span><strong className="chat-conversation-name">{user.nickname}<RoleSymbol code={user.isSuperAdmin ? "super_administrator" : user.role.code} />{muted ? <BellOff aria-hidden="true" className="chat-muted-inline" size={13} /> : null}</strong><small>{preview}</small></span>
+      {unreadCount ? <b className={muted ? "muted" : undefined}>{muted ? "" : formatCount(unreadCount)}</b> : null}
     </button>
     {friendship || onConversationAction ? <div className="chat-friend-action" data-chat-friend-action>
       <button aria-expanded={menuOpen} aria-label={`${user.nickname} 的聊天管理`} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(friendship?.id ?? -user.id); }} title="聊天管理" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
@@ -1932,6 +1996,7 @@ function ChatSidebarContactRow({ active, friendship, menuOpen, preview, unreadCo
         </> : null}
         {onConversationAction ? <>
           {friendship ? <span className="chat-friend-action-menu-divider" /> : null}
+          {onToggleMute ? <button onClick={() => onToggleMute(!muted)} type="button">{muted ? <Bell aria-hidden="true" size={15} /> : <BellOff aria-hidden="true" size={15} />}{muted ? "关闭免打扰" : "消息免打扰"}</button> : null}
           <button onClick={() => onConversationAction("clear")} type="button"><Eraser aria-hidden="true" size={15} />清空聊天</button>
           <button className="danger" onClick={() => onConversationAction("delete")} type="button"><Trash2 aria-hidden="true" size={15} />删除聊天</button>
         </> : null}

@@ -8,7 +8,7 @@ import {
   THEME_STORAGE_KEY,
   writeThemePreference,
 } from "@/lib/theme-preferences";
-import { getMe } from "@/lib/auth-api";
+import { getMe, resolveApiUrl } from "@/lib/auth-api";
 import { AUTH_STATE_CHANGE_EVENT, readAccessToken } from "@/lib/auth-storage";
 import {
   cacheActiveBackgroundUrl,
@@ -149,6 +149,9 @@ function escapeCssUrl(url: string): string {
 function resolveConfiguredAssetUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) {
     return path;
+  }
+  if (path.startsWith("/api/")) {
+    return resolveApiUrl(path.slice(4));
   }
   return new URL(path.startsWith("/") ? path : `/${path}`, window.location.origin).href;
 }

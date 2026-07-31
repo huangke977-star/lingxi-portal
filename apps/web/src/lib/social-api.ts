@@ -91,7 +91,14 @@ export interface Conversation {
   user: SocialUser;
   lastMessage: ChatMessage | null;
   unreadCount: number;
+  muted: boolean;
   updatedAt: string;
+}
+
+export interface NotificationChannelState {
+  channel: NotificationChannel;
+  hiddenThroughNotificationId: number;
+  pushEnabled: boolean;
 }
 
 export interface SocialNotification {
@@ -195,7 +202,7 @@ export function getSocialSummary(accessToken: string): Promise<{ unreadMessages:
   return requestJson("/social/summary", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
-export function listNotifications(accessToken: string, beforeId?: number, channel?: NotificationChannel): Promise<{ items: SocialNotification[]; hasMore: boolean; hiddenChannels: NotificationChannel[] }> {
+export function listNotifications(accessToken: string, beforeId?: number, channel?: NotificationChannel): Promise<{ items: SocialNotification[]; hasMore: boolean; hiddenChannels: NotificationChannel[]; channelStates: NotificationChannelState[] }> {
   const params = new URLSearchParams({ limit: "50" });
   if (beforeId) params.set("beforeId", String(beforeId));
   if (channel) params.set("channel", channel);
@@ -205,6 +212,18 @@ export function listNotifications(accessToken: string, beforeId?: number, channe
 
 export function hideNotificationChannel(accessToken: string, channel: NotificationChannel): Promise<{ channel: NotificationChannel; hiddenThroughNotificationId: number; readAt: string }> {
   return requestJson(`/social/notification-channels/${channel}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function updateNotificationChannelSettings(
+  accessToken: string,
+  channel: NotificationChannel,
+  input: { pushEnabled: boolean },
+): Promise<NotificationChannelState> {
+  return requestJson(`/social/notification-channels/${channel}/settings`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(input),
+  });
 }
 
 export function markNotificationRead(accessToken: string, notificationId: number): Promise<SocialNotification> {
@@ -255,6 +274,18 @@ export function listMessages(accessToken: string, conversationId: number, before
 
 export function markConversationRead(accessToken: string, conversationId: number): Promise<void> {
   return requestJson<void>(`/social/conversations/${conversationId}/read`, { method: "POST", headers: authHeaders(accessToken) });
+}
+
+export function updateConversationSettings(
+  accessToken: string,
+  conversationId: number,
+  input: { muted: boolean },
+): Promise<Conversation> {
+  return requestJson(`/social/conversations/${conversationId}/settings`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(input),
+  });
 }
 
 export function getCallIceServers(accessToken: string): Promise<CallIceConfig> {

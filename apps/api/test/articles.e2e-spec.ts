@@ -3,6 +3,7 @@ import { AuthenticatedUser } from "../src/auth/auth.types";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { ArticlesService } from "../src/articles/articles.service";
 import { ListArticlesQueryDto } from "../src/articles/dto/article.dto";
+import { SiteSettingsService } from "../src/site-settings/site-settings.service";
 
 const user: AuthenticatedUser = {
   id: 7,
@@ -139,10 +140,57 @@ function createPrismaMock() {
   };
 }
 
+const siteSettingsService = {
+  getArticlePublishPolicy: jest.fn(async () => ({
+    defaultArticleVisibility: ArticleVisibility.public,
+    articleImageMaxSizeMb: 10,
+    commentsEnabled: true,
+    reportsEnabled: true,
+  })),
+  getNotificationSettings: jest.fn(async () => ({
+    notifyArticleLiked: true,
+    notifyArticleFavorited: true,
+    notifyArticleCommented: true,
+    notifyCommentReplied: true,
+    notifyAuthorSubscribed: true,
+    notifySubscriptionPublished: true,
+    notifyFriendRequest: true,
+    notifyCommentReport: true,
+    notifySystem: true,
+    templates: {
+      articleLiked: "{actor} 点赞了《{article}》。",
+      articleFavorited: "{actor} 收藏了《{article}》。",
+      articleCommented: "{actor} 评论了《{article}》。",
+      commentReplied: "{actor} 回复了你在《{article}》中的评论。",
+      authorSubscribed: "{actor} 订阅了你。",
+      subscriptionPublished: "{author} 发布了《{article}》。",
+      friendRequest: "{actor} 向你发送了好友申请。",
+      commentReportHandled: "你对《{article}》中评论的举报已{result}。",
+      commentAuthorModerated: "你在《{article}》中的评论已被{result}。",
+    },
+  })),
+  renderTemplate: jest.fn((template: string, variables: Record<string, string | number | null | undefined>) => {
+    return Object.entries(variables).reduce((current, [key, value]) => {
+      return current.replaceAll(`{${key}}`, String(value ?? ""));
+    }, template);
+  }),
+};
+
+function createService(prisma: object) {
+  return new ArticlesService(
+    prisma as unknown as PrismaService,
+    siteSettingsService as unknown as SiteSettingsService,
+  );
+}
+
 describe("ArticlesService article center extensions", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it("lists favorites in interaction order and applies expanded search", async () => {
     const prisma = createPrismaMock();
-    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const service = createService(prisma);
     const query = Object.assign(new ListArticlesQueryDto(), {
       search: "写作者",
       page: 1,
@@ -171,7 +219,7 @@ describe("ArticlesService article center extensions", () => {
 
   it("returns creation counts for every author status", async () => {
     const prisma = createPrismaMock();
-    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const service = createService(prisma);
 
     await expect(service.getMineSummary(user)).resolves.toEqual({
       total: 6,
@@ -192,7 +240,7 @@ describe("ArticlesService article center extensions", () => {
       .mockResolvedValueOnce(7);
     prisma.articleFavorite.count.mockResolvedValueOnce(2);
     prisma.articleLike.count.mockResolvedValueOnce(3);
-    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const service = createService(prisma);
     const adminUser = { ...user, isSuperAdmin: true };
 
     await expect(service.getCenterSummary(adminUser)).resolves.toEqual({
@@ -221,7 +269,7 @@ describe("ArticlesService article center extensions", () => {
       articleLike: { findUnique: jest.fn(async () => null) },
       $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
     };
-    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const service = createService(prisma);
     await expect(service.toggleLike(12, user, true)).resolves.toEqual({ liked: true, likeCount: 4, favoriteCount: 1 });
     expect(transaction.userNotification.delete).toHaveBeenCalledWith({ where: { id: 31 } });
     expect(transaction.userNotification.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
@@ -241,7 +289,7 @@ describe("ArticlesService article center extensions", () => {
       article: { findUnique: jest.fn(async () => draft) },
       $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
     };
-    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const service = createService(prisma);
     await service.publish(12, user);
     expect(transaction.userNotification.createMany).toHaveBeenCalledWith({ data: expect.arrayContaining([
       expect.objectContaining({ userId: 21, type: "subscription_published", channel: "subscription" }),
@@ -251,7 +299,7 @@ describe("ArticlesService article center extensions", () => {
 
   it("restores deleted articles as unpinned drafts", async () => {
     const prisma = createPrismaMock();
-    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const service = createService(prisma);
 
     const restored = await service.restore(12, user);
 
@@ -264,7 +312,7 @@ describe("ArticlesService article center extensions", () => {
 
   it("permanently deletes only items already in the recycle bin", async () => {
     const prisma = createPrismaMock();
-    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const service = createService(prisma);
 
     await expect(service.permanentlyDelete(12, user)).resolves.toEqual({ success: true });
     expect(prisma.article.delete).toHaveBeenCalledWith({ where: { id: 12 } });
@@ -284,7 +332,7 @@ describe("ArticlesService article center extensions", () => {
       },
       $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
     };
-    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const service = createService(prisma);
 
     await expect(service.deleteComment(44, user)).resolves.toEqual({ success: true });
     expect(transaction.articleComment.update).toHaveBeenCalledWith(expect.objectContaining({
@@ -313,7 +361,7 @@ describe("ArticlesService article center extensions", () => {
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
     };
-    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const service = createService(prisma);
     const actor = { ...user, isSuperAdmin: true };
 
     await expect(service.moderateCommentReport(6, actor, {
@@ -357,7 +405,7 @@ describe("ArticlesService article center extensions", () => {
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
     };
-    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const service = createService(prisma);
     const actor = { ...user, isSuperAdmin: true };
 
     await service.moderateCommentReport(6, actor, {
@@ -390,7 +438,7 @@ describe("ArticlesService article center extensions", () => {
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
     };
-    const service = new ArticlesService(prisma as unknown as PrismaService);
+    const service = createService(prisma);
     const actor = { ...user, isSuperAdmin: true };
 
     await expect(service.moderateCommentReport(6, actor, {

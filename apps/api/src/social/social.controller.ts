@@ -27,6 +27,8 @@ import {
   RequestFriendDto,
   RespondFriendRequestDto,
   SearchSocialUsersQueryDto,
+  UpdateConversationSettingsDto,
+  UpdateNotificationChannelSettingsDto,
 } from "./dto/social.dto";
 import {
   CHAT_ATTACHMENT_MAX_FILES,
@@ -168,6 +170,15 @@ export class SocialController {
     return this.socialService.hideNotificationChannel(user, channel);
   }
 
+  @Patch("notification-channels/:channel/settings")
+  updateNotificationChannelSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("channel") channel: string,
+    @Body() dto: UpdateNotificationChannelSettingsDto,
+  ) {
+    return this.socialService.updateNotificationChannelSettings(user, channel, dto);
+  }
+
   @Get("conversations")
   listConversations(@CurrentUser() user: AuthenticatedUser) {
     return this.socialService.listConversations(user);
@@ -195,6 +206,15 @@ export class SocialController {
   @Post("conversations/:id/read")
   markRead(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
     return this.socialService.markConversationRead(user.id, id);
+  }
+
+  @Patch("conversations/:id/settings")
+  updateConversationSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UpdateConversationSettingsDto,
+  ) {
+    return this.socialService.updateConversationSettings(user, id, dto);
   }
 
   @Post("conversations/:id/attachments")

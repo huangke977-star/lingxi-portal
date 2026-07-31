@@ -1,8 +1,9 @@
-import { requestJson } from "./auth-api";
+import { requestJson, resolveApiUrl } from "./auth-api";
 import type { ThemeId } from "./theme-preferences";
 
 export type ArticleVisibility = "public" | "authenticated" | "role_restricted" | "private";
 export type ArticleTaxonomyKind = "category" | "tag";
+export type SiteAssetKind = "logo" | "pwa_icon";
 
 export interface SiteThemeDefaults {
   themeId: ThemeId;
@@ -23,6 +24,21 @@ export interface ArticleTaxonomy {
   color: string;
   sortOrder: number;
   enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SiteAsset {
+  id: number;
+  kind: SiteAssetKind;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  url: string;
+  uploadedBy: {
+    id: number;
+    username: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -145,6 +161,44 @@ export function updateSiteSettings(accessToken: string, input: SiteSettingsInput
     headers: { Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify(input),
   });
+}
+
+export function listSiteAssets(accessToken: string, kind?: SiteAssetKind): Promise<SiteAsset[]> {
+  const query = kind ? `?kind=${kind}` : "";
+  return requestJson<SiteAsset[]>(`/site-settings/assets${query}`, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function uploadSiteAsset(
+  accessToken: string,
+  kind: SiteAssetKind,
+  file: File,
+): Promise<SiteAsset> {
+  const body = new FormData();
+  body.append("kind", kind);
+  body.append("file", file);
+  return requestJson<SiteAsset>("/site-settings/assets", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body,
+  });
+}
+
+export function deleteSiteAsset(accessToken: string, id: number): Promise<void> {
+  return requestJson<void>(`/site-settings/assets/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function resolveSiteAssetUrl(asset: Pick<SiteAsset, "url">): string {
+  return resolveApiUrl(asset.url);
+}
+
+export function toConfiguredApiAssetPath(path: string): string {
+  return path.startsWith("/api/") ? path : `/api${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 export function createArticleTaxonomy(accessToken: string, input: ArticleTaxonomyInput): Promise<ArticleTaxonomy> {

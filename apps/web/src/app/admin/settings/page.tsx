@@ -4,32 +4,53 @@ import {
   Bell,
   Check,
   FileText,
+  FolderOpen,
   Globe2,
+  Image as ImageIcon,
   Package,
   Plus,
   Save,
   Settings2,
+  Sparkles,
   Trash2,
+  UploadCloud,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { listRoles } from "@/lib/admin-api";
-import { type AuthRole, type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
+import { type AuthRole, type AuthUser, getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import {
+  activateBackground,
+  clearActiveBackground,
+  deleteBackground,
+  listBackgrounds,
+  type ManagedBackground,
+  notifyBackgroundChange,
+  resolveBackgroundUrl,
+  uploadBackgrounds,
+} from "@/lib/background-api";
 import {
   type ArticleTaxonomy,
   type ArticleTaxonomyInput,
   type ArticleTaxonomyKind,
+  type SiteAsset,
+  type SiteAssetKind,
   type SiteSettings,
   type SiteSettingsInput,
   createArticleTaxonomy,
   deleteArticleTaxonomy,
+  deleteSiteAsset,
   getAdminSiteSettings,
+  listSiteAssets,
+  resolveSiteAssetUrl,
   siteSettingsToInput,
+  toConfiguredApiAssetPath,
   updateArticleTaxonomy,
   updateSiteSettings,
+  uploadSiteAsset,
 } from "@/lib/site-settings-api";
 import { portalThemes, type ThemeId } from "@/lib/theme-preferences";
 
@@ -72,6 +93,29 @@ const emptyTaxonomyDraft: ArticleTaxonomyInput = {
   enabled: true,
 };
 
+const MAX_SITE_ASSET_SIZE = 5 * 1024 * 1024;
+const MAX_BACKGROUND_FILE_SIZE = 30 * 1024 * 1024;
+const MAX_BACKGROUND_FILES = 20;
+
+const BUILTIN_LOGO_OPTIONS = [
+  { label: "默认 SVG", path: "/favicon.svg" },
+  { label: "HLOVET Logo", path: "/logo.svg" },
+  { label: "页签图标", path: "/tab-icon.svg" },
+  { label: "PNG Logo", path: "/logo.png" },
+] as const;
+
+const BUILTIN_PWA_ICON_OPTIONS = [
+  { label: "192 图标", path: "/icon-192.png" },
+  { label: "512 图标", path: "/icon-512.png" },
+  { label: "Apple 图标", path: "/apple-touch-icon.png" },
+] as const;
+
+const BUILTIN_BACKGROUND_OPTIONS = [
+  { label: "浅云蓝白", path: "/images/hlovet-cloud-blue.jpeg" },
+  { label: "浅樱暖雾", path: "/images/hlovet-sakura-mist.webp" },
+  { label: "城市灯火", path: "/images/hlovet-city-lights.jpg" },
+] as const;
+
 export default function SiteSettingsPage() {
   const router = useRouter();
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -79,10 +123,17 @@ export default function SiteSettingsPage() {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [draft, setDraft] = useState<SiteSettingsInput | null>(null);
   const [roles, setRoles] = useState<AuthRole[]>([]);
+  const [siteAssets, setSiteAssets] = useState<SiteAsset[]>([]);
+  const [backgrounds, setBackgrounds] = useState<ManagedBackground[]>([]);
+  const [assetUploadKind, setAssetUploadKind] = useState<SiteAssetKind | null>(null);
+  const [backgroundUploadFiles, setBackgroundUploadFiles] = useState<File[]>([]);
   const [taxonomyDrafts, setTaxonomyDrafts] = useState<Record<number, ArticleTaxonomyInput>>({});
   const [newTaxonomy, setNewTaxonomy] = useState<ArticleTaxonomyInput>(emptyTaxonomyDraft);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isBackgroundUploading, setIsBackgroundUploading] = useState(false);
+  const [busyBackgroundId, setBusyBackgroundId] = useState<number | null>(null);
+  const [busyAssetId, setBusyAssetId] = useState<number | null>(null);
   const [busyTaxonomyId, setBusyTaxonomyId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -104,13 +155,17 @@ export default function SiteSettingsPage() {
         setCurrentUser(me);
         if (!me.isSuperAdmin) return;
 
-        const [nextSettings, nextRoles] = await Promise.all([
+        const [nextSettings, nextRoles, nextAssets, nextBackgrounds] = await Promise.all([
           getAdminSiteSettings(verifiedToken),
           listRoles(),
+          listSiteAssets(verifiedToken),
+          listBackgrounds(verifiedToken),
         ]);
         if (!isMounted) return;
         applySettings(nextSettings);
         setRoles(nextRoles);
+        setSiteAssets(nextAssets);
+        setBackgrounds(nextBackgrounds);
       } catch (loadError) {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
@@ -131,6 +186,9 @@ export default function SiteSettingsPage() {
 
   const categories = settings?.taxonomies.categories ?? [];
   const tags = settings?.taxonomies.tags ?? [];
+  const logoAssets = useMemo(() => siteAssets.filter((asset) => asset.kind === "logo"), [siteAssets]);
+  const pwaIconAssets = useMemo(() => siteAssets.filter((asset) => asset.kind === "pwa_icon"), [siteAssets]);
+  const activeBackground = useMemo(() => backgrounds.find((background) => background.isActive) ?? null, [backgrounds]);
   const roleOptions = useMemo(
     () => roles.filter((role) => role.level < 90),
     [roles],
@@ -158,13 +216,33 @@ export default function SiteSettingsPage() {
     setError("");
     setNotice("");
     try {
+      await synchronizeDefaultBackground(draft.defaultBackgroundUrl);
       const saved = await updateSiteSettings(accessToken, draft);
       applySettings(saved);
+      notifyBackgroundChange();
       setNotice("站点设置已保存。");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "站点设置保存失败。");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function synchronizeDefaultBackground(defaultBackgroundUrl: string) {
+    if (!accessToken) return;
+    const matchedBackground = backgrounds.find(
+      (background) => toConfiguredApiAssetPath(background.url) === defaultBackgroundUrl,
+    );
+    if (matchedBackground) {
+      if (!matchedBackground.isActive) {
+        const active = await activateBackground(accessToken, matchedBackground.id);
+        setBackgrounds((current) => current.map((background) => ({ ...background, isActive: background.id === active.id })));
+      }
+      return;
+    }
+    if (activeBackground) {
+      await clearActiveBackground(accessToken);
+      setBackgrounds((current) => current.map((background) => ({ ...background, isActive: false })));
     }
   }
 
@@ -227,6 +305,104 @@ export default function SiteSettingsPage() {
       setError(deleteError instanceof Error ? deleteError.message : "删除失败。");
     } finally {
       setBusyTaxonomyId(null);
+    }
+  }
+
+  async function handleAssetUpload(kind: SiteAssetKind, files: FileList | null) {
+    if (!accessToken || !files?.length) return;
+    const file = files[0];
+    if (file.size > MAX_SITE_ASSET_SIZE) {
+      setError("单个站点资源不能超过 5 MB。");
+      return;
+    }
+    setAssetUploadKind(kind);
+    setError("");
+    setNotice("");
+    try {
+      const asset = await uploadSiteAsset(accessToken, kind, file);
+      setSiteAssets((current) => [asset, ...current]);
+      updateDraft({
+        [kind === "logo" ? "logoPath" : "pwaIconPath"]: toConfiguredApiAssetPath(asset.url),
+      } as Partial<SiteSettingsInput>);
+      setNotice(kind === "logo" ? "Logo 已上传并选中。" : "PWA 图标已上传并选中。");
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "站点资源上传失败。");
+    } finally {
+      setAssetUploadKind(null);
+    }
+  }
+
+  async function handleDeleteAsset(asset: SiteAsset) {
+    if (!accessToken || !window.confirm(`确定删除“${asset.originalName}”吗？如果正在使用，请先切换到其他资源。`)) return;
+    setBusyAssetId(asset.id);
+    setError("");
+    setNotice("");
+    try {
+      await deleteSiteAsset(accessToken, asset.id);
+      setSiteAssets((current) => current.filter((item) => item.id !== asset.id));
+      setNotice("站点资源已删除。");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "站点资源删除失败。");
+    } finally {
+      setBusyAssetId(null);
+    }
+  }
+
+  async function handleBackgroundUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!accessToken || !backgroundUploadFiles.length) {
+      setError("请选择背景图片。");
+      return;
+    }
+    if (backgroundUploadFiles.length > MAX_BACKGROUND_FILES) {
+      setError(`一次最多上传 ${MAX_BACKGROUND_FILES} 张背景图。`);
+      return;
+    }
+    const oversized = backgroundUploadFiles.find((file) => file.size > MAX_BACKGROUND_FILE_SIZE);
+    if (oversized) {
+      setError(`${oversized.name} 超过 30 MB。`);
+      return;
+    }
+    setIsBackgroundUploading(true);
+    setError("");
+    setNotice("");
+    try {
+      const uploaded = await uploadBackgrounds(accessToken, backgroundUploadFiles);
+      setBackgrounds((current) => [...uploaded, ...current]);
+      setBackgroundUploadFiles([]);
+      setNotice(`${uploaded.length} 张背景图已上传。`);
+      const input = document.getElementById("site-background-file") as HTMLInputElement | null;
+      if (input) input.value = "";
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "背景图片上传失败。");
+    } finally {
+      setIsBackgroundUploading(false);
+    }
+  }
+
+  async function handleDeleteBackground(background: ManagedBackground) {
+    if (!accessToken) return;
+    const confirmed = window.confirm(
+      background.isActive
+        ? "删除当前全站背景后将回到设置页选择的内置默认背景，确定删除吗？"
+        : `确定从磁盘中永久删除 ${background.originalName} 吗？`,
+    );
+    if (!confirmed) return;
+    setBusyBackgroundId(background.id);
+    setError("");
+    setNotice("");
+    try {
+      await deleteBackground(accessToken, background.id);
+      setBackgrounds((current) => current.filter((item) => item.id !== background.id));
+      if (draft?.defaultBackgroundUrl === toConfiguredApiAssetPath(background.url)) {
+        updateDraft({ defaultBackgroundUrl: BUILTIN_BACKGROUND_OPTIONS[0].path });
+      }
+      if (background.isActive) notifyBackgroundChange();
+      setNotice("背景图片及磁盘文件已删除。");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "背景图片删除失败。");
+    } finally {
+      setBusyBackgroundId(null);
     }
   }
 
@@ -299,11 +475,34 @@ export default function SiteSettingsPage() {
             <div className="site-settings-field-grid">
               <label><span>网站名称</span><input maxLength={80} onChange={(event) => updateDraft({ siteName: event.target.value })} value={draft.siteName} /></label>
               <label><span>浏览器标题</span><input maxLength={120} onChange={(event) => updateDraft({ browserTitle: event.target.value })} value={draft.browserTitle} /></label>
-              <label><span>Logo 路径</span><input maxLength={512} onChange={(event) => updateDraft({ logoPath: event.target.value })} value={draft.logoPath} /></label>
-              <label><span>PWA 图标路径</span><input maxLength={512} onChange={(event) => updateDraft({ pwaIconPath: event.target.value })} value={draft.pwaIconPath} /></label>
-              <label className="wide"><span>默认背景路径</span><input maxLength={512} onChange={(event) => updateDraft({ defaultBackgroundUrl: event.target.value })} value={draft.defaultBackgroundUrl} /></label>
               <label><span>开放注册</span><select onChange={(event) => updateDraft({ registrationOpen: event.target.value === "true" })} value={String(draft.registrationOpen)}><option value="true">开放</option><option value="false">关闭</option></select></label>
               <label><span>默认角色</span><select onChange={(event) => updateDraft({ defaultRoleCode: event.target.value })} value={draft.defaultRoleCode}>{roleOptions.map((role) => <option key={role.code} value={role.code}>{role.name}</option>)}</select></label>
+            </div>
+            <div className="site-resource-stack">
+              <SiteResourcePicker
+                assets={logoAssets}
+                busyAssetId={busyAssetId}
+                builtins={BUILTIN_LOGO_OPTIONS}
+                currentPath={draft.logoPath}
+                isUploading={assetUploadKind === "logo"}
+                kind="logo"
+                label="Logo"
+                onDelete={(asset) => void handleDeleteAsset(asset)}
+                onSelect={(path) => updateDraft({ logoPath: path })}
+                onUpload={(files) => void handleAssetUpload("logo", files)}
+              />
+              <SiteResourcePicker
+                assets={pwaIconAssets}
+                busyAssetId={busyAssetId}
+                builtins={BUILTIN_PWA_ICON_OPTIONS}
+                currentPath={draft.pwaIconPath}
+                isUploading={assetUploadKind === "pwa_icon"}
+                kind="pwa_icon"
+                label="PWA 图标"
+                onDelete={(asset) => void handleDeleteAsset(asset)}
+                onSelect={(path) => updateDraft({ pwaIconPath: path })}
+                onUpload={(files) => void handleAssetUpload("pwa_icon", files)}
+              />
             </div>
           </section>
 
@@ -331,6 +530,53 @@ export default function SiteSettingsPage() {
               <label><span>最多保留</span><input max={20} min={1} onChange={(event) => updateDraft({ apkRetentionCount: Number(event.target.value) })} type="number" value={draft.apkRetentionCount} /></label>
             </div>
             <Link className="text-action primary site-settings-inline-link" href="/admin/android">进入安装包管理</Link>
+          </section>
+
+          <section className="site-settings-card site-settings-summary-card">
+            <PanelTitle icon={Sparkles} label="资源状态" />
+            <div className="site-settings-summary-grid">
+              <SummaryTile label="Logo" value={resourceDisplayName(draft.logoPath, [...BUILTIN_LOGO_OPTIONS], logoAssets)} />
+              <SummaryTile label="PWA 图标" value={resourceDisplayName(draft.pwaIconPath, [...BUILTIN_PWA_ICON_OPTIONS], pwaIconAssets)} />
+              <SummaryTile label="默认背景" value={backgroundDisplayName(draft.defaultBackgroundUrl, backgrounds)} />
+              <SummaryTile label="背景图库" value={`${backgrounds.length} 张`} />
+            </div>
+            <p className="site-settings-hint">
+              默认背景路径就是新访客和未单独设置主题用户看到的全站背景；选择上传背景后，保存设置会同步设为当前全站背景。
+            </p>
+          </section>
+
+          <section className="site-settings-card wide">
+            <PanelTitle icon={ImageIcon} label="背景管理" />
+            <div className="site-background-tools">
+              <div>
+                <strong>默认背景</strong>
+                <span>可以选择内置图，也可以上传自己的背景。上传图会保存在服务器磁盘中。</span>
+              </div>
+              <form className="site-background-upload" onSubmit={(event) => void handleBackgroundUpload(event)}>
+                <label htmlFor="site-background-file">
+                  <input
+                    accept="image/jpeg,image/png,image/webp,image/avif"
+                    disabled={isBackgroundUploading}
+                    id="site-background-file"
+                    multiple
+                    onChange={(event) => setBackgroundUploadFiles(Array.from(event.target.files ?? []))}
+                    type="file"
+                  />
+                  <UploadCloud aria-hidden="true" size={16} />
+                  <span>{formatSelectedBackgroundFiles(backgroundUploadFiles)}</span>
+                </label>
+                <button className="text-action primary" disabled={isBackgroundUploading || !backgroundUploadFiles.length} type="submit">
+                  {isBackgroundUploading ? "上传中" : "上传"}
+                </button>
+              </form>
+            </div>
+            <BackgroundPicker
+              backgrounds={backgrounds}
+              busyBackgroundId={busyBackgroundId}
+              currentPath={draft.defaultBackgroundUrl}
+              onDelete={(background) => void handleDeleteBackground(background)}
+              onSelect={(path) => updateDraft({ defaultBackgroundUrl: path })}
+            />
           </section>
 
           <section className="site-settings-card wide">
@@ -447,6 +693,151 @@ function RangeField({
   );
 }
 
+function SiteResourcePicker({
+  assets,
+  builtins,
+  busyAssetId,
+  currentPath,
+  isUploading,
+  kind,
+  label,
+  onDelete,
+  onSelect,
+  onUpload,
+}: {
+  assets: SiteAsset[];
+  builtins: ReadonlyArray<{ label: string; path: string }>;
+  busyAssetId: number | null;
+  currentPath: string;
+  isUploading: boolean;
+  kind: SiteAssetKind;
+  label: string;
+  onDelete: (asset: SiteAsset) => void;
+  onSelect: (path: string) => void;
+  onUpload: (files: FileList | null) => void;
+}) {
+  const inputId = `site-asset-${kind}`;
+  const currentPreviewUrl = resolveConfiguredPath(currentPath);
+  return (
+    <section className="site-resource-picker">
+      <div className="site-resource-current">
+        <span className="site-resource-preview">
+          {currentPreviewUrl ? <img alt="" src={currentPreviewUrl} /> : <ImageIcon aria-hidden="true" size={18} />}
+        </span>
+        <span>
+          <strong>{label}</strong>
+          <small title={currentPath}>{currentPath}</small>
+        </span>
+        <label className="site-resource-upload" htmlFor={inputId}>
+          <input
+            accept={kind === "pwa_icon" ? "image/png,image/jpeg,image/webp" : "image/svg+xml,image/png,image/jpeg,image/webp"}
+            id={inputId}
+            onChange={(event) => {
+              onUpload(event.target.files);
+              event.currentTarget.value = "";
+            }}
+            type="file"
+          />
+          <UploadCloud aria-hidden="true" size={15} />
+          {isUploading ? "上传中" : "上传"}
+        </label>
+      </div>
+      <div className="site-resource-options">
+        {builtins.map((item) => (
+          <button
+            className={currentPath === item.path ? "active" : ""}
+            key={item.path}
+            onClick={() => onSelect(item.path)}
+            type="button"
+          >
+            <img alt="" src={item.path} />
+            <span>{item.label}</span>
+          </button>
+        ))}
+        {assets.map((asset) => {
+          const configuredPath = toConfiguredApiAssetPath(asset.url);
+          return (
+            <span className={`site-resource-option uploaded${currentPath === configuredPath ? " active" : ""}`} key={asset.id}>
+              <button onClick={() => onSelect(configuredPath)} title={asset.originalName} type="button">
+                <img alt="" src={resolveSiteAssetUrl(asset)} />
+                <span>{asset.originalName}</span>
+              </button>
+              <button
+                aria-label={`删除 ${asset.originalName}`}
+                disabled={busyAssetId === asset.id}
+                onClick={() => onDelete(asset)}
+                title="删除资源"
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={13} />
+              </button>
+            </span>
+          );
+        })}
+        {!assets.length ? <span className="site-resource-empty"><FolderOpen aria-hidden="true" size={14} />暂无上传资源</span> : null}
+      </div>
+    </section>
+  );
+}
+
+function BackgroundPicker({
+  backgrounds,
+  busyBackgroundId,
+  currentPath,
+  onDelete,
+  onSelect,
+}: {
+  backgrounds: ManagedBackground[];
+  busyBackgroundId: number | null;
+  currentPath: string;
+  onDelete: (background: ManagedBackground) => void;
+  onSelect: (path: string) => void;
+}) {
+  return (
+    <div className="site-background-picker">
+      {BUILTIN_BACKGROUND_OPTIONS.map((item) => (
+        <article className={`site-background-choice${currentPath === item.path ? " active" : ""}`} key={item.path}>
+          <button onClick={() => onSelect(item.path)} type="button">
+            <span style={{ backgroundImage: `url("${item.path}")` }} />
+            <strong>{item.label}</strong>
+            <small>{item.path}</small>
+          </button>
+        </article>
+      ))}
+      {backgrounds.map((background) => {
+        const configuredPath = toConfiguredApiAssetPath(background.url);
+        return (
+          <article className={`site-background-choice uploaded${currentPath === configuredPath ? " active" : ""}${background.isActive ? " live" : ""}`} key={background.id}>
+            <button onClick={() => onSelect(configuredPath)} type="button">
+              <span style={{ backgroundImage: `url("${resolveBackgroundUrl(background)}")` }} />
+              <strong title={background.originalName}>{background.originalName}</strong>
+              <small>{formatFileSize(background.sizeBytes)} · {background.isActive ? "当前全站背景" : "已上传"}</small>
+            </button>
+            <button
+              aria-label={`删除 ${background.originalName}`}
+              className="site-background-delete"
+              disabled={busyBackgroundId === background.id}
+              onClick={() => onDelete(background)}
+              type="button"
+            >
+              <Trash2 aria-hidden="true" size={14} />
+            </button>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function SummaryTile({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="site-settings-summary-tile">
+      <small>{label}</small>
+      <strong title={value}>{value}</strong>
+    </span>
+  );
+}
+
 function TaxonomyPanel({
   busyId,
   drafts,
@@ -515,4 +906,40 @@ function toTaxonomyInput(taxonomy: ArticleTaxonomy): ArticleTaxonomyInput {
     sortOrder: taxonomy.sortOrder,
     enabled: taxonomy.enabled,
   };
+}
+
+function resolveConfiguredPath(path: string): string {
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+  if (path.startsWith("/api/")) return resolveApiUrl(path.slice(4));
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
+function resourceDisplayName(
+  path: string,
+  builtins: Array<{ label: string; path: string }>,
+  assets: SiteAsset[],
+): string {
+  const builtin = builtins.find((item) => item.path === path);
+  if (builtin) return builtin.label;
+  const uploaded = assets.find((asset) => toConfiguredApiAssetPath(asset.url) === path);
+  return uploaded?.originalName ?? path;
+}
+
+function backgroundDisplayName(path: string, backgrounds: ManagedBackground[]): string {
+  const builtin = BUILTIN_BACKGROUND_OPTIONS.find((item) => item.path === path);
+  if (builtin) return builtin.label;
+  const uploaded = backgrounds.find((background) => toConfiguredApiAssetPath(background.url) === path);
+  return uploaded?.originalName ?? path;
+}
+
+function formatSelectedBackgroundFiles(files: File[]): string {
+  if (!files.length) return "选择背景图片";
+  if (files.length === 1) return files[0].name;
+  return `已选择 ${files.length} 张`;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

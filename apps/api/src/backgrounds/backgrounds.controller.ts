@@ -67,6 +67,13 @@ export class BackgroundsController {
     return this.backgroundsService.activate(id);
   }
 
+  @Patch('active/clear')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
+  async clearActive(): Promise<{ success: true }> {
+    await this.backgroundsService.clearActive();
+    return { success: true };
+  }
+
   @Delete(':id')
   @UseGuards(JwtAuthGuard, SuperAdminGuard)
   async delete(@Param('id', ParseIntPipe) id: number): Promise<{ success: true }> {

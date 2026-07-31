@@ -2,6 +2,7 @@ import { Type } from "class-transformer";
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -97,4 +98,14 @@ export class ListNotificationsQueryDto {
   @IsOptional()
   @IsIn(["system", "subscription", "interaction"])
   channel?: "system" | "subscription" | "interaction";
+}
+
+export class UpdateConversationSettingsDto {
+  @IsBoolean()
+  muted!: boolean;
+}
+
+export class UpdateNotificationChannelSettingsDto {
+  @IsBoolean()
+  pushEnabled!: boolean;
 }

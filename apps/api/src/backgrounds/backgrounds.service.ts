@@ -176,6 +176,13 @@ export class BackgroundsService {
     return this.toResponse(background);
   }
 
+  async clearActive(): Promise<void> {
+    await this.prisma.backgroundImage.updateMany({
+      where: { isActive: true },
+      data: { isActive: false },
+    });
+  }
+
   async delete(id: number): Promise<void> {
     const background = await this.prisma.backgroundImage.findUnique({
       where: { id },

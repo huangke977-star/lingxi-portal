@@ -19,6 +19,8 @@ import {
   ListMessagesQueryDto,
   ListNotificationsQueryDto,
   SearchSocialUsersQueryDto,
+  UpdateConversationSettingsDto,
+  UpdateNotificationChannelSettingsDto,
 } from "./dto/social.dto";
 import {
   ChatMessageResponse,
@@ -28,6 +30,7 @@ import {
   SocialSummaryResponse,
   SocialUserResponse,
   SocialUserSearchResult,
+  NotificationChannelStateResponse,
   UserNotificationResponse,
 } from "./social.types";
 
@@ -550,6 +553,7 @@ export class SocialService {
           user: this.toSocialUser(counterpart),
           lastMessage: lastMessage ? this.toMessage(lastMessage) : null,
           unreadCount,
+          muted: conversation.participantStates[0]?.muted ?? false,
           updatedAt: conversation.updatedAt.toISOString(),
         };
       })),
@@ -739,6 +743,20 @@ export class SocialService {
       readAt: readAt.toISOString(),
       participantIds: [friendship.userOneId, friendship.userTwoId],
     };
+  }
+
+  async updateConversationSettings(
+    user: AuthenticatedUser,
+    conversationId: number,
+    dto: UpdateConversationSettingsDto,
+  ): Promise<ConversationResponse> {
+    await this.assertConversationMember(conversationId, user.id);
+    await this.prisma.conversationParticipantState.upsert({
+      where: { conversationId_userId: { conversationId, userId: user.id } },
+      create: { conversationId, userId: user.id, muted: dto.muted },
+      update: { muted: dto.muted },
+    });
+    return this.getConversation(user.id, conversationId);
   }
 
   async clearConversation(
@@ -972,6 +990,7 @@ export class SocialService {
       status: FriendshipStatus.accepted,
       OR: [{ userOneId: user.id }, { userTwoId: user.id }],
     };
+    const pushDisabledChannels = await this.listPushDisabledNotificationChannels(user.id);
     const [unreadMessages, pendingFriendRequests, unreadNotifications] = await Promise.all([
       this.prisma.chatMessage.count({
         where: {
@@ -980,7 +999,12 @@ export class SocialService {
           deletions: { none: { userId: user.id } },
           conversation: {
             friendship: friendshipWhere,
-            participantStates: { none: { userId: user.id, hidden: true } },
+            participantStates: {
+              none: {
+                userId: user.id,
+                OR: [{ hidden: true }, { muted: true }],
+              },
+            },
           },
         },
       }),
@@ -996,6 +1020,7 @@ export class SocialService {
           userId: user.id,
           readAt: null,
           type: { not: UserNotificationType.friend_request_received },
+          ...(pushDisabledChannels.length ? { channel: { notIn: pushDisabledChannels } } : {}),
         },
       }),
     ]);
@@ -1005,8 +1030,13 @@ export class SocialService {
   async listNotifications(
     user: AuthenticatedUser,
     query: ListNotificationsQueryDto,
-  ): Promise<{ items: UserNotificationResponse[]; hasMore: boolean; hiddenChannels: UserNotificationChannel[] }> {
-    const [notifications, hiddenChannels] = await Promise.all([
+  ): Promise<{
+    items: UserNotificationResponse[];
+    hasMore: boolean;
+    hiddenChannels: UserNotificationChannel[];
+    channelStates: NotificationChannelStateResponse[];
+  }> {
+    const [notifications, hiddenChannels, channelStates] = await Promise.all([
       this.prisma.userNotification.findMany({
         where: {
           userId: user.id,
@@ -1018,11 +1048,13 @@ export class SocialService {
         include: notificationInclude,
       }),
       this.listHiddenNotificationChannels(user.id),
+      this.listNotificationChannelStates(user.id),
     ]);
     return {
       items: notifications.slice(0, query.limit).map((notification) => this.toNotification(notification)),
       hasMore: notifications.length > query.limit,
       hiddenChannels,
+      channelStates,
     };
   }
 
@@ -1118,6 +1150,21 @@ export class SocialService {
     return { channel, hiddenThroughNotificationId, readAt: readAt.toISOString() };
   }
 
+  async updateNotificationChannelSettings(
+    user: AuthenticatedUser,
+    rawChannel: string,
+    dto: UpdateNotificationChannelSettingsDto,
+  ): Promise<NotificationChannelStateResponse> {
+    const channel = this.normalizeNotificationChannel(rawChannel);
+    const state = await this.prisma.userNotificationChannelState.upsert({
+      where: { userId_channel: { userId: user.id, channel } },
+      create: { userId: user.id, channel, pushEnabled: dto.pushEnabled },
+      update: { pushEnabled: dto.pushEnabled },
+      select: { channel: true, hiddenThroughNotificationId: true, pushEnabled: true },
+    });
+    return this.toNotificationChannelState(state);
+  }
+
   private normalizeNotificationIds(notificationIds: number[]): number[] {
     const ids = [...new Set(notificationIds.filter((id) => Number.isInteger(id) && id > 0))];
     if (!ids.length || ids.length > 100) {
@@ -1142,6 +1189,29 @@ export class SocialService {
       return newerNotification ? null : state.channel;
     }));
     return hiddenChannels.filter((channel): channel is UserNotificationChannel => channel !== null);
+  }
+
+  private async listNotificationChannelStates(userId: number): Promise<NotificationChannelStateResponse[]> {
+    const states = await this.prisma.userNotificationChannelState.findMany({
+      where: { userId },
+      select: { channel: true, hiddenThroughNotificationId: true, pushEnabled: true },
+    });
+    const byChannel = new Map(states.map((state) => [state.channel, state]));
+    return Object.values(UserNotificationChannel).map((channel) =>
+      this.toNotificationChannelState(byChannel.get(channel) ?? {
+        channel,
+        hiddenThroughNotificationId: 0,
+        pushEnabled: true,
+      }),
+    );
+  }
+
+  private async listPushDisabledNotificationChannels(userId: number): Promise<UserNotificationChannel[]> {
+    const states = await this.prisma.userNotificationChannelState.findMany({
+      where: { userId, pushEnabled: false },
+      select: { channel: true },
+    });
+    return states.map((state) => state.channel);
   }
 
   private notificationChannelContentWhere(
@@ -1176,7 +1246,8 @@ export class SocialService {
       throw new NotFoundException("会话不存在。");
     }
     const counterpart = this.counterpart(conversation.friendship, userId);
-    const clearedBeforeMessageId = conversation.participantStates[0]?.clearedBeforeMessageId ?? null;
+    const participantState = conversation.participantStates[0];
+    const clearedBeforeMessageId = participantState?.clearedBeforeMessageId ?? null;
     const visibleWhere = this.visibleMessageWhere(userId, conversationId, clearedBeforeMessageId);
     const [lastMessage, unreadCount] = await Promise.all([
       this.prisma.chatMessage.findFirst({
@@ -1193,6 +1264,7 @@ export class SocialService {
       user: this.toSocialUser(counterpart),
       lastMessage: lastMessage ? this.toMessage(lastMessage) : null,
       unreadCount,
+      muted: participantState?.muted ?? false,
       updatedAt: conversation.updatedAt.toISOString(),
     };
   }
@@ -1341,6 +1413,18 @@ export class SocialService {
       openedAt: notification.openedAt?.toISOString() ?? null,
       createdAt: notification.createdAt.toISOString(),
       updatedAt: notification.updatedAt.toISOString(),
+    };
+  }
+
+  private toNotificationChannelState(state: {
+    channel: UserNotificationChannel;
+    hiddenThroughNotificationId: number;
+    pushEnabled: boolean;
+  }): NotificationChannelStateResponse {
+    return {
+      channel: state.channel,
+      hiddenThroughNotificationId: state.hiddenThroughNotificationId,
+      pushEnabled: state.pushEnabled,
     };
   }
 }

@@ -39,6 +39,7 @@ import {
 import {
   type Conversation,
   type Friendship,
+  type NotificationChannelState,
   type SocialNotification,
   getSocialSummary,
   listConversations,
@@ -92,6 +93,7 @@ export function TopNav() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [friendships, setFriendships] = useState<{ friends: Friendship[]; incoming: Friendship[]; outgoing: Friendship[]; blocked: Friendship[] }>({ friends: [], incoming: [], outgoing: [], blocked: [] });
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
+  const [notificationChannelStates, setNotificationChannelStates] = useState<NotificationChannelState[]>([]);
   const [pendingReports, setPendingReports] = useState<ArticleCommentReport[]>([]);
   const [pendingReportCount, setPendingReportCount] = useState(0);
   const [siteBrand, setSiteBrand] = useState({ logoPath: "/favicon.svg", siteName: "HLOVET" });
@@ -105,6 +107,7 @@ export function TopNav() {
       setConversations([]);
       setFriendships({ friends: [], incoming: [], outgoing: [], blocked: [] });
       setNotifications([]);
+      setNotificationChannelStates([]);
       setPendingReports([]);
       setPendingReportCount(0);
       setIsLoading(false);
@@ -118,7 +121,7 @@ export function TopNav() {
         getSocialSummary(accessToken).catch(() => emptySummary),
         listConversations(accessToken).catch(() => ({ items: [] })),
         listFriendships(accessToken).catch(() => ({ friends: [], incoming: [], outgoing: [], blocked: [] })),
-        listNotifications(accessToken).catch(() => ({ items: [], hasMore: false })),
+        listNotifications(accessToken).catch(() => ({ items: [], hasMore: false, hiddenChannels: [], channelStates: [] })),
         canModerate ? getCommentReportSummary(accessToken).catch(() => ({ pending: 0 })) : Promise.resolve({ pending: 0 }),
         canModerate ? listCommentReports(accessToken, "pending").catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
       ]);
@@ -127,6 +130,7 @@ export function TopNav() {
       setConversations(conversationResult.items);
       setFriendships(friendshipResult);
       setNotifications(notificationResult.items);
+      setNotificationChannelStates(notificationResult.channelStates ?? []);
       setPendingReportCount(reportSummary.pending);
       setPendingReports(reportResult.items);
     } catch {
@@ -221,17 +225,30 @@ export function TopNav() {
     tooltip: user.isSuperAdmin ? "超级管理员" : user.role.name,
   } : null, [user]);
   const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
-  const loadedUnreadMessages = conversations.reduce((total, conversation) => total + conversation.unreadCount, 0);
-  const loadedUnreadNotifications = notifications.filter((notification) => !notification.readAt && notification.type !== "friend_request_received").length;
+  const siteLogoUrl = useMemo(() => resolveConfiguredAssetUrl(siteBrand.logoPath), [siteBrand.logoPath]);
+  const pushDisabledChannels = useMemo(
+    () => new Set(notificationChannelStates.filter((state) => !state.pushEnabled).map((state) => state.channel)),
+    [notificationChannelStates],
+  );
+  const loadedUnreadMessages = conversations.reduce((total, conversation) => total + (conversation.muted ? 0 : conversation.unreadCount), 0);
+  const loadedUnreadNotifications = notifications.filter((notification) =>
+    !notification.readAt &&
+    notification.type !== "friend_request_received" &&
+    !pushDisabledChannels.has(notification.channel),
+  ).length;
   const socialCount =
     Math.max(socialSummary.unreadMessages, loadedUnreadMessages) +
     Math.max(socialSummary.pendingFriendRequests, friendships.incoming.length) +
     Math.max(socialSummary.unreadNotifications, loadedUnreadNotifications);
   const incomingFriendRequests = friendships.incoming.slice(0, 2);
   const conversationPreviewLimit = Math.max(0, HEADER_MESSAGE_PREVIEW_LIMIT - incomingFriendRequests.length);
-  const unreadConversations = conversations.filter((conversation) => conversation.unreadCount > 0).slice(0, conversationPreviewLimit);
+  const unreadConversations = conversations.filter((conversation) => !conversation.muted && conversation.unreadCount > 0).slice(0, conversationPreviewLimit);
   const notificationPreviewLimit = Math.max(0, conversationPreviewLimit - unreadConversations.length);
-  const unreadNotifications = notifications.filter((notification) => !notification.readAt && notification.type !== "friend_request_received").slice(0, notificationPreviewLimit);
+  const unreadNotifications = notifications.filter((notification) =>
+    !notification.readAt &&
+    notification.type !== "friend_request_received" &&
+    !pushDisabledChannels.has(notification.channel),
+  ).slice(0, notificationPreviewLimit);
   const previewedUnreadCount = incomingFriendRequests.length
     + unreadConversations.reduce((total, conversation) => total + conversation.unreadCount, 0)
     + unreadNotifications.length;
@@ -317,7 +334,7 @@ export function TopNav() {
     <header className="topbar">
       <nav aria-label="主导航" className="topbar-inner" ref={navRef}>
         <button aria-expanded={isMenuOpen} aria-label={isMenuOpen ? "关闭菜单" : "打开菜单"} className="menu-toggle" onClick={() => setIsMenuOpen((current) => !current)} type="button"><span /><span /><span /></button>
-        <Link className="brand" href="/"><span className="brand-mark brand-logo-mark"><img alt="" src={siteBrand.logoPath} /></span><span className="brand-copy"><strong>{siteBrand.siteName}</strong><span>Personal Portal</span></span></Link>
+        <Link className="brand" href="/"><span className="brand-mark brand-logo-mark"><img alt="" src={siteLogoUrl} /></span><span className="brand-copy"><strong>{siteBrand.siteName}</strong><span>Personal Portal</span></span></Link>
         <div className="top-links desktop-links">{navItems.map((item) => <Link className={isActiveRoute(item.href) ? "active" : undefined} href={item.href} key={item.href}>{item.label}</Link>)}</div>
         <div className="account-zone">
           <PwaInstallButton />
@@ -351,7 +368,7 @@ export function TopNav() {
                 <div className="account-menu-head"><strong>{getUserDisplayName(user)}</strong><span>@{user.username}</span></div>
                 <Link href="/profile" onClick={() => setIsAccountMenuOpen(false)}>个人中心</Link>
                 {user.isSuperAdmin || user.role.level >= 90 ? <><Link href="/admin" onClick={() => setIsAccountMenuOpen(false)}>用户管理</Link><Link href="/admin/content" onClick={() => setIsAccountMenuOpen(false)}>内容管理</Link></> : null}
-                {user.isSuperAdmin ? <><Link href="/admin/settings" onClick={() => setIsAccountMenuOpen(false)}>站点设置</Link><Link href="/admin/backgrounds" onClick={() => setIsAccountMenuOpen(false)}>背景管理</Link><Link href="/admin/android" onClick={() => setIsAccountMenuOpen(false)}>安装包管理</Link><Link href="/admin/cache" onClick={() => setIsAccountMenuOpen(false)}>缓存管理</Link></> : null}
+                {user.isSuperAdmin ? <><Link href="/admin/settings" onClick={() => setIsAccountMenuOpen(false)}>站点设置</Link><Link href="/admin/android" onClick={() => setIsAccountMenuOpen(false)}>安装包管理</Link><Link href="/admin/cache" onClick={() => setIsAccountMenuOpen(false)}>缓存管理</Link></> : null}
                 <button disabled={isLoggingOut} onClick={() => void handleLogout()} type="button">{isLoggingOut ? "退出中" : "退出登录"}</button>
               </div>
             </div>
@@ -376,4 +393,14 @@ function formatHeaderTime(value: string): string {
     second: "2-digit",
     hour12: false,
   }).format(date);
+}
+
+function resolveConfiguredAssetUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  if (path.startsWith("/api/")) {
+    return resolveApiUrl(path.slice(4));
+  }
+  return path || "/favicon.svg";
 }

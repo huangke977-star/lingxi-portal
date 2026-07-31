@@ -1,4 +1,4 @@
-import { ArticleTaxonomyKind, ArticleVisibility } from "../generated/prisma/client";
+import { ArticleTaxonomyKind, ArticleVisibility, SiteAssetKind } from "../generated/prisma/client";
 
 export interface ThemeDefaultsResponse {
   themeId: string;
@@ -19,6 +19,21 @@ export interface ArticleTaxonomyResponse {
   color: string;
   sortOrder: number;
   enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SiteAssetResponse {
+  id: number;
+  kind: SiteAssetKind;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  url: string;
+  uploadedBy: {
+    id: number;
+    username: string;
+  };
   createdAt: string;
   updatedAt: string;
 }

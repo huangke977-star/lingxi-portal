@@ -24,6 +24,52 @@ const roles = [
   { id: 9, code: 'administrator', name: '管理员', level: 90 },
 ];
 
+const defaultSiteSetting = {
+  siteName: 'HLOVET',
+  browserTitle: 'HLOVET',
+  logoPath: '/favicon.svg',
+  pwaIconPath: '/icon-192.png',
+  defaultBackgroundUrl: '/images/hlovet-cloud-blue.jpeg',
+  defaultThemeId: 'cloud-blue',
+  defaultAccent: '#1814f0',
+  defaultSurface: '#dfc8c8',
+  defaultForeground: '#2b2530',
+  defaultMuted: '#665867',
+  defaultCardAlpha: 50,
+  defaultGlassBlur: 18,
+  defaultGlassTint: '#fff3f6',
+  defaultGlassTintAlpha: 0,
+  registrationOpen: true,
+  defaultRoleCode: 'qi_refining',
+  installPageEnabled: true,
+  apkHistoryEnabled: true,
+  apkAutoCleanupEnabled: false,
+  apkRetentionCount: 3,
+  defaultArticleVisibility: 'public',
+  articleImageMaxSizeMb: 10,
+  commentsEnabled: true,
+  reportsEnabled: true,
+  notifyArticleLiked: true,
+  notifyArticleFavorited: true,
+  notifyArticleCommented: true,
+  notifyCommentReplied: true,
+  notifyAuthorSubscribed: true,
+  notifySubscriptionPublished: true,
+  notifyFriendRequest: true,
+  notifyCommentReport: true,
+  notifySystem: true,
+  templateArticleLiked: '{actor} 点赞了《{article}》。',
+  templateArticleFavorited: '{actor} 收藏了《{article}》。',
+  templateArticleCommented: '{actor} 评论了《{article}》。',
+  templateCommentReplied: '{actor} 回复了你在《{article}》中的评论。',
+  templateAuthorSubscribed: '{actor} 订阅了你。',
+  templateSubscriptionPublished: '{author} 发布了《{article}》。',
+  templateFriendRequest: '{actor} 向你发送了好友申请。',
+  templateCommentReportHandled: '你对《{article}》中评论的举报已{result}。',
+  templateCommentAuthorModerated: '你在《{article}》中的评论已被{result}。',
+  updatedAt: new Date('2026-07-20T00:00:00.000Z'),
+};
+
 function createPrismaMock() {
   const users: StoredUser[] = [];
   const withRole = (user: StoredUser) => ({
@@ -57,6 +103,9 @@ function createPrismaMock() {
         findUnique: jest.fn(async ({ where }: { where: { code: string } }) => {
           return roles.find((role) => role.code === where.code) ?? null;
         }),
+      },
+      siteSetting: {
+        upsert: jest.fn(async () => defaultSiteSetting),
       },
       user: {
         create: jest.fn(

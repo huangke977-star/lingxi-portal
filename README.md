@@ -126,6 +126,10 @@ The named `background_uploads` volume survives normal container recreation. Do n
 
 命名卷 `background_uploads` 会在普通容器重建后继续保留。除非你确认要连同其他命名卷一起删除已上传背景，否则不要执行 `docker compose down -v`。
 
+The named `site_asset_uploads` volume stores uploaded Logo and PWA icon resources selected in site settings. Preserve it during deployment just like uploaded backgrounds.
+
+命名卷 `site_asset_uploads` 保存站点设置中上传并选择的 Logo 与 PWA 图标资源。部署时需要像保留背景图一样保留它。
+
 The named `avatar_uploads` volume stores user avatars and should also be preserved during deployment.
 
 命名卷 `avatar_uploads` 保存用户头像，部署时同样需要保留。

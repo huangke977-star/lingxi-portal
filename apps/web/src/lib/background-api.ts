@@ -56,6 +56,13 @@ export async function activateBackground(accessToken: string, id: number): Promi
   });
 }
 
+export async function clearActiveBackground(accessToken: string): Promise<void> {
+  await requestJson<{ success: true }>('/backgrounds/active/clear', {
+    method: 'PATCH',
+    headers: authorizationHeader(accessToken),
+  });
+}
+
 export async function deleteBackground(accessToken: string, id: number): Promise<void> {
   await requestJson<{ success: true }>(`/backgrounds/${id}`, {
     method: 'DELETE',

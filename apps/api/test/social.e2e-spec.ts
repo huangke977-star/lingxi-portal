@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { AuthenticatedUser } from "../src/auth/auth.types";
 import { ChatMessageType, FriendshipStatus } from "../src/generated/prisma/client";
 import { PrismaService } from "../src/prisma/prisma.service";
+import { SiteSettingsService } from "../src/site-settings/site-settings.service";
 import { ChatAttachmentsService } from "../src/social/chat-attachments.service";
 import { SocialService } from "../src/social/social.service";
 
@@ -57,10 +58,41 @@ const attachmentsService = {
   })),
 };
 
+const siteSettingsService = {
+  getNotificationSettings: jest.fn(async () => ({
+    notifyArticleLiked: true,
+    notifyArticleFavorited: true,
+    notifyArticleCommented: true,
+    notifyCommentReplied: true,
+    notifyAuthorSubscribed: true,
+    notifySubscriptionPublished: true,
+    notifyFriendRequest: true,
+    notifyCommentReport: true,
+    notifySystem: true,
+    templates: {
+      articleLiked: "{actor} 点赞了《{article}》。",
+      articleFavorited: "{actor} 收藏了《{article}》。",
+      articleCommented: "{actor} 评论了《{article}》。",
+      commentReplied: "{actor} 回复了你在《{article}》中的评论。",
+      authorSubscribed: "{actor} 订阅了你。",
+      subscriptionPublished: "{author} 发布了《{article}》。",
+      friendRequest: "{actor} 向你发送了好友申请。",
+      commentReportHandled: "你对《{article}》中评论的举报已{result}。",
+      commentAuthorModerated: "你在《{article}》中的评论已被{result}。",
+    },
+  })),
+  renderTemplate: jest.fn((template: string, variables: Record<string, string | number | null | undefined>) => {
+    return Object.entries(variables).reduce((current, [key, value]) => {
+      return current.replaceAll(`{${key}}`, String(value ?? ""));
+    }, template);
+  }),
+};
+
 function createService(prisma: object) {
   return new SocialService(
     prisma as unknown as PrismaService,
     attachmentsService as unknown as ChatAttachmentsService,
+    siteSettingsService as unknown as SiteSettingsService,
   );
 }
 
@@ -206,7 +238,13 @@ describe("SocialService", () => {
       friendship: { findUnique: jest.fn(async () => null) },
       userSubscription: { findUnique: jest.fn(async () => null), create: createSubscription, count: jest.fn(async () => 3) },
       userNotification: { create: createNotification },
-      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+      $transaction: jest.fn(async (callback: (client: {
+        userSubscription: { create: typeof createSubscription };
+        userNotification: { create: typeof createNotification };
+      }) => Promise<unknown>) => callback({
+        userSubscription: { create: createSubscription },
+        userNotification: { create: createNotification },
+      })),
     };
     const service = createService(prisma);
     await expect(service.subscribe(user, 8)).resolves.toEqual({ subscribed: true, subscriberCount: 3 });
@@ -652,6 +690,7 @@ describe("SocialService", () => {
       chatMessage: { count: messageCount },
       friendship: { count: friendshipCount },
       userNotification: { count: notificationCount },
+      userNotificationChannelState: { findMany: jest.fn(async () => []) },
     });
 
     await expect(service.getSummary(user)).resolves.toEqual({
@@ -753,7 +792,7 @@ describe("SocialService", () => {
         findFirst: jest.fn(async () => ({ id: 49 })),
       },
       userNotificationChannelState: {
-        findMany: jest.fn(async () => [{ channel: "subscription", hiddenThroughNotificationId: 48 }]),
+        findMany: jest.fn(async () => [{ channel: "subscription", hiddenThroughNotificationId: 48, pushEnabled: true }]),
       },
     });
 
@@ -761,6 +800,11 @@ describe("SocialService", () => {
       items: [],
       hasMore: false,
       hiddenChannels: [],
+      channelStates: [
+        { channel: "system", hiddenThroughNotificationId: 0, pushEnabled: true },
+        { channel: "subscription", hiddenThroughNotificationId: 48, pushEnabled: true },
+        { channel: "interaction", hiddenThroughNotificationId: 0, pushEnabled: true },
+      ],
     });
   });
 });

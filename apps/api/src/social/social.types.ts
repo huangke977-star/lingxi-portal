@@ -57,6 +57,7 @@ export interface ConversationResponse {
   user: SocialUserResponse;
   lastMessage: ChatMessageResponse | null;
   unreadCount: number;
+  muted: boolean;
   updatedAt: string;
 }
 
@@ -136,4 +137,10 @@ export interface UserNotificationResponse {
   openedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface NotificationChannelStateResponse {
+  channel: "system" | "subscription" | "interaction";
+  hiddenThroughNotificationId: number;
+  pushEnabled: boolean;
 }
