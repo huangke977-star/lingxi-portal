@@ -3,21 +3,23 @@
 import {
   Bell,
   Check,
+  Eye,
   FileText,
   FolderOpen,
   Globe2,
   Image as ImageIcon,
   Package,
   Plus,
-  Save,
+  RotateCcw,
   Settings2,
   Sparkles,
   Trash2,
   UploadCloud,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { listRoles } from "@/lib/admin-api";
 import { type AuthRole, type AuthUser, getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
@@ -45,6 +47,7 @@ import {
   deleteSiteAsset,
   getAdminSiteSettings,
   listSiteAssets,
+  resetSiteSettings,
   resolveSiteAssetUrl,
   siteSettingsToInput,
   toConfiguredApiAssetPath,
@@ -105,6 +108,7 @@ const BUILTIN_LOGO_OPTIONS = [
 ] as const;
 
 const BUILTIN_PWA_ICON_OPTIONS = [
+  { label: "Logo 图标", path: "/pwa-logo.png" },
   { label: "192 图标", path: "/icon-192.png" },
   { label: "512 图标", path: "/icon-512.png" },
   { label: "Apple 图标", path: "/apple-touch-icon.png" },
@@ -127,6 +131,7 @@ export default function SiteSettingsPage() {
   const [backgrounds, setBackgrounds] = useState<ManagedBackground[]>([]);
   const [assetUploadKind, setAssetUploadKind] = useState<SiteAssetKind | null>(null);
   const [backgroundUploadFiles, setBackgroundUploadFiles] = useState<File[]>([]);
+  const [previewBackground, setPreviewBackground] = useState<ManagedBackground | null>(null);
   const [taxonomyDrafts, setTaxonomyDrafts] = useState<Record<number, ArticleTaxonomyInput>>({});
   const [newTaxonomy, setNewTaxonomy] = useState<ArticleTaxonomyInput>(emptyTaxonomyDraft);
   const [isLoading, setIsLoading] = useState(true);
@@ -137,6 +142,10 @@ export default function SiteSettingsPage() {
   const [busyTaxonomyId, setBusyTaxonomyId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const pendingSettingsPatchRef = useRef<Partial<SiteSettingsInput>>({});
+  const settingsSaveTimerRef = useRef<number | null>(null);
+  const settingsSaveChainRef = useRef<Promise<void>>(Promise.resolve());
+  const settingsSaveCountRef = useRef(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -184,11 +193,16 @@ export default function SiteSettingsPage() {
     };
   }, [router]);
 
+  useEffect(() => () => {
+    if (settingsSaveTimerRef.current !== null) {
+      window.clearTimeout(settingsSaveTimerRef.current);
+    }
+  }, []);
+
   const categories = settings?.taxonomies.categories ?? [];
   const tags = settings?.taxonomies.tags ?? [];
   const logoAssets = useMemo(() => siteAssets.filter((asset) => asset.kind === "logo"), [siteAssets]);
   const pwaIconAssets = useMemo(() => siteAssets.filter((asset) => asset.kind === "pwa_icon"), [siteAssets]);
-  const activeBackground = useMemo(() => backgrounds.find((background) => background.isActive) ?? null, [backgrounds]);
   const roleOptions = useMemo(
     () => roles.filter((role) => role.level < 90),
     [roles],
@@ -205,44 +219,72 @@ export default function SiteSettingsPage() {
     ));
   }
 
-  function updateDraft(patch: Partial<SiteSettingsInput>) {
+  function updateDraft(patch: Partial<SiteSettingsInput>, immediate = false) {
     setDraft((current) => current ? { ...current, ...patch } : current);
+    pendingSettingsPatchRef.current = { ...pendingSettingsPatchRef.current, ...patch };
+    if (!Object.keys(partitionSettingsPatch(pendingSettingsPatchRef.current).ready).length) return;
+
+    if (settingsSaveTimerRef.current !== null) {
+      window.clearTimeout(settingsSaveTimerRef.current);
+    }
+    if (immediate) {
+      settingsSaveTimerRef.current = null;
+      flushSettingsPatch();
+      return;
+    }
+    settingsSaveTimerRef.current = window.setTimeout(() => {
+      settingsSaveTimerRef.current = null;
+      flushSettingsPatch();
+    }, 520);
   }
 
-  async function handleSettingsSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!accessToken || !draft) return;
+  function flushSettingsPatch() {
+    if (!accessToken || !Object.keys(pendingSettingsPatchRef.current).length) return;
+    const { pending, ready: patch } = partitionSettingsPatch(pendingSettingsPatchRef.current);
+    if (!Object.keys(patch).length) return;
+    pendingSettingsPatchRef.current = pending;
+    settingsSaveCountRef.current += 1;
+    setIsSaving(true);
+
+    settingsSaveChainRef.current = settingsSaveChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const saved = await updateSiteSettings(accessToken, patch);
+        setSettings(saved);
+      })
+      .catch((saveError) => {
+        pendingSettingsPatchRef.current = { ...patch, ...pendingSettingsPatchRef.current };
+        setError(saveError instanceof Error ? saveError.message : "站点设置自动保存失败。");
+      })
+      .finally(() => {
+        settingsSaveCountRef.current = Math.max(0, settingsSaveCountRef.current - 1);
+        if (settingsSaveCountRef.current === 0) setIsSaving(false);
+      });
+  }
+
+  async function handleResetSettings() {
+    if (!accessToken || !window.confirm("恢复默认站点设置吗？已上传的资源、背景图片、文章分类和标签不会删除。")) return;
+    if (settingsSaveTimerRef.current !== null) {
+      window.clearTimeout(settingsSaveTimerRef.current);
+      settingsSaveTimerRef.current = null;
+    }
+    pendingSettingsPatchRef.current = {};
     setIsSaving(true);
     setError("");
     setNotice("");
     try {
-      await synchronizeDefaultBackground(draft.defaultBackgroundUrl);
-      const saved = await updateSiteSettings(accessToken, draft);
-      applySettings(saved);
-      notifyBackgroundChange();
-      setNotice("站点设置已保存。");
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "站点设置保存失败。");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function synchronizeDefaultBackground(defaultBackgroundUrl: string) {
-    if (!accessToken) return;
-    const matchedBackground = backgrounds.find(
-      (background) => toConfiguredApiAssetPath(background.url) === defaultBackgroundUrl,
-    );
-    if (matchedBackground) {
-      if (!matchedBackground.isActive) {
-        const active = await activateBackground(accessToken, matchedBackground.id);
-        setBackgrounds((current) => current.map((background) => ({ ...background, isActive: background.id === active.id })));
-      }
-      return;
-    }
-    if (activeBackground) {
+      await settingsSaveChainRef.current.catch(() => undefined);
       await clearActiveBackground(accessToken);
+      const restored = await resetSiteSettings(accessToken);
+      applySettings(restored);
       setBackgrounds((current) => current.map((background) => ({ ...background, isActive: false })));
+      notifyBackgroundChange();
+      setNotice("站点设置已恢复默认。");
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : "恢复默认设置失败。");
+    } finally {
+      settingsSaveCountRef.current = 0;
+      setIsSaving(false);
     }
   }
 
@@ -323,8 +365,8 @@ export default function SiteSettingsPage() {
       setSiteAssets((current) => [asset, ...current]);
       updateDraft({
         [kind === "logo" ? "logoPath" : "pwaIconPath"]: toConfiguredApiAssetPath(asset.url),
-      } as Partial<SiteSettingsInput>);
-      setNotice(kind === "logo" ? "Logo 已上传并选中。" : "PWA 图标已上传并选中。");
+      } as Partial<SiteSettingsInput>, true);
+      setNotice(kind === "logo" ? "Logo 已上传并应用。" : "PWA 图标已上传并应用。");
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "站点资源上传失败。");
     } finally {
@@ -336,7 +378,7 @@ export default function SiteSettingsPage() {
     const configuredPath = toConfiguredApiAssetPath(asset.url);
     const activePath = asset.kind === "logo" ? draft?.logoPath : draft?.pwaIconPath;
     if (activePath === configuredPath) {
-      setError("该资源正在使用，请先选择并保存其他资源后再删除。");
+      setError("该资源正在使用，请先选择其他资源后再删除。");
       return;
     }
     if (!accessToken || !window.confirm(`确定永久删除“${asset.originalName}”吗？`)) return;
@@ -401,12 +443,31 @@ export default function SiteSettingsPage() {
       await deleteBackground(accessToken, background.id);
       setBackgrounds((current) => current.filter((item) => item.id !== background.id));
       if (draft?.defaultBackgroundUrl === toConfiguredApiAssetPath(background.url)) {
-        updateDraft({ defaultBackgroundUrl: BUILTIN_BACKGROUND_OPTIONS[0].path });
+        updateDraft({ defaultBackgroundUrl: BUILTIN_BACKGROUND_OPTIONS[0].path }, true);
       }
       if (background.isActive) notifyBackgroundChange();
       setNotice("背景图片及磁盘文件已删除。");
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "背景图片删除失败。");
+    } finally {
+      setBusyBackgroundId(null);
+    }
+  }
+
+  async function handleUseBackground(background: ManagedBackground) {
+    if (!accessToken) return;
+    setBusyBackgroundId(background.id);
+    setError("");
+    setNotice("");
+    try {
+      const active = await activateBackground(accessToken, background.id);
+      const configuredPath = toConfiguredApiAssetPath(active.url);
+      setBackgrounds((current) => current.map((item) => ({ ...item, isActive: item.id === active.id })));
+      updateDraft({ defaultBackgroundUrl: configuredPath }, true);
+      notifyBackgroundChange();
+      setNotice("全站背景已切换。");
+    } catch (useError) {
+      setError(useError instanceof Error ? useError.message : "背景切换失败。");
     } finally {
       setBusyBackgroundId(null);
     }
@@ -463,16 +524,19 @@ export default function SiteSettingsPage() {
         tone={error ? "error" : "success"}
       />
 
-      <form className="site-settings-form" onSubmit={(event) => void handleSettingsSubmit(event)}>
+      <div className="site-settings-form">
         <div className="site-settings-head">
           <div>
             <span className="section-label">HLOVET Admin</span>
             <h1>站点设置中心</h1>
           </div>
-          <button className="button site-settings-save" disabled={isSaving} type="submit">
-            {isSaving ? <Settings2 aria-hidden="true" className="spin" size={16} /> : <Save aria-hidden="true" size={16} />}
-            {isSaving ? "保存中" : "保存设置"}
-          </button>
+          <div className="site-settings-head-actions">
+            <span className={isSaving ? "saving" : ""}>{isSaving ? "正在自动保存" : "修改后自动保存"}</span>
+            <button className="button site-settings-save" disabled={isSaving} onClick={() => void handleResetSettings()} type="button">
+              {isSaving ? <Settings2 aria-hidden="true" className="spin" size={16} /> : <RotateCcw aria-hidden="true" size={16} />}
+              恢复默认
+            </button>
+          </div>
         </div>
 
         <div className="site-settings-grid">
@@ -481,8 +545,8 @@ export default function SiteSettingsPage() {
             <div className="site-settings-field-grid">
               <label><span>网站名称</span><input maxLength={80} onChange={(event) => updateDraft({ siteName: event.target.value })} value={draft.siteName} /></label>
               <label><span>浏览器标题</span><input maxLength={120} onChange={(event) => updateDraft({ browserTitle: event.target.value })} value={draft.browserTitle} /></label>
-              <label><span>开放注册</span><select onChange={(event) => updateDraft({ registrationOpen: event.target.value === "true" })} value={String(draft.registrationOpen)}><option value="true">开放</option><option value="false">关闭</option></select></label>
-              <label><span>默认角色</span><select onChange={(event) => updateDraft({ defaultRoleCode: event.target.value })} value={draft.defaultRoleCode}>{roleOptions.map((role) => <option key={role.code} value={role.code}>{role.name}</option>)}</select></label>
+              <label><span>开放注册</span><select onChange={(event) => updateDraft({ registrationOpen: event.target.value === "true" }, true)} value={String(draft.registrationOpen)}><option value="true">开放</option><option value="false">关闭</option></select></label>
+              <label><span>默认角色</span><select onChange={(event) => updateDraft({ defaultRoleCode: event.target.value }, true)} value={draft.defaultRoleCode}>{roleOptions.map((role) => <option key={role.code} value={role.code}>{role.name}</option>)}</select></label>
             </div>
             <div className="site-resource-stack">
               <SiteResourcePicker
@@ -494,7 +558,7 @@ export default function SiteSettingsPage() {
                 kind="logo"
                 label="Logo"
                 onDelete={(asset) => void handleDeleteAsset(asset)}
-                onSelect={(path) => updateDraft({ logoPath: path })}
+                onSelect={(path) => updateDraft({ logoPath: path }, true)}
                 onUpload={(files) => void handleAssetUpload("logo", files)}
               />
               <SiteResourcePicker
@@ -506,7 +570,7 @@ export default function SiteSettingsPage() {
                 kind="pwa_icon"
                 label="PWA 图标"
                 onDelete={(asset) => void handleDeleteAsset(asset)}
-                onSelect={(path) => updateDraft({ pwaIconPath: path })}
+                onSelect={(path) => updateDraft({ pwaIconPath: path }, true)}
                 onUpload={(files) => void handleAssetUpload("pwa_icon", files)}
               />
             </div>
@@ -515,7 +579,7 @@ export default function SiteSettingsPage() {
           <section className="site-settings-card">
             <PanelTitle icon={Settings2} label="默认主题" />
             <div className="site-settings-field-grid">
-              <label><span>主题</span><select onChange={(event) => updateDraft({ defaultThemeId: event.target.value as ThemeId })} value={draft.defaultThemeId}>{portalThemes.map((theme) => <option key={theme.id} value={theme.id}>{theme.name}</option>)}<option value="custom">自定义</option></select></label>
+              <label><span>主题</span><select onChange={(event) => updateDraft({ defaultThemeId: event.target.value as ThemeId }, true)} value={draft.defaultThemeId}>{portalThemes.map((theme) => <option key={theme.id} value={theme.id}>{theme.name}</option>)}<option value="custom">自定义</option></select></label>
               <ColorField label="强调色" value={draft.defaultAccent} onChange={(value) => updateDraft({ defaultAccent: value })} />
               <ColorField label="卡片颜色" value={draft.defaultSurface} onChange={(value) => updateDraft({ defaultSurface: value })} />
               <ColorField label="文字颜色" value={draft.defaultForeground} onChange={(value) => updateDraft({ defaultForeground: value })} />
@@ -530,9 +594,9 @@ export default function SiteSettingsPage() {
           <section className="site-settings-card">
             <PanelTitle icon={Package} label="安装包设置" />
             <div className="site-settings-field-grid">
-              <label><span>安装页</span><select onChange={(event) => updateDraft({ installPageEnabled: event.target.value === "true" })} value={String(draft.installPageEnabled)}><option value="true">启用</option><option value="false">关闭</option></select></label>
-              <label><span>保留历史版本</span><select onChange={(event) => updateDraft({ apkHistoryEnabled: event.target.value === "true" })} value={String(draft.apkHistoryEnabled)}><option value="true">保留</option><option value="false">只保留最新版</option></select></label>
-              <label><span>自动清理旧版</span><select onChange={(event) => updateDraft({ apkAutoCleanupEnabled: event.target.value === "true" })} value={String(draft.apkAutoCleanupEnabled)}><option value="false">手动清理</option><option value="true">自动清理</option></select></label>
+              <label><span>安装页</span><select onChange={(event) => updateDraft({ installPageEnabled: event.target.value === "true" }, true)} value={String(draft.installPageEnabled)}><option value="true">启用</option><option value="false">关闭</option></select></label>
+              <label><span>保留历史版本</span><select onChange={(event) => updateDraft({ apkHistoryEnabled: event.target.value === "true" }, true)} value={String(draft.apkHistoryEnabled)}><option value="true">保留</option><option value="false">只保留最新版</option></select></label>
+              <label><span>自动清理旧版</span><select onChange={(event) => updateDraft({ apkAutoCleanupEnabled: event.target.value === "true" }, true)} value={String(draft.apkAutoCleanupEnabled)}><option value="false">手动清理</option><option value="true">自动清理</option></select></label>
               <label><span>最多保留</span><input max={20} min={1} onChange={(event) => updateDraft({ apkRetentionCount: Number(event.target.value) })} type="number" value={draft.apkRetentionCount} /></label>
             </div>
             <Link className="text-action primary site-settings-inline-link" href="/admin/android">进入安装包管理</Link>
@@ -547,7 +611,7 @@ export default function SiteSettingsPage() {
               <SummaryTile label="背景图库" value={`${backgrounds.length} 张`} />
             </div>
             <p className="site-settings-hint">
-              默认背景路径就是新访客和未单独设置主题用户看到的全站背景；选择上传背景后，保存设置会同步设为当前全站背景。
+              默认背景就是新访客和未单独设置主题用户看到的全站背景；点击背景卡片上的“使用”后会立即同步到所有用户。
             </p>
           </section>
 
@@ -556,7 +620,7 @@ export default function SiteSettingsPage() {
             <div className="site-background-tools">
               <div>
                 <strong>默认背景</strong>
-                <span>可以选择内置图，也可以上传自己的背景。上传图会保存在服务器磁盘中。</span>
+                <span>上传自己的背景图片，上传后可预览、启用或从服务器磁盘中永久删除。</span>
               </div>
               <form className="site-background-upload" onSubmit={(event) => void handleBackgroundUpload(event)}>
                 <label htmlFor="site-background-file">
@@ -581,17 +645,18 @@ export default function SiteSettingsPage() {
               busyBackgroundId={busyBackgroundId}
               currentPath={draft.defaultBackgroundUrl}
               onDelete={(background) => void handleDeleteBackground(background)}
-              onSelect={(path) => updateDraft({ defaultBackgroundUrl: path })}
+              onPreview={setPreviewBackground}
+              onUse={(background) => void handleUseBackground(background)}
             />
           </section>
 
           <section className="site-settings-card wide">
             <PanelTitle icon={FileText} label="内容发布设置" />
             <div className="site-settings-field-grid compact">
-              <label><span>默认阅读权限</span><select onChange={(event) => updateDraft({ defaultArticleVisibility: event.target.value as SiteSettingsInput["defaultArticleVisibility"] })} value={draft.defaultArticleVisibility}>{VISIBILITY_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+              <label><span>默认阅读权限</span><select onChange={(event) => updateDraft({ defaultArticleVisibility: event.target.value as SiteSettingsInput["defaultArticleVisibility"] }, true)} value={draft.defaultArticleVisibility}>{VISIBILITY_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
               <label><span>图片上限 MB</span><input max={30} min={1} onChange={(event) => updateDraft({ articleImageMaxSizeMb: Number(event.target.value) })} type="number" value={draft.articleImageMaxSizeMb} /></label>
-              <label><span>评论</span><select onChange={(event) => updateDraft({ commentsEnabled: event.target.value === "true" })} value={String(draft.commentsEnabled)}><option value="true">开启</option><option value="false">关闭</option></select></label>
-              <label><span>举报</span><select onChange={(event) => updateDraft({ reportsEnabled: event.target.value === "true" })} value={String(draft.reportsEnabled)}><option value="true">开启</option><option value="false">关闭</option></select></label>
+              <label><span>评论</span><select onChange={(event) => updateDraft({ commentsEnabled: event.target.value === "true" }, true)} value={String(draft.commentsEnabled)}><option value="true">开启</option><option value="false">关闭</option></select></label>
+              <label><span>举报</span><select onChange={(event) => updateDraft({ reportsEnabled: event.target.value === "true" }, true)} value={String(draft.reportsEnabled)}><option value="true">开启</option><option value="false">关闭</option></select></label>
             </div>
             <div className="taxonomy-panels">
               <TaxonomyPanel
@@ -630,7 +695,7 @@ export default function SiteSettingsPage() {
                 <label key={key}>
                   <input
                     checked={Boolean(draft[key])}
-                    onChange={(event) => updateDraft({ [key]: event.target.checked } as Partial<SiteSettingsInput>)}
+                    onChange={(event) => updateDraft({ [key]: event.target.checked } as Partial<SiteSettingsInput>, true)}
                     type="checkbox"
                   />
                   <span>{label}</span>
@@ -652,7 +717,14 @@ export default function SiteSettingsPage() {
             <p className="site-settings-hint">模板支持变量：{"{actor}"}、{"{author}"}、{"{article}"}、{"{comment}"}、{"{result}"}、{"{count}"}。</p>
           </section>
         </div>
-      </form>
+      </div>
+      {previewBackground ? <div className="site-background-preview-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setPreviewBackground(null); }} role="presentation">
+        <div aria-modal="true" className="site-background-preview-dialog" role="dialog">
+          <button aria-label="关闭背景预览" onClick={() => setPreviewBackground(null)} type="button"><X aria-hidden="true" size={20} /></button>
+          <img alt={previewBackground.originalName} src={resolveBackgroundUrl(previewBackground)} />
+          <strong>{previewBackground.originalName}</strong>
+        </div>
+      </div> : null}
     </section>
   );
 }
@@ -802,46 +874,37 @@ function BackgroundPicker({
   busyBackgroundId,
   currentPath,
   onDelete,
-  onSelect,
+  onPreview,
+  onUse,
 }: {
   backgrounds: ManagedBackground[];
   busyBackgroundId: number | null;
   currentPath: string;
   onDelete: (background: ManagedBackground) => void;
-  onSelect: (path: string) => void;
+  onPreview: (background: ManagedBackground) => void;
+  onUse: (background: ManagedBackground) => void;
 }) {
   return (
     <div className="site-background-picker">
-      {BUILTIN_BACKGROUND_OPTIONS.map((item) => (
-        <article className={`site-background-choice${currentPath === item.path ? " active" : ""}`} key={item.path}>
-          <button onClick={() => onSelect(item.path)} type="button">
-            <span style={{ backgroundImage: `url("${item.path}")` }} />
-            <strong>{item.label}</strong>
-            <small>{item.path}</small>
-          </button>
-        </article>
-      ))}
       {backgrounds.map((background) => {
         const configuredPath = toConfiguredApiAssetPath(background.url);
+        const isActive = background.isActive || currentPath === configuredPath;
         return (
-          <article className={`site-background-choice uploaded${currentPath === configuredPath ? " active" : ""}${background.isActive ? " live" : ""}`} key={background.id}>
-            <button onClick={() => onSelect(configuredPath)} type="button">
-              <span style={{ backgroundImage: `url("${resolveBackgroundUrl(background)}")` }} />
+          <article className={`site-background-choice uploaded${isActive ? " active live" : ""}`} key={background.id}>
+            <span className="site-background-image" style={{ backgroundImage: `url("${resolveBackgroundUrl(background)}")` }} />
+            <span className="site-background-copy">
               <strong title={background.originalName}>{background.originalName}</strong>
-              <small>{formatFileSize(background.sizeBytes)} · {background.isActive ? "当前全站背景" : "已上传"}</small>
-            </button>
-            <button
-              aria-label={`删除 ${background.originalName}`}
-              className="site-background-delete"
-              disabled={busyBackgroundId === background.id}
-              onClick={() => onDelete(background)}
-              type="button"
-            >
-              <Trash2 aria-hidden="true" size={14} />
-            </button>
+              <small>{formatFileSize(background.sizeBytes)} · {isActive ? "当前全站背景" : "已上传"}</small>
+            </span>
+            <span className="site-background-actions">
+              <button aria-label={`预览 ${background.originalName}`} onClick={() => onPreview(background)} title="预览" type="button"><Eye aria-hidden="true" size={15} /></button>
+              <button aria-label={`使用 ${background.originalName}`} className={isActive ? "active" : ""} disabled={busyBackgroundId === background.id || isActive} onClick={() => onUse(background)} title={isActive ? "正在使用" : "使用"} type="button"><Check aria-hidden="true" size={15} /></button>
+              <button aria-label={`删除 ${background.originalName}`} className="danger" disabled={busyBackgroundId === background.id} onClick={() => onDelete(background)} title="删除" type="button"><Trash2 aria-hidden="true" size={15} /></button>
+            </span>
           </article>
         );
       })}
+      {!backgrounds.length ? <span className="site-background-empty"><FolderOpen aria-hidden="true" size={17} />还没有上传背景图片</span> : null}
     </div>
   );
 }
@@ -967,4 +1030,27 @@ function formatSelectedBackgroundFiles(files: File[]): string {
 function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function partitionSettingsPatch(patch: Partial<SiteSettingsInput>): {
+  pending: Partial<SiteSettingsInput>;
+  ready: Partial<SiteSettingsInput>;
+} {
+  const colorKeys = new Set<keyof SiteSettingsInput>([
+    "defaultAccent",
+    "defaultSurface",
+    "defaultForeground",
+    "defaultMuted",
+    "defaultGlassTint",
+  ]);
+  const pending: Partial<SiteSettingsInput> = {};
+  const ready: Partial<SiteSettingsInput> = {};
+
+  for (const [rawKey, value] of Object.entries(patch)) {
+    const key = rawKey as keyof SiteSettingsInput;
+    const target = colorKeys.has(key) && !/^#[0-9a-fA-F]{6}$/.test(String(value)) ? pending : ready;
+    Object.assign(target, { [key]: value });
+  }
+
+  return { pending, ready };
 }

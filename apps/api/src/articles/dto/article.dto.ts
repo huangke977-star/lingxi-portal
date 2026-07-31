@@ -106,6 +106,27 @@ export class ListArticlesQueryDto {
   sort: "latest" | "popular" | "pinned" = "latest";
 }
 
+export class ListArticleCommentsQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  cursor?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  pageSize = 10;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  focusId?: number;
+}
+
 export class CreateArticleCommentDto {
   @IsString()
   @MaxLength(2000)

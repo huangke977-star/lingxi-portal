@@ -12,7 +12,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
-import { ArticleBackToTop, ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
+import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticlePinBadge, ArticleStats, ArticleTaxonomy, RecentCommenters, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import {
@@ -229,7 +229,6 @@ function MyArticlesContent() {
       ) : <div className="article-empty-state"><strong>这里还没有文章</strong><span>{querySearch ? "换一个关键词试试。" : status === "deleted" ? "回收站目前是空的。" : "点击右上角“写文章”开始创作。"}</span></div>}
 
       {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
-      <ArticleBackToTop />
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );

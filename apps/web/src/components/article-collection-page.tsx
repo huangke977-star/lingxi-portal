@@ -4,7 +4,7 @@ import { Bookmark, Heart, Rss, Search, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
-import { ArticleBackToTop, ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
+import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleCard } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import {
@@ -152,7 +152,6 @@ export function ArticleCollectionPage({ mode }: { mode: CollectionMode }) {
       )}
 
       {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
-      <ArticleBackToTop />
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );

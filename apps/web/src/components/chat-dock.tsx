@@ -1719,9 +1719,6 @@ export function ChatDock() {
 
   const openNotificationChannel = NOTIFICATION_CHANNELS.find((item) => item.id === openNotificationChannelMenuId) ?? null;
   const openNotificationChannelItems = openNotificationChannel ? channelNotifications[openNotificationChannel.channel] : [];
-  const openNotificationChannelPushEnabled = openNotificationChannel
-    ? notificationChannelStateMap.get(openNotificationChannel.channel)?.pushEnabled ?? true
-    : true;
 
   const callPanel = <ChatCallPanel
     isPreparing={chatCalls.isPreparing}
@@ -1846,7 +1843,6 @@ export function ChatDock() {
                     <span className="chat-notification-channel-action" data-chat-notification-action>
                       <button aria-expanded={openNotificationChannelMenuId === entry.id} aria-label={`${entry.config.label}管理`} onClick={(event) => { event.stopPropagation(); setOpenNotificationChannelMenuId((current) => current === entry.id ? 0 : entry.id); }} title="频道管理" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
                       {isDesktop && openNotificationChannelMenuId === entry.id ? <span className="chat-notification-channel-menu">
-                        <button onClick={() => void toggleNotificationChannelPush(entry.config.channel, entry.config.label, !pushEnabled)} type="button">{pushEnabled ? <BellOff aria-hidden="true" size={14} /> : <Bell aria-hidden="true" size={14} />}{pushEnabled ? "暂停推送" : "接收推送"}</button>
                         <button className="danger" onClick={() => requestNotificationChannelHide(entry.config.channel, entry.id, entry.config.label)} type="button"><Trash2 aria-hidden="true" size={14} />删除频道通知</button>
                         {items.length ? <button className="danger" onClick={() => requestNotificationChannelClear(entry.config.channel, entry.config.label)} type="button"><Eraser aria-hidden="true" size={14} />清空当前频道</button> : null}
                       </span> : null}
@@ -2050,7 +2046,6 @@ export function ChatDock() {
       </section>
       {!isDesktop && openNotificationChannel && typeof document !== "undefined" ? createPortal(
         <div className="chat-mobile-channel-sheet" data-chat-notification-action>
-          <button onClick={() => void toggleNotificationChannelPush(openNotificationChannel.channel, openNotificationChannel.label, !openNotificationChannelPushEnabled)} type="button">{openNotificationChannelPushEnabled ? <BellOff aria-hidden="true" size={15} /> : <Bell aria-hidden="true" size={15} />}{openNotificationChannelPushEnabled ? "暂停推送" : "接收推送"}</button>
           <button className="danger" onClick={() => requestNotificationChannelHide(openNotificationChannel.channel, openNotificationChannel.id, openNotificationChannel.label)} type="button"><Trash2 aria-hidden="true" size={15} />删除频道通知</button>
           {openNotificationChannelItems.length ? <button className="danger" onClick={() => requestNotificationChannelClear(openNotificationChannel.channel, openNotificationChannel.label)} type="button"><Eraser aria-hidden="true" size={15} />清空当前频道</button> : null}
         </div>,

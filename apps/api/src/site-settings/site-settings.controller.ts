@@ -60,6 +60,12 @@ export class SiteSettingsController {
     return this.siteSettingsService.updateSettings(dto);
   }
 
+  @Post("reset")
+  @UseGuards(JwtAuthGuard, SuperAdminGuard)
+  resetSettings(): Promise<SiteSettingsResponse> {
+    return this.siteSettingsService.resetSettings();
+  }
+
   @Get("assets")
   @UseGuards(JwtAuthGuard, SuperAdminGuard)
   listAssets(@Query("kind") kind?: string): Promise<SiteAssetResponse[]> {

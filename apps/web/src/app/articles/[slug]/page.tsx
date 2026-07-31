@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { Bookmark, CalendarDays, CornerDownRight, Flag, Heart, MessageCircle, Reply, Rss, Send, Tag, ThumbsUp, Trash2, X } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
+import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleAuthorLine, ArticleBody, ArticleStats, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import { LikeBurst } from "@/components/like-burst";
@@ -30,6 +31,8 @@ import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-ap
 import { getPublicProfile, PublicProfile, subscribeToAuthor, unsubscribeFromAuthor } from "@/lib/social-api";
 import { notifySocialStateChange } from "@/lib/social-events";
 
+const COMMENT_PAGE_SIZE = 10;
+
 export default function ArticleDetailPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
@@ -38,6 +41,9 @@ export default function ArticleDetailPage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [comments, setComments] = useState<ArticleComment[]>([]);
+  const [commentNextCursor, setCommentNextCursor] = useState<number | null>(null);
+  const [hasMoreComments, setHasMoreComments] = useState(false);
+  const [isLoadingMoreComments, setIsLoadingMoreComments] = useState(false);
   const [commentDraft, setCommentDraft] = useState("");
   const [replyingTo, setReplyingTo] = useState<ArticleComment | null>(null);
   const [reportingComment, setReportingComment] = useState<ArticleComment | null>(null);
@@ -56,6 +62,7 @@ export default function ArticleDetailPage() {
   const [highlightCommentId, setHighlightCommentId] = useState<number | null>(null);
   const [authorProfile, setAuthorProfile] = useState<PublicProfile | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const requestedCommentLoadRef = useRef(0);
   const commentThreads = useMemo(() => buildArticleCommentThreads(comments), [comments]);
   const requestedCommentId = Number(searchParams.get("commentId") ?? 0);
 
@@ -69,13 +76,15 @@ export default function ArticleDetailPage() {
     Promise.all([
       token ? getMe(token) : Promise.resolve(null),
       token ? getVisibleArticle(token, slug) : getPublicArticle(slug),
-      listArticleComments(slug, token ?? undefined),
+      listArticleComments(slug, token ?? undefined, { pageSize: COMMENT_PAGE_SIZE, focusId: requestedCommentId || undefined }),
       getPublicSiteSettings().catch(() => null),
     ])
       .then(([currentUser, loadedArticle, loadedComments, loadedSettings]) => {
         setUser(currentUser);
         setArticle(loadedArticle);
         setComments(loadedComments.items);
+        setCommentNextCursor(loadedComments.nextCursor);
+        setHasMoreComments(loadedComments.hasMore);
         setSiteSettings(loadedSettings);
         if (token && currentUser && currentUser.id !== loadedArticle.author.id) {
           void getPublicProfile(token, loadedArticle.author.id).then(setAuthorProfile).catch(() => undefined);
@@ -89,7 +98,10 @@ export default function ArticleDetailPage() {
             setUser(null);
             setIsLoggedIn(false);
             setArticle(loadedArticle);
-            setComments((await listArticleComments(slug)).items);
+            const loadedComments = await listArticleComments(slug, undefined, { pageSize: COMMENT_PAGE_SIZE, focusId: requestedCommentId || undefined });
+            setComments(loadedComments.items);
+            setCommentNextCursor(loadedComments.nextCursor);
+            setHasMoreComments(loadedComments.hasMore);
             return;
           } catch (fallbackError) {
             setError(fallbackError instanceof Error ? fallbackError.message : "文章加载失败。");
@@ -99,7 +111,39 @@ export default function ArticleDetailPage() {
         setError(loadError instanceof Error ? loadError.message : "文章加载失败。");
       })
       .finally(() => setIsLoading(false));
-  }, [params.slug]);
+  }, [params.slug, requestedCommentId]);
+
+  useEffect(() => {
+    if (!article || requestedCommentId <= 0 || comments.some((comment) => comment.id === requestedCommentId)) return;
+    if (requestedCommentLoadRef.current === requestedCommentId) return;
+    requestedCommentLoadRef.current = requestedCommentId;
+    const token = readAccessToken();
+    void listArticleComments(article.slug, token ?? undefined, {
+      pageSize: COMMENT_PAGE_SIZE,
+      focusId: requestedCommentId,
+    }).then((page) => {
+      setComments((current) => mergeArticleComments(current, page.items));
+    }).catch(() => undefined);
+  }, [article, comments, requestedCommentId]);
+
+  const loadMoreComments = useCallback(async () => {
+    if (!article || !hasMoreComments || !commentNextCursor || isLoadingMoreComments) return;
+    setIsLoadingMoreComments(true);
+    try {
+      const token = readAccessToken();
+      const page = await listArticleComments(article.slug, token ?? undefined, {
+        cursor: commentNextCursor,
+        pageSize: COMMENT_PAGE_SIZE,
+      });
+      setComments((current) => mergeArticleComments(current, page.items));
+      setCommentNextCursor(page.nextCursor);
+      setHasMoreComments(page.hasMore);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "更多评论加载失败。");
+    } finally {
+      setIsLoadingMoreComments(false);
+    }
+  }, [article, commentNextCursor, hasMoreComments, isLoadingMoreComments]);
 
   useEffect(() => {
     if (requestedCommentId <= 0 || !comments.some((comment) => comment.id === requestedCommentId)) return;
@@ -182,7 +226,7 @@ export default function ArticleDetailPage() {
     setIsSubmittingComment(true);
     try {
       const comment = await createArticleComment(token, article.id, commentDraft.trim(), replyingTo?.id);
-      setComments((current) => [...current, comment]);
+      setComments((current) => mergeArticleComments(current, [comment]));
       setArticle((current) => current ? { ...current, commentCount: current.commentCount + 1 } : current);
       setCommentDraft("");
       setReplyingTo(null);
@@ -204,16 +248,12 @@ export default function ArticleDetailPage() {
       router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
       return;
     }
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
     setReplyingTo(comment);
     window.requestAnimationFrame(() => {
       const composer = composerRef.current;
       if (!composer) return;
-      composer.focus({ preventScroll: true });
-      if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
-        window.scrollTo({ left: scrollX, top: scrollY, behavior: "auto" });
-      }
+      composer.closest("form")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      window.setTimeout(() => composer.focus({ preventScroll: true }), 180);
     });
   }
 
@@ -222,8 +262,10 @@ export default function ArticleDetailPage() {
     if (!token || !article || !window.confirm("确定删除这条评论吗？")) return;
     try {
       await deleteArticleComment(token, comment.id);
-      const refreshed = await listArticleComments(article.slug, token);
+      const refreshed = await listArticleComments(article.slug, token, { pageSize: COMMENT_PAGE_SIZE });
       setComments(refreshed.items);
+      setCommentNextCursor(refreshed.nextCursor);
+      setHasMoreComments(refreshed.hasMore);
       setArticle((current) => current ? { ...current, commentCount: Math.max(0, current.commentCount - 1) } : current);
       if (replyingTo?.id === comment.id) setReplyingTo(null);
       setNotice("评论已删除。");
@@ -331,7 +373,6 @@ export default function ArticleDetailPage() {
 
       <section className="article-comments-section">
         <div className="article-section-heading"><div><span className="section-label">Conversation</span><h2>评论与回复</h2></div><span>{article.commentCount} 条</span></div>
-        {commentThreads.length ? <div className="article-comments-list">{commentThreads.map((thread) => <section className="article-comment-thread" key={thread.root.id}>{renderComment(thread.root)}{thread.replies.length ? <div className="article-comment-replies">{thread.replies.map(({ comment, parent }) => renderComment(comment, parent ?? thread.root))}</div> : null}</section>)}</div> : <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />还没有评论。</div>}
         {siteSettings?.commentsEnabled === false ? <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />评论功能暂未开放。</div> : <form className="article-comment-form" onSubmit={handleCommentSubmit}>
           <div aria-hidden={!replyingTo} className={`article-composer-context${replyingTo ? " active" : ""}`}>
             {replyingTo ? <><span title={`回复 @${replyingTo.author.nickname}`}>回复 <strong>@{replyingTo.author.nickname}</strong></span><button aria-label="取消回复" onClick={() => setReplyingTo(null)} title="取消回复" type="button"><X aria-hidden="true" size={14} /></button></> : null}
@@ -342,9 +383,21 @@ export default function ArticleDetailPage() {
             <button className="button" disabled={isSubmittingComment || !commentDraft.trim()} type="submit"><Send aria-hidden="true" size={16} />{isSubmittingComment ? "发布中" : replyingTo ? "发布回复" : "发布评论"}</button>
           </div>
         </form>}
+        {commentThreads.length ? <>
+          <div className="article-comments-list">{commentThreads.map((thread) => <section className="article-comment-thread" key={thread.root.id}>{renderComment(thread.root)}{thread.replies.length ? <div className="article-comment-replies">{thread.replies.map(({ comment, parent }) => renderComment(comment, parent ?? thread.root))}</div> : null}</section>)}</div>
+          <ArticleInfiniteFooter hasMore={hasMoreComments} isLoading={isLoadingMoreComments} onLoadMore={() => void loadMoreComments()} />
+        </> : <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />还没有评论。</div>}
       </section>
       {reportingComment ? <div className="comment-report-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setReportingComment(null); }}><form className="comment-report-dialog" onSubmit={handleReportSubmit}><div><strong>举报评论</strong><button aria-label="关闭举报窗口" onClick={() => setReportingComment(null)} type="button"><X aria-hidden="true" size={17} /></button></div><label>举报原因<select onChange={(event) => setReportReason(event.target.value as ArticleCommentReportReason)} value={reportReason}><option value="spam">垃圾广告</option><option value="harassment">辱骂骚扰</option><option value="illegal">违法违规</option><option value="privacy">隐私泄露</option><option value="misinformation">不实内容</option><option value="other">其他</option></select></label><label>补充说明<textarea maxLength={500} onChange={(event) => setReportDetail(event.target.value)} placeholder="可选，帮助管理员判断具体问题" rows={3} value={reportDetail} /></label><button className="button" disabled={isSubmittingReport} type="submit">{isSubmittingReport ? "提交中" : "提交举报"}</button></form></div> : null}
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
+  );
+}
+
+function mergeArticleComments(current: ArticleComment[], incoming: ArticleComment[]): ArticleComment[] {
+  const comments = new Map(current.map((comment) => [comment.id, comment]));
+  for (const comment of incoming) comments.set(comment.id, comment);
+  return Array.from(comments.values()).sort((left, right) =>
+    new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime() || left.id - right.id
   );
 }

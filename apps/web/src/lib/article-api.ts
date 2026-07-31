@@ -65,6 +65,13 @@ export interface ArticleComment {
   updatedAt: string;
 }
 
+export interface ArticleCommentsPage {
+  items: ArticleComment[];
+  hasMore: boolean;
+  nextCursor: number | null;
+  totalThreads: number;
+}
+
 export type ArticleCommentReportReason = "spam" | "harassment" | "illegal" | "privacy" | "misinformation" | "other";
 export type ArticleCommentReportStatus = "pending" | "resolved" | "rejected";
 
@@ -228,11 +235,18 @@ export function getVisibleArticle(accessToken: string, slug: string): Promise<Ar
   });
 }
 
-export function listArticleComments(slug: string, accessToken?: string): Promise<{ items: ArticleComment[] }> {
-  const path = accessToken
+export function listArticleComments(
+  slug: string,
+  accessToken?: string,
+  options: { cursor?: number; pageSize?: number; focusId?: number } = {},
+): Promise<ArticleCommentsPage> {
+  const basePath = accessToken
     ? `/articles/visible/${encodeURIComponent(slug)}/comments`
     : `/articles/${encodeURIComponent(slug)}/comments`;
-  return requestJson<{ items: ArticleComment[] }>(path, {
+  const params = new URLSearchParams({ pageSize: String(options.pageSize ?? 10) });
+  if (options.cursor) params.set("cursor", String(options.cursor));
+  if (options.focusId) params.set("focusId", String(options.focusId));
+  return requestJson<ArticleCommentsPage>(`${basePath}?${params}`, {
     cache: "no-store",
     headers: accessToken ? authHeaders(accessToken) : undefined,
   });

@@ -78,6 +78,50 @@ interface ArticleTaxonomyRecord {
 
 const SETTINGS_ID = 1;
 const DEFAULT_TAXONOMY_COLOR = "#7c8faa";
+const DEFAULT_SITE_SETTINGS: Prisma.SiteSettingUpdateInput = {
+  siteName: "HLOVET",
+  browserTitle: "HLOVET",
+  logoPath: "/favicon.svg",
+  pwaIconPath: "/icon-192.png",
+  defaultBackgroundUrl: "/images/hlovet-cloud-blue.jpeg",
+  defaultThemeId: "cloud-blue",
+  defaultAccent: "#1814f0",
+  defaultSurface: "#dfc8c8",
+  defaultForeground: "#2b2530",
+  defaultMuted: "#665867",
+  defaultCardAlpha: 50,
+  defaultGlassBlur: 18,
+  defaultGlassTint: "#fff3f6",
+  defaultGlassTintAlpha: 0,
+  registrationOpen: true,
+  defaultRoleCode: "qi_refining",
+  installPageEnabled: true,
+  apkHistoryEnabled: true,
+  apkAutoCleanupEnabled: false,
+  apkRetentionCount: 3,
+  defaultArticleVisibility: ArticleVisibility.public,
+  articleImageMaxSizeMb: 10,
+  commentsEnabled: true,
+  reportsEnabled: true,
+  notifyArticleLiked: true,
+  notifyArticleFavorited: true,
+  notifyArticleCommented: true,
+  notifyCommentReplied: true,
+  notifyAuthorSubscribed: true,
+  notifySubscriptionPublished: true,
+  notifyFriendRequest: true,
+  notifyCommentReport: true,
+  notifySystem: true,
+  templateArticleLiked: "{actor} 点赞了《{article}》。",
+  templateArticleFavorited: "{actor} 收藏了《{article}》。",
+  templateArticleCommented: "{actor} 评论了《{article}》。",
+  templateCommentReplied: "{actor} 回复了你在《{article}》中的评论。",
+  templateAuthorSubscribed: "{actor} 订阅了你。",
+  templateSubscriptionPublished: "{author} 发布了《{article}》。",
+  templateFriendRequest: "{actor} 向你发送了好友申请。",
+  templateCommentReportHandled: "你对《{article}》中评论的举报已{result}。",
+  templateCommentAuthorModerated: "你在《{article}》中的评论已被{result}。",
+};
 
 @Injectable()
 export class SiteSettingsService {
@@ -105,6 +149,17 @@ export class SiteSettingsService {
     const settings = await this.prisma.siteSetting.update({
       where: { id: SETTINGS_ID },
       data,
+      select: this.settingSelect(),
+    });
+    const taxonomies = await this.listTaxonomyRecords({ enabledOnly: false });
+    return this.toResponse(settings, taxonomies);
+  }
+
+  async resetSettings(): Promise<SiteSettingsResponse> {
+    await this.getSettingsRecord();
+    const settings = await this.prisma.siteSetting.update({
+      where: { id: SETTINGS_ID },
+      data: DEFAULT_SITE_SETTINGS,
       select: this.settingSelect(),
     });
     const taxonomies = await this.listTaxonomyRecords({ enabledOnly: false });

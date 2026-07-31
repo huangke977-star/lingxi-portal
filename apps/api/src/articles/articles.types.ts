@@ -116,6 +116,9 @@ export interface ArticleCenterSummaryResponse {
 
 export interface ArticleCommentsResponse {
   items: ArticleCommentResponse[];
+  hasMore: boolean;
+  nextCursor: number | null;
+  totalThreads: number;
 }
 
 export interface ArticleInteractionResponse {

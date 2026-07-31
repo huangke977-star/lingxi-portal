@@ -1,8 +1,8 @@
-import { ArticleStatus, ArticleVisibility } from "../src/generated/prisma/client";
+import { ArticleCommentStatus, ArticleStatus, ArticleVisibility } from "../src/generated/prisma/client";
 import { AuthenticatedUser } from "../src/auth/auth.types";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { ArticlesService } from "../src/articles/articles.service";
-import { ListArticlesQueryDto } from "../src/articles/dto/article.dto";
+import { ListArticleCommentsQueryDto, ListArticlesQueryDto } from "../src/articles/dto/article.dto";
 import { SiteSettingsService } from "../src/site-settings/site-settings.service";
 
 const user: AuthenticatedUser = {
@@ -183,6 +183,27 @@ function createService(prisma: object) {
   );
 }
 
+function commentRecord(id: number, parentId: number | null, createdAt: string) {
+  return {
+    id,
+    articleId: 12,
+    parentId,
+    body: `评论 ${id}`,
+    status: ArticleCommentStatus.active,
+    likeCount: 0,
+    createdAt: new Date(createdAt),
+    updatedAt: new Date(createdAt),
+    author: {
+      id: 20 + id,
+      nickname: `用户 ${id}`,
+      username: `user-${id}`,
+      avatarStoredName: null,
+      isSuperAdmin: false,
+      role: { code: "qi_refining", name: "练气", level: 10 },
+    },
+  };
+}
+
 describe("ArticlesService article center extensions", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -251,6 +272,79 @@ describe("ArticlesService article center extensions", () => {
       liked: 3,
       manage: 7,
     });
+  });
+
+  it("paginates comments by complete root threads", async () => {
+    const comments = [
+      commentRecord(1, null, "2026-07-20T00:00:01.000Z"),
+      commentRecord(4, 1, "2026-07-20T00:00:02.000Z"),
+      commentRecord(5, 4, "2026-07-20T00:00:03.000Z"),
+      commentRecord(2, null, "2026-07-20T00:00:04.000Z"),
+      commentRecord(3, null, "2026-07-20T00:00:05.000Z"),
+      commentRecord(6, 3, "2026-07-20T00:00:06.000Z"),
+    ];
+    const prisma = {
+      article: { findUnique: jest.fn(async () => articleRecord()) },
+      articleComment: {
+        findMany: jest.fn(async (args: { select: Record<string, unknown>; where?: { id?: { in: number[] } } }) => {
+          if (!("body" in args.select)) {
+            return comments.map(({ id, parentId, status }) => ({ id, parentId, status }));
+          }
+          const ids = args.where?.id?.in ?? comments.map((comment) => comment.id);
+          return comments.filter((comment) => ids.includes(comment.id));
+        }),
+      },
+      articleCommentLike: { findMany: jest.fn(async () => []) },
+      articleCommentReport: { findMany: jest.fn(async () => []) },
+    };
+    const service = createService(prisma);
+
+    const first = await service.listComments(
+      "server-notes-12345678",
+      user,
+      Object.assign(new ListArticleCommentsQueryDto(), { pageSize: 2 }),
+    );
+    expect(first.items.map((comment) => comment.id)).toEqual([1, 4, 5, 2]);
+    expect(first).toMatchObject({ hasMore: true, nextCursor: 2, totalThreads: 3 });
+
+    const second = await service.listComments(
+      "server-notes-12345678",
+      user,
+      Object.assign(new ListArticleCommentsQueryDto(), { cursor: 2, pageSize: 2 }),
+    );
+    expect(second.items.map((comment) => comment.id)).toEqual([3, 6]);
+    expect(second).toMatchObject({ hasMore: false, nextCursor: null, totalThreads: 3 });
+  });
+
+  it("includes the focused reply thread without breaking the first cursor page", async () => {
+    const comments = [
+      commentRecord(1, null, "2026-07-20T00:00:01.000Z"),
+      commentRecord(2, null, "2026-07-20T00:00:02.000Z"),
+      commentRecord(3, null, "2026-07-20T00:00:03.000Z"),
+      commentRecord(6, 3, "2026-07-20T00:00:04.000Z"),
+    ];
+    const prisma = {
+      article: { findUnique: jest.fn(async () => articleRecord()) },
+      articleComment: {
+        findMany: jest.fn(async (args: { select: Record<string, unknown>; where?: { id?: { in: number[] } } }) => {
+          if (!("body" in args.select)) return comments.map(({ id, parentId, status }) => ({ id, parentId, status }));
+          const ids = args.where?.id?.in ?? [];
+          return comments.filter((comment) => ids.includes(comment.id));
+        }),
+      },
+      articleCommentLike: { findMany: jest.fn(async () => []) },
+      articleCommentReport: { findMany: jest.fn(async () => []) },
+    };
+    const service = createService(prisma);
+
+    const result = await service.listComments(
+      "server-notes-12345678",
+      user,
+      Object.assign(new ListArticleCommentsQueryDto(), { focusId: 6, pageSize: 1 }),
+    );
+
+    expect(result.items.map((comment) => comment.id)).toEqual([1, 3, 6]);
+    expect(result).toMatchObject({ hasMore: true, nextCursor: 1, totalThreads: 3 });
   });
 
   it("aggregates unread article-like notifications and moves the latest actor to the front", async () => {

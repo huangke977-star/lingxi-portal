@@ -155,11 +155,18 @@ export function getAdminSiteSettings(accessToken: string): Promise<SiteSettings>
   });
 }
 
-export function updateSiteSettings(accessToken: string, input: SiteSettingsInput): Promise<SiteSettings> {
+export function updateSiteSettings(accessToken: string, input: Partial<SiteSettingsInput>): Promise<SiteSettings> {
   return requestJson<SiteSettings>("/site-settings", {
     method: "PATCH",
     headers: { Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify(input),
+  });
+}
+
+export function resetSiteSettings(accessToken: string): Promise<SiteSettings> {
+  return requestJson<SiteSettings>("/site-settings/reset", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
 }
 

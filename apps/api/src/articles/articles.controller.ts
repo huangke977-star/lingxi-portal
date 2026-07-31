@@ -31,6 +31,7 @@ import {
 import {
   CreateArticleCommentDto,
   CreateArticleDto,
+  ListArticleCommentsQueryDto,
   ListArticlesQueryDto,
   ModerateArticleCommentDto,
   ModerateArticleCommentReportDto,
@@ -171,17 +172,18 @@ export class ArticlesController {
   }
 
   @Get(":slug/comments")
-  listComments(@Param("slug") slug: string) {
-    return this.articlesService.listComments(slug, null);
+  listComments(@Param("slug") slug: string, @Query() query: ListArticleCommentsQueryDto) {
+    return this.articlesService.listComments(slug, null, query);
   }
 
   @Get("visible/:slug/comments")
   @UseGuards(JwtAuthGuard)
   listVisibleComments(
     @Param("slug") slug: string,
+    @Query() query: ListArticleCommentsQueryDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.articlesService.listComments(slug, user);
+    return this.articlesService.listComments(slug, user, query);
   }
 
   @Get(":slug")

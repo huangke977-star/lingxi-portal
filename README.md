@@ -146,9 +146,9 @@ The named `site_asset_uploads` volume stores uploaded Logo and PWA icon resource
 
 命名卷 `site_asset_uploads` 保存站点设置中上传并选择的 Logo 与 PWA 图标资源。部署时需要像保留背景图一样保留它。
 
-站点设置会标明当前正在使用的 Logo 与 PWA 图标。正在使用的上传资源不能删除；需要先选择其他资源并保存设置，服务端才允许永久删除原文件。
+站点设置会标明当前正在使用的 Logo 与 PWA 图标。正在使用的上传资源不能删除；需要先选择其他资源并等待自动生效，服务端才允许永久删除原文件。
 
-Site settings clearly mark the active Logo and PWA icon. An uploaded asset cannot be deleted while active; select and save another resource before permanently deleting the old file.
+Site settings clearly mark the active Logo and PWA icon. An uploaded asset cannot be deleted while active; select another resource and wait for the automatic update before permanently deleting the old file.
 
 The named `avatar_uploads` volume stores user avatars and should also be preserved during deployment.
 

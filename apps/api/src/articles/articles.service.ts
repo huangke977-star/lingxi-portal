@@ -25,6 +25,7 @@ import {
   ArticleStatusValue,
   CreateArticleCommentDto,
   CreateArticleDto,
+  ListArticleCommentsQueryDto,
   ListArticlesQueryDto,
   ModerateArticleCommentDto,
   ModerateArticleCommentReportDto,
@@ -294,17 +295,39 @@ export class ArticlesService {
     return this.getBySlug(slug, user, visitorKey);
   }
 
-  async listComments(slug: string, user: AuthenticatedUser | null): Promise<ArticleCommentsResponse> {
+  async listComments(
+    slug: string,
+    user: AuthenticatedUser | null,
+    query: ListArticleCommentsQueryDto,
+  ): Promise<ArticleCommentsResponse> {
     const article = await this.getArticleBySlug(slug);
     this.assertCanRead(article, user);
-    const comments = await this.prisma.articleComment.findMany({
+    const commentIndex = await this.prisma.articleComment.findMany({
       where: { articleId: article.id },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      select: this.commentSelect(),
+      select: { id: true, parentId: true, status: true },
     });
-    const includedIds = this.visibleCommentIds(comments);
-    const visibleComments = comments.filter((comment) => includedIds.has(comment.id));
-    const commentIds = visibleComments.map((comment) => comment.id);
+    const includedIds = this.visibleCommentIds(commentIndex);
+    const indexById = new Map(commentIndex.map((comment) => [comment.id, comment]));
+    const rootIds = commentIndex
+      .filter((comment) => comment.parentId === null && includedIds.has(comment.id))
+      .map((comment) => comment.id);
+    const cursorIndex = query.cursor ? rootIds.indexOf(query.cursor) : -1;
+    const startIndex = cursorIndex >= 0 ? cursorIndex + 1 : 0;
+    const pageRootIds = rootIds.slice(startIndex, startIndex + query.pageSize);
+    const selectedRootIds = new Set(pageRootIds);
+    if (query.focusId && includedIds.has(query.focusId)) {
+      selectedRootIds.add(this.commentThreadRootId(query.focusId, indexById));
+    }
+    const selectedCommentIds = commentIndex
+      .filter((comment) => includedIds.has(comment.id) && selectedRootIds.has(this.commentThreadRootId(comment.id, indexById)))
+      .map((comment) => comment.id);
+    const comments = selectedCommentIds.length ? await this.prisma.articleComment.findMany({
+      where: { id: { in: selectedCommentIds } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: this.commentSelect(),
+    }) : [];
+    const commentIds = comments.map((comment) => comment.id);
     const [likes, reports] = user && commentIds.length
       ? await Promise.all([
           this.prisma.articleCommentLike.findMany({
@@ -319,12 +342,16 @@ export class ArticlesService {
       : [[], []];
     const likedIds = new Set(likes.map((like) => like.commentId));
     const reportedIds = new Set(reports.map((report) => report.commentId));
+    const hasMore = startIndex + query.pageSize < rootIds.length;
     return {
-      items: visibleComments.map((comment) => this.toCommentResponse(comment, {
+      items: comments.map((comment) => this.toCommentResponse(comment, {
         liked: likedIds.has(comment.id),
         reported: reportedIds.has(comment.id),
         sanitizeHiddenBody: true,
       })),
+      hasMore,
+      nextCursor: hasMore ? pageRootIds.at(-1) ?? null : null,
+      totalThreads: rootIds.length,
     };
   }
 
@@ -812,6 +839,9 @@ export class ArticlesService {
           pendingReportCount: commentReports.filter((report) => report.status === ArticleCommentReportStatus.pending).length,
         });
       }),
+      hasMore: false,
+      nextCursor: null,
+      totalThreads: comments.filter((comment) => comment.parentId === null).length,
     };
   }
 
@@ -1399,6 +1429,19 @@ export class ArticlesService {
       }
     }
     return included;
+  }
+
+  private commentThreadRootId(
+    commentId: number,
+    commentsById: Map<number, { id: number; parentId: number | null }>,
+  ): number {
+    let current = commentsById.get(commentId);
+    const visited = new Set<number>();
+    while (current?.parentId && !visited.has(current.id)) {
+      visited.add(current.id);
+      current = commentsById.get(current.parentId);
+    }
+    return current?.id ?? commentId;
   }
 
   private async setCommentStatus(

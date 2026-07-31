@@ -4,7 +4,7 @@ import { Search, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
-import { ArticleBackToTop, ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
+import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleCard } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import { ArticleList, listPublicArticles, listVisibleArticles } from "@/lib/article-api";
@@ -130,7 +130,6 @@ function ArticlesContent() {
 
       {isLoading ? <div className="article-empty-state">正在读取文章。</div> : list.items.length ? <div className="article-feed-list">{list.items.map((article) => <ArticleCard article={article} key={article.id} />)}</div> : <div className="article-empty-state"><strong>还没有找到文章</strong><span>{querySearch ? "换一个关键词试试。" : "这里还没有发布内容。"}</span></div>}
       {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
-      <ArticleBackToTop />
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );
