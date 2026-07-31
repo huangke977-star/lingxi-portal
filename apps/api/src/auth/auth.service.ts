@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { RedisService } from '../redis/redis.service';
+import { SiteSettingsService } from '../site-settings/site-settings.service';
 import { UsersService } from '../users/users.service';
 import {
   AuthenticatedUser,
@@ -25,9 +26,15 @@ export class AuthService {
     private readonly refreshTokenService: RefreshTokenService,
     private readonly jwtService: JwtService,
     private readonly redis: RedisService,
+    private readonly siteSettingsService: SiteSettingsService,
   ) {}
 
   async register(dto: RegisterDto, context: RefreshSessionContext): Promise<AuthResponse> {
+    const registrationPolicy = await this.siteSettingsService.getRegistrationPolicy();
+    if (!registrationPolicy.registrationOpen) {
+      throw new ForbiddenException('Registration is currently closed.');
+    }
+
     const username = dto.username.trim();
     const nickname = dto.nickname.trim();
     const email = dto.email.trim().toLowerCase();
@@ -37,7 +44,13 @@ export class AuthService {
     }
 
     const passwordHash = await this.passwordService.hashPassword(dto.password);
-    const user = await this.usersService.createUser({ username, nickname, email, passwordHash });
+    const user = await this.usersService.createUser({
+      username,
+      nickname,
+      email,
+      passwordHash,
+      roleCode: registrationPolicy.defaultRoleCode,
+    });
 
     return this.createAuthResponse(user, context);
   }

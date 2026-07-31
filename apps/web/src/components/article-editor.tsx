@@ -22,8 +22,8 @@ import {
 } from "@/lib/article-api";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-api";
 
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const MAX_ARTICLE_IMAGES = 20;
 const MAX_SELECTED_TAGS = 6;
 const PENDING_IMAGE_PATH_PREFIX = "/__pending_article_image__/";
@@ -69,6 +69,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [article, setArticle] = useState<Article | null>(null);
   const [draft, setDraft] = useState<ArticleInput>(emptyDraft);
+  const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingArticleImage[]>([]);
   const [isLoading, setIsLoading] = useState(Boolean(articleId));
   const [isSaving, setIsSaving] = useState(false);
@@ -81,15 +82,24 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   const [isCategoryPickerOpen, setIsCategoryPickerOpen] = useState(false);
   const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
   const selectedTags = useMemo(() => parseArticleTags(draft.tags), [draft.tags]);
+  const configuredCategoryOptions = useMemo(
+    () => siteSettings?.taxonomies.categories.filter((item) => item.enabled).map((item) => item.name) ?? ARTICLE_CATEGORY_OPTIONS,
+    [siteSettings],
+  );
+  const configuredTagOptions = useMemo(
+    () => siteSettings?.taxonomies.tags.filter((item) => item.enabled).map((item) => item.name) ?? ARTICLE_TAG_OPTIONS,
+    [siteSettings],
+  );
+  const imageMaxSizeMb = siteSettings?.articleImageMaxSizeMb ?? 10;
   const categoryOptions = useMemo(
-    () => draft.category && !ARTICLE_CATEGORY_OPTIONS.includes(draft.category)
-      ? [draft.category, ...ARTICLE_CATEGORY_OPTIONS]
-      : ARTICLE_CATEGORY_OPTIONS,
-    [draft.category],
+    () => draft.category && !configuredCategoryOptions.includes(draft.category)
+      ? [draft.category, ...configuredCategoryOptions]
+      : configuredCategoryOptions,
+    [configuredCategoryOptions, draft.category],
   );
   const tagOptions = useMemo(
-    () => Array.from(new Set([...ARTICLE_TAG_OPTIONS, ...selectedTags])),
-    [selectedTags],
+    () => Array.from(new Set([...configuredTagOptions, ...selectedTags])),
+    [configuredTagOptions, selectedTags],
   );
   const pendingImageUrls = useMemo(
     () => Object.fromEntries(pendingImages.map((image) => [image.marker, image.previewUrl])),
@@ -148,14 +158,29 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       router.replace(`/login?from=${encodeURIComponent(articleId ? `/articles/edit/${articleId}` : "/articles/write")}`);
       return;
     }
-    const requests: [Promise<AuthUser>, Promise<Article> | null] = [
+    Promise.all([
       getMe(token),
-      articleId ? getMyArticle(token, articleId) : null,
-    ];
-    Promise.all(requests.filter(Boolean) as Array<Promise<AuthUser | Article>>)
+      articleId ? getMyArticle(token, articleId) : Promise.resolve(null),
+      getPublicSiteSettings().catch(() => null),
+    ] as const)
       .then((results) => {
         setUser(results[0] as AuthUser);
-        if (articleId && results[1]) applyArticle(results[1] as Article);
+        const loadedArticle = results[1] as Article | null;
+        const loadedSettings = results[2] as SiteSettings | null;
+        if (loadedSettings) {
+          setSiteSettings(loadedSettings);
+        }
+        if (loadedArticle) {
+          applyArticle(loadedArticle);
+          return;
+        }
+        if (loadedSettings) {
+          setDraft((current) => ({
+            ...current,
+            category: loadedSettings.taxonomies.categories[0]?.name ?? current.category,
+            visibility: loadedSettings.defaultArticleVisibility,
+          }));
+        }
       })
       .catch((loadError) => {
         if (isAuthExpiredError(loadError)) {
@@ -186,8 +211,8 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
         setError(`${file.name} 不是支持的图片格式。`);
         continue;
       }
-      if (file.size > MAX_IMAGE_SIZE) {
-        setError(`${file.name} 超过单张 10MB 限制。`);
+      if (file.size > imageMaxSizeMb * 1024 * 1024) {
+        setError(`${file.name} 超过单张 ${imageMaxSizeMb}MB 限制。`);
         continue;
       }
       if (accepted.length >= availableSlots) break;
@@ -449,7 +474,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
               {draft.visibility === "role_restricted" ? <input onChange={(event) => setDraft({ ...draft, roleCodes: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })} placeholder="角色代码，用逗号分隔" value={draft.roleCodes.join(", ")} /> : null}
             </div>
             <textarea className="article-editor-textarea" onChange={(event) => setDraft({ ...draft, content: event.target.value })} placeholder="支持 Markdown：标题、列表、表格、引用、链接、图片和代码块" ref={textareaRef} value={draft.content} />
-            <div className="article-editor-upload"><label className="text-action"><ImagePlus aria-hidden="true" size={16} />添加图片<input accept="image/jpeg,image/png,image/webp,image/avif" hidden multiple onChange={(event) => { insertImagesAtCursor(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} type="file" /></label><span>{pendingImages.length ? `待上传 ${pendingImages.length} 张，保存时才会上传` : "支持 JPG、PNG、WebP、AVIF，图片插入当前光标位置"}</span></div>
+            <div className="article-editor-upload"><label className="text-action"><ImagePlus aria-hidden="true" size={16} />添加图片<input accept="image/jpeg,image/png,image/webp,image/avif" hidden multiple onChange={(event) => { insertImagesAtCursor(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} type="file" /></label><span>{pendingImages.length ? `待上传 ${pendingImages.length} 张，保存时才会上传` : `支持 JPG、PNG、WebP、AVIF，单张不超过 ${imageMaxSizeMb}MB`}</span></div>
             {pendingImages.length ? <div className="article-pending-images">{pendingImages.map((image) => <span key={image.id}>{image.file.name}<button aria-label={`移除 ${image.file.name}`} onClick={() => removePendingImage(image)} title="移除图片" type="button"><X aria-hidden="true" size={14} /></button></span>)}</div> : null}
             <div className="article-editor-actions"><button className="button secondary" disabled={isSaving} onClick={() => void saveArticle(false)} type="button"><Save aria-hidden="true" size={16} />{isSaving ? "保存中" : article ? "保存修改" : "保存草稿"}</button><button className="button" disabled={isSaving || article?.status === "blocked"} onClick={() => void saveArticle(true)} type="button"><Send aria-hidden="true" size={16} />发布文章</button>{article?.status === "published" ? <button className="text-action" disabled={isSaving} onClick={() => void takeOffline()} type="button">下架</button> : null}{article ? <button className="text-danger-action" disabled={isSaving} onClick={() => void moveToTrash()} type="button"><Trash2 aria-hidden="true" size={16} />删除</button> : null}</div>
           </section>

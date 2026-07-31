@@ -45,6 +45,11 @@ enum ArticleVisibility {
   private
 }
 
+enum ArticleTaxonomyKind {
+  category
+  tag
+}
+
 enum ArticleCommentStatus {
   active
   blocked
@@ -243,6 +248,71 @@ model AndroidRelease {
   @@index([versionCode])
   @@index([uploadedById])
   @@map("android_releases")
+}
+
+model SiteSetting {
+  id                              Int               @id @default(1)
+  siteName                        String            @default("HLOVET") @map("site_name") @db.VarChar(80)
+  browserTitle                    String            @default("HLOVET") @map("browser_title") @db.VarChar(120)
+  logoPath                        String            @default("/favicon.svg") @map("logo_path") @db.VarChar(512)
+  pwaIconPath                     String            @default("/icon-192.png") @map("pwa_icon_path") @db.VarChar(512)
+  defaultBackgroundUrl            String            @default("/images/hlovet-cloud-blue.jpeg") @map("default_background_url") @db.VarChar(512)
+  defaultThemeId                  String            @default("cloud-blue") @map("default_theme_id") @db.VarChar(64)
+  defaultAccent                   String            @default("#1814f0") @map("default_accent") @db.VarChar(7)
+  defaultSurface                  String            @default("#dfc8c8") @map("default_surface") @db.VarChar(7)
+  defaultForeground               String            @default("#2b2530") @map("default_foreground") @db.VarChar(7)
+  defaultMuted                    String            @default("#665867") @map("default_muted") @db.VarChar(7)
+  defaultCardAlpha                Int               @default(50) @map("default_card_alpha")
+  defaultGlassBlur                Int               @default(18) @map("default_glass_blur")
+  defaultGlassTint                String            @default("#fff3f6") @map("default_glass_tint") @db.VarChar(7)
+  defaultGlassTintAlpha           Int               @default(0) @map("default_glass_tint_alpha")
+  registrationOpen                Boolean           @default(true) @map("registration_open")
+  defaultRoleCode                 String            @default("qi_refining") @map("default_role_code") @db.VarChar(64)
+  installPageEnabled              Boolean           @default(true) @map("install_page_enabled")
+  apkHistoryEnabled               Boolean           @default(true) @map("apk_history_enabled")
+  apkAutoCleanupEnabled           Boolean           @default(false) @map("apk_auto_cleanup_enabled")
+  apkRetentionCount               Int               @default(3) @map("apk_retention_count")
+  defaultArticleVisibility        ArticleVisibility @default(public) @map("default_article_visibility")
+  articleImageMaxSizeMb           Int               @default(10) @map("article_image_max_size_mb")
+  commentsEnabled                 Boolean           @default(true) @map("comments_enabled")
+  reportsEnabled                  Boolean           @default(true) @map("reports_enabled")
+  notifyArticleLiked              Boolean           @default(true) @map("notify_article_liked")
+  notifyArticleFavorited          Boolean           @default(true) @map("notify_article_favorited")
+  notifyArticleCommented          Boolean           @default(true) @map("notify_article_commented")
+  notifyCommentReplied            Boolean           @default(true) @map("notify_comment_replied")
+  notifyAuthorSubscribed          Boolean           @default(true) @map("notify_author_subscribed")
+  notifySubscriptionPublished     Boolean           @default(true) @map("notify_subscription_published")
+  notifyFriendRequest             Boolean           @default(true) @map("notify_friend_request")
+  notifyCommentReport             Boolean           @default(true) @map("notify_comment_report")
+  notifySystem                    Boolean           @default(true) @map("notify_system")
+  templateArticleLiked            String            @default("{actor} 点赞了《{article}》。") @map("template_article_liked") @db.VarChar(240)
+  templateArticleFavorited        String            @default("{actor} 收藏了《{article}》。") @map("template_article_favorited") @db.VarChar(240)
+  templateArticleCommented        String            @default("{actor} 评论了《{article}》。") @map("template_article_commented") @db.VarChar(240)
+  templateCommentReplied          String            @default("{actor} 回复了你在《{article}》中的评论。") @map("template_comment_replied") @db.VarChar(240)
+  templateAuthorSubscribed        String            @default("{actor} 订阅了你。") @map("template_author_subscribed") @db.VarChar(240)
+  templateSubscriptionPublished   String            @default("{author} 发布了《{article}》。") @map("template_subscription_published") @db.VarChar(240)
+  templateFriendRequest           String            @default("{actor} 向你发送了好友申请。") @map("template_friend_request") @db.VarChar(240)
+  templateCommentReportHandled    String            @default("你对《{article}》中评论的举报已{result}。") @map("template_comment_report_handled") @db.VarChar(240)
+  templateCommentAuthorModerated  String            @default("你在《{article}》中的评论已被{result}。") @map("template_comment_author_moderated") @db.VarChar(240)
+  createdAt                       DateTime          @default(now()) @map("created_at")
+  updatedAt                       DateTime          @updatedAt @map("updated_at")
+
+  @@map("site_settings")
+}
+
+model ArticleTaxonomy {
+  id        Int                 @id @default(autoincrement())
+  kind      ArticleTaxonomyKind
+  name      String              @db.VarChar(80)
+  color     String              @default("#7c8faa") @db.VarChar(7)
+  sortOrder Int                 @default(0) @map("sort_order")
+  enabled   Boolean             @default(true)
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
+
+  @@unique([kind, name])
+  @@index([kind, enabled, sortOrder])
+  @@map("article_taxonomies")
 }
 
 model PortalCategory {

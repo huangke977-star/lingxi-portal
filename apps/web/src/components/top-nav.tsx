@@ -52,6 +52,7 @@ import {
   notifySocialStateChange,
   openChatDock,
 } from "@/lib/social-events";
+import { getPublicSiteSettings } from "@/lib/site-settings-api";
 import { getAvatarFallbackText, getUserDisplayName } from "@/lib/user-display";
 
 const navItems = [
@@ -93,6 +94,7 @@ export function TopNav() {
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
   const [pendingReports, setPendingReports] = useState<ArticleCommentReport[]>([]);
   const [pendingReportCount, setPendingReportCount] = useState(0);
+  const [siteBrand, setSiteBrand] = useState({ logoPath: "/favicon.svg", siteName: "HLOVET" });
   const [headerError, setHeaderError] = useState("");
 
   const refreshHeaderData = useCallback(async () => {
@@ -150,6 +152,23 @@ export function TopNav() {
       window.clearInterval(timer);
     };
   }, [refreshHeaderData]);
+
+  useEffect(() => {
+    let isMounted = true;
+    getPublicSiteSettings()
+      .then((settings) => {
+        if (isMounted) {
+          setSiteBrand({
+            logoPath: settings.logoPath || "/favicon.svg",
+            siteName: settings.siteName || "HLOVET",
+          });
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isMenuOpen) return;
@@ -298,7 +317,7 @@ export function TopNav() {
     <header className="topbar">
       <nav aria-label="主导航" className="topbar-inner" ref={navRef}>
         <button aria-expanded={isMenuOpen} aria-label={isMenuOpen ? "关闭菜单" : "打开菜单"} className="menu-toggle" onClick={() => setIsMenuOpen((current) => !current)} type="button"><span /><span /><span /></button>
-        <Link className="brand" href="/"><span className="brand-mark brand-logo-mark"><img alt="" src="/favicon.svg" /></span><span className="brand-copy"><strong>HLOVET</strong><span>Personal Portal</span></span></Link>
+        <Link className="brand" href="/"><span className="brand-mark brand-logo-mark"><img alt="" src={siteBrand.logoPath} /></span><span className="brand-copy"><strong>{siteBrand.siteName}</strong><span>Personal Portal</span></span></Link>
         <div className="top-links desktop-links">{navItems.map((item) => <Link className={isActiveRoute(item.href) ? "active" : undefined} href={item.href} key={item.href}>{item.label}</Link>)}</div>
         <div className="account-zone">
           <PwaInstallButton />
@@ -332,7 +351,7 @@ export function TopNav() {
                 <div className="account-menu-head"><strong>{getUserDisplayName(user)}</strong><span>@{user.username}</span></div>
                 <Link href="/profile" onClick={() => setIsAccountMenuOpen(false)}>个人中心</Link>
                 {user.isSuperAdmin || user.role.level >= 90 ? <><Link href="/admin" onClick={() => setIsAccountMenuOpen(false)}>用户管理</Link><Link href="/admin/content" onClick={() => setIsAccountMenuOpen(false)}>内容管理</Link></> : null}
-                {user.isSuperAdmin ? <><Link href="/admin/backgrounds" onClick={() => setIsAccountMenuOpen(false)}>背景管理</Link><Link href="/admin/android" onClick={() => setIsAccountMenuOpen(false)}>安装包管理</Link><Link href="/admin/cache" onClick={() => setIsAccountMenuOpen(false)}>缓存管理</Link></> : null}
+                {user.isSuperAdmin ? <><Link href="/admin/settings" onClick={() => setIsAccountMenuOpen(false)}>站点设置</Link><Link href="/admin/backgrounds" onClick={() => setIsAccountMenuOpen(false)}>背景管理</Link><Link href="/admin/android" onClick={() => setIsAccountMenuOpen(false)}>安装包管理</Link><Link href="/admin/cache" onClick={() => setIsAccountMenuOpen(false)}>缓存管理</Link></> : null}
                 <button disabled={isLoggingOut} onClick={() => void handleLogout()} type="button">{isLoggingOut ? "退出中" : "退出登录"}</button>
               </div>
             </div>

@@ -141,10 +141,12 @@ export class UsersService {
     nickname: string;
     email: string;
     passwordHash: string;
+    roleCode?: string;
   }): Promise<AuthenticatedUser & { passwordHash: string }> {
     const username = input.username.trim();
+    const roleCode = input.roleCode?.trim() || "qi_refining";
     const role = await this.prisma.role.findUnique({
-      where: { code: "qi_refining" },
+      where: { code: roleCode },
       select: { id: true },
     });
 

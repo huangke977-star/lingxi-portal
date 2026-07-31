@@ -13,6 +13,7 @@ import {
 } from "../generated/prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
+import { SiteSettingsService } from "../site-settings/site-settings.service";
 import { ChatAttachmentsService } from "./chat-attachments.service";
 import {
   ListMessagesQueryDto,
@@ -93,6 +94,7 @@ export class SocialService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly chatAttachmentsService: ChatAttachmentsService,
+    private readonly siteSettingsService: SiteSettingsService,
   ) {}
 
   async getProfile(viewer: AuthenticatedUser, userId: number): Promise<PublicProfileResponse> {
@@ -141,17 +143,22 @@ export class SocialService {
       select: { authorId: true },
     });
     if (!existing) {
-      await this.prisma.$transaction([
-        this.prisma.userSubscription.create({ data: { subscriberId: user.id, authorId } }),
-        this.prisma.userNotification.create({ data: {
-          userId: authorId,
-          actorId: user.id,
-          type: UserNotificationType.author_subscribed,
-          channel: UserNotificationChannel.interaction,
-          title: "新的订阅者",
-          body: `${user.nickname || user.username} 订阅了你。`,
-        } }),
-      ]);
+      const notificationSettings = await this.siteSettingsService.getNotificationSettings();
+      await this.prisma.$transaction(async (transaction) => {
+        await transaction.userSubscription.create({ data: { subscriberId: user.id, authorId } });
+        if (notificationSettings.notifyAuthorSubscribed) {
+          await transaction.userNotification.create({ data: {
+            userId: authorId,
+            actorId: user.id,
+            type: UserNotificationType.author_subscribed,
+            channel: UserNotificationChannel.interaction,
+            title: "新的订阅者",
+            body: this.siteSettingsService.renderTemplate(notificationSettings.templates.authorSubscribed, {
+              actor: user.nickname || user.username,
+            }),
+          } });
+        }
+      });
     }
     return { subscribed: true, subscriberCount: await this.prisma.userSubscription.count({ where: { authorId } }) };
   }
@@ -303,6 +310,7 @@ export class SocialService {
       }
       return this.toFriendship(existing, user.id);
     }
+    const notificationSettings = await this.siteSettingsService.getNotificationSettings();
     const record = await this.prisma.$transaction(async (transaction) => {
       const friendship = await transaction.friendship.upsert({
         where: { userOneId_userTwoId: { userOneId, userTwoId } },
@@ -317,17 +325,22 @@ export class SocialService {
         },
         include: friendshipInclude,
       });
-      await transaction.userNotification.create({
-        data: {
-          userId: targetId,
-          actorId: user.id,
-          type: UserNotificationType.friend_request_received,
-          title: "新的好友申请",
-          body: `${user.nickname || user.username} 向你发送了好友申请。`,
-          actionUrl: `/messages?friendshipId=${friendship.id}`,
-          friendshipId: friendship.id,
-        },
-      });
+      if (notificationSettings.notifyFriendRequest) {
+        await transaction.userNotification.create({
+          data: {
+            userId: targetId,
+            actorId: user.id,
+            type: UserNotificationType.friend_request_received,
+            title: "新的好友申请",
+            body: this.siteSettingsService.renderTemplate(notificationSettings.templates.friendRequest, {
+              actor: user.nickname || user.username,
+              note: requestNote,
+            }),
+            actionUrl: `/messages?friendshipId=${friendship.id}`,
+            friendshipId: friendship.id,
+          },
+        });
+      }
       return friendship;
     });
     return this.toFriendship(record, user.id);
@@ -343,6 +356,7 @@ export class SocialService {
       throw new ForbiddenException("这条好友申请不能由当前账号处理。");
     }
     const now = new Date();
+    const notificationSettings = await this.siteSettingsService.getNotificationSettings();
     const record = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.friendship.update({
         where: { id: friendshipId },
@@ -386,19 +400,21 @@ export class SocialService {
           },
         });
       }
-      await transaction.userNotification.create({
-        data: {
-          userId: existing.requestedById,
-          actorId: user.id,
-          type: status === "accepted"
-            ? UserNotificationType.friend_request_accepted
-            : UserNotificationType.friend_request_declined,
-          title: status === "accepted" ? "好友申请已通过" : "好友申请未通过",
-          body: `${user.nickname || user.username}${status === "accepted" ? "接受" : "拒绝"}了你的好友申请。`,
-          actionUrl: "/messages",
-          friendshipId,
-        },
-      });
+      if (notificationSettings.notifyFriendRequest) {
+        await transaction.userNotification.create({
+          data: {
+            userId: existing.requestedById,
+            actorId: user.id,
+            type: status === "accepted"
+              ? UserNotificationType.friend_request_accepted
+              : UserNotificationType.friend_request_declined,
+            title: status === "accepted" ? "好友申请已通过" : "好友申请未通过",
+            body: `${user.nickname || user.username}${status === "accepted" ? "接受" : "拒绝"}了你的好友申请。`,
+            actionUrl: "/messages",
+            friendshipId,
+          },
+        });
+      }
       return updated;
     });
     return this.toFriendship(record, user.id);

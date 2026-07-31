@@ -34,6 +34,7 @@ import {
   promptPwaInstall,
   readInstallPrompt,
 } from "@/lib/pwa-install";
+import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-api";
 
 type DiagnosticStatus = "ok" | "warn" | "error" | "pending";
 
@@ -256,6 +257,7 @@ export function PwaDiagnostics() {
   const [checks, setChecks] = useState<DiagnosticItem[]>(initialChecks);
   const [manifest, setManifest] = useState<WebManifestSnapshot | null>(null);
   const [androidRelease, setAndroidRelease] = useState<AndroidRelease | StaticAndroidApkRelease | null>(null);
+  const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
   const [hasInstallPrompt, setHasInstallPrompt] = useState(false);
   const [hasGesture, setHasGesture] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -422,6 +424,11 @@ export function PwaDiagnostics() {
 
   useEffect(() => {
     let cancelled = false;
+    getPublicSiteSettings()
+      .then((settings) => {
+        if (!cancelled) setSiteSettings(settings);
+      })
+      .catch(() => undefined);
     getLatestAndroidRelease()
       .then(async (release) => {
         if (release) {
@@ -465,6 +472,27 @@ export function PwaDiagnostics() {
   const readyCount = renderedChecks.filter((item) => item.status === "ok").length;
   const blockerCount = renderedChecks.filter((item) => item.status === "error").length;
   const canPromptInstall = hasInstallPrompt && !browser?.isStandalone;
+
+  if (siteSettings && !siteSettings.installPageEnabled) {
+    return (
+      <section className="page-shell install-page">
+        <div className="install-hero">
+          <div>
+            <span className="section-label">Install</span>
+            <h1>{siteSettings.siteName} 暂未开放安装入口</h1>
+            <p>当前站点关闭了 PWA 安装诊断和 Android APK 下载入口。</p>
+          </div>
+          <div className="install-score" data-state="warn">
+            <strong>OFF</strong>
+            <span>已关闭</span>
+          </div>
+        </div>
+        <div className="install-actions-panel">
+          <Link className="text-action primary" href="/">返回首页</Link>
+        </div>
+      </section>
+    );
+  }
 
   async function handleInstall() {
     if (canPromptInstall) {

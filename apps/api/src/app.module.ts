@@ -7,9 +7,10 @@ import { ArticlesModule } from './articles/articles.module';
 import { HealthModule } from './health/health.module';
 import { PortalModule } from './portal/portal.module';
 import { RolesModule } from './roles/roles.module';
+import { SiteSettingsModule } from './site-settings/site-settings.module';
 import { SocialModule } from './social/social.module';
 
 @Module({
-  imports: [HealthModule, RolesModule, AuthModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, PortalModule, ArticlesModule, SocialModule],
+  imports: [HealthModule, RolesModule, SiteSettingsModule, AuthModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, PortalModule, ArticlesModule, SocialModule],
 })
 export class AppModule {}

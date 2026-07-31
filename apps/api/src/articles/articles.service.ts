@@ -19,6 +19,7 @@ import {
 } from "../generated/prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
+import { SiteSettingsService } from "../site-settings/site-settings.service";
 import {
   ARTICLE_STATUSES,
   ArticleStatusValue,
@@ -180,7 +181,10 @@ export class ArticlesService {
     process.env.ARTICLE_UPLOAD_DIR ?? join(process.cwd(), "uploads", "articles"),
   );
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly siteSettingsService: SiteSettingsService,
+  ) {}
 
   listPublic(query: ListArticlesQueryDto): Promise<ArticleListResponse> {
     return this.listArticles(query, null, false);
@@ -325,13 +329,14 @@ export class ArticlesService {
   }
 
   async create(user: AuthenticatedUser, dto: CreateArticleDto): Promise<ArticleResponse> {
+    const publishPolicy = await this.siteSettingsService.getArticlePublishPolicy();
     const title = dto.title.trim();
     const content = dto.content.trim();
     if (!title || !content) {
       throw new BadRequestException("文章标题和正文不能为空。");
     }
 
-    const visibility = dto.visibility ?? ArticleVisibility.public;
+    const visibility = dto.visibility ?? publishPolicy.defaultArticleVisibility;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
     const status = this.normalizeAuthorStatus(dto.status);
     const slug = await this.createUniqueSlug(title);
@@ -483,6 +488,12 @@ export class ArticlesService {
     if (!files?.length) {
       throw new BadRequestException("至少需要上传一张文章图片。");
     }
+    const publishPolicy = await this.siteSettingsService.getArticlePublishPolicy();
+    const maxFileSizeBytes = publishPolicy.articleImageMaxSizeMb * 1024 * 1024;
+    const oversizedFile = files.find((file) => file.size > maxFileSizeBytes);
+    if (oversizedFile) {
+      throw new BadRequestException(`单张图片不能超过 ${publishPolicy.articleImageMaxSizeMb} MB。`);
+    }
     const existingCount = await this.prisma.articleImage.count({ where: { articleId: id } });
     if (existingCount + files.length > ARTICLE_IMAGE_MAX_FILES_PER_ARTICLE) {
       throw new BadRequestException(`单篇文章最多上传 ${ARTICLE_IMAGE_MAX_FILES_PER_ARTICLE} 张图片。`);
@@ -541,15 +552,22 @@ export class ArticlesService {
 
   async toggleLike(id: number, user: AuthenticatedUser, liked: boolean): Promise<ArticleInteractionResponse> {
     const target = await this.assertArticleInteractionAllowed(id, user);
+    const notificationSettings = await this.siteSettingsService.getNotificationSettings();
     const existing = await this.prisma.articleLike.findUnique({ where: { articleId_userId: { articleId: id, userId: user.id } } });
     if (liked && !existing) {
       await this.prisma.$transaction(async (transaction) => {
         await transaction.articleLike.create({ data: { articleId: id, userId: user.id } });
         await transaction.article.update({ where: { id }, data: { likeCount: { increment: 1 } } });
-        if (target.authorId !== user.id) await this.createAggregatedArticleNotification(transaction, {
-          article: target, actor: user, recipientId: target.authorId,
-          type: UserNotificationType.article_liked, verb: "点赞了",
-        });
+        if (notificationSettings.notifyArticleLiked && target.authorId !== user.id) {
+          await this.createAggregatedArticleNotification(transaction, {
+            article: target,
+            actor: user,
+            recipientId: target.authorId,
+            type: UserNotificationType.article_liked,
+            verb: "点赞了",
+            bodyTemplate: notificationSettings.templates.articleLiked,
+          });
+        }
       });
     } else if (!liked && existing) {
       await this.prisma.$transaction([
@@ -563,15 +581,22 @@ export class ArticlesService {
 
   async toggleFavorite(id: number, user: AuthenticatedUser, favorited: boolean): Promise<ArticleInteractionResponse> {
     const target = await this.assertArticleInteractionAllowed(id, user);
+    const notificationSettings = await this.siteSettingsService.getNotificationSettings();
     const existing = await this.prisma.articleFavorite.findUnique({ where: { articleId_userId: { articleId: id, userId: user.id } } });
     if (favorited && !existing) {
       await this.prisma.$transaction(async (transaction) => {
         await transaction.articleFavorite.create({ data: { articleId: id, userId: user.id } });
         await transaction.article.update({ where: { id }, data: { favoriteCount: { increment: 1 } } });
-        if (target.authorId !== user.id) await this.createAggregatedArticleNotification(transaction, {
-          article: target, actor: user, recipientId: target.authorId,
-          type: UserNotificationType.article_favorited, verb: "收藏了",
-        });
+        if (notificationSettings.notifyArticleFavorited && target.authorId !== user.id) {
+          await this.createAggregatedArticleNotification(transaction, {
+            article: target,
+            actor: user,
+            recipientId: target.authorId,
+            type: UserNotificationType.article_favorited,
+            verb: "收藏了",
+            bodyTemplate: notificationSettings.templates.articleFavorited,
+          });
+        }
       });
     } else if (!favorited && existing) {
       await this.prisma.$transaction([
@@ -584,6 +609,13 @@ export class ArticlesService {
   }
 
   async createComment(id: number, user: AuthenticatedUser, dto: CreateArticleCommentDto): Promise<ArticleCommentResponse> {
+    const [publishPolicy, notificationSettings] = await Promise.all([
+      this.siteSettingsService.getArticlePublishPolicy(),
+      this.siteSettingsService.getNotificationSettings(),
+    ]);
+    if (!publishPolicy.commentsEnabled) {
+      throw new BadRequestException("评论功能暂未开放。");
+    }
     const article = await this.getArticleOrThrow(id);
     this.assertCanRead(article, user);
     const body = dto.body.trim();
@@ -605,22 +637,34 @@ export class ArticlesService {
       await transaction.article.update({ where: { id }, data: { commentCount: { increment: 1 } } });
       const actionUrl = `/articles/${article.slug}?commentId=${created.id}`;
       if (parent) {
-        if (parent.authorId !== user.id) await transaction.userNotification.create({ data: {
+        if (notificationSettings.notifyCommentReplied && parent.authorId !== user.id) await transaction.userNotification.create({ data: {
           userId: parent.authorId, actorId: user.id,
           type: UserNotificationType.comment_replied, channel: UserNotificationChannel.interaction,
-          title: "评论有了新回复", body: `${user.nickname || user.username} 回复了你在《${article.title}》中的评论。`,
+          title: "评论有了新回复", body: this.siteSettingsService.renderTemplate(notificationSettings.templates.commentReplied, {
+            actor: user.nickname || user.username,
+            article: article.title,
+            comment: body,
+          }),
           actionUrl, articleId: article.id, commentId: created.id,
         } });
-        if (article.authorId !== user.id && article.authorId !== parent.authorId) await transaction.userNotification.create({ data: {
+        if (notificationSettings.notifyArticleCommented && article.authorId !== user.id && article.authorId !== parent.authorId) await transaction.userNotification.create({ data: {
           userId: article.authorId, actorId: user.id,
           type: UserNotificationType.article_commented, channel: UserNotificationChannel.interaction,
-          title: "文章有了新回复", body: `${user.nickname || user.username} 回复了《${article.title}》中的评论。`,
+          title: "文章有了新回复", body: this.siteSettingsService.renderTemplate(notificationSettings.templates.articleCommented, {
+            actor: user.nickname || user.username,
+            article: article.title,
+            comment: body,
+          }),
           actionUrl, articleId: article.id, commentId: created.id,
         } });
-      } else if (article.authorId !== user.id) await transaction.userNotification.create({ data: {
+      } else if (notificationSettings.notifyArticleCommented && article.authorId !== user.id) await transaction.userNotification.create({ data: {
         userId: article.authorId, actorId: user.id,
         type: UserNotificationType.article_commented, channel: UserNotificationChannel.interaction,
-        title: "文章有了新评论", body: `${user.nickname || user.username} 评论了《${article.title}》。`,
+        title: "文章有了新评论", body: this.siteSettingsService.renderTemplate(notificationSettings.templates.articleCommented, {
+          actor: user.nickname || user.username,
+          article: article.title,
+          comment: body,
+        }),
         actionUrl, articleId: article.id, commentId: created.id,
       } });
       return created;
@@ -680,6 +724,10 @@ export class ArticlesService {
     user: AuthenticatedUser,
     dto: ReportArticleCommentDto,
   ): Promise<{ reported: true }> {
+    const publishPolicy = await this.siteSettingsService.getArticlePublishPolicy();
+    if (!publishPolicy.reportsEnabled) {
+      throw new BadRequestException("举报功能暂未开放。");
+    }
     const comment = await this.prisma.articleComment.findUnique({
       where: { id },
       select: { authorId: true, status: true },
@@ -816,6 +864,7 @@ export class ArticlesService {
     dto: ModerateArticleCommentReportDto,
   ): Promise<{ success: true }> {
     this.assertCanManageContent(actor);
+    const notificationSettings = await this.siteSettingsService.getNotificationSettings();
     await this.prisma.$transaction(async (transaction) => {
       const report = await transaction.articleCommentReport.findUnique({
         where: { id },
@@ -855,23 +904,30 @@ export class ArticlesService {
       }
       const resolved = dto.status === "resolved";
       const resolution = dto.resolution?.trim();
-      await transaction.userNotification.create({
-        data: {
-          userId: report.reporterId,
-          actorId: null,
-          type: resolved
-            ? UserNotificationType.comment_report_resolved
-            : UserNotificationType.comment_report_rejected,
-          title: resolved ? "举报已处理" : "举报已驳回",
-          body: (resolution
-            ? `你对《${report.comment.article.title}》中评论的举报处理结果：${resolution}`
-            : `你对《${report.comment.article.title}》中评论的举报已${resolved ? "处理" : "驳回"}。`).slice(0, 500),
-          actionUrl: `/articles/${report.comment.article.slug}?commentId=${report.commentId}`,
-          commentReportId: id,
-        },
-      });
+      if (notificationSettings.notifyCommentReport) {
+        await transaction.userNotification.create({
+          data: {
+            userId: report.reporterId,
+            actorId: null,
+            type: resolved
+              ? UserNotificationType.comment_report_resolved
+              : UserNotificationType.comment_report_rejected,
+            title: resolved ? "举报已处理" : "举报已驳回",
+            body: (resolution
+              ? `你对《${report.comment.article.title}》中评论的举报处理结果：${resolution}`
+              : this.siteSettingsService.renderTemplate(notificationSettings.templates.commentReportHandled, {
+                article: report.comment.article.title,
+                result: resolved ? "处理" : "驳回",
+                comment: report.comment.body,
+              })).slice(0, 500),
+            actionUrl: `/articles/${report.comment.article.slug}?commentId=${report.commentId}`,
+            commentReportId: id,
+          },
+        });
+      }
       const commentStatus = dto.commentStatus as ArticleCommentStatus | undefined;
       if (
+        notificationSettings.notifyCommentReport &&
         report.comment.authorId !== report.reporterId &&
         (commentStatus === ArticleCommentStatus.blocked || commentStatus === ArticleCommentStatus.deleted)
       ) {
@@ -881,7 +937,11 @@ export class ArticlesService {
             actorId: null,
             type: UserNotificationType.comment_author_moderated,
             title: commentStatus === ArticleCommentStatus.deleted ? "你的评论已被删除" : "你的评论已被屏蔽",
-            body: `你在《${report.comment.article.title}》中的评论已被${commentStatus === ArticleCommentStatus.deleted ? "删除" : "屏蔽"}。`,
+            body: this.siteSettingsService.renderTemplate(notificationSettings.templates.commentAuthorModerated, {
+              article: report.comment.article.title,
+              result: commentStatus === ArticleCommentStatus.deleted ? "删除" : "屏蔽",
+              comment: report.comment.body,
+            }),
             actionUrl: `/articles/${report.comment.article.slug}?commentId=${report.commentId}`,
             commentReportId: id,
           },
@@ -1072,6 +1132,7 @@ export class ArticlesService {
     recipientId: number;
     type: "article_liked" | "article_favorited";
     verb: "点赞了" | "收藏了";
+    bodyTemplate: string;
   }): Promise<void> {
     const existing = await transaction.userNotification.findFirst({
       where: { userId: input.recipientId, type: input.type, articleId: input.article.id, readAt: null },
@@ -1080,17 +1141,24 @@ export class ArticlesService {
     if (existing) await transaction.userNotification.delete({ where: { id: existing.id } });
     const aggregateCount = (existing?.aggregateCount ?? 0) + 1;
     const actorName = input.actor.nickname || input.actor.username;
+    const renderedBody = this.siteSettingsService.renderTemplate(input.bodyTemplate, {
+      actor: actorName,
+      article: input.article.title,
+      count: aggregateCount,
+    });
     await transaction.userNotification.create({ data: {
       userId: input.recipientId, actorId: input.actor.id, type: input.type,
       channel: UserNotificationChannel.interaction,
       title: input.type === UserNotificationType.article_liked ? "文章收到点赞" : "文章被收藏",
-      body: aggregateCount > 1 ? `${actorName} 等 ${aggregateCount} 人${input.verb}《${input.article.title}》。` : `${actorName} ${input.verb}《${input.article.title}》。`,
+      body: aggregateCount > 1 ? `${actorName} 等 ${aggregateCount} 人${input.verb}《${input.article.title}》。` : renderedBody,
       actionUrl: `/articles/${input.article.slug}`, articleId: input.article.id, aggregateCount,
     } });
   }
 
   private async notifySubscribersOfPublication(transaction: Prisma.TransactionClient, article: ArticleRecord): Promise<void> {
     if (article.visibility === ArticleVisibility.private) return;
+    const notificationSettings = await this.siteSettingsService.getNotificationSettings();
+    if (!notificationSettings.notifySubscriptionPublished) return;
     const roleCodes = article.allowedRoles.map(({ role }) => role.code);
     const subscriptions = await transaction.userSubscription.findMany({ where: {
       authorId: article.authorId,
@@ -1103,7 +1171,10 @@ export class ArticlesService {
     await transaction.userNotification.createMany({ data: subscriptions.map(({ subscriberId }) => ({
       userId: subscriberId, actorId: article.authorId,
       type: UserNotificationType.subscription_published, channel: UserNotificationChannel.subscription,
-      title: "订阅作者发布了新内容", body: `${article.author.nickname || article.author.username} 发布了《${article.title}》。`,
+      title: "订阅作者发布了新内容", body: this.siteSettingsService.renderTemplate(notificationSettings.templates.subscriptionPublished, {
+        author: article.author.nickname || article.author.username,
+        article: article.title,
+      }),
       actionUrl: `/articles/${article.slug}`, articleId: article.id,
     })) });
   }

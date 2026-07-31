@@ -14,13 +14,27 @@ import {
   readInstallPrompt,
   storeInstallPrompt,
 } from "@/lib/pwa-install";
+import { getPublicSiteSettings } from "@/lib/site-settings-api";
 
 export function PwaInstallButton() {
   const [hasInstallPrompt, setHasInstallPrompt] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIos, setIsIos] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
+  const [installPageEnabled, setInstallPageEnabled] = useState(true);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+    getPublicSiteSettings()
+      .then((settings) => {
+        if (isMounted) setInstallPageEnabled(settings.installPageEnabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     // Browser install support is event-driven; mobile still gets a visible guide
@@ -56,6 +70,10 @@ export function PwaInstallButton() {
       window.removeEventListener("appinstalled", handleAppInstalled);
     };
   }, []);
+
+  if (!installPageEnabled) {
+    return null;
+  }
 
   async function handleInstall() {
     if (isStandalone) {

@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   title: "HLOVET",
   description:
     "HLOVET personal portal, navigation, toolbox, and account workspace",
-  manifest: "/site.webmanifest",
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: [
       { url: "/tab-icon.svg?v=2", type: "image/svg+xml" },

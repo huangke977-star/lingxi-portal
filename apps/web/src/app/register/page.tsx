@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { AppToast } from '@/components/app-toast';
 import { PasswordInput } from '@/components/password-input';
 import { register } from '@/lib/auth-api';
 import { saveAuthTokens } from '@/lib/auth-storage';
+import { getPublicSiteSettings } from '@/lib/site-settings-api';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -16,11 +17,29 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState('');
+  const [registrationOpen, setRegistrationOpen] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    getPublicSiteSettings()
+      .then((settings) => {
+        if (isMounted) setRegistrationOpen(settings.registrationOpen);
+      })
+      .catch(() => undefined);
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
+
+    if (!registrationOpen) {
+      setError('当前暂未开放注册。');
+      return;
+    }
 
     if (!username.trim() || !nickname.trim() || !email.trim() || !password || !confirmation) {
       setError('请完整填写注册信息。');
@@ -52,6 +71,7 @@ export default function RegisterPage() {
           <h1>创建账号</h1>
         </div>
         <form className="form-stack" onSubmit={handleSubmit}>
+          {!registrationOpen ? <div className="auth-inline-notice">当前暂未开放注册，请联系站点管理员。</div> : null}
           <label>
             <span>用户名</span>
             <input
@@ -107,7 +127,7 @@ export default function RegisterPage() {
             />
           </label>
           <div className="actions">
-            <button className="button" disabled={isSubmitting} type="submit">
+            <button className="button" disabled={isSubmitting || !registrationOpen} type="submit">
               {isSubmitting ? '注册中' : '注册'}
             </button>
             <Link className="button secondary" href="/login">

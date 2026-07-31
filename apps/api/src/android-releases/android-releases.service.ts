@@ -9,6 +9,7 @@ import { createReadStream } from 'node:fs';
 import { access, mkdir, open, rename, unlink } from 'node:fs/promises';
 import { basename, extname, resolve } from 'node:path';
 import { PrismaService } from '../prisma/prisma.service';
+import { SiteSettingsService } from '../site-settings/site-settings.service';
 import {
   ANDROID_RELEASE_MAX_FILE_SIZE_BYTES,
   UploadedAndroidPackage,
@@ -48,7 +49,10 @@ interface PreparedAndroidRelease {
 export class AndroidReleasesService {
   private readonly uploadDirectory = androidReleaseUploadDirectory();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly siteSettingsService: SiteSettingsService,
+  ) {}
 
   async getLatest(): Promise<AndroidReleaseResponse | null> {
     const activeRelease = await this.prisma.androidRelease.findFirst({
@@ -128,6 +132,14 @@ export class AndroidReleasesService {
           select: this.releaseSelect(),
         });
       });
+
+      const policy = await this.siteSettingsService.getAndroidReleasePolicy();
+      if (!policy.apkHistoryEnabled || policy.apkAutoCleanupEnabled) {
+        await this.cleanupInactiveReleases(
+          policy.apkHistoryEnabled ? policy.apkRetentionCount : 0,
+          release.id,
+        );
+      }
 
       return this.toResponse(release);
     } catch (error) {
@@ -275,6 +287,21 @@ export class AndroidReleasesService {
       createdAt: true,
       updatedAt: true,
     };
+  }
+
+  private async cleanupInactiveReleases(retentionCount: number, protectedReleaseId: number): Promise<void> {
+    const inactiveReleases = await this.prisma.androidRelease.findMany({
+      where: { isActive: false, id: { not: protectedReleaseId } },
+      orderBy: [{ versionCode: 'desc' }, { createdAt: 'desc' }],
+      skip: Math.max(0, retentionCount),
+      select: { id: true, storedName: true },
+    });
+
+    for (const release of inactiveReleases) {
+      const filePath = this.resolveStoredPath(release.storedName);
+      await unlink(filePath).catch(() => undefined);
+      await this.prisma.androidRelease.delete({ where: { id: release.id } }).catch(() => undefined);
+    }
   }
 
   private toResponse(release: AndroidReleaseRecord): AndroidReleaseResponse {

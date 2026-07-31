@@ -5,6 +5,7 @@ import {
   applyThemePreference,
   readThemePreference,
   THEME_CHANGE_EVENT,
+  THEME_STORAGE_KEY,
   writeThemePreference,
 } from "@/lib/theme-preferences";
 import { getMe } from "@/lib/auth-api";
@@ -17,10 +18,12 @@ import {
   readCachedActiveBackgroundUrl,
   resolveBackgroundUrl,
 } from "@/lib/background-api";
+import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-api";
 
 export function ThemeController() {
   useEffect(() => {
     let isMounted = true;
+    let publicSettings: SiteSettings | null = null;
 
     function applyBackgroundUrl(url: string) {
       document.documentElement.style.setProperty("--portal-bg-image", `url("${escapeCssUrl(url)}")`);
@@ -38,6 +41,22 @@ export function ThemeController() {
 
     function syncTheme() {
       applyThemePreference(readThemePreference());
+    }
+
+    async function syncPublicSettings() {
+      try {
+        const settings = await getPublicSiteSettings();
+        if (!isMounted) {
+          return;
+        }
+        publicSettings = settings;
+        document.title = settings.browserTitle || settings.siteName || "HLOVET";
+        if (!readAccessToken() && !window.localStorage.getItem(THEME_STORAGE_KEY)) {
+          applyThemePreference(settings.defaultTheme);
+        }
+      } catch {
+        publicSettings = null;
+      }
     }
 
     async function syncAccountTheme() {
@@ -79,8 +98,17 @@ export function ThemeController() {
             applyBackgroundUrl(nextUrl);
           }
         } else {
-          clearActiveBackgroundCache();
-          document.documentElement.style.removeProperty("--portal-bg-image");
+          const defaultBackgroundUrl = publicSettings?.defaultBackgroundUrl;
+          if (defaultBackgroundUrl) {
+            const nextUrl = resolveConfiguredAssetUrl(defaultBackgroundUrl);
+            await preloadBackground(nextUrl);
+            if (isMounted) {
+              applyBackgroundUrl(nextUrl);
+            }
+          } else {
+            clearActiveBackgroundCache();
+            document.documentElement.style.removeProperty("--portal-bg-image");
+          }
         }
       } catch {
         const cachedUrl = readCachedActiveBackgroundUrl();
@@ -95,8 +123,8 @@ export function ThemeController() {
     }
 
     syncTheme();
+    void syncPublicSettings().then(() => syncBackground());
     void syncAccountTheme();
-    void syncBackground();
     window.addEventListener("storage", syncTheme);
     window.addEventListener(THEME_CHANGE_EVENT, syncTheme);
     window.addEventListener(AUTH_STATE_CHANGE_EVENT, syncAccountTheme);
@@ -116,4 +144,11 @@ export function ThemeController() {
 
 function escapeCssUrl(url: string): string {
   return url.replace(/["\\\n\r\f]/g, "\\$&");
+}
+
+function resolveConfiguredAssetUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  return new URL(path.startsWith("/") ? path : `/${path}`, window.location.origin).href;
 }
