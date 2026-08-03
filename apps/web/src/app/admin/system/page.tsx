@@ -292,6 +292,12 @@ export default function SystemStatusPage() {
           </div>
         </section>
 
+        <section className="system-status-panel runtime">
+          <PanelHeading icon={Server} title="容器与宿主机" />
+          <div className="system-runtime-note"><CircleAlert aria-hidden="true" size={20} /><p>{status.containerRuntime.message}</p></div>
+          <div className="system-runtime-links"><span>容器启停、CPU、整机内存和磁盘清理由 1Panel 或 SSH 负责。</span><Link href="/admin/cache">查看 Redis 缓存</Link><Link href="/admin/settings">查看站点资源</Link></div>
+        </section>
+
         {backupConfiguration && backupForm ? <section className="system-status-panel backup-policy">
           <header className="system-panel-heading backup-policy-heading">
             <span><CloudCog aria-hidden="true" size={17} /><strong>自动与异地备份</strong></span>
@@ -342,11 +348,6 @@ export default function SystemStatusPage() {
           </div>
         </section> : null}
 
-        <section className="system-status-panel runtime">
-          <PanelHeading icon={Server} title="容器与宿主机" />
-          <div className="system-runtime-note"><CircleAlert aria-hidden="true" size={20} /><p>{status.containerRuntime.message}</p></div>
-          <div className="system-runtime-links"><span>容器启停、CPU、整机内存和磁盘清理由 1Panel 或 SSH 负责。</span><Link href="/admin/cache">查看 Redis 缓存</Link><Link href="/admin/settings">查看站点资源</Link></div>
-        </section>
       </div>
     </> : <div className="system-status-empty"><CircleAlert aria-hidden="true" size={22} /><span>暂时无法读取系统状态，请稍后刷新。</span></div>}
     {restoreTarget ? <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !backupBusy) setRestoreTarget(""); }} role="presentation"><div aria-modal="true" className="modal-panel backup-restore-modal" role="dialog"><div className="modal-heading"><span className="section-label">Database restore</span><h2>恢复数据库</h2><p>恢复会覆盖当前数据库，系统会先自动创建一份恢复前备份。请输入完整文件名确认。</p></div><label className="backup-confirm-field"><span>{restoreTarget}</span><input autoFocus onChange={(event) => setRestoreConfirmation(event.target.value)} placeholder="输入上方完整文件名" value={restoreConfirmation} /></label><div className="actions"><button className="button" disabled={restoreConfirmation !== restoreTarget || Boolean(backupBusy)} onClick={() => void handleRestoreBackup()} type="button">{backupBusy ? "恢复中" : "确认恢复"}</button><button className="button secondary" disabled={Boolean(backupBusy)} onClick={() => setRestoreTarget("")} type="button">取消</button></div></div></div> : null}
