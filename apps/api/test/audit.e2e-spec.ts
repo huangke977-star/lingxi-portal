@@ -59,6 +59,8 @@ describe("audit logs", () => {
       body: {
         nickname: "新昵称",
         password: "plain-password",
+        ossAccessKeyId: "plain-access-key",
+        r2SecretAccessKey: "plain-secret-key",
         nested: { refreshToken: "plain-token" },
       },
       headers: { "user-agent": "audit-test", "x-forwarded-for": "203.0.113.7" },
@@ -87,6 +89,8 @@ describe("audit logs", () => {
         body: {
           nickname: "新昵称",
           password: "[REDACTED]",
+          ossAccessKeyId: "[REDACTED]",
+          r2SecretAccessKey: "[REDACTED]",
           nested: { refreshToken: "[REDACTED]" },
         },
       },

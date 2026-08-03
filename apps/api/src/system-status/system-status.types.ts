@@ -46,21 +46,7 @@ export interface SystemStatusResponse {
       fileCount: number;
     }>;
   };
-  backups: {
-    available: boolean;
-    totalBytes: number;
-    fileCount: number;
-    latest: {
-      name: string;
-      sizeBytes: number;
-      updatedAt: string;
-    } | null;
-    items: Array<{
-      name: string;
-      sizeBytes: number;
-      updatedAt: string;
-    }>;
-  };
+  backups: BackupStatusResponse;
   containerRuntime: {
     connected: false;
     message: string;
@@ -71,4 +57,53 @@ export interface DatabaseBackupResponse {
   name: string;
   sizeBytes: number;
   updatedAt: string;
+  remoteResults?: RemoteBackupResult[];
+  warning?: string | null;
+}
+
+export type RemoteProvider = "oss" | "r2";
+
+export interface RemoteBackupResult {
+  provider: RemoteProvider;
+  status: "success" | "failed";
+  objectKey: string | null;
+  error: string | null;
+}
+
+export interface BackupStatusResponse {
+  available: boolean;
+  totalBytes: number;
+  fileCount: number;
+  latest: DatabaseBackupResponse | null;
+  items: DatabaseBackupResponse[];
+}
+
+export interface BackupProviderConfigurationResponse {
+  enabled: boolean;
+  bucket: string;
+  prefix: string;
+  hasAccessKeyId: boolean;
+  hasSecretAccessKey: boolean;
+}
+
+export interface BackupConfigurationResponse {
+  automaticEnabled: boolean;
+  scheduleTime: string;
+  timezone: string;
+  localRetentionDays: number;
+  remoteRetentionDays: number;
+  encryptionConfigured: boolean;
+  nextRunAt: string | null;
+  lastAutomaticBackupDate: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastFailureMessage: string | null;
+  lastBackupName: string | null;
+  oss: BackupProviderConfigurationResponse & {
+    region: string;
+    endpoint: string;
+  };
+  r2: BackupProviderConfigurationResponse & {
+    accountId: string;
+  };
 }

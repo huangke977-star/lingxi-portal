@@ -325,6 +325,37 @@ model SiteSetting {
   @@map("site_settings")
 }
 
+model BackupConfiguration {
+  id                            Int      @id @default(1)
+  automaticEnabled              Boolean  @default(false) @map("automatic_enabled")
+  scheduleTime                  String   @default("03:00") @map("schedule_time") @db.Char(5)
+  timezone                      String   @default("Asia/Shanghai") @db.VarChar(64)
+  localRetentionDays            Int      @default(7) @map("local_retention_days")
+  remoteRetentionDays           Int      @default(90) @map("remote_retention_days")
+  ossEnabled                    Boolean  @default(false) @map("oss_enabled")
+  ossRegion                     String?  @map("oss_region") @db.VarChar(80)
+  ossEndpoint                   String?  @map("oss_endpoint") @db.VarChar(255)
+  ossBucket                     String?  @map("oss_bucket") @db.VarChar(128)
+  ossPrefix                     String   @default("database") @map("oss_prefix") @db.VarChar(255)
+  ossAccessKeyIdEncrypted       String?  @map("oss_access_key_id_encrypted") @db.Text
+  ossAccessKeySecretEncrypted   String?  @map("oss_access_key_secret_encrypted") @db.Text
+  r2Enabled                     Boolean  @default(false) @map("r2_enabled")
+  r2AccountId                   String?  @map("r2_account_id") @db.VarChar(64)
+  r2Bucket                      String?  @map("r2_bucket") @db.VarChar(128)
+  r2Prefix                      String   @default("database") @map("r2_prefix") @db.VarChar(255)
+  r2AccessKeyIdEncrypted        String?  @map("r2_access_key_id_encrypted") @db.Text
+  r2SecretAccessKeyEncrypted    String?  @map("r2_secret_access_key_encrypted") @db.Text
+  lastAutomaticBackupDate       String?  @map("last_automatic_backup_date") @db.Char(10)
+  lastSuccessAt                 DateTime? @map("last_success_at")
+  lastFailureAt                 DateTime? @map("last_failure_at")
+  lastFailureMessage            String?  @map("last_failure_message") @db.VarChar(500)
+  lastBackupName                String?  @map("last_backup_name") @db.VarChar(255)
+  createdAt                     DateTime @default(now()) @map("created_at")
+  updatedAt                     DateTime @updatedAt @map("updated_at")
+
+  @@map("backup_configurations")
+}
+
 model ArticleTaxonomy {
   id        Int                 @id @default(autoincrement())
   kind      ArticleTaxonomyKind

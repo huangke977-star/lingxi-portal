@@ -129,7 +129,7 @@ export class AuditInterceptor implements NestInterceptor {
     if (typeof value !== "object") return String(value).slice(0, 500);
     const result: Record<string, JsonValue> = {};
     for (const [key, item] of Object.entries(value as Record<string, unknown>).slice(0, 40)) {
-      result[key] = /(password|passwd|secret|token|authorization|cookie|api[-_]?key|private[-_]?key|credential)/i.test(key)
+      result[key] = /(password|passwd|secret|token|authorization|cookie|api[-_]?key|access[-_]?key|private[-_]?key|credential)/i.test(key)
         ? "[REDACTED]"
         : this.sanitize(item, depth + 1);
     }

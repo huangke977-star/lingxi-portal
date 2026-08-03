@@ -4,6 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
+import { BackupService } from "../src/system-status/backup.service";
 import { SystemStatusService } from "../src/system-status/system-status.service";
 
 const users = [
@@ -87,11 +88,31 @@ const statusResponse = {
   containerRuntime: { connected: false as const, message: "Use 1Panel or SSH." },
 };
 
+const backupConfigurationResponse = {
+  automaticEnabled: true,
+  scheduleTime: "03:00",
+  timezone: "Asia/Shanghai",
+  localRetentionDays: 7,
+  remoteRetentionDays: 90,
+  encryptionConfigured: true,
+  nextRunAt: "2026-08-04T19:00:00.000Z",
+  lastAutomaticBackupDate: null,
+  lastSuccessAt: null,
+  lastFailureAt: null,
+  lastFailureMessage: null,
+  lastBackupName: null,
+  oss: { enabled: false, region: "", endpoint: "", bucket: "", prefix: "database", hasAccessKeyId: false, hasSecretAccessKey: false },
+  r2: { enabled: false, accountId: "", bucket: "", prefix: "database", hasAccessKeyId: false, hasSecretAccessKey: false },
+};
+
 describe("system status administration (e2e)", () => {
   let app: INestApplication;
   let jwt: JwtService;
   const serviceMock = {
     getStatus: jest.fn(async () => statusResponse),
+    getBackupConfiguration: jest.fn(async () => backupConfigurationResponse),
+    updateBackupConfiguration: jest.fn(async () => backupConfigurationResponse),
+    testBackupProvider: jest.fn(async (provider: "oss" | "r2") => ({ success: true as const, provider })),
     createBackup: jest.fn(async () => ({ name: "manual-20260803_120000.sql.gz", sizeBytes: 512, updatedAt: "2026-08-03T12:00:00.000Z" })),
     deleteBackup: jest.fn(async () => ({ success: true })),
     restoreBackup: jest.fn(async (name: string) => ({ success: true, restored: name, safetyBackup: { name: "pre-restore.sql.gz", sizeBytes: 512, updatedAt: "2026-08-03T12:00:00.000Z" } })),
@@ -170,8 +191,29 @@ describe("system status administration (e2e)", () => {
     expect(serviceMock.deleteBackup).toHaveBeenCalledWith(name);
   });
 
+  it("allows only the super administrator to configure and test remote backups", async () => {
+    await request(app.getHttpServer())
+      .get("/admin/system/backups/configuration")
+      .set("Authorization", `Bearer ${await tokenFor(2)}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get("/admin/system/backups/configuration")
+      .set("Authorization", `Bearer ${await tokenFor(1)}`)
+      .expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({ scheduleTime: "03:00", oss: { enabled: false } }));
+
+    await request(app.getHttpServer())
+      .post("/admin/system/backups/providers/test")
+      .set("Authorization", `Bearer ${await tokenFor(1)}`)
+      .send({ provider: "r2" })
+      .expect(201);
+
+    expect(serviceMock.testBackupProvider).toHaveBeenCalledWith("r2");
+  });
+
   it("requires the complete backup filename before restore starts", async () => {
-    const service = new SystemStatusService({} as PrismaService, {} as never);
+    const service = new BackupService({} as PrismaService, {} as never, {} as never);
     await expect(service.restoreBackup("manual-20260803_120000.sql.gz", "manual"))
       .rejects.toThrow("请输入完整备份文件名确认恢复操作。");
   });

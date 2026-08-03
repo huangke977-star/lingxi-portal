@@ -5,7 +5,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { SuperAdminGuard } from "../auth/guards/super-admin.guard";
 import { SystemStatusService } from "./system-status.service";
 import { SystemStatusResponse } from "./system-status.types";
-import { RestoreBackupDto } from "./dto/backup.dto";
+import { RestoreBackupDto, TestBackupProviderDto, UpdateBackupConfigurationDto } from "./dto/backup.dto";
 
 @Controller("admin/system")
 @UseGuards(JwtAuthGuard, SuperAdminGuard)
@@ -20,6 +20,21 @@ export class SystemStatusController {
   @Post("backups")
   createBackup() {
     return this.systemStatusService.createBackup();
+  }
+
+  @Get("backups/configuration")
+  getBackupConfiguration() {
+    return this.systemStatusService.getBackupConfiguration();
+  }
+
+  @Post("backups/configuration")
+  updateBackupConfiguration(@Body() dto: UpdateBackupConfigurationDto) {
+    return this.systemStatusService.updateBackupConfiguration(dto);
+  }
+
+  @Post("backups/providers/test")
+  testBackupProvider(@Body() dto: TestBackupProviderDto) {
+    return this.systemStatusService.testBackupProvider(dto.provider);
   }
 
   @Get("backups/:name/download")

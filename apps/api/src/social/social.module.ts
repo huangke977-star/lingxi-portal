@@ -1,6 +1,5 @@
 import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
-import { PrismaService } from "../prisma/prisma.service";
 import { RedisModule } from "../redis/redis.module";
 import { SiteSettingsModule } from "../site-settings/site-settings.module";
 import { UsersModule } from "../users/users.module";
@@ -15,7 +14,7 @@ import { PushModule } from "../push/push.module";
 @Module({
   imports: [JwtModule.register({}), UsersModule, RedisModule, SiteSettingsModule, PushModule],
   controllers: [SocialController, PublicProfilesController],
-  providers: [PrismaService, SocialService, ChatAttachmentsService, CallsService, ChatGateway],
+  providers: [SocialService, ChatAttachmentsService, CallsService, ChatGateway],
   exports: [SocialService],
 })
 export class SocialModule {}

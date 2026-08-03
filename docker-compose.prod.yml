@@ -153,6 +153,7 @@ services:
       ARTICLE_UPLOAD_DIR: /app/uploads/articles
       CHAT_UPLOAD_DIR: /app/uploads/chat
       BACKUP_DIR: /app/backups
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
     ports:
       - "127.0.0.1:${API_PORT:-3001}:3001"
     volumes:

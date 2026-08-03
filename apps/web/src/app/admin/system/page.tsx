@@ -7,12 +7,16 @@ import {
   Box,
   CircleAlert,
   CircleCheck,
+  Cloud,
+  CloudCog,
   Clock3,
   Database,
   Download,
   Files,
   HardDrive,
+  KeyRound,
   RefreshCcw,
+  Save,
   Server,
   Trash2,
 } from "lucide-react";
@@ -26,21 +30,37 @@ import {
   createDatabaseBackup,
   deleteDatabaseBackup,
   downloadDatabaseBackup,
+  getBackupConfiguration,
   getSystemStatus,
   restoreDatabaseBackup,
+  testBackupProvider,
+  updateBackupConfiguration,
+  type BackupConfiguration,
+  type BackupConfigurationUpdate,
   type SystemStatus,
 } from "@/lib/system-status-api";
+
+interface BackupConfigurationForm extends BackupConfigurationUpdate {
+  ossAccessKeyId: string;
+  ossAccessKeySecret: string;
+  r2AccessKeyId: string;
+  r2SecretAccessKey: string;
+}
 
 export default function SystemStatusPage() {
   const router = useRouter();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [backupConfiguration, setBackupConfiguration] = useState<BackupConfiguration | null>(null);
+  const [backupForm, setBackupForm] = useState<BackupConfigurationForm | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [backupBusy, setBackupBusy] = useState("");
+  const [configurationBusy, setConfigurationBusy] = useState(false);
+  const [providerTesting, setProviderTesting] = useState<"oss" | "r2" | "">("");
   const [restoreTarget, setRestoreTarget] = useState("");
   const [restoreConfirmation, setRestoreConfirmation] = useState("");
 
@@ -61,6 +81,12 @@ export default function SystemStatusPage() {
     }
   }, [router]);
 
+  const loadBackupConfiguration = useCallback(async (token: string) => {
+    const configuration = await getBackupConfiguration(token);
+    setBackupConfiguration(configuration);
+    setBackupForm(toBackupConfigurationForm(configuration));
+  }, []);
+
   useEffect(() => {
     let active = true;
     const token = readAccessToken();
@@ -73,7 +99,7 @@ export default function SystemStatusPage() {
         if (!active) return;
         setAccessToken(token);
         setCurrentUser(user);
-        if (user.isSuperAdmin) await loadStatus(token);
+        if (user.isSuperAdmin) await Promise.all([loadStatus(token), loadBackupConfiguration(token)]);
       })
       .catch((loadError: unknown) => {
         if (isAuthExpiredError(loadError)) {
@@ -87,7 +113,7 @@ export default function SystemStatusPage() {
         if (active) setIsLoading(false);
       });
     return () => { active = false; };
-  }, [loadStatus, router]);
+  }, [loadBackupConfiguration, loadStatus, router]);
 
   useEffect(() => {
     if (!accessToken || !currentUser?.isSuperAdmin) return;
@@ -102,7 +128,7 @@ export default function SystemStatusPage() {
 
   async function refreshAfterBackup(message: string) {
     if (!accessToken) return;
-    await loadStatus(accessToken);
+    await Promise.all([loadStatus(accessToken), loadBackupConfiguration(accessToken)]);
     setNotice(message);
   }
 
@@ -112,11 +138,41 @@ export default function SystemStatusPage() {
     setError("");
     try {
       const backup = await createDatabaseBackup(accessToken);
-      await refreshAfterBackup(`备份已创建：${backup.name}`);
+      await refreshAfterBackup(backup.warning || `备份已创建：${backup.name}`);
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "数据库备份创建失败。");
     } finally {
       setBackupBusy("");
+    }
+  }
+
+  async function handleSaveBackupConfiguration() {
+    if (!accessToken || !backupForm || configurationBusy) return;
+    setConfigurationBusy(true);
+    setError("");
+    try {
+      const configuration = await updateBackupConfiguration(accessToken, backupForm);
+      setBackupConfiguration(configuration);
+      setBackupForm(toBackupConfigurationForm(configuration));
+      setNotice("备份策略已保存。");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "备份策略保存失败。");
+    } finally {
+      setConfigurationBusy(false);
+    }
+  }
+
+  async function handleTestBackupProvider(provider: "oss" | "r2") {
+    if (!accessToken || providerTesting) return;
+    setProviderTesting(provider);
+    setError("");
+    try {
+      await testBackupProvider(accessToken, provider);
+      setNotice(`${provider === "oss" ? "阿里云 OSS" : "Cloudflare R2"} 连接正常。`);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "异地备份连接测试失败。");
+    } finally {
+      setProviderTesting("");
     }
   }
 
@@ -236,6 +292,56 @@ export default function SystemStatusPage() {
           </div>
         </section>
 
+        {backupConfiguration && backupForm ? <section className="system-status-panel backup-policy">
+          <header className="system-panel-heading backup-policy-heading">
+            <span><CloudCog aria-hidden="true" size={17} /><strong>自动与异地备份</strong></span>
+            <button aria-label="保存备份策略" disabled={configurationBusy} onClick={() => void handleSaveBackupConfiguration()} title="保存备份策略" type="button">
+              <Save aria-hidden="true" size={16} />
+              <span>{configurationBusy ? "保存中" : "保存策略"}</span>
+            </button>
+          </header>
+
+          <div className="backup-policy-overview">
+            <label className="backup-toggle-row"><input checked={backupForm.automaticEnabled} onChange={(event) => setBackupForm({ ...backupForm, automaticEnabled: event.target.checked })} type="checkbox" /><span><strong>每日自动备份</strong><small>API 会在设定时间执行，服务重启后也会补跑当天尚未完成的任务。</small></span></label>
+            <label><span>执行时间</span><input onChange={(event) => setBackupForm({ ...backupForm, scheduleTime: event.target.value })} type="time" value={backupForm.scheduleTime} /></label>
+            <label><span>本地保留</span><span className="backup-number-field"><input max={365} min={1} onChange={(event) => setBackupForm({ ...backupForm, localRetentionDays: Number(event.target.value) })} type="number" value={backupForm.localRetentionDays} /><em>天</em></span></label>
+            <label><span>远端保留</span><span className="backup-number-field"><input max={3650} min={1} onChange={(event) => setBackupForm({ ...backupForm, remoteRetentionDays: Number(event.target.value) })} type="number" value={backupForm.remoteRetentionDays} /><em>天</em></span></label>
+          </div>
+
+          <div className="backup-policy-status">
+            <span><small>下次执行</small><strong>{backupConfiguration.nextRunAt ? formatDateTime(backupConfiguration.nextRunAt) : "自动备份未启用"}</strong></span>
+            <span><small>最近成功</small><strong>{backupConfiguration.lastSuccessAt ? formatDateTime(backupConfiguration.lastSuccessAt) : "尚无记录"}</strong></span>
+            <span className={backupConfiguration.lastFailureMessage ? "error" : ""}><small>最近异常</small><strong title={backupConfiguration.lastFailureMessage ?? ""}>{backupConfiguration.lastFailureMessage || "无"}</strong></span>
+          </div>
+
+          {!backupConfiguration.encryptionConfigured ? <div className="backup-encryption-warning"><KeyRound aria-hidden="true" size={17} /><span>服务器未配置备份加密密钥，异地备份暂时不能启用。</span></div> : null}
+
+          <div className="backup-provider-section">
+            <header><span><Cloud aria-hidden="true" size={17} /><strong>阿里云 OSS</strong><small>{backupConfiguration.oss.hasAccessKeyId && backupConfiguration.oss.hasSecretAccessKey ? "凭证已保存" : "凭证未保存"}</small></span><label><input checked={backupForm.ossEnabled} onChange={(event) => setBackupForm({ ...backupForm, ossEnabled: event.target.checked })} type="checkbox" /><span>启用</span></label></header>
+            <div className="backup-provider-grid">
+              <label><span>Region</span><input onChange={(event) => setBackupForm({ ...backupForm, ossRegion: event.target.value })} placeholder="oss-cn-hangzhou" value={backupForm.ossRegion} /></label>
+              <label><span>Endpoint（可选）</span><input onChange={(event) => setBackupForm({ ...backupForm, ossEndpoint: event.target.value })} placeholder="https://oss-cn-hangzhou.aliyuncs.com" value={backupForm.ossEndpoint} /></label>
+              <label><span>Bucket</span><input onChange={(event) => setBackupForm({ ...backupForm, ossBucket: event.target.value })} placeholder="hlovet-backups" value={backupForm.ossBucket} /></label>
+              <label><span>目录前缀</span><input onChange={(event) => setBackupForm({ ...backupForm, ossPrefix: event.target.value })} placeholder="database" value={backupForm.ossPrefix} /></label>
+              <label><span>AccessKey ID</span><input autoComplete="off" onChange={(event) => setBackupForm({ ...backupForm, ossAccessKeyId: event.target.value, clearOssCredentials: false })} placeholder={backupConfiguration.oss.hasAccessKeyId ? "已保存，留空保持不变" : "请输入 AccessKey ID"} type="password" value={backupForm.ossAccessKeyId} /></label>
+              <label><span>AccessKey Secret</span><input autoComplete="new-password" onChange={(event) => setBackupForm({ ...backupForm, ossAccessKeySecret: event.target.value, clearOssCredentials: false })} placeholder={backupConfiguration.oss.hasSecretAccessKey ? "已保存，留空保持不变" : "请输入 AccessKey Secret"} type="password" value={backupForm.ossAccessKeySecret} /></label>
+            </div>
+            <div className="backup-provider-actions"><button disabled={providerTesting === "oss" || !backupConfiguration.oss.hasAccessKeyId || !backupConfiguration.oss.hasSecretAccessKey} onClick={() => void handleTestBackupProvider("oss")} type="button">{providerTesting === "oss" ? "测试中" : "测试已保存配置"}</button>{backupConfiguration.oss.hasAccessKeyId || backupConfiguration.oss.hasSecretAccessKey ? <button className="danger" onClick={() => setBackupForm({ ...backupForm, clearOssCredentials: true, ossAccessKeyId: "", ossAccessKeySecret: "", ossEnabled: false })} type="button">清除凭证</button> : null}</div>
+          </div>
+
+          <div className="backup-provider-section">
+            <header><span><Cloud aria-hidden="true" size={17} /><strong>Cloudflare R2</strong><small>{backupConfiguration.r2.hasAccessKeyId && backupConfiguration.r2.hasSecretAccessKey ? "凭证已保存" : "凭证未保存"}</small></span><label><input checked={backupForm.r2Enabled} onChange={(event) => setBackupForm({ ...backupForm, r2Enabled: event.target.checked })} type="checkbox" /><span>启用</span></label></header>
+            <div className="backup-provider-grid r2">
+              <label><span>Account ID</span><input onChange={(event) => setBackupForm({ ...backupForm, r2AccountId: event.target.value })} placeholder="Cloudflare Account ID" value={backupForm.r2AccountId} /></label>
+              <label><span>Bucket</span><input onChange={(event) => setBackupForm({ ...backupForm, r2Bucket: event.target.value })} placeholder="hlovet-backups" value={backupForm.r2Bucket} /></label>
+              <label><span>目录前缀</span><input onChange={(event) => setBackupForm({ ...backupForm, r2Prefix: event.target.value })} placeholder="database" value={backupForm.r2Prefix} /></label>
+              <label><span>Access Key ID</span><input autoComplete="off" onChange={(event) => setBackupForm({ ...backupForm, r2AccessKeyId: event.target.value, clearR2Credentials: false })} placeholder={backupConfiguration.r2.hasAccessKeyId ? "已保存，留空保持不变" : "请输入 Access Key ID"} type="password" value={backupForm.r2AccessKeyId} /></label>
+              <label><span>Secret Access Key</span><input autoComplete="new-password" onChange={(event) => setBackupForm({ ...backupForm, r2SecretAccessKey: event.target.value, clearR2Credentials: false })} placeholder={backupConfiguration.r2.hasSecretAccessKey ? "已保存，留空保持不变" : "请输入 Secret Access Key"} type="password" value={backupForm.r2SecretAccessKey} /></label>
+            </div>
+            <div className="backup-provider-actions"><button disabled={providerTesting === "r2" || !backupConfiguration.r2.hasAccessKeyId || !backupConfiguration.r2.hasSecretAccessKey} onClick={() => void handleTestBackupProvider("r2")} type="button">{providerTesting === "r2" ? "测试中" : "测试已保存配置"}</button>{backupConfiguration.r2.hasAccessKeyId || backupConfiguration.r2.hasSecretAccessKey ? <button className="danger" onClick={() => setBackupForm({ ...backupForm, clearR2Credentials: true, r2AccessKeyId: "", r2SecretAccessKey: "", r2Enabled: false })} type="button">清除凭证</button> : null}</div>
+          </div>
+        </section> : null}
+
         <section className="system-status-panel runtime">
           <PanelHeading icon={Server} title="容器与宿主机" />
           <div className="system-runtime-note"><CircleAlert aria-hidden="true" size={20} /><p>{status.containerRuntime.message}</p></div>
@@ -257,6 +363,30 @@ function PanelHeading({ icon: Icon, title }: { icon: typeof Activity; title: str
 
 function StatusLine({ label, value, ok }: { label: string; value: string; ok: boolean }) {
   return <div className="system-status-line"><span>{ok ? <CircleCheck aria-hidden="true" size={15} /> : <CircleAlert aria-hidden="true" size={15} />}<small>{label}</small></span><strong title={value}>{value}</strong></div>;
+}
+
+function toBackupConfigurationForm(configuration: BackupConfiguration): BackupConfigurationForm {
+  return {
+    automaticEnabled: configuration.automaticEnabled,
+    scheduleTime: configuration.scheduleTime,
+    localRetentionDays: configuration.localRetentionDays,
+    remoteRetentionDays: configuration.remoteRetentionDays,
+    ossEnabled: configuration.oss.enabled,
+    ossRegion: configuration.oss.region,
+    ossEndpoint: configuration.oss.endpoint,
+    ossBucket: configuration.oss.bucket,
+    ossPrefix: configuration.oss.prefix,
+    ossAccessKeyId: "",
+    ossAccessKeySecret: "",
+    clearOssCredentials: false,
+    r2Enabled: configuration.r2.enabled,
+    r2AccountId: configuration.r2.accountId,
+    r2Bucket: configuration.r2.bucket,
+    r2Prefix: configuration.r2.prefix,
+    r2AccessKeyId: "",
+    r2SecretAccessKey: "",
+    clearR2Credentials: false,
+  };
 }
 
 function formatBytes(value: number): string {

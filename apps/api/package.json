@@ -18,6 +18,7 @@
     "admin:bootstrap:prod": "node dist/prisma/bootstrap-admin.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1101.0",
     "@nestjs/common": "latest",
     "@nestjs/core": "latest",
     "@nestjs/jwt": "latest",
@@ -26,6 +27,7 @@
     "@nestjs/websockets": "^11.1.28",
     "@prisma/adapter-mariadb": "latest",
     "@prisma/client": "latest",
+    "ali-oss": "^6.23.0",
     "bcryptjs": "latest",
     "class-transformer": "latest",
     "class-validator": "latest",
@@ -41,6 +43,7 @@
     "@nestjs/cli": "latest",
     "@nestjs/schematics": "latest",
     "@nestjs/testing": "latest",
+    "@types/ali-oss": "^6.23.3",
     "@types/express": "latest",
     "@types/jest": "latest",
     "@types/node": "latest",
