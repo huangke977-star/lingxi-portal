@@ -87,7 +87,7 @@ services:
       - avatar_uploads:/app/uploads/avatars
       - article_uploads:/app/uploads/articles
       - chat_uploads:/app/uploads/chat
-      - ./backups:/app/backups:ro
+      - ./backups:/app/backups
     depends_on:
       api-bootstrap:
         condition: service_completed_successfully

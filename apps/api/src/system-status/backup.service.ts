@@ -9,7 +9,7 @@ import {
 } from "@nestjs/common";
 import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, opendir, rename, stat, unlink } from "node:fs/promises";
+import { chmod, mkdir, opendir, rename, stat, unlink } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { createGunzip, createGzip } from "node:zlib";
@@ -277,7 +277,8 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async createBackupFile(prefix: string): Promise<DatabaseBackupResponse> {
-    await mkdir(this.backupDirectory, { recursive: true });
+    await mkdir(this.backupDirectory, { recursive: true, mode: 0o700 });
+    await chmod(this.backupDirectory, 0o700);
     const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "_").replace(/\..+$/, "");
     const name = `${prefix}-${timestamp}.sql.gz`;
     const filePath = join(this.backupDirectory, name);
@@ -289,7 +290,11 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     const stderr = this.collectProcessError(process.stderr);
     try {
       await Promise.all([
-        pipeline(process.stdout, createGzip({ level: 6 }), createWriteStream(temporaryPath, { flags: "wx" })),
+        pipeline(
+          process.stdout,
+          createGzip({ level: 6 }),
+          createWriteStream(temporaryPath, { flags: "wx", mode: 0o600 }),
+        ),
         this.waitForProcess(process, stderr, "数据库备份失败。"),
       ]);
       await rename(temporaryPath, filePath);
