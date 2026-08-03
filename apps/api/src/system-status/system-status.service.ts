@@ -339,6 +339,7 @@ export class SystemStatusService {
       "--single-transaction",
       "--quick",
       "--skip-lock-tables",
+      "--no-tablespaces",
       "--default-character-set=utf8mb4",
       database,
     ];
