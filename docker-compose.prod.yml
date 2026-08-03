@@ -92,7 +92,6 @@ services:
 
   api-bootstrap:
     image: ghcr.io/huangke977-star/lingxi-portal-api:main
-    pull_policy: always
     container_name: lingxi-api-bootstrap
     restart: "no"
     mem_limit: 384m
@@ -116,7 +115,6 @@ services:
 
   api:
     image: ghcr.io/huangke977-star/lingxi-portal-api:main
-    pull_policy: always
     container_name: lingxi-api
     restart: unless-stopped
     mem_limit: 384m
@@ -172,7 +170,6 @@ services:
 
   web:
     image: ghcr.io/huangke977-star/lingxi-portal-web:main
-    pull_policy: always
     container_name: lingxi-web
     restart: unless-stopped
     mem_limit: 384m
