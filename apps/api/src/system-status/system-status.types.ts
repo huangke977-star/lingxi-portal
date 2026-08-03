@@ -66,3 +66,9 @@ export interface SystemStatusResponse {
     message: string;
   };
 }
+
+export interface DatabaseBackupResponse {
+  name: string;
+  sizeBytes: number;
+  updatedAt: string;
+}

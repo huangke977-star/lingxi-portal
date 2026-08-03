@@ -2,11 +2,11 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import type { CSSProperties, FormEvent } from "react";
+import type { ComponentType, CSSProperties, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Cropper, { type Area } from "react-easy-crop";
+import Cropper, { type Area, type CropperProps } from "react-easy-crop";
 import { KeyRound, MonitorSmartphone, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
 import { PasswordInput } from "@/components/password-input";
@@ -27,6 +27,7 @@ import {
   updateMyProfile,
   uploadMyAvatar,
 } from "@/lib/auth-api";
+
 import {
   AUTH_STATE_CHANGE_EVENT,
   clearAuthTokens,
@@ -46,6 +47,23 @@ import {
   ThemePreference,
   writeThemePreference,
 } from "@/lib/theme-preferences";
+
+type AvatarCropperProps = Pick<
+  CropperProps,
+  | "aspect"
+  | "crop"
+  | "cropShape"
+  | "image"
+  | "maxZoom"
+  | "minZoom"
+  | "onCropChange"
+  | "onCropComplete"
+  | "onZoomChange"
+  | "showGrid"
+  | "zoom"
+>;
+
+const AvatarCropper = Cropper as unknown as ComponentType<AvatarCropperProps>;
 
 type AppearanceColorKey =
   | "customAccent"
@@ -1281,7 +1299,7 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="avatar-crop-stage">
-                  <Cropper
+                  <AvatarCropper
                     aspect={1}
                     crop={avatarCrop}
                     cropShape="round"

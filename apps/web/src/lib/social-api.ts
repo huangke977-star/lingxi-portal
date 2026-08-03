@@ -146,6 +146,14 @@ export function getPublicProfile(accessToken: string, userId: number): Promise<P
   return requestJson(`/social/profiles/${userId}`, { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
+export function getProfileByUsername(username: string, accessToken?: string | null): Promise<PublicProfile> {
+  const path = accessToken ? "/profiles/visible" : "/profiles/public";
+  return requestJson(`${path}/${encodeURIComponent(username)}`, {
+    cache: "no-store",
+    headers: accessToken ? authHeaders(accessToken) : undefined,
+  });
+}
+
 export function listFriendships(accessToken: string): Promise<{ friends: Friendship[]; incoming: Friendship[]; outgoing: Friendship[]; blocked: Friendship[] }> {
   return requestJson("/social/friends", { cache: "no-store", headers: authHeaders(accessToken) });
 }

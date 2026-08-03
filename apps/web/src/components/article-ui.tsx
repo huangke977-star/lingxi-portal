@@ -9,6 +9,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { memo } from "react";
+import type { MouseEvent } from "react";
 import type { Article, ArticleAuthor } from "@/lib/article-api";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
@@ -29,7 +30,7 @@ export function ArticleAuthorLine({ author, interactive = false }: { author: Art
       {interactive ? <PublicProfilePopover author={author} /> : <span className="article-author-avatar">
         {avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText({ nickname: author.nickname, username: author.username })}
       </span>}
-      <span>{author.nickname}</span>
+      <Link className="article-author-profile-link" href={`/users/${encodeURIComponent(author.username)}`} onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}>{author.nickname}</Link>
     </span>
   );
 }

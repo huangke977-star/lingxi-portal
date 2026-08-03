@@ -111,6 +111,12 @@ import {
   notifySocialStateChange,
 } from "@/lib/social-events";
 import { getAvatarFallbackText } from "@/lib/user-display";
+import {
+  type BrowserPushState,
+  disableBrowserPush,
+  enableBrowserPush,
+  getBrowserPushState,
+} from "@/lib/push-api";
 
 const MAX_ATTACHMENTS = 9;
 const NOTIFICATION_CHANNELS = [
@@ -269,6 +275,7 @@ export function ChatDock() {
   const [isAddFriendOpen, setIsAddFriendOpen] = useState(false);
   const [isMessageSettingsOpen, setIsMessageSettingsOpen] = useState(false);
   const [messageSettingsBusyKey, setMessageSettingsBusyKey] = useState("");
+  const [browserPushState, setBrowserPushState] = useState<BrowserPushState | null>(null);
   const [userSearch, setUserSearch] = useState("");
   const [userSearchResults, setUserSearchResults] = useState<SocialUserSearchResult[]>([]);
   const [isUserSearching, setIsUserSearching] = useState(false);
@@ -498,6 +505,7 @@ export function ChatDock() {
       setFriendships({ friends: [], incoming: [], outgoing: [], blocked: [] });
       setNotifications([]);
       setNotificationChannelStates([]);
+      setBrowserPushState(null);
       setHiddenNotificationChannels([]);
       setSelectedId(0);
       setMessages([]);
@@ -556,6 +564,19 @@ export function ChatDock() {
       window.clearInterval(timer);
     };
   }, [refreshSocialData]);
+
+  useEffect(() => {
+    if (!isMessageSettingsOpen) return;
+    const token = readAccessToken();
+    if (!token) return;
+    let active = true;
+    setMessageSettingsBusyKey("browser:load");
+    getBrowserPushState(token)
+      .then((state) => { if (active) setBrowserPushState(state); })
+      .catch(() => { if (active) setBrowserPushState(null); })
+      .finally(() => { if (active) setMessageSettingsBusyKey(""); });
+    return () => { active = false; };
+  }, [isMessageSettingsOpen]);
 
   useEffect(() => {
     async function handleOpen(event: Event) {
@@ -1223,6 +1244,23 @@ export function ChatDock() {
     }
   }
 
+  async function toggleBrowserPush() {
+    const token = readAccessToken();
+    if (!token || messageSettingsBusyKey) return;
+    setMessageSettingsBusyKey("browser:toggle");
+    try {
+      const state = browserPushState?.subscribed
+        ? await disableBrowserPush(token)
+        : await enableBrowserPush(token);
+      setBrowserPushState(state);
+      setNotice(state.subscribed ? "当前设备已开启浏览器推送。" : "当前设备已关闭浏览器推送。");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "浏览器推送设置失败。");
+    } finally {
+      setMessageSettingsBusyKey("");
+    }
+  }
+
   async function resetMessagePreferences() {
     const token = readAccessToken();
     if (!token || messageSettingsBusyKey) return;
@@ -1777,6 +1815,19 @@ export function ChatDock() {
             <span><Settings2 aria-hidden="true" size={17} /><strong>消息设置</strong></span>
             <button aria-label="关闭消息设置" onClick={() => setIsMessageSettingsOpen(false)} type="button"><X aria-hidden="true" size={16} /></button>
           </header>
+          <div className="chat-message-settings-section browser-push-section">
+            <span className="chat-message-settings-label">当前设备</span>
+            <button
+              aria-pressed={browserPushState?.subscribed ?? false}
+              className="chat-message-setting-row"
+              disabled={Boolean(messageSettingsBusyKey) || browserPushState?.supported === false || browserPushState?.enabled === false}
+              onClick={() => void toggleBrowserPush()}
+              type="button"
+            >
+              <span><strong>浏览器推送</strong><small>{browserPushDescription(browserPushState)}</small></span>
+              <i className={browserPushState?.subscribed ? "active" : ""}>{messageSettingsBusyKey.startsWith("browser:") ? <LoaderCircle aria-hidden="true" className="spin" size={13} /> : null}</i>
+            </button>
+          </div>
           <div className="chat-message-settings-section">
             <span className="chat-message-settings-label">通知频道</span>
             {NOTIFICATION_CHANNELS.map((config) => {
@@ -1790,7 +1841,7 @@ export function ChatDock() {
                 onClick={() => void toggleNotificationChannelPush(config.channel, config.label, !pushEnabled)}
                 type="button"
               >
-                <span><strong>{config.label}</strong><small>{pushEnabled ? "接收右上角未读提醒" : "已暂停未读提醒"}</small></span>
+                <span><strong>{config.label}</strong><small>{pushEnabled ? "接收站内提醒和设备推送" : "已暂停该频道提醒"}</small></span>
                 <i className={pushEnabled ? "active" : ""}>{busy ? <LoaderCircle aria-hidden="true" className="spin" size={13} /> : null}</i>
               </button>;
             })}
@@ -2490,6 +2541,15 @@ function formatFileSize(size: number): string {
 
 function formatCount(count: number): string {
   return count > 99 ? "99+" : String(count);
+}
+
+function browserPushDescription(state: BrowserPushState | null): string {
+  if (!state) return "正在检查当前浏览器";
+  if (!state.supported) return "当前浏览器不支持 Web Push";
+  if (!state.enabled) return "服务器尚未配置推送服务";
+  if (state.permission === "denied") return "通知权限已被浏览器阻止";
+  if (state.subscribed) return "已在当前设备开启";
+  return "关闭网页后也可接收新消息";
 }
 
 function isEmojiOnly(value: string): boolean {

@@ -10,8 +10,10 @@ import { RolesModule } from './roles/roles.module';
 import { SiteSettingsModule } from './site-settings/site-settings.module';
 import { SocialModule } from './social/social.module';
 import { SystemStatusModule } from './system-status/system-status.module';
+import { AuditModule } from './audit/audit.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
-  imports: [HealthModule, RolesModule, SiteSettingsModule, AuthModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, SystemStatusModule, PortalModule, ArticlesModule, SocialModule],
+  imports: [HealthModule, RolesModule, SiteSettingsModule, AuthModule, AuditModule, SearchModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, SystemStatusModule, PortalModule, ArticlesModule, SocialModule],
 })
 export class AppModule {}

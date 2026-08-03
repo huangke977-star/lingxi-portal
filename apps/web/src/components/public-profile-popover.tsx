@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { Check, Clock3, MessageCircle, UserPlus, X } from "lucide-react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -189,6 +190,7 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
           {isLoading ? <span className="public-profile-state">正在读取公开资料。</span> : null}
           {error ? <span className="public-profile-error">{error}</span> : null}
           <div className="public-profile-actions">
+            <Link href={`/users/${encodeURIComponent(author.username)}`} onClick={() => setIsOpen(false)}>查看主页</Link>
             {!readAccessToken() ? <button onClick={goToLogin} type="button">登录后互动</button> : null}
             {profile && !profile.isSelf && !relationship && !isFriendNoteOpen ? <button disabled={isActing} onClick={() => setIsFriendNoteOpen(true)} type="button"><UserPlus aria-hidden="true" size={15} />加好友</button> : null}
             {relationship?.direction === "outgoing" ? <span><Clock3 aria-hidden="true" size={14} />等待对方确认</span> : null}
@@ -209,7 +211,7 @@ export function CommentAuthorIdentity({ author }: { author: ArticleAuthor }) {
   return (
     <span className="comment-author-identity">
       <PublicProfilePopover author={author} />
-      <strong>{author.nickname}</strong>
+      <Link className="comment-author-profile-link" href={`/users/${encodeURIComponent(author.username)}`}>{author.nickname}</Link>
       <span className="comment-role-icon" title={roleName}><RoleSymbol code={roleCode} /></span>
     </span>
   );

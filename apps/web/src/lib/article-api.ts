@@ -147,7 +147,7 @@ function authHeaders(accessToken: string) {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
-function listQuery(query: { page?: number; pageSize?: number; search?: string; category?: string; status?: ArticleStatus; sort?: string } = {}) {
+function listQuery(query: { page?: number; pageSize?: number; search?: string; category?: string; authorUsername?: string; status?: ArticleStatus; sort?: string } = {}) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined && value !== "") params.set(key, String(value));

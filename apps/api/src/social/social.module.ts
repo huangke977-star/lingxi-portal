@@ -9,10 +9,12 @@ import { ChatAttachmentsService } from "./chat-attachments.service";
 import { CallsService } from "./calls.service";
 import { SocialController } from "./social.controller";
 import { SocialService } from "./social.service";
+import { PublicProfilesController } from "./public-profiles.controller";
+import { PushModule } from "../push/push.module";
 
 @Module({
-  imports: [JwtModule.register({}), UsersModule, RedisModule, SiteSettingsModule],
-  controllers: [SocialController],
+  imports: [JwtModule.register({}), UsersModule, RedisModule, SiteSettingsModule, PushModule],
+  controllers: [SocialController, PublicProfilesController],
   providers: [PrismaService, SocialService, ChatAttachmentsService, CallsService, ChatGateway],
   exports: [SocialService],
 })

@@ -23,6 +23,7 @@ import {
 } from "react";
 import { AppToast } from "@/components/app-toast";
 import { PwaInstallButton } from "@/components/pwa-install-button";
+import { GlobalSearch } from "@/components/global-search";
 import { RoleSymbol } from "@/components/role-symbol";
 import {
   type ArticleCommentReport,
@@ -338,6 +339,7 @@ export function TopNav() {
         <div className="top-links desktop-links">{navItems.map((item) => <Link className={isActiveRoute(item.href) ? "active" : undefined} href={item.href} key={item.href}>{item.label}</Link>)}</div>
         <div className="account-zone">
           <PwaInstallButton />
+          <GlobalSearch />
           {isLoading ? <span className="login-chip">读取中</span> : null}
           {!isLoading && !user ? <Link className="login-chip login-chip-action" href={`/login?from=${encodeURIComponent(pathname)}`}>登录</Link> : null}
           {user && roleBadge ? <>
@@ -366,8 +368,9 @@ export function TopNav() {
               <button aria-expanded={isAccountMenuOpen} aria-haspopup="menu" aria-label={`${getUserDisplayName(user)} 的账户菜单`} className="avatar-button" onClick={(event) => { event.stopPropagation(); setIsAccountMenuOpen(true); }} onFocus={() => setIsAccountMenuOpen(true)} type="button">{avatarUrl ? <img alt="" src={avatarUrl} /> : avatarText}</button>
               <div className={`account-menu ${isAccountMenuOpen ? "open" : ""}`} onFocus={() => cancelClose(accountMenuCloseTimerRef)} role="menu">
                 <div className="account-menu-head"><strong>{getUserDisplayName(user)}</strong><span>@{user.username}</span></div>
+                <Link href={`/users/${encodeURIComponent(user.username)}`} onClick={() => setIsAccountMenuOpen(false)}>我的主页</Link>
                 <Link href="/profile" onClick={() => setIsAccountMenuOpen(false)}>个人中心</Link>
-                {user.isSuperAdmin || user.role.level >= 90 ? <><Link href="/admin" onClick={() => setIsAccountMenuOpen(false)}>用户管理</Link><Link href="/admin/content" onClick={() => setIsAccountMenuOpen(false)}>内容管理</Link></> : null}
+                {user.isSuperAdmin || user.role.level >= 90 ? <><Link href="/admin" onClick={() => setIsAccountMenuOpen(false)}>用户管理</Link><Link href="/admin/content" onClick={() => setIsAccountMenuOpen(false)}>内容管理</Link><Link href="/admin/audit" onClick={() => setIsAccountMenuOpen(false)}>审计日志</Link></> : null}
                 {user.isSuperAdmin ? <><Link href="/admin/settings" onClick={() => setIsAccountMenuOpen(false)}>站点设置</Link><Link href="/admin/android" onClick={() => setIsAccountMenuOpen(false)}>安装包管理</Link><Link href="/admin/cache" onClick={() => setIsAccountMenuOpen(false)}>缓存管理</Link><Link href="/admin/system" onClick={() => setIsAccountMenuOpen(false)}>系统概览</Link></> : null}
                 <button disabled={isLoggingOut} onClick={() => void handleLogout()} type="button">{isLoggingOut ? "退出中" : "退出登录"}</button>
               </div>

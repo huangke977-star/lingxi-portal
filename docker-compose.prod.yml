@@ -141,6 +141,9 @@ services:
       TURN_PORT: ${TURN_PORT:-3478}
       TURN_CREDENTIAL_TTL_SECONDS: ${TURN_CREDENTIAL_TTL_SECONDS:-3600}
       STUN_URLS: ${STUN_URLS:-stun:turn.5200918.xyz:3478}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@5200918.xyz}
       BACKGROUND_UPLOAD_DIR: /app/uploads/backgrounds
       SITE_ASSET_UPLOAD_DIR: /app/uploads/site-assets
       ANDROID_RELEASE_UPLOAD_DIR: /app/uploads/android-releases
@@ -157,7 +160,7 @@ services:
       - avatar_uploads:/app/uploads/avatars
       - article_uploads:/app/uploads/articles
       - chat_uploads:/app/uploads/chat
-      - ./backups:/app/backups:ro
+      - ./backups:/app/backups
     depends_on:
       api-bootstrap:
         condition: service_completed_successfully

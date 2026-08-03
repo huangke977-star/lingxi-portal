@@ -1081,6 +1081,7 @@ export class ArticlesService {
       }
     }
     if (query.category) where.category = query.category.trim();
+    if (query.authorUsername) where.author = { is: { username: query.authorUsername.trim() } };
     if (query.sort === "pinned") where.isPinned = true;
     if (search) {
       where.AND = [{

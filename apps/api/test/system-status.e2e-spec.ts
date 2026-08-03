@@ -90,6 +90,12 @@ const statusResponse = {
 describe("system status administration (e2e)", () => {
   let app: INestApplication;
   let jwt: JwtService;
+  const serviceMock = {
+    getStatus: jest.fn(async () => statusResponse),
+    createBackup: jest.fn(async () => ({ name: "manual-20260803_120000.sql.gz", sizeBytes: 512, updatedAt: "2026-08-03T12:00:00.000Z" })),
+    deleteBackup: jest.fn(async () => ({ success: true })),
+    restoreBackup: jest.fn(async (name: string) => ({ success: true, restored: name, safetyBackup: { name: "pre-restore.sql.gz", sizeBytes: 512, updatedAt: "2026-08-03T12:00:00.000Z" } })),
+  };
 
   beforeEach(async () => {
     process.env.JWT_ACCESS_SECRET = "test-access-token-secret";
@@ -97,7 +103,7 @@ describe("system status administration (e2e)", () => {
       .overrideProvider(PrismaService)
       .useValue(prismaMock())
       .overrideProvider(SystemStatusService)
-      .useValue({ getStatus: jest.fn(async () => statusResponse) })
+      .useValue(serviceMock)
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -107,6 +113,7 @@ describe("system status administration (e2e)", () => {
 
   afterEach(async () => {
     await app?.close();
+    jest.clearAllMocks();
   });
 
   async function tokenFor(userId: number): Promise<string> {
@@ -135,5 +142,37 @@ describe("system status administration (e2e)", () => {
       redis: { connected: true, keyCount: 8 },
       containerRuntime: { connected: false },
     });
+  });
+
+  it("allows only the super administrator to create, restore, and delete backups", async () => {
+    const name = "manual-20260803_120000.sql.gz";
+    await request(app.getHttpServer())
+      .post("/admin/system/backups")
+      .set("Authorization", `Bearer ${await tokenFor(2)}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post("/admin/system/backups")
+      .set("Authorization", `Bearer ${await tokenFor(1)}`)
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/admin/system/backups/${name}/restore`)
+      .set("Authorization", `Bearer ${await tokenFor(1)}`)
+      .send({ confirmation: name })
+      .expect(201);
+    await request(app.getHttpServer())
+      .delete(`/admin/system/backups/${name}`)
+      .set("Authorization", `Bearer ${await tokenFor(1)}`)
+      .expect(200);
+
+    expect(serviceMock.createBackup).toHaveBeenCalledTimes(1);
+    expect(serviceMock.restoreBackup).toHaveBeenCalledWith(name, name);
+    expect(serviceMock.deleteBackup).toHaveBeenCalledWith(name);
+  });
+
+  it("requires the complete backup filename before restore starts", async () => {
+    const service = new SystemStatusService({} as PrismaService, {} as never);
+    await expect(service.restoreBackup("manual-20260803_120000.sql.gz", "manual"))
+      .rejects.toThrow("请输入完整备份文件名确认恢复操作。");
   });
 });

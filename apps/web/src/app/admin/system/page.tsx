@@ -3,15 +3,18 @@
 import {
   Activity,
   Archive,
+  ArchiveRestore,
   Box,
   CircleAlert,
   CircleCheck,
   Clock3,
   Database,
+  Download,
   Files,
   HardDrive,
   RefreshCcw,
   Server,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,7 +22,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
-import { getSystemStatus, type SystemStatus } from "@/lib/system-status-api";
+import {
+  createDatabaseBackup,
+  deleteDatabaseBackup,
+  downloadDatabaseBackup,
+  getSystemStatus,
+  restoreDatabaseBackup,
+  type SystemStatus,
+} from "@/lib/system-status-api";
 
 export default function SystemStatusPage() {
   const router = useRouter();
@@ -29,6 +39,10 @@ export default function SystemStatusPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [backupBusy, setBackupBusy] = useState("");
+  const [restoreTarget, setRestoreTarget] = useState("");
+  const [restoreConfirmation, setRestoreConfirmation] = useState("");
 
   const loadStatus = useCallback(async (token: string, refresh = false) => {
     if (refresh) setIsRefreshing(true);
@@ -86,6 +100,76 @@ export default function SystemStatusPage() {
     [status],
   );
 
+  async function refreshAfterBackup(message: string) {
+    if (!accessToken) return;
+    await loadStatus(accessToken);
+    setNotice(message);
+  }
+
+  async function handleCreateBackup() {
+    if (!accessToken || backupBusy) return;
+    setBackupBusy("create");
+    setError("");
+    try {
+      const backup = await createDatabaseBackup(accessToken);
+      await refreshAfterBackup(`备份已创建：${backup.name}`);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "数据库备份创建失败。");
+    } finally {
+      setBackupBusy("");
+    }
+  }
+
+  async function handleDownloadBackup(name: string) {
+    if (!accessToken || backupBusy) return;
+    setBackupBusy(`download:${name}`);
+    setError("");
+    try {
+      const blob = await downloadDatabaseBackup(accessToken, name);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNotice("备份下载已开始。");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "备份下载失败。");
+    } finally {
+      setBackupBusy("");
+    }
+  }
+
+  async function handleDeleteBackup(name: string) {
+    if (!accessToken || backupBusy || !window.confirm(`永久删除备份 ${name} 吗？`)) return;
+    setBackupBusy(`delete:${name}`);
+    setError("");
+    try {
+      await deleteDatabaseBackup(accessToken, name);
+      await refreshAfterBackup("备份文件已删除。");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "备份删除失败。");
+    } finally {
+      setBackupBusy("");
+    }
+  }
+
+  async function handleRestoreBackup() {
+    if (!accessToken || !restoreTarget || restoreConfirmation !== restoreTarget || backupBusy) return;
+    setBackupBusy(`restore:${restoreTarget}`);
+    setError("");
+    try {
+      const restored = await restoreDatabaseBackup(accessToken, restoreTarget);
+      setRestoreTarget("");
+      setRestoreConfirmation("");
+      await refreshAfterBackup(`数据库已恢复，恢复前备份：${restored.safetyBackup.name}`);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "数据库恢复失败。");
+    } finally {
+      setBackupBusy("");
+    }
+  }
+
   if (isLoading) {
     return <section className="page-shell admin-shell system-status-shell"><span className="status">正在读取系统状态</span></section>;
   }
@@ -99,7 +183,7 @@ export default function SystemStatusPage() {
   }
 
   return <section className="page-shell admin-shell system-status-shell">
-    <AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" />
+    <AppToast duration={error ? 4200 : 3200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     <header className="system-status-head">
       <div><span className="section-label">HLOVET Operations</span><h1>系统运行概览</h1></div>
       <div className="system-status-head-actions">
@@ -141,13 +225,13 @@ export default function SystemStatusPage() {
         </section>
 
         <section className="system-status-panel backups">
-          <PanelHeading icon={Archive} title="数据库备份" />
+          <header className="system-panel-heading system-backup-heading"><span><Archive aria-hidden="true" size={17} /><strong>数据库备份</strong></span><button disabled={Boolean(backupBusy)} onClick={() => void handleCreateBackup()} type="button">{backupBusy === "create" ? "备份中" : "立即备份"}</button></header>
           <div className="system-backup-summary">
             <span><Clock3 aria-hidden="true" size={16} /><small>最近备份</small><strong>{status.backups.latest ? formatDateTime(status.backups.latest.updatedAt) : "暂无可见备份"}</strong></span>
             <span><HardDrive aria-hidden="true" size={16} /><small>备份占用</small><strong>{formatBytes(status.backups.totalBytes)}</strong></span>
           </div>
           <div className="system-backup-list">
-            {status.backups.items.map((backup) => <div key={backup.name}><span><strong title={backup.name}>{backup.name}</strong><small>{formatDateTime(backup.updatedAt)}</small></span><b>{formatBytes(backup.sizeBytes)}</b></div>)}
+            {status.backups.items.map((backup) => <div className="system-backup-row" key={backup.name}><span><strong title={backup.name}>{backup.name}</strong><small>{formatDateTime(backup.updatedAt)}</small></span><b>{formatBytes(backup.sizeBytes)}</b><span className="system-backup-actions"><button aria-label={`下载 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => void handleDownloadBackup(backup.name)} title="下载" type="button"><Download aria-hidden="true" size={15} /></button><button aria-label={`恢复 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => { setRestoreTarget(backup.name); setRestoreConfirmation(""); }} title="恢复" type="button"><ArchiveRestore aria-hidden="true" size={15} /></button><button aria-label={`删除 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => void handleDeleteBackup(backup.name)} title="删除" type="button"><Trash2 aria-hidden="true" size={15} /></button></span></div>)}
             {!status.backups.items.length ? <p>{status.backups.available ? "备份目录中暂无 SQL 备份文件。" : "备份目录尚未挂载或不可读取。"}</p> : null}
           </div>
         </section>
@@ -159,6 +243,7 @@ export default function SystemStatusPage() {
         </section>
       </div>
     </> : <div className="system-status-empty"><CircleAlert aria-hidden="true" size={22} /><span>暂时无法读取系统状态，请稍后刷新。</span></div>}
+    {restoreTarget ? <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !backupBusy) setRestoreTarget(""); }} role="presentation"><div aria-modal="true" className="modal-panel backup-restore-modal" role="dialog"><div className="modal-heading"><span className="section-label">Database restore</span><h2>恢复数据库</h2><p>恢复会覆盖当前数据库，系统会先自动创建一份恢复前备份。请输入完整文件名确认。</p></div><label className="backup-confirm-field"><span>{restoreTarget}</span><input autoFocus onChange={(event) => setRestoreConfirmation(event.target.value)} placeholder="输入上方完整文件名" value={restoreConfirmation} /></label><div className="actions"><button className="button" disabled={restoreConfirmation !== restoreTarget || Boolean(backupBusy)} onClick={() => void handleRestoreBackup()} type="button">{backupBusy ? "恢复中" : "确认恢复"}</button><button className="button secondary" disabled={Boolean(backupBusy)} onClick={() => setRestoreTarget("")} type="button">取消</button></div></div></div> : null}
   </section>;
 }
 

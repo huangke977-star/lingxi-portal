@@ -98,6 +98,11 @@ export class ListArticlesQueryDto {
   category?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  authorUsername?: string;
+
+  @IsOptional()
   @IsIn(ARTICLE_STATUSES)
   status?: ArticleStatusValue;
 

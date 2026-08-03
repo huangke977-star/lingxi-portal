@@ -19,6 +19,7 @@ RUN pnpm --filter @lingxi/api build
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apk add --no-cache mariadb-client
 RUN corepack enable
 RUN corepack prepare pnpm@11.10.0 --activate
 COPY --from=builder /app/node_modules ./node_modules

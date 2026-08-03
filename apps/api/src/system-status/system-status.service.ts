@@ -1,9 +1,13 @@
-import { Injectable } from "@nestjs/common";
-import { opendir, stat } from "node:fs/promises";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { spawn } from "node:child_process";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdir, opendir, rename, stat, unlink } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { createGunzip, createGzip } from "node:zlib";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
-import { SystemStatusResponse } from "./system-status.types";
+import { DatabaseBackupResponse, SystemStatusResponse } from "./system-status.types";
 
 interface DirectoryUsage {
   available: boolean;
@@ -11,11 +15,7 @@ interface DirectoryUsage {
   fileCount: number;
 }
 
-interface BackupEntry {
-  name: string;
-  sizeBytes: number;
-  updatedAt: string;
-}
+type BackupEntry = DatabaseBackupResponse;
 
 interface DatabaseVersionRow {
   version: string;
@@ -48,6 +48,7 @@ export class SystemStatusService {
   private readonly backupDirectory = resolve(
     process.env.BACKUP_DIR ?? join(process.cwd(), "backups"),
   );
+  private activeBackupOperation: string | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -97,6 +98,54 @@ export class SystemStatusService {
         message: "为避免授予 Web API 宿主机控制权限，容器状态请在 1Panel 或 SSH 中查看。",
       },
     };
+  }
+
+  async createBackup(): Promise<DatabaseBackupResponse> {
+    return this.withBackupLock("create", () => this.createBackupFile("manual"));
+  }
+
+  async getBackupDownload(rawName: string): Promise<{
+    name: string;
+    filePath: string;
+    sizeBytes: number;
+    mimeType: string;
+  }> {
+    const name = this.backupName(rawName);
+    const filePath = join(this.backupDirectory, name);
+    const file = await this.backupFileStat(filePath);
+    return {
+      name,
+      filePath,
+      sizeBytes: file.size,
+      mimeType: name.endsWith(".gz") ? "application/gzip" : "application/sql",
+    };
+  }
+
+  async deleteBackup(rawName: string): Promise<{ success: true }> {
+    return this.withBackupLock("delete", async () => {
+      const name = this.backupName(rawName);
+      const filePath = join(this.backupDirectory, name);
+      await this.backupFileStat(filePath);
+      await unlink(filePath);
+      return { success: true };
+    });
+  }
+
+  async restoreBackup(
+    rawName: string,
+    confirmation: string,
+  ): Promise<{ success: true; restored: string; safetyBackup: DatabaseBackupResponse }> {
+    return this.withBackupLock("restore", async () => {
+      const name = this.backupName(rawName);
+      if (confirmation.trim() !== name) {
+        throw new BadRequestException("请输入完整备份文件名确认恢复操作。");
+      }
+      const filePath = join(this.backupDirectory, name);
+      await this.backupFileStat(filePath);
+      const safetyBackup = await this.createBackupFile("pre-restore");
+      await this.restoreBackupFile(filePath, name.endsWith(".gz"));
+      return { success: true, restored: name, safetyBackup };
+    });
   }
 
   private async databaseStatus(): Promise<SystemStatusResponse["database"]> {
@@ -199,7 +248,7 @@ export class SystemStatusService {
         totalBytes: items.reduce((total, item) => total + item.sizeBytes, 0),
         fileCount: items.length,
         latest: items[0] ?? null,
-        items: items.slice(0, 10),
+        items,
       };
     } catch {
       return {
@@ -232,6 +281,135 @@ export class SystemStatusService {
       return { available: true, sizeBytes, fileCount };
     } catch {
       return { available: false, sizeBytes: 0, fileCount: 0 };
+    }
+  }
+
+  private async createBackupFile(prefix: string): Promise<DatabaseBackupResponse> {
+    await mkdir(this.backupDirectory, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "_").replace(/\..+$/, "");
+    const name = `${prefix}-${timestamp}.sql.gz`;
+    const filePath = join(this.backupDirectory, name);
+    const temporaryPath = `${filePath}.tmp`;
+    const process = spawn("mariadb-dump", this.dumpArguments(), {
+      env: this.databaseProcessEnvironment(),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stderr = this.collectProcessError(process.stderr);
+    try {
+      await Promise.all([
+        pipeline(process.stdout, createGzip({ level: 6 }), createWriteStream(temporaryPath, { flags: "wx" })),
+        this.waitForProcess(process, stderr, "数据库备份失败。"),
+      ]);
+      await rename(temporaryPath, filePath);
+      const file = await stat(filePath);
+      return { name, sizeBytes: file.size, updatedAt: file.mtime.toISOString() };
+    } catch (error) {
+      await unlink(temporaryPath).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async restoreBackupFile(filePath: string, compressed: boolean): Promise<void> {
+    const process = spawn("mariadb", this.restoreArguments(), {
+      env: this.databaseProcessEnvironment(),
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+    const stderr = this.collectProcessError(process.stderr);
+    const input = createReadStream(filePath);
+    try {
+      await Promise.all([
+        compressed
+          ? pipeline(input, createGunzip(), process.stdin)
+          : pipeline(input, process.stdin),
+        this.waitForProcess(process, stderr, "数据库恢复失败。"),
+      ]);
+    } catch (error) {
+      process.kill("SIGTERM");
+      throw error;
+    }
+  }
+
+  private dumpArguments(): string[] {
+    const database = process.env.MYSQL_DATABASE?.trim();
+    if (!database) throw new BadRequestException("MYSQL_DATABASE 未配置。");
+    return [
+      `--host=${process.env.MYSQL_HOST?.trim() || "mysql"}`,
+      `--port=${process.env.MYSQL_PORT?.trim() || "3306"}`,
+      `--user=${process.env.MYSQL_USER?.trim() || "lingxi"}`,
+      "--single-transaction",
+      "--quick",
+      "--skip-lock-tables",
+      "--default-character-set=utf8mb4",
+      database,
+    ];
+  }
+
+  private restoreArguments(): string[] {
+    const database = process.env.MYSQL_DATABASE?.trim();
+    if (!database) throw new BadRequestException("MYSQL_DATABASE 未配置。");
+    return [
+      `--host=${process.env.MYSQL_HOST?.trim() || "mysql"}`,
+      `--port=${process.env.MYSQL_PORT?.trim() || "3306"}`,
+      `--user=${process.env.MYSQL_USER?.trim() || "lingxi"}`,
+      "--binary-mode",
+      "--default-character-set=utf8mb4",
+      database,
+    ];
+  }
+
+  private databaseProcessEnvironment(): NodeJS.ProcessEnv {
+    return { ...process.env, MYSQL_PWD: process.env.MYSQL_PASSWORD ?? "" };
+  }
+
+  private collectProcessError(stream: NodeJS.ReadableStream): { value: string } {
+    const result = { value: "" };
+    stream.on("data", (chunk) => {
+      if (result.value.length < 4000) result.value += String(chunk).slice(0, 4000 - result.value.length);
+    });
+    return result;
+  }
+
+  private waitForProcess(
+    child: ReturnType<typeof spawn>,
+    stderr: { value: string },
+    fallback: string,
+  ): Promise<void> {
+    return new Promise((resolveProcess, rejectProcess) => {
+      child.once("error", () => rejectProcess(new BadRequestException(`${fallback} 数据库客户端不可用。`)));
+      child.once("close", (code) => {
+        if (code === 0) resolveProcess();
+        else rejectProcess(new BadRequestException(stderr.value.trim() || fallback));
+      });
+    });
+  }
+
+  private async withBackupLock<T>(operation: string, action: () => Promise<T>): Promise<T> {
+    if (this.activeBackupOperation) {
+      throw new ConflictException(`数据库备份任务正在执行：${this.activeBackupOperation}`);
+    }
+    this.activeBackupOperation = operation;
+    try {
+      return await action();
+    } finally {
+      this.activeBackupOperation = null;
+    }
+  }
+
+  private backupName(rawName: string): string {
+    const name = basename(rawName.trim());
+    if (name !== rawName.trim() || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,199}\.sql(?:\.gz)?$/.test(name)) {
+      throw new BadRequestException("备份文件名无效。");
+    }
+    return name;
+  }
+
+  private async backupFileStat(filePath: string) {
+    try {
+      const file = await stat(filePath);
+      if (!file.isFile()) throw new Error("Not a file");
+      return file;
+    } catch {
+      throw new NotFoundException("备份文件不存在。");
     }
   }
 

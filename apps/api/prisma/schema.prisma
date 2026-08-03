@@ -211,6 +211,8 @@ model User {
   notificationChannelStates UserNotificationChannelState[]
   subscriptionsGiven      UserSubscription[]     @relation("UserSubscriptionSubscriber")
   subscriptionsReceived   UserSubscription[]     @relation("UserSubscriptionAuthor")
+  auditLogs                AuditLog[]             @relation("AuditLogActor")
+  pushSubscriptions       PushSubscription[]
 
   @@index([roleId])
   @@map("users")
@@ -732,10 +734,12 @@ model UserNotification {
   aggregateCount  Int                   @default(1) @map("aggregate_count")
   readAt          DateTime?             @map("read_at")
   openedAt        DateTime?             @map("opened_at")
+  pushDeliveredAt DateTime?             @map("push_delivered_at")
   createdAt       DateTime              @default(now()) @map("created_at")
   updatedAt       DateTime              @updatedAt @map("updated_at")
 
   @@index([userId, channel, readAt, id])
+  @@index([pushDeliveredAt, id])
   @@index([userId, type, articleId, readAt])
   @@index([articleId])
   @@index([commentId])
@@ -755,4 +759,46 @@ model UserNotificationChannelState {
 
   @@id([userId, channel])
   @@map("user_notification_channel_states")
+}
+
+model PushSubscription {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpointHash String   @unique @map("endpoint_hash") @db.Char(64)
+  endpoint     String   @db.Text
+  p256dh       String   @db.VarChar(255)
+  auth         String   @db.VarChar(255)
+  userAgent    String   @default("") @map("user_agent") @db.VarChar(500)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, updatedAt])
+  @@map("push_subscriptions")
+}
+
+model AuditLog {
+  id            Int      @id @default(autoincrement())
+  actorId       Int?     @map("actor_id")
+  actor         User?    @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorUsername String   @map("actor_username") @db.VarChar(32)
+  actorNickname String   @map("actor_nickname") @db.VarChar(32)
+  action        String   @db.VarChar(120)
+  scope         String   @db.VarChar(24)
+  method        String   @db.VarChar(10)
+  path          String   @db.VarChar(512)
+  targetType    String?  @map("target_type") @db.VarChar(80)
+  targetId      String?  @map("target_id") @db.VarChar(120)
+  summary       String   @db.VarChar(255)
+  metadata      Json?
+  ip            String   @default("") @db.VarChar(80)
+  userAgent     String   @default("") @map("user_agent") @db.VarChar(500)
+  statusCode    Int      @map("status_code")
+  durationMs    Int      @map("duration_ms")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([scope, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
 }

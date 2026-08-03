@@ -102,25 +102,41 @@ export class SocialService {
 
   async getProfile(viewer: AuthenticatedUser, userId: number): Promise<PublicProfileResponse> {
     const target = await this.prisma.user.findUnique({ where: { id: userId }, select: socialUserSelect });
+    return this.buildProfile(target, viewer);
+  }
+
+  async getProfileByUsername(
+    rawUsername: string,
+    viewer: AuthenticatedUser | null,
+  ): Promise<PublicProfileResponse> {
+    const username = rawUsername.trim();
+    const target = await this.prisma.user.findUnique({ where: { username }, select: socialUserSelect });
+    return this.buildProfile(target, viewer);
+  }
+
+  private async buildProfile(
+    target: SocialUserRecord | null,
+    viewer: AuthenticatedUser | null,
+  ): Promise<PublicProfileResponse> {
     if (!target || target.status !== "active") {
       throw new NotFoundException("用户不存在或当前不可查看。");
     }
     const [relationship, subscription, subscriberCount] = await Promise.all([
-      viewer.id === userId ? Promise.resolve(null) : this.findFriendship(viewer.id, userId),
-      viewer.id === userId
+      !viewer || viewer.id === target.id ? Promise.resolve(null) : this.findFriendship(viewer.id, target.id),
+      !viewer || viewer.id === target.id
         ? Promise.resolve(null)
         : this.prisma.userSubscription.findUnique({
-            where: { subscriberId_authorId: { subscriberId: viewer.id, authorId: userId } },
+            where: { subscriberId_authorId: { subscriberId: viewer.id, authorId: target.id } },
             select: { authorId: true },
           }),
-      this.prisma.userSubscription.count({ where: { authorId: userId } }),
+      this.prisma.userSubscription.count({ where: { authorId: target.id } }),
     ]);
     return {
       ...this.toSocialUser(target),
-      isSelf: viewer.id === userId,
+      isSelf: viewer?.id === target.id,
       subscribed: Boolean(subscription),
       subscriberCount,
-      relationship: relationship && (
+      relationship: viewer && relationship && (
         relationship.status === FriendshipStatus.pending ||
         relationship.status === FriendshipStatus.accepted ||
         (relationship.status === FriendshipStatus.blocked && relationship.blockedById === viewer.id)

@@ -17,6 +17,7 @@ import { RedisService } from "../redis/redis.service";
 import { UsersService } from "../users/users.service";
 import { CallDescriptor, CallsService } from "./calls.service";
 import { SocialService } from "./social.service";
+import { PushService } from "../push/push.service";
 
 interface ChatSocketData {
   userId?: number;
@@ -108,6 +109,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private readonly socialService: SocialService,
     private readonly callsService: CallsService,
     private readonly redis: RedisService,
+    private readonly pushService: PushService,
   ) {}
 
   afterInit(): void {
@@ -187,6 +189,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       const participantIds = await this.socialService.getConversationParticipantIds(conversationId);
       for (const participantId of participantIds) {
         this.server.to(this.userRoom(participantId)).emit("chat:message", message);
+        if (participantId !== userId) {
+          void this.pushService.sendChatMessage(userId, participantId, message).catch(() => undefined);
+        }
       }
       return { ok: true, message };
     } catch (error) {
@@ -231,6 +236,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       for (const message of result.messages) {
         for (const participantId of result.participantIds) {
           this.server.to(this.userRoom(participantId)).emit("chat:message", message);
+          if (participantId !== userId) {
+            void this.pushService.sendChatMessage(userId, participantId, message).catch(() => undefined);
+          }
         }
       }
       return { ok: true, messages: result.messages };

@@ -1,4 +1,10 @@
-import { requestJson } from "./auth-api";
+import { requestBlob, requestJson } from "./auth-api";
+
+export interface DatabaseBackup {
+  name: string;
+  sizeBytes: number;
+  updatedAt: string;
+}
 
 export interface SystemStatus {
   generatedAt: string;
@@ -49,8 +55,8 @@ export interface SystemStatus {
     available: boolean;
     totalBytes: number;
     fileCount: number;
-    latest: { name: string; sizeBytes: number; updatedAt: string } | null;
-    items: Array<{ name: string; sizeBytes: number; updatedAt: string }>;
+    latest: DatabaseBackup | null;
+    items: DatabaseBackup[];
   };
   containerRuntime: {
     connected: false;
@@ -62,5 +68,25 @@ export function getSystemStatus(accessToken: string): Promise<SystemStatus> {
   return requestJson<SystemStatus>("/admin/system/status", {
     cache: "no-store",
     headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function createDatabaseBackup(accessToken: string): Promise<DatabaseBackup> {
+  return requestJson("/admin/system/backups", { method: "POST", headers: { Authorization: `Bearer ${accessToken}` } });
+}
+
+export function downloadDatabaseBackup(accessToken: string, name: string): Promise<Blob> {
+  return requestBlob(`/admin/system/backups/${encodeURIComponent(name)}/download`, { headers: { Authorization: `Bearer ${accessToken}` } });
+}
+
+export function deleteDatabaseBackup(accessToken: string, name: string): Promise<{ success: true }> {
+  return requestJson(`/admin/system/backups/${encodeURIComponent(name)}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } });
+}
+
+export function restoreDatabaseBackup(accessToken: string, name: string): Promise<{ success: true; restored: string; safetyBackup: DatabaseBackup }> {
+  return requestJson(`/admin/system/backups/${encodeURIComponent(name)}/restore`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ confirmation: name }),
   });
 }

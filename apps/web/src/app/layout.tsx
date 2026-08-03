@@ -75,11 +75,9 @@ export default function RootLayout({
   return (
     <html data-portal-theme="cloud-blue" lang="zh-CN">
       <body>
-        <Script
-          dangerouslySetInnerHTML={{ __html: themeBootScript }}
-          id="hlovet-theme-boot"
-          strategy="beforeInteractive"
-        />
+        <Script id="hlovet-theme-boot" strategy="beforeInteractive">
+          {themeBootScript}
+        </Script>
         <AuthSessionController />
         <PwaController />
         <ThemeController />

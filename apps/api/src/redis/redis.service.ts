@@ -139,7 +139,7 @@ export class RedisService implements OnModuleDestroy {
     start: number,
     stop: number,
   ): Promise<string[]> {
-    return this.client.zrange(key, start, stop, "WITHSCORES");
+    return this.client.zrange(key, start, String(stop), "WITHSCORES");
   }
 
   async zcard(key: string): Promise<number> {
