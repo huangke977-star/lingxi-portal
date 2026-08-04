@@ -11,14 +11,12 @@ import {
 import type { AuthUser } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
 
-export type ArticleCenterSection = "discover" | "subscriptions" | "mine" | "favorites" | "liked" | "manage";
+export type ArticleCenterSection = "discover" | "mine" | "reading" | "manage";
 
-const sections: Array<{ id: Exclude<ArticleCenterSection, "manage">; href: string; label: string; protected?: boolean }> = [
-  { id: "discover", href: "/articles", label: "发现" },
-  { id: "subscriptions", href: "/articles/subscriptions", label: "订阅", protected: true },
-  { id: "mine", href: "/articles/mine", label: "我的创作", protected: true },
-  { id: "favorites", href: "/articles/favorites", label: "收藏", protected: true },
-  { id: "liked", href: "/articles/liked", label: "赞过", protected: true },
+const sections: Array<{ id: Exclude<ArticleCenterSection, "manage">; href: string; label: string; protected?: boolean; count?: "discover" | "mine" }> = [
+  { id: "discover", href: "/articles", label: "发现", count: "discover" },
+  { id: "mine", href: "/articles/mine", label: "我的创作", protected: true, count: "mine" },
+  { id: "reading", href: "/articles/reading", label: "我的阅读", protected: true },
 ];
 
 const emptySummary: ArticleCenterSummary = {
@@ -27,6 +25,8 @@ const emptySummary: ArticleCenterSummary = {
   mine: 0,
   favorites: 0,
   liked: 0,
+  readLater: 0,
+  history: 0,
   manage: 0,
 };
 
@@ -81,7 +81,7 @@ export function ArticleCenterNav({
             href={section.protected ? protectedHref(section.href) : section.href}
             key={section.id}
           >
-            {section.label}<span className="article-nav-count">{summary[section.id]}</span>
+            {section.label}{section.count ? <span className="article-nav-count">{summary[section.count]}</span> : null}
           </Link>
         ))}
         {canManage ? (

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bookmark, CalendarDays, CornerDownRight, Flag, Heart, MessageCircle, Reply, Rss, Send, Tag, ThumbsUp, Trash2, X } from "lucide-react";
+import { Bookmark, CalendarDays, Clock3, CornerDownRight, Flag, Heart, MessageCircle, Reply, Rss, Send, Tag, ThumbsUp, Trash2, X } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
@@ -23,6 +23,8 @@ import {
   likeArticleComment,
   listArticleComments,
   reportArticleComment,
+  setArticleReadLater,
+  updateArticleReadingProgress,
 } from "@/lib/article-api";
 import { buildArticleCommentThreads } from "@/lib/article-comments";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
@@ -62,9 +64,13 @@ export default function ArticleDetailPage() {
   const [highlightCommentId, setHighlightCommentId] = useState<number | null>(null);
   const [authorProfile, setAuthorProfile] = useState<PublicProfile | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const readingContentRef = useRef<HTMLElement | null>(null);
+  const restoredReadingPositionRef = useRef(false);
   const requestedCommentLoadRef = useRef(0);
   const commentThreads = useMemo(() => buildArticleCommentThreads(comments), [comments]);
   const requestedCommentId = Number(searchParams.get("commentId") ?? 0);
+  const readingArticleId = article?.id;
+  const initialReadingProgress = article?.readingProgress;
 
   useEffect(() => {
     const slug = params.slug;
@@ -112,6 +118,64 @@ export default function ArticleDetailPage() {
       })
       .finally(() => setIsLoading(false));
   }, [params.slug, requestedCommentId]);
+
+  useEffect(() => {
+    if (!readingArticleId || !isLoggedIn || !readingContentRef.current) return;
+    const token = readAccessToken();
+    if (!token) return;
+    let timer: number | null = null;
+    let lastSent = initialReadingProgress ?? 1;
+    const sendProgress = () => {
+      const element = readingContentRef.current;
+      if (!element) return;
+      const rect = element.getBoundingClientRect();
+      const top = window.scrollY + rect.top;
+      const height = Math.max(1, element.offsetHeight);
+      const readingPoint = window.scrollY + window.innerHeight * 0.68;
+      const progress = Math.max(1, Math.min(100, Math.round(((readingPoint - top) / height) * 100)));
+      if (Math.abs(progress - lastSent) < 2) return;
+      lastSent = progress;
+      void updateArticleReadingProgress(token, readingArticleId, progress).catch(() => undefined);
+    };
+    const schedule = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(sendProgress, 900);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") sendProgress();
+    };
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    window.addEventListener("pagehide", sendProgress);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    schedule();
+    return () => {
+      sendProgress();
+      if (timer !== null) window.clearTimeout(timer);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("pagehide", sendProgress);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [initialReadingProgress, isLoggedIn, readingArticleId]);
+
+  useEffect(() => {
+    restoredReadingPositionRef.current = false;
+  }, [readingArticleId]);
+
+  useEffect(() => {
+    if (!article || restoredReadingPositionRef.current || searchParams.get("resume") !== "1") return;
+    const progress = article.readingProgress ?? 0;
+    const element = readingContentRef.current;
+    if (!element || progress < 2) return;
+    restoredReadingPositionRef.current = true;
+    const timer = window.setTimeout(() => {
+      const top = window.scrollY + element.getBoundingClientRect().top;
+      const target = top + element.offsetHeight * (progress / 100) - window.innerHeight * 0.28;
+      window.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [article, searchParams]);
 
   useEffect(() => {
     if (!article || requestedCommentId <= 0 || comments.some((comment) => comment.id === requestedCommentId)) return;
@@ -208,6 +272,22 @@ export default function ArticleDetailPage() {
       notifySocialStateChange();
     } catch (subscriptionError) {
       setError(subscriptionError instanceof Error ? subscriptionError.message : "订阅操作失败。");
+    }
+  }
+
+  async function handleReadLater() {
+    if (!article) return;
+    const token = readAccessToken();
+    if (!token) {
+      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      return;
+    }
+    try {
+      const result = await setArticleReadLater(token, article.id, !article.readLater);
+      setArticle((current) => current ? { ...current, readLater: result.readLater } : current);
+      setNotice(result.readLater ? "已加入稍后读。" : "已从稍后读移除。");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "稍后读操作失败。");
     }
   }
 
@@ -346,7 +426,7 @@ export default function ArticleDetailPage() {
       <Link className="article-back-link" href="/articles">返回文章</Link>
       <article className="article-reading-layout">
         <header className="article-reading-header">
-          <h1 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h1>
+          <div className="article-reading-title-row"><h1 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h1><button className={article.readLater ? "active" : undefined} onClick={() => void handleReadLater()} type="button"><Clock3 aria-hidden="true" fill={article.readLater ? "currentColor" : "none"} size={16} />{article.readLater ? "已加入稍后读" : "稍后读"}</button></div>
           <div className="article-reading-author"><ArticleAuthorLine author={article.author} interactive /><span className="article-reading-divider" /><span>发布于 {formatArticleDate(article.publishedAt)}</span></div>
         </header>
         <div className="article-reading-grid">
@@ -367,7 +447,7 @@ export default function ArticleDetailPage() {
             </dl>
             {article.tags.length ? <div className="article-tag-list">{article.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div> : null}
           </aside>
-          <main className="article-reading-main"><ArticleBody content={article.content} /></main>
+          <main className="article-reading-main" ref={readingContentRef}><ArticleBody content={article.content} /></main>
         </div>
       </article>
 

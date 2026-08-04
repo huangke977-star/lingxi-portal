@@ -107,8 +107,16 @@ export class ListArticlesQueryDto {
   status?: ArticleStatusValue;
 
   @IsOptional()
-  @IsIn(["latest", "popular", "pinned"])
-  sort: "latest" | "popular" | "pinned" = "latest";
+  @IsIn(["latest", "popular", "pinned", "recommended", "views", "likes", "favorites", "comments"])
+  sort: "latest" | "popular" | "pinned" | "recommended" | "views" | "likes" | "favorites" | "comments" = "latest";
+}
+
+export class UpdateReadingProgressDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  progress!: number;
 }
 
 export class ListArticleCommentsQueryDto {

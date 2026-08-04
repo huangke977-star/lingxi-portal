@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import {
+  ArticleStatus,
+  ArticleVisibility,
   ChatMessageType,
   FriendshipStatus,
   Prisma,
@@ -121,7 +123,7 @@ export class SocialService {
     if (!target || target.status !== "active") {
       throw new NotFoundException("用户不存在或当前不可查看。");
     }
-    const [relationship, subscription, subscriberCount] = await Promise.all([
+    const [relationship, subscription, subscriberCount, followingCount, publicArticleStats] = await Promise.all([
       !viewer || viewer.id === target.id ? Promise.resolve(null) : this.findFriendship(viewer.id, target.id),
       !viewer || viewer.id === target.id
         ? Promise.resolve(null)
@@ -130,12 +132,26 @@ export class SocialService {
             select: { authorId: true },
           }),
       this.prisma.userSubscription.count({ where: { authorId: target.id } }),
+      this.prisma.userSubscription.count({ where: { subscriberId: target.id } }),
+      this.prisma.article.aggregate({
+        where: {
+          authorId: target.id,
+          status: ArticleStatus.published,
+          visibility: ArticleVisibility.public,
+        },
+        _count: { _all: true },
+        _sum: { likeCount: true, viewCount: true },
+      }),
     ]);
     return {
       ...this.toSocialUser(target),
       isSelf: viewer?.id === target.id,
       subscribed: Boolean(subscription),
       subscriberCount,
+      followingCount,
+      publicArticleCount: publicArticleStats._count._all,
+      receivedLikeCount: publicArticleStats._sum.likeCount ?? 0,
+      publicViewCount: publicArticleStats._sum.viewCount ?? 0,
       relationship: viewer && relationship && (
         relationship.status === FriendshipStatus.pending ||
         relationship.status === FriendshipStatus.accepted ||

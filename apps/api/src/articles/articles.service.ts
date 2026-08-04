@@ -19,6 +19,7 @@ import {
 } from "../generated/prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
+import { RedisService } from "../redis/redis.service";
 import { SiteSettingsService } from "../site-settings/site-settings.service";
 import {
   ARTICLE_STATUSES,
@@ -44,6 +45,8 @@ import {
   ArticleListResponse,
   ArticleMineSummaryResponse,
   ArticleResponse,
+  ArticleReadLaterResponse,
+  ReadingProgressResponse,
 } from "./articles.types";
 
 export const ARTICLE_IMAGE_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -152,6 +155,25 @@ const articleInclude = {
 
 type ArticleRecord = Prisma.ArticleGetPayload<{ include: typeof articleInclude }>;
 
+interface ArticleReaderState {
+  readLater: boolean;
+  readingProgress: number | null;
+  lastReadAt: Date | null;
+}
+
+interface RecommendationCandidate {
+  id: number;
+  authorId: number;
+  category: string;
+  tags: string;
+  isPinned: boolean;
+  publishedAt: Date | null;
+  viewCount: number;
+  likeCount: number;
+  favoriteCount: number;
+  commentCount: number;
+}
+
 const commentReportInclude = {
   comment: {
     select: {
@@ -185,6 +207,7 @@ export class ArticlesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly siteSettingsService: SiteSettingsService,
+    private readonly redis: RedisService,
   ) {}
 
   listPublic(query: ListArticlesQueryDto): Promise<ArticleListResponse> {
@@ -207,7 +230,7 @@ export class ArticlesService {
       visibleWhere,
       { author: { is: { subscriptionsReceived: { some: { subscriberId: user.id } } } } },
     ] } : { id: -1 };
-    const [discover, subscriptions, mine, favorites, liked, manage] = await Promise.all([
+    const [discover, subscriptions, mine, favorites, liked, readLater, history, manage] = await Promise.all([
       this.prisma.article.count({ where: visibleWhere }),
       user ? this.prisma.article.count({ where: subscriptionWhere }) : Promise.resolve(0),
       user
@@ -225,10 +248,20 @@ export class ArticlesService {
             where: { userId: user.id, article: visibleWhere },
           })
         : Promise.resolve(0),
+      user
+        ? this.prisma.articleReadLater.count({
+            where: { userId: user.id, article: visibleWhere },
+          })
+        : Promise.resolve(0),
+      user
+        ? this.prisma.articleReadingHistory.count({
+            where: { userId: user.id, article: visibleWhere },
+          })
+        : Promise.resolve(0),
       canManage ? this.prisma.article.count() : Promise.resolve(0),
     ]);
 
-    return { discover, subscriptions, mine, favorites, liked, manage };
+    return { discover, subscriptions, mine, favorites, liked, readLater, history, manage };
   }
 
   listMine(query: ListArticlesQueryDto, user: AuthenticatedUser): Promise<ArticleListResponse> {
@@ -249,6 +282,62 @@ export class ArticlesService {
       { author: { is: { subscriptionsReceived: { some: { subscriberId: user.id } } } } },
     ] };
     return this.listArticlesByWhere(query, user, where);
+  }
+
+  async listReadLater(query: ListArticlesQueryDto, user: AuthenticatedUser): Promise<ArticleListResponse> {
+    const articleWhere = this.buildWhere(query, user, false, false);
+    const relationWhere = { userId: user.id, article: articleWhere };
+    const total = await this.prisma.articleReadLater.count({ where: relationWhere });
+    const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+    const page = Math.min(query.page, totalPages);
+    const records = await this.prisma.articleReadLater.findMany({
+      where: relationWhere,
+      orderBy: [{ createdAt: "desc" }],
+      skip: (page - 1) * query.pageSize,
+      take: query.pageSize,
+      select: { createdAt: true, article: { include: articleInclude } },
+    });
+    return {
+      items: records.map(({ article }) => this.toResponse(article, user.id, {
+        readLater: true,
+        readingProgress: null,
+        lastReadAt: null,
+      })),
+      total,
+      page,
+      pageSize: query.pageSize,
+      totalPages,
+    };
+  }
+
+  async listReadingHistory(query: ListArticlesQueryDto, user: AuthenticatedUser): Promise<ArticleListResponse> {
+    const articleWhere = this.buildWhere(query, user, false, false);
+    const relationWhere = { userId: user.id, article: articleWhere };
+    const total = await this.prisma.articleReadingHistory.count({ where: relationWhere });
+    const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+    const page = Math.min(query.page, totalPages);
+    const records = await this.prisma.articleReadingHistory.findMany({
+      where: relationWhere,
+      orderBy: [{ lastReadAt: "desc" }],
+      skip: (page - 1) * query.pageSize,
+      take: query.pageSize,
+      select: {
+        progress: true,
+        lastReadAt: true,
+        article: { include: articleInclude },
+      },
+    });
+    return {
+      items: records.map(({ article, progress, lastReadAt }) => this.toResponse(article, user.id, {
+        readLater: false,
+        readingProgress: progress,
+        lastReadAt,
+      })),
+      total,
+      page,
+      pageSize: query.pageSize,
+      totalPages,
+    };
   }
 
   async getMineSummary(user: AuthenticatedUser): Promise<ArticleMineSummaryResponse> {
@@ -635,6 +724,53 @@ export class ArticlesService {
     return { favorited, likeCount: article.likeCount, favoriteCount: Math.max(0, article.favoriteCount) };
   }
 
+  async toggleReadLater(
+    id: number,
+    user: AuthenticatedUser,
+    readLater: boolean,
+  ): Promise<ArticleReadLaterResponse> {
+    await this.assertArticleInteractionAllowed(id, user);
+    if (readLater) {
+      await this.prisma.articleReadLater.upsert({
+        where: { articleId_userId: { articleId: id, userId: user.id } },
+        create: { articleId: id, userId: user.id },
+        update: { createdAt: new Date() },
+      });
+    } else {
+      await this.prisma.articleReadLater.deleteMany({ where: { articleId: id, userId: user.id } });
+    }
+    return { readLater };
+  }
+
+  async updateReadingProgress(
+    id: number,
+    user: AuthenticatedUser,
+    progress: number,
+  ): Promise<ReadingProgressResponse> {
+    const article = await this.assertArticleInteractionAllowed(id, user);
+    if (article.status !== ArticleStatus.published) {
+      throw new BadRequestException("文章当前不能记录阅读进度。");
+    }
+    const lastReadAt = new Date();
+    const record = await this.prisma.articleReadingHistory.upsert({
+      where: { articleId_userId: { articleId: id, userId: user.id } },
+      create: { articleId: id, userId: user.id, progress, lastReadAt },
+      update: { progress, lastReadAt },
+      select: { progress: true, lastReadAt: true },
+    });
+    return { progress: record.progress, lastReadAt: record.lastReadAt.toISOString() };
+  }
+
+  async removeReadingHistory(id: number, user: AuthenticatedUser): Promise<{ success: true }> {
+    await this.prisma.articleReadingHistory.deleteMany({ where: { articleId: id, userId: user.id } });
+    return { success: true };
+  }
+
+  async clearReadingHistory(user: AuthenticatedUser): Promise<{ count: number }> {
+    const result = await this.prisma.articleReadingHistory.deleteMany({ where: { userId: user.id } });
+    return { count: result.count };
+  }
+
   async createComment(id: number, user: AuthenticatedUser, dto: CreateArticleCommentDto): Promise<ArticleCommentResponse> {
     const [publishPolicy, notificationSettings] = await Promise.all([
       this.siteSettingsService.getArticlePublishPolicy(),
@@ -987,6 +1123,9 @@ export class ArticlesService {
     admin: boolean,
     mine = false,
   ): Promise<ArticleListResponse> {
+    if (!admin && !mine && query.sort === "recommended") {
+      return this.listRecommendedArticles(query, user);
+    }
     const where = this.buildWhere(query, user, admin, mine);
     const total = await this.prisma.article.count({ where });
     const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
@@ -1054,6 +1193,203 @@ export class ArticlesService {
     };
   }
 
+  private async listRecommendedArticles(
+    query: ListArticlesQueryDto,
+    user: AuthenticatedUser | null,
+  ): Promise<ArticleListResponse> {
+    const where = this.buildWhere(query, user, false, false);
+    const cacheKey = this.recommendationCacheKey(query, user);
+    let rankedIds: number[] | null = null;
+    try {
+      const cached = await this.redis.get(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached) as unknown;
+        if (Array.isArray(parsed)) {
+          rankedIds = parsed.filter((value): value is number => Number.isInteger(value));
+        }
+      }
+    } catch {
+      // Recommendation remains available when Redis is temporarily unavailable.
+    }
+
+    if (!rankedIds) {
+      const candidateSelect = {
+        id: true,
+        authorId: true,
+        category: true,
+        tags: true,
+        isPinned: true,
+        publishedAt: true,
+        viewCount: true,
+        likeCount: true,
+        favoriteCount: true,
+        commentCount: true,
+      } satisfies Prisma.ArticleSelect;
+      const [latest, popular, preferences] = await Promise.all([
+        this.prisma.article.findMany({
+          where,
+          orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+          take: 300,
+          select: candidateSelect,
+        }),
+        this.prisma.article.findMany({
+          where,
+          orderBy: [
+            { favoriteCount: "desc" },
+            { likeCount: "desc" },
+            { commentCount: "desc" },
+            { viewCount: "desc" },
+          ],
+          take: 300,
+          select: candidateSelect,
+        }),
+        this.recommendationPreferences(user),
+      ]);
+      const candidates = new Map<number, RecommendationCandidate>();
+      for (const candidate of [...latest, ...popular]) {
+        if (candidates.size >= 500 && !candidates.has(candidate.id)) continue;
+        candidates.set(candidate.id, candidate);
+      }
+      const now = Date.now();
+      rankedIds = [...candidates.values()]
+        .map((candidate) => ({
+          id: candidate.id,
+          score: this.recommendationScore(candidate, preferences, now),
+          publishedAt: candidate.publishedAt?.getTime() ?? 0,
+        }))
+        .sort((left, right) => right.score - left.score || right.publishedAt - left.publishedAt || right.id - left.id)
+        .map(({ id }) => id);
+      try {
+        await this.redis.set(cacheKey, JSON.stringify(rankedIds), 300);
+      } catch {
+        // Database-derived ranking is the fallback, so cache writes are optional.
+      }
+    }
+
+    if (rankedIds.length) {
+      const visibleIds = await this.prisma.article.findMany({
+        where: { AND: [where, { id: { in: rankedIds } }] },
+        select: { id: true },
+      });
+      const visibleIdSet = new Set(visibleIds.map(({ id }) => id));
+      rankedIds = rankedIds.filter((id) => visibleIdSet.has(id));
+    }
+
+    const total = rankedIds.length;
+    const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+    const page = Math.min(query.page, totalPages);
+    const pageIds = rankedIds.slice((page - 1) * query.pageSize, page * query.pageSize);
+    const records = pageIds.length ? await this.prisma.article.findMany({
+      where: { AND: [where, { id: { in: pageIds } }] },
+      include: articleInclude,
+    }) : [];
+    const recordsById = new Map(records.map((record) => [record.id, record]));
+    return {
+      items: pageIds.flatMap((id) => {
+        const article = recordsById.get(id);
+        return article ? [this.toResponse(article, user?.id)] : [];
+      }),
+      total,
+      page,
+      pageSize: query.pageSize,
+      totalPages,
+    };
+  }
+
+  private async recommendationPreferences(user: AuthenticatedUser | null): Promise<{
+    categoryWeights: Map<string, number>;
+    tagWeights: Map<string, number>;
+    subscribedAuthorIds: Set<number>;
+    seen: Map<number, number>;
+  }> {
+    const categoryWeights = new Map<string, number>();
+    const tagWeights = new Map<string, number>();
+    const subscribedAuthorIds = new Set<number>();
+    const seen = new Map<number, number>();
+    if (!user) return { categoryWeights, tagWeights, subscribedAuthorIds, seen };
+
+    const articleSelect = { id: true, category: true, tags: true } satisfies Prisma.ArticleSelect;
+    const [history, likes, favorites, readLater, subscriptions] = await Promise.all([
+      this.prisma.articleReadingHistory.findMany({
+        where: { userId: user.id },
+        orderBy: [{ lastReadAt: "desc" }],
+        take: 120,
+        select: { progress: true, article: { select: articleSelect } },
+      }),
+      this.prisma.articleLike.findMany({
+        where: { userId: user.id },
+        orderBy: [{ createdAt: "desc" }],
+        take: 100,
+        select: { article: { select: articleSelect } },
+      }),
+      this.prisma.articleFavorite.findMany({
+        where: { userId: user.id },
+        orderBy: [{ createdAt: "desc" }],
+        take: 100,
+        select: { article: { select: articleSelect } },
+      }),
+      this.prisma.articleReadLater.findMany({
+        where: { userId: user.id },
+        orderBy: [{ createdAt: "desc" }],
+        take: 100,
+        select: { article: { select: articleSelect } },
+      }),
+      this.prisma.userSubscription.findMany({
+        where: { subscriberId: user.id },
+        select: { authorId: true },
+      }),
+    ]);
+
+    const absorb = (article: { category: string; tags: string }, weight: number) => {
+      if (article.category) categoryWeights.set(article.category, (categoryWeights.get(article.category) ?? 0) + weight);
+      for (const tag of article.tags.split(",").filter(Boolean)) {
+        tagWeights.set(tag, (tagWeights.get(tag) ?? 0) + weight);
+      }
+    };
+    for (const record of history) {
+      seen.set(record.article.id, record.progress);
+      absorb(record.article, 1);
+    }
+    for (const record of likes) absorb(record.article, 3);
+    for (const record of favorites) absorb(record.article, 4);
+    for (const record of readLater) absorb(record.article, 2);
+    for (const record of subscriptions) subscribedAuthorIds.add(record.authorId);
+    return { categoryWeights, tagWeights, subscribedAuthorIds, seen };
+  }
+
+  private recommendationScore(
+    candidate: RecommendationCandidate,
+    preferences: Awaited<ReturnType<ArticlesService["recommendationPreferences"]>>,
+    now: number,
+  ): number {
+    const ageDays = candidate.publishedAt
+      ? Math.max(0, (now - candidate.publishedAt.getTime()) / 86_400_000)
+      : 365;
+    const recency = Math.max(0, 32 - ageDays) * 1.35;
+    const engagement = Math.log2(candidate.viewCount + 1) * 1.8
+      + candidate.likeCount * 4
+      + candidate.favoriteCount * 5
+      + candidate.commentCount * 6;
+    const category = Math.min(24, (preferences.categoryWeights.get(candidate.category) ?? 0) * 2.5);
+    const tags = candidate.tags.split(",").filter(Boolean)
+      .reduce((sum, tag) => sum + Math.min(8, (preferences.tagWeights.get(tag) ?? 0) * 1.3), 0);
+    const subscription = preferences.subscribedAuthorIds.has(candidate.authorId) ? 28 : 0;
+    const progress = preferences.seen.get(candidate.id);
+    const seenPenalty = progress === undefined ? -8 : Math.min(22, 6 + progress / 5);
+    return engagement + recency + category + tags + subscription + (candidate.isPinned ? 6 : 0) - seenPenalty;
+  }
+
+  private recommendationCacheKey(query: ListArticlesQueryDto, user: AuthenticatedUser | null): string {
+    const context = JSON.stringify({
+      userId: user?.id ?? 0,
+      role: user?.role.code ?? "public",
+      superAdmin: user?.isSuperAdmin ?? false,
+      search: query.search?.trim() ?? "",
+      category: query.category?.trim() ?? "",
+    });
+    return `articles:recommendations:${createHash("sha256").update(context).digest("hex").slice(0, 24)}`;
+  }
+
   private buildWhere(
     query: ListArticlesQueryDto,
     user: AuthenticatedUser | null,
@@ -1100,7 +1436,18 @@ export class ArticlesService {
   }
 
   private orderBy(query: ListArticlesQueryDto, admin: boolean): Prisma.ArticleOrderByWithRelationInput[] {
-    if (query.sort === "popular") return [{ viewCount: "desc" }, { publishedAt: "desc" }, { id: "desc" }];
+    if (query.sort === "popular") return [
+      { favoriteCount: "desc" },
+      { likeCount: "desc" },
+      { commentCount: "desc" },
+      { viewCount: "desc" },
+      { publishedAt: "desc" },
+      { id: "desc" },
+    ];
+    if (query.sort === "views") return [{ viewCount: "desc" }, { publishedAt: "desc" }, { id: "desc" }];
+    if (query.sort === "likes") return [{ likeCount: "desc" }, { publishedAt: "desc" }, { id: "desc" }];
+    if (query.sort === "favorites") return [{ favoriteCount: "desc" }, { publishedAt: "desc" }, { id: "desc" }];
+    if (query.sort === "comments") return [{ commentCount: "desc" }, { publishedAt: "desc" }, { id: "desc" }];
     if (query.sort === "pinned") return [{ pinOrder: "asc" }, { publishedAt: "desc" }, { id: "desc" }];
     return admin
       ? [{ isPinned: "desc" }, { pinOrder: "asc" }, { updatedAt: "desc" }, { id: "desc" }]
@@ -1111,10 +1458,16 @@ export class ArticlesService {
     const article = await this.getArticleBySlug(slug);
     this.assertCanRead(article, user);
     if (article.status === ArticleStatus.published) {
-      await this.recordView(article.id, user?.id ?? null, visitorKey);
+      await Promise.all([
+        this.recordView(article.id, user?.id ?? null, visitorKey),
+        user ? this.touchReadingHistory(article.id, user.id) : Promise.resolve(),
+      ]);
     }
-    const refreshed = await this.getArticleOrThrow(article.id);
-    return this.toResponse(refreshed, user?.id);
+    const [refreshed, readerState] = await Promise.all([
+      this.getArticleOrThrow(article.id),
+      user ? this.getReaderState(article.id, user.id) : Promise.resolve(undefined),
+    ]);
+    return this.toResponse(refreshed, user?.id, readerState);
   }
 
   private async getArticleBySlug(slug: string): Promise<ArticleRecord> {
@@ -1269,6 +1622,33 @@ export class ArticlesService {
     }
   }
 
+  private async touchReadingHistory(articleId: number, userId: number): Promise<void> {
+    const lastReadAt = new Date();
+    await this.prisma.articleReadingHistory.upsert({
+      where: { articleId_userId: { articleId, userId } },
+      create: { articleId, userId, progress: 1, lastReadAt },
+      update: { lastReadAt },
+    });
+  }
+
+  private async getReaderState(articleId: number, userId: number): Promise<ArticleReaderState> {
+    const [readLater, history] = await Promise.all([
+      this.prisma.articleReadLater.findUnique({
+        where: { articleId_userId: { articleId, userId } },
+        select: { articleId: true },
+      }),
+      this.prisma.articleReadingHistory.findUnique({
+        where: { articleId_userId: { articleId, userId } },
+        select: { progress: true, lastReadAt: true },
+      }),
+    ]);
+    return {
+      readLater: Boolean(readLater),
+      readingProgress: history?.progress ?? null,
+      lastReadAt: history?.lastReadAt ?? null,
+    };
+  }
+
   private validateImage(file: UploadedArticleImage): SupportedArticleImageFormat {
     const mimeType = file.mimetype.toLowerCase();
     const extension = extname(file.originalname).toLowerCase();
@@ -1287,7 +1667,11 @@ export class ArticlesService {
     return filePath;
   }
 
-  private toResponse(article: ArticleRecord, viewerId?: number): ArticleResponse {
+  private toResponse(
+    article: ArticleRecord,
+    viewerId?: number,
+    readerState?: ArticleReaderState,
+  ): ArticleResponse {
     const recentCommenters: ArticleAuthorResponse[] = [];
     const commenterIds = new Set<number>();
     for (const comment of article.comments) {
@@ -1322,6 +1706,9 @@ export class ArticlesService {
       images: article.images.map((image) => `/articles/images/${image.storedName}`),
       liked: viewerId !== undefined && article.likes.some((like) => like.userId === viewerId),
       favorited: viewerId !== undefined && article.favorites.some((favorite) => favorite.userId === viewerId),
+      readLater: readerState?.readLater ?? false,
+      readingProgress: readerState?.readingProgress ?? null,
+      lastReadAt: readerState?.lastReadAt?.toISOString() ?? null,
       createdAt: article.createdAt.toISOString(),
       updatedAt: article.updatedAt.toISOString(),
     };

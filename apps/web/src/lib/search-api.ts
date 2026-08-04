@@ -47,18 +47,37 @@ export interface GlobalSearchResult {
   query: string;
   articles: SearchGroup<SearchArticleResult>;
   users: SearchGroup<SearchUserResult>;
-  entries: SearchGroup<SearchEntryResult>;
+  navigation: SearchGroup<SearchEntryResult>;
+  tools: SearchGroup<SearchEntryResult>;
+  filters: {
+    articleCategories: SearchCategoryFilter[];
+    navigationCategories: SearchCategoryFilter[];
+    toolCategories: SearchCategoryFilter[];
+  };
+}
+
+export interface SearchCategoryFilter {
+  name: string;
+  value: string;
 }
 
 export function globalSearch(
   query: string,
-  options: { accessToken?: string | null; page?: number; pageSize?: number } = {},
+  options: {
+    accessToken?: string | null;
+    page?: number;
+    pageSize?: number;
+    scope?: "all" | "articles" | "users" | "navigation" | "tools";
+    category?: string;
+  } = {},
 ): Promise<GlobalSearchResult> {
   const params = new URLSearchParams({
     q: query,
     page: String(options.page ?? 1),
     pageSize: String(options.pageSize ?? 12),
+    scope: options.scope ?? "all",
   });
+  if (options.category) params.set("category", options.category);
   const path = options.accessToken ? "/search/visible" : "/search/public";
   return requestJson<GlobalSearchResult>(`${path}?${params}`, {
     cache: "no-store",

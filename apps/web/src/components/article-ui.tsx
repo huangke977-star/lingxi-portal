@@ -88,14 +88,16 @@ export function RecentCommenters({ article }: { article: Article }) {
 
 export function ArticleCard({
   article,
+  href,
   taxonomyPlacement = "meta",
 }: {
   article: Article;
+  href?: string;
   taxonomyPlacement?: "meta" | "after-stats";
 }) {
   return (
     <article className="article-card">
-      <Link aria-label={`阅读 ${article.title}`} className="article-card-link" href={`/articles/${article.slug}`} />
+      <Link aria-label={`阅读 ${article.title}`} className="article-card-link" href={href ?? `/articles/${article.slug}`} />
       <ArticlePinBadge isPinned={article.isPinned} />
       <div className="article-card-main">
         <h2 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h2>

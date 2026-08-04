@@ -1,6 +1,7 @@
 import { ArticleCommentStatus, ArticleStatus, ArticleVisibility } from "../src/generated/prisma/client";
 import { AuthenticatedUser } from "../src/auth/auth.types";
 import { PrismaService } from "../src/prisma/prisma.service";
+import { RedisService } from "../src/redis/redis.service";
 import { ArticlesService } from "../src/articles/articles.service";
 import { ListArticleCommentsQueryDto, ListArticlesQueryDto } from "../src/articles/dto/article.dto";
 import { SiteSettingsService } from "../src/site-settings/site-settings.service";
@@ -137,6 +138,17 @@ function createPrismaMock() {
         return [{ article: articleRecord() }];
       }),
     },
+    articleReadLater: {
+      count: jest.fn(async () => 4),
+      findMany: jest.fn(async (): Promise<unknown[]> => []),
+      upsert: jest.fn(async () => ({ articleId: 12, userId: user.id })),
+      deleteMany: jest.fn(async () => ({ count: 1 })),
+    },
+    articleReadingHistory: {
+      count: jest.fn(async () => 5),
+      findMany: jest.fn(async (): Promise<unknown[]> => []),
+      deleteMany: jest.fn(async () => ({ count: 1 })),
+    },
   };
 }
 
@@ -176,10 +188,16 @@ const siteSettingsService = {
   }),
 };
 
+const redisService = {
+  get: jest.fn(async () => null),
+  set: jest.fn(async () => undefined),
+};
+
 function createService(prisma: object) {
   return new ArticlesService(
     prisma as unknown as PrismaService,
     siteSettingsService as unknown as SiteSettingsService,
+    redisService as unknown as RedisService,
   );
 }
 
@@ -270,8 +288,68 @@ describe("ArticlesService article center extensions", () => {
       mine: 4,
       favorites: 2,
       liked: 3,
+      readLater: 4,
+      history: 5,
       manage: 7,
     });
+  });
+
+  it("lists account reading history with progress and last-read time", async () => {
+    const prisma = createPrismaMock();
+    const lastReadAt = new Date("2026-08-04T02:03:04.000Z");
+    prisma.articleReadingHistory.count.mockResolvedValueOnce(1);
+    prisma.articleReadingHistory.findMany.mockResolvedValueOnce([{
+      progress: 68,
+      lastReadAt,
+      article: articleRecord(),
+    }]);
+    const service = createService(prisma);
+
+    await expect(service.listReadingHistory(new ListArticlesQueryDto(), user)).resolves.toMatchObject({
+      total: 1,
+      items: [{ id: 12, readingProgress: 68, lastReadAt: lastReadAt.toISOString() }],
+    });
+    expect(prisma.articleReadingHistory.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      orderBy: [{ lastReadAt: "desc" }],
+    }));
+  });
+
+  it("keeps read-later separate from favorites", async () => {
+    const prisma = createPrismaMock();
+    prisma.article.findUnique.mockResolvedValueOnce(articleRecord());
+    const service = createService(prisma);
+
+    await expect(service.toggleReadLater(12, user, true)).resolves.toEqual({ readLater: true });
+    expect(prisma.articleReadLater.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { articleId_userId: { articleId: 12, userId: user.id } },
+    }));
+    expect(prisma.articleFavorite.findMany).not.toHaveBeenCalled();
+  });
+
+  it("rechecks cached recommendations against current visibility", async () => {
+    const prisma = createPrismaMock();
+    (prisma.article.findMany as jest.Mock)
+      .mockResolvedValueOnce([{ id: 12 }])
+      .mockResolvedValueOnce([articleRecord()]);
+    const service = new ArticlesService(
+      prisma as unknown as PrismaService,
+      siteSettingsService as unknown as SiteSettingsService,
+      { get: jest.fn(async () => JSON.stringify([12, 13])), set: jest.fn() } as unknown as RedisService,
+    );
+    const query = new ListArticlesQueryDto();
+    query.sort = "recommended";
+
+    await expect(service.listPublic(query)).resolves.toMatchObject({
+      total: 1,
+      items: [{ id: 12 }],
+    });
+    expect(prisma.article.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: expect.objectContaining({ AND: expect.any(Array) }),
+      select: { id: true },
+    }));
+    expect(prisma.article.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ AND: expect.any(Array) }),
+    }));
   });
 
   it("paginates comments by complete root threads", async () => {

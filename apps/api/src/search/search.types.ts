@@ -33,6 +33,11 @@ export interface SearchEntryResult {
   category: { id: number; name: string; slug: string; kind: "navigation" | "tool" | "custom_page" };
 }
 
+export interface SearchCategoryFilter {
+  name: string;
+  value: string;
+}
+
 export interface SearchGroup<T> {
   items: T[];
   total: number;
@@ -45,5 +50,11 @@ export interface GlobalSearchResponse {
   query: string;
   articles: SearchGroup<SearchArticleResult>;
   users: SearchGroup<SearchUserResult>;
-  entries: SearchGroup<SearchEntryResult>;
+  navigation: SearchGroup<SearchEntryResult>;
+  tools: SearchGroup<SearchEntryResult>;
+  filters: {
+    articleCategories: SearchCategoryFilter[];
+    navigationCategories: SearchCategoryFilter[];
+    toolCategories: SearchCategoryFilter[];
+  };
 }

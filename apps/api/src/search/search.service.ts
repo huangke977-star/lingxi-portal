@@ -1,18 +1,21 @@
 import { Injectable } from "@nestjs/common";
-import { AuthenticatedUser } from "../auth/auth.types";
 import {
   ArticleStatus,
+  ArticleTaxonomyKind,
   ArticleVisibility,
+  PortalCategoryKind,
   PortalRecordStatus,
   PortalVisibility,
   Prisma,
   UserStatus,
 } from "../generated/prisma/client";
+import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import { SearchQueryDto } from "./dto/search.dto";
 import {
   GlobalSearchResponse,
   SearchArticleResult,
+  SearchCategoryFilter,
   SearchEntryResult,
   SearchGroup,
   SearchUserResult,
@@ -24,12 +27,16 @@ export class SearchService {
 
   async search(query: SearchQueryDto, user: AuthenticatedUser | null): Promise<GlobalSearchResponse> {
     const keyword = query.q.trim();
-    const [articles, users, entries] = await Promise.all([
-      this.searchArticles(keyword, query, user),
-      this.searchUsers(keyword, query),
-      this.searchEntries(keyword, query, user),
+    const activeScope = query.scope ?? "all";
+    const wants = (scope: Exclude<SearchQueryDto["scope"], undefined>) => activeScope === "all" || activeScope === scope;
+    const [articles, users, navigation, tools, filters] = await Promise.all([
+      wants("articles") ? this.searchArticles(keyword, query, user) : Promise.resolve(this.emptyGroup<SearchArticleResult>(query)),
+      wants("users") ? this.searchUsers(keyword, query) : Promise.resolve(this.emptyGroup<SearchUserResult>(query)),
+      wants("navigation") ? this.searchEntries(keyword, query, user, "navigation") : Promise.resolve(this.emptyGroup<SearchEntryResult>(query)),
+      wants("tools") ? this.searchEntries(keyword, query, user, "tools") : Promise.resolve(this.emptyGroup<SearchEntryResult>(query)),
+      this.listFilters(user),
     ]);
-    return { query: keyword, articles, users, entries };
+    return { query: keyword, articles, users, navigation, tools, filters };
   }
 
   private async searchArticles(
@@ -40,6 +47,7 @@ export class SearchService {
     const visibility = this.articleVisibility(user);
     const where: Prisma.ArticleWhereInput = {
       status: ArticleStatus.published,
+      category: query.category?.trim() || undefined,
       AND: [
         visibility,
         {
@@ -116,7 +124,7 @@ export class SearchService {
       this.prisma.user.count({ where }),
       this.prisma.user.findMany({
         where,
-        orderBy: [{ nickname: "asc" }, { id: "asc" }],
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
         select: {
@@ -126,8 +134,8 @@ export class SearchService {
           avatarStoredName: true,
           profileBio: true,
           isSuperAdmin: true,
-          createdAt: true,
           role: { select: { code: true, name: true, level: true } },
+          createdAt: true,
         },
       }),
     ]);
@@ -147,12 +155,17 @@ export class SearchService {
     keyword: string,
     query: SearchQueryDto,
     user: AuthenticatedUser | null,
+    scope: "navigation" | "tools",
   ): Promise<SearchGroup<SearchEntryResult>> {
+    const kinds = scope === "navigation"
+      ? [PortalCategoryKind.navigation, PortalCategoryKind.custom_page]
+      : [PortalCategoryKind.tool];
     const where: Prisma.PortalEntryWhereInput = {
       status: PortalRecordStatus.active,
       category: {
         status: PortalRecordStatus.active,
-        kind: { in: ["navigation", "tool", "custom_page"] },
+        kind: { in: kinds },
+        slug: query.category?.trim() || undefined,
       },
       AND: [
         this.portalVisibility(user),
@@ -183,6 +196,41 @@ export class SearchService {
     })), total, query);
   }
 
+  private async listFilters(user: AuthenticatedUser | null): Promise<GlobalSearchResponse["filters"]> {
+    const visibleEntryWhere = this.portalVisibility(user);
+    const [articleCategories, portalCategories] = await Promise.all([
+      this.prisma.articleTaxonomy.findMany({
+        where: { kind: ArticleTaxonomyKind.category, enabled: true },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+        select: { name: true },
+      }),
+      this.prisma.portalCategory.findMany({
+        where: {
+          status: PortalRecordStatus.active,
+          kind: { in: [PortalCategoryKind.navigation, PortalCategoryKind.custom_page, PortalCategoryKind.tool] },
+          entries: {
+            some: {
+              status: PortalRecordStatus.active,
+              ...visibleEntryWhere,
+            },
+          },
+        },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+        select: { name: true, slug: true, kind: true },
+      }),
+    ]);
+    const mapCategory = (name: string, value: string): SearchCategoryFilter => ({ name, value });
+    return {
+      articleCategories: articleCategories.map(({ name }) => mapCategory(name, name)),
+      navigationCategories: portalCategories
+        .filter(({ kind }) => kind === PortalCategoryKind.navigation || kind === PortalCategoryKind.custom_page)
+        .map(({ name, slug }) => mapCategory(name, slug)),
+      toolCategories: portalCategories
+        .filter(({ kind }) => kind === PortalCategoryKind.tool)
+        .map(({ name, slug }) => mapCategory(name, slug)),
+    };
+  }
+
   private articleVisibility(user: AuthenticatedUser | null): Prisma.ArticleWhereInput {
     if (!user) return { visibility: ArticleVisibility.public };
     if (user.isSuperAdmin) return {};
@@ -202,6 +250,10 @@ export class SearchService {
       { visibility: PortalVisibility.authenticated },
       { visibility: PortalVisibility.role_restricted, allowedRoles: { some: { role: { code: user.role.code } } } },
     ] };
+  }
+
+  private emptyGroup<T>(query: SearchQueryDto): SearchGroup<T> {
+    return { items: [], total: 0, page: query.page, pageSize: query.pageSize, totalPages: 1 };
   }
 
   private group<T>(items: T[], total: number, query: SearchQueryDto): SearchGroup<T> {

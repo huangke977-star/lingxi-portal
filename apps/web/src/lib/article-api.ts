@@ -45,6 +45,9 @@ export interface Article {
   images: string[];
   liked: boolean;
   favorited: boolean;
+  readLater: boolean;
+  readingProgress: number | null;
+  lastReadAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -113,6 +116,8 @@ export interface ArticleCenterSummary {
   mine: number;
   favorites: number;
   liked: number;
+  readLater: number;
+  history: number;
   manage: number;
 }
 
@@ -217,6 +222,14 @@ export function listSubscribedArticles(accessToken: string, query?: Parameters<t
   return requestJson<ArticleList>(`/articles/subscriptions${listQuery(query)}`, { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
+export function listReadLaterArticles(accessToken: string, query?: Parameters<typeof listQuery>[0]): Promise<ArticleList> {
+  return requestJson<ArticleList>(`/articles/read-later${listQuery(query)}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function listReadingHistory(accessToken: string, query?: Parameters<typeof listQuery>[0]): Promise<ArticleList> {
+  return requestJson<ArticleList>(`/articles/history${listQuery(query)}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
 export function listAdminArticles(accessToken: string, query?: Parameters<typeof listQuery>[0]): Promise<ArticleList> {
   return requestJson<ArticleList>(`/articles/admin${listQuery(query)}`, {
     cache: "no-store",
@@ -317,6 +330,29 @@ export function favoriteArticle(accessToken: string, id: number, favorited: bool
     method: favorited ? "POST" : "DELETE",
     headers: authHeaders(accessToken),
   });
+}
+
+export function setArticleReadLater(accessToken: string, id: number, readLater: boolean): Promise<{ readLater: boolean }> {
+  return requestJson(`/articles/${id}/read-later`, {
+    method: readLater ? "POST" : "DELETE",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function updateArticleReadingProgress(accessToken: string, id: number, progress: number): Promise<{ progress: number; lastReadAt: string }> {
+  return requestJson(`/articles/${id}/reading-progress`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ progress }),
+  });
+}
+
+export function removeArticleReadingHistory(accessToken: string, id: number): Promise<void> {
+  return requestJson<void>(`/articles/history/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function clearArticleReadingHistory(accessToken: string): Promise<{ count: number }> {
+  return requestJson<{ count: number }>("/articles/history", { method: "DELETE", headers: authHeaders(accessToken) });
 }
 
 export function createArticleComment(accessToken: string, id: number, body: string, parentId?: number): Promise<ArticleComment> {

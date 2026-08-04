@@ -36,6 +36,8 @@ describe("global search and public profiles", () => {
       article: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
       user: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
       portalEntry: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
+      articleTaxonomy: { findMany: jest.fn(async () => []) },
+      portalCategory: { findMany: jest.fn(async () => []) },
     };
     const service = new SearchService(prisma as unknown as PrismaService);
 
@@ -48,8 +50,18 @@ describe("global search and public profiles", () => {
     }));
     expect(prisma.portalEntry.count).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
-        category: expect.objectContaining({ kind: { in: ["navigation", "tool", "custom_page"] } }),
+        category: expect.objectContaining({ kind: { in: ["navigation", "custom_page"] } }),
         AND: expect.arrayContaining([expect.objectContaining({ visibility: "public" })]),
+      }),
+    }));
+    expect(prisma.portalEntry.count).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        category: expect.objectContaining({ kind: { in: ["tool"] } }),
+      }),
+    }));
+    expect(prisma.portalCategory.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        entries: { some: expect.objectContaining({ visibility: "public" }) },
       }),
     }));
   });
@@ -59,6 +71,8 @@ describe("global search and public profiles", () => {
       article: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
       user: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
       portalEntry: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
+      articleTaxonomy: { findMany: jest.fn(async () => []) },
+      portalCategory: { findMany: jest.fn(async () => []) },
     };
     const service = new SearchService(prisma as unknown as PrismaService);
 
@@ -103,7 +117,15 @@ describe("global search and public profiles", () => {
       user: { findUnique: jest.fn(async () => activeUser) },
       userSubscription: {
         findUnique: jest.fn(async () => null),
-        count: jest.fn(async () => 3),
+        count: jest.fn()
+          .mockResolvedValueOnce(3)
+          .mockResolvedValueOnce(2),
+      },
+      article: {
+        aggregate: jest.fn(async () => ({
+          _count: { _all: 4 },
+          _sum: { likeCount: 12, viewCount: 60 },
+        })),
       },
       friendship: { findUnique: jest.fn(async () => null) },
     };
@@ -118,6 +140,10 @@ describe("global search and public profiles", () => {
       nickname: "写作者",
       profileBio: "公开介绍",
       subscriberCount: 3,
+      followingCount: 2,
+      publicArticleCount: 4,
+      receivedLikeCount: 12,
+      publicViewCount: 60,
       subscribed: false,
       relationship: null,
     });

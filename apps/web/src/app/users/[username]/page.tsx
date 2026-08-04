@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Check, Clock3, MessageCircle, Rss, UserPlus, X } from "lucide-react";
+import { Check, Clock3, Eye, FileText, Heart, MessageCircle, Rss, UserPlus, UsersRound, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
@@ -165,7 +165,8 @@ export default function UserProfilePage() {
       <div className="public-user-copy">
         <div className="public-user-name"><span><h1>{profile.nickname}</h1><small>@{profile.username}</small></span><span className="public-user-role"><RoleSymbol code={roleCode} />{profile.isSuperAdmin ? "超级管理员" : profile.role.name}</span></div>
         <p>{profile.profileBio}</p>
-        <div className="public-user-facts"><span><Clock3 aria-hidden="true" size={15} />{formatJoinedAt(profile.createdAt)} 加入</span><span><Rss aria-hidden="true" size={15} />{profile.subscriberCount} 人订阅</span><span>{articles.total} 篇可见内容</span></div>
+        <div className="public-user-facts"><span><Clock3 aria-hidden="true" size={15} />{formatJoinedAt(profile.createdAt)} 加入</span><span>{articles.total} 篇当前可见内容</span></div>
+        <div className="public-user-stats"><span><FileText aria-hidden="true" size={16} /><small>公开文章</small><strong>{profile.publicArticleCount}</strong></span><span><Heart aria-hidden="true" size={16} /><small>累计获赞</small><strong>{profile.receivedLikeCount}</strong></span><span><Eye aria-hidden="true" size={16} /><small>公开阅读</small><strong>{profile.publicViewCount}</strong></span><span><UsersRound aria-hidden="true" size={16} /><small>订阅者</small><strong>{profile.subscriberCount}</strong></span><span><Rss aria-hidden="true" size={16} /><small>已订阅</small><strong>{profile.followingCount}</strong></span></div>
       </div>
       {!profile.isSelf ? <div className="public-user-actions">
         <button className={profile.subscribed ? "active" : ""} disabled={isActing} onClick={() => void toggleSubscription()} type="button"><Rss aria-hidden="true" size={16} />{profile.subscribed ? "已订阅" : "订阅"}</button>

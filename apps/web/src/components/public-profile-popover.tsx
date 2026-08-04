@@ -157,6 +157,10 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
     isSelf: false,
     subscribed: false,
     subscriberCount: 0,
+    followingCount: 0,
+    publicArticleCount: 0,
+    receivedLikeCount: 0,
+    publicViewCount: 0,
     relationship: null,
   };
 

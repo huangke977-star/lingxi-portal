@@ -37,6 +37,7 @@ import {
   ModerateArticleCommentReportDto,
   ModerateArticleDto,
   ReportArticleCommentDto,
+  UpdateReadingProgressDto,
   UpdateArticleDto,
 } from "./dto/article.dto";
 
@@ -115,6 +116,24 @@ export class ArticlesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.articlesService.listLiked(query, user);
+  }
+
+  @Get("read-later")
+  @UseGuards(JwtAuthGuard)
+  listReadLater(
+    @Query() query: ListArticlesQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.articlesService.listReadLater(query, user);
+  }
+
+  @Get("history")
+  @UseGuards(JwtAuthGuard)
+  listReadingHistory(
+    @Query() query: ListArticlesQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.articlesService.listReadingHistory(query, user);
   }
 
   @Get("admin")
@@ -219,6 +238,21 @@ export class ArticlesController {
     return this.articlesService.unpublish(id, user);
   }
 
+  @Delete("history")
+  @UseGuards(JwtAuthGuard)
+  clearReadingHistory(@CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.clearReadingHistory(user);
+  }
+
+  @Delete("history/:id")
+  @UseGuards(JwtAuthGuard)
+  removeReadingHistory(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.articlesService.removeReadingHistory(id, user);
+  }
+
   @Delete(":id")
   @UseGuards(JwtAuthGuard)
   delete(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
@@ -280,6 +314,28 @@ export class ArticlesController {
   @UseGuards(JwtAuthGuard)
   unfavorite(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
     return this.articlesService.toggleFavorite(id, user, false);
+  }
+
+  @Post(":id/read-later")
+  @UseGuards(JwtAuthGuard)
+  addReadLater(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.toggleReadLater(id, user, true);
+  }
+
+  @Delete(":id/read-later")
+  @UseGuards(JwtAuthGuard)
+  removeReadLater(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.toggleReadLater(id, user, false);
+  }
+
+  @Patch(":id/reading-progress")
+  @UseGuards(JwtAuthGuard)
+  updateReadingProgress(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateReadingProgressDto,
+  ) {
+    return this.articlesService.updateReadingProgress(id, user, dto.progress);
   }
 
   @Post(":id/comments")

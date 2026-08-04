@@ -1,6 +1,5 @@
-import { Suspense } from "react";
-import { ArticleCollectionPage } from "@/components/article-collection-page";
+import { redirect } from "next/navigation";
 
-export default function SubscribedArticlesPage() {
-  return <Suspense><ArticleCollectionPage mode="subscriptions" /></Suspense>;
+export default function SubscriptionsRedirect() {
+  redirect("/articles?feed=subscriptions");
 }

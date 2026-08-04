@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { ExternalLink, FileText, Search, UserRound, Wrench, X } from "lucide-react";
+import { Compass, ExternalLink, FileText, Search, UserRound, Wrench, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
@@ -93,10 +93,13 @@ export function GlobalSearch() {
               <SearchSection count={result.users.total} icon={UserRound} title="用户">
                 {result.users.items.map((user) => <Link href={`/users/${encodeURIComponent(user.username)}`} key={user.id} onClick={close}><span className="global-result-avatar">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : getAvatarFallbackText(user)}</span><span><strong>{user.nickname}</strong><small>@{user.username} · {user.role.name}</small></span></Link>)}
               </SearchSection>
-              <SearchSection count={result.entries.total} icon={Wrench} title="导航与工具">
-                {result.entries.items.map((entry) => entry.url ? <a href={entry.url} key={entry.id} onClick={close} rel="noreferrer" target={entry.openInNewTab ? "_blank" : undefined}><span className="global-result-icon">{entry.iconPath ? <img alt="" src={entry.iconPath} /> : <Wrench aria-hidden="true" size={17} />}</span><span><strong>{entry.title}</strong><small>{entry.category.name}</small></span><ExternalLink aria-hidden="true" size={14} /></a> : null)}
+              <SearchSection count={result.navigation.total} icon={Compass} title="导航">
+                {result.navigation.items.map((entry) => entry.url ? <a href={entry.url} key={entry.id} onClick={close} rel="noreferrer" target={entry.openInNewTab ? "_blank" : undefined}><span className="global-result-icon">{entry.iconPath ? <img alt="" src={entry.iconPath} /> : <Compass aria-hidden="true" size={17} />}</span><span><strong>{entry.title}</strong><small>{entry.category.name}</small></span><ExternalLink aria-hidden="true" size={14} /></a> : null)}
               </SearchSection>
-              {!result.articles.total && !result.users.total && !result.entries.total ? <div className="global-search-hint"><span>没有找到匹配内容。</span></div> : null}
+              <SearchSection count={result.tools.total} icon={Wrench} title="工具">
+                {result.tools.items.map((entry) => entry.url ? <a href={entry.url} key={entry.id} onClick={close} rel="noreferrer" target={entry.openInNewTab ? "_blank" : undefined}><span className="global-result-icon">{entry.iconPath ? <img alt="" src={entry.iconPath} /> : <Wrench aria-hidden="true" size={17} />}</span><span><strong>{entry.title}</strong><small>{entry.category.name}</small></span><ExternalLink aria-hidden="true" size={14} /></a> : null)}
+              </SearchSection>
+              {!result.articles.total && !result.users.total && !result.navigation.total && !result.tools.total ? <div className="global-search-hint"><span>没有找到匹配内容。</span></div> : null}
             </> : null}
           </div>
           {query.trim() ? <button className="global-search-all" onClick={() => { close(); router.push(`/search?q=${encodeURIComponent(query.trim())}`); }} type="button">查看全部搜索结果</button> : null}

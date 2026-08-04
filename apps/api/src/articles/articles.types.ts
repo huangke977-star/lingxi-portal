@@ -45,6 +45,9 @@ export interface ArticleResponse {
   images: string[];
   liked: boolean;
   favorited: boolean;
+  readLater: boolean;
+  readingProgress: number | null;
+  lastReadAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -111,6 +114,8 @@ export interface ArticleCenterSummaryResponse {
   mine: number;
   favorites: number;
   liked: number;
+  readLater: number;
+  history: number;
   manage: number;
 }
 
@@ -124,6 +129,16 @@ export interface ArticleCommentsResponse {
 export interface ArticleInteractionResponse {
   liked?: boolean;
   favorited?: boolean;
+  readLater?: boolean;
   likeCount: number;
   favoriteCount: number;
+}
+
+export interface ReadingProgressResponse {
+  progress: number;
+  lastReadAt: string;
+}
+
+export interface ArticleReadLaterResponse {
+  readLater: boolean;
 }

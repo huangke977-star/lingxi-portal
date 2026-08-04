@@ -25,6 +25,10 @@ export interface PublicProfile extends SocialUser {
   isSelf: boolean;
   subscribed: boolean;
   subscriberCount: number;
+  followingCount: number;
+  publicArticleCount: number;
+  receivedLikeCount: number;
+  publicViewCount: number;
   relationship: Pick<Friendship, "id" | "status" | "direction" | "note"> | null;
 }
 

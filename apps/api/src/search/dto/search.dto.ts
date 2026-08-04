@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsInt, IsString, Max, MaxLength, Min, MinLength } from "class-validator";
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from "class-validator";
 
 export class SearchQueryDto {
   @IsString()
@@ -17,4 +17,13 @@ export class SearchQueryDto {
   @Min(1)
   @Max(30)
   pageSize = 12;
+
+  @IsOptional()
+  @IsIn(["all", "articles", "users", "navigation", "tools"])
+  scope?: "all" | "articles" | "users" | "navigation" | "tools" = "all";
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  category?: string;
 }

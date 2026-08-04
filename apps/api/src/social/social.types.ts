@@ -27,6 +27,10 @@ export interface PublicProfileResponse extends SocialUserResponse {
   isSelf: boolean;
   subscribed: boolean;
   subscriberCount: number;
+  followingCount: number;
+  publicArticleCount: number;
+  receivedLikeCount: number;
+  publicViewCount: number;
   relationship: Omit<FriendshipResponse, "user" | "createdAt" | "updatedAt"> | null;
 }
 
