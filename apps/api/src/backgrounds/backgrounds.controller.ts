@@ -38,7 +38,10 @@ export class BackgroundsController {
   @Header('Cache-Control', 'public, max-age=31536000, immutable')
   async getFile(@Param('storedName') storedName: string): Promise<StreamableFile> {
     const file = await this.backgroundsService.getFile(storedName);
-    return new StreamableFile(createReadStream(file.filePath), { type: file.mimeType });
+    return new StreamableFile(createReadStream(file.filePath), {
+      length: file.sizeBytes,
+      type: file.mimeType,
+    });
   }
 
   @Get()

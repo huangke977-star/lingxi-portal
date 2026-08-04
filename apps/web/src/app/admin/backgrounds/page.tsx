@@ -228,7 +228,7 @@ export default function BackgroundManagementPage() {
         <div>
           <span className="section-label">上传图片</span>
           <h2>添加全站背景</h2>
-          <p>支持 JPEG、PNG、WebP、AVIF，单张不超过 30 MB。</p>
+          <p>支持 JPEG、PNG、WebP、AVIF，每次最多 5 张、单张原图不超过 30 MB，上传后自动压缩为 WebP。</p>
         </div>
         <div className="background-upload-controls">
           <label className="background-file-picker" htmlFor="background-file">

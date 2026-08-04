@@ -117,6 +117,7 @@ services:
     image: ghcr.io/huangke977-star/lingxi-portal-api:main
     container_name: lingxi-api
     restart: unless-stopped
+    stop_grace_period: 30s
     mem_limit: 384m
     cpus: 0.75
     environment:

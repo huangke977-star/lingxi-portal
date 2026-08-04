@@ -4,8 +4,10 @@ import { Test } from '@nestjs/testing';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import sharp from 'sharp';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { BACKGROUND_MAX_OUTPUT_SIZE_BYTES } from '../src/backgrounds/backgrounds.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisService } from '../src/redis/redis.service';
 
@@ -208,9 +210,12 @@ describe('background image management (e2e)', () => {
     const [firstUpload, secondUpload] = uploadResponse.body;
 
     expect(uploadResponse.body).toHaveLength(2);
-    expect(firstUpload.url).toMatch(/^\/backgrounds\/files\/[0-9a-f-]{36}\.png$/);
+    expect(firstUpload.url).toMatch(/^\/backgrounds\/files\/[0-9a-f-]{36}\.webp$/);
+    expect(firstUpload.mimeType).toBe('image/webp');
     const firstStoredName = String(firstUpload.url).split('/').at(-1);
-    expect(await readFile(join(uploadDirectory, firstStoredName as string))).toEqual(onePixelPng);
+    const firstStoredFile = await readFile(join(uploadDirectory, firstStoredName as string));
+    expect(firstStoredFile.length).toBeLessThanOrEqual(BACKGROUND_MAX_OUTPUT_SIZE_BYTES);
+    expect(await sharp(firstStoredFile).metadata()).toMatchObject({ format: 'webp', width: 1, height: 1 });
 
     await request(app.getHttpServer())
       .patch(`/backgrounds/${firstUpload.id}/activate`)
@@ -227,7 +232,11 @@ describe('background image management (e2e)', () => {
     const activeResponse = await request(app.getHttpServer()).get('/backgrounds/active').expect(200);
     expect(activeResponse.body.background.id).toBe(secondUpload.id);
 
-    await request(app.getHttpServer()).get(firstUpload.url).expect(200).expect('Content-Type', /image\/png/);
+    await request(app.getHttpServer())
+      .get(firstUpload.url)
+      .expect(200)
+      .expect('Content-Type', /image\/webp/)
+      .expect('Content-Length', String(firstStoredFile.length));
     await request(app.getHttpServer())
       .delete(`/backgrounds/${secondUpload.id}`)
       .set('Authorization', `Bearer ${token}`)
@@ -238,5 +247,31 @@ describe('background image management (e2e)', () => {
       code: 'ENOENT',
     });
     await request(app.getHttpServer()).get('/backgrounds/active').expect(200, { background: null });
+  });
+
+  it('resizes oversized backgrounds and keeps the served file below the output cap', async () => {
+    const token = await tokenFor(1);
+    const largePng = await sharp({
+      create: {
+        width: 3200,
+        height: 2000,
+        channels: 3,
+        background: '#8aa8c2',
+      },
+    }).png().toBuffer();
+
+    const uploadResponse = await request(app.getHttpServer())
+      .post('/backgrounds')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('files', largePng, { filename: 'large.png', contentType: 'image/png' })
+      .expect(201);
+    const uploaded = uploadResponse.body[0];
+    const storedFile = await readFile(join(uploadDirectory, String(uploaded.url).split('/').at(-1) as string));
+    const metadata = await sharp(storedFile).metadata();
+
+    expect(uploaded.mimeType).toBe('image/webp');
+    expect(storedFile.length).toBeLessThanOrEqual(BACKGROUND_MAX_OUTPUT_SIZE_BYTES);
+    expect(metadata.width).toBeLessThanOrEqual(2560);
+    expect(metadata.height).toBeLessThanOrEqual(1600);
   });
 });

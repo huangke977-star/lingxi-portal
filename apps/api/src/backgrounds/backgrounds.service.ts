@@ -7,11 +7,26 @@ import {
 import { randomUUID } from 'node:crypto';
 import { access, mkdir, unlink, writeFile } from 'node:fs/promises';
 import { basename, extname, join, resolve } from 'node:path';
+import sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
 import { BackgroundImageResponse, UploadedBackgroundFile } from './backgrounds.types';
 
 export const BACKGROUND_MAX_FILE_SIZE_BYTES = 30 * 1024 * 1024;
-export const BACKGROUND_MAX_FILES_PER_UPLOAD = 20;
+export const BACKGROUND_MAX_FILES_PER_UPLOAD = 5;
+export const BACKGROUND_MAX_OUTPUT_SIZE_BYTES = 1024 * 1024;
+
+const BACKGROUND_OUTPUT_VARIANTS = [
+  { width: 2560, height: 1600, quality: 82 },
+  { width: 2304, height: 1440, quality: 76 },
+  { width: 2048, height: 1280, quality: 70 },
+  { width: 1920, height: 1200, quality: 64 },
+  { width: 1600, height: 1000, quality: 58 },
+  { width: 1440, height: 900, quality: 50 },
+  { width: 1280, height: 800, quality: 42 },
+] as const;
+
+sharp.cache({ files: 0, items: 20, memory: 32 });
+sharp.concurrency(1);
 
 interface BackgroundRecord {
   id: number;
@@ -103,23 +118,31 @@ export class BackgroundsService {
       throw new BadRequestException(`At most ${BACKGROUND_MAX_FILES_PER_UPLOAD} images can be uploaded at once.`);
     }
 
-    const preparedFiles = files.map((file) => {
-      const format = this.validateFile(file);
-      const storedName = `${randomUUID()}${format.extension}`;
-      return {
+    const preparedFiles: Array<{
+      file: UploadedBackgroundFile;
+      filePath: string;
+      optimizedBuffer: Buffer;
+      storedName: string;
+    }> = [];
+
+    for (const file of files) {
+      this.validateFile(file);
+      const optimizedBuffer = await this.optimizeImage(file.buffer);
+      const storedName = `${randomUUID()}.webp`;
+      preparedFiles.push({
         file,
         filePath: this.resolveStoredPath(storedName),
-        format,
+        optimizedBuffer,
         storedName,
-      };
-    });
+      });
+    }
 
     await mkdir(this.uploadDirectory, { recursive: true });
     const writtenFilePaths: string[] = [];
 
     try {
       for (const preparedFile of preparedFiles) {
-        await writeFile(preparedFile.filePath, preparedFile.file.buffer, { flag: 'wx' });
+        await writeFile(preparedFile.filePath, preparedFile.optimizedBuffer, { flag: 'wx' });
         writtenFilePaths.push(preparedFile.filePath);
       }
 
@@ -131,8 +154,8 @@ export class BackgroundsService {
             data: {
               originalName: basename(preparedFile.file.originalname).slice(0, 255),
               storedName: preparedFile.storedName,
-              mimeType: preparedFile.format.mimeType,
-              sizeBytes: preparedFile.file.size,
+              mimeType: 'image/webp',
+              sizeBytes: preparedFile.optimizedBuffer.length,
               uploadedById,
             },
             select: this.backgroundSelect(),
@@ -205,11 +228,11 @@ export class BackgroundsService {
     await this.prisma.backgroundImage.delete({ where: { id } });
   }
 
-  async getFile(storedName: string): Promise<{ filePath: string; mimeType: string }> {
+  async getFile(storedName: string): Promise<{ filePath: string; mimeType: string; sizeBytes: number }> {
     const filePath = this.resolveStoredPath(storedName);
     const background = await this.prisma.backgroundImage.findUnique({
       where: { storedName },
-      select: { mimeType: true },
+      select: { mimeType: true, sizeBytes: true },
     });
 
     if (!background) {
@@ -222,7 +245,7 @@ export class BackgroundsService {
       throw new NotFoundException('Background image file not found.');
     }
 
-    return { filePath, mimeType: background.mimeType };
+    return { filePath, mimeType: background.mimeType, sizeBytes: background.sizeBytes };
   }
 
   private validateFile(file: UploadedBackgroundFile): SupportedImageFormat {
@@ -235,6 +258,38 @@ export class BackgroundsService {
     }
 
     return format;
+  }
+
+  private async optimizeImage(buffer: Buffer): Promise<Buffer> {
+    try {
+      for (const variant of BACKGROUND_OUTPUT_VARIANTS) {
+        const optimizedBuffer = await sharp(buffer, {
+          failOn: 'warning',
+          limitInputPixels: 25_000_000,
+        })
+          .rotate()
+          .resize({
+            width: variant.width,
+            height: variant.height,
+            fit: 'inside',
+            withoutEnlargement: true,
+          })
+          .webp({
+            effort: 4,
+            quality: variant.quality,
+            smartSubsample: true,
+          })
+          .toBuffer();
+
+        if (optimizedBuffer.length <= BACKGROUND_MAX_OUTPUT_SIZE_BYTES) {
+          return optimizedBuffer;
+        }
+      }
+    } catch {
+      throw new BadRequestException('The background image could not be processed.');
+    }
+
+    throw new BadRequestException('The background image could not be compressed below 1 MB.');
   }
 
   private resolveStoredPath(storedName: string): string {

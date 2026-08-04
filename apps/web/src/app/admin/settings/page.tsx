@@ -620,7 +620,7 @@ export default function SiteSettingsPage() {
             <div className="site-background-tools">
               <div>
                 <strong>默认背景</strong>
-                <span>上传自己的背景图片，上传后可预览、启用或从服务器磁盘中永久删除。</span>
+                <span>上传自己的背景图片，每次最多 5 张；系统会自动压缩为 WebP，仍可预览、启用或永久删除。</span>
               </div>
               <form className="site-background-upload" onSubmit={(event) => void handleBackgroundUpload(event)}>
                 <label htmlFor="site-background-file">
