@@ -108,6 +108,12 @@ The API intentionally has no Docker socket access. Container lifecycle and host-
 
 API 不会挂载 Docker Socket。容器生命周期与宿主机资源仍通过 1Panel 或 SSH 查看，避免面向公网的 API 获得宿主机控制权限。
 
+## 存储完整性管理 / Storage Integrity Management
+
+超级管理员可以从系统概述进入 `/admin/storage`，异步检查背景图片、站点资源、Android 安装包、头像、文章图片和聊天附件。扫描会识别文件缺失、孤立文件和大小不一致；孤立文件在再次确认未被业务引用后，可以先移入同一上传卷内的 `.trash` 回收站，再恢复或永久删除。系统支持每日自动扫描、回收站保留期和磁盘使用率预警，系统概述只读取最近一次持久化扫描结果，不会在刷新时递归遍历磁盘。
+
+Super administrators can open `/admin/storage` from System Overview to asynchronously inspect backgrounds, site assets, Android packages, avatars, article images, and chat attachments. Scans detect missing files, orphaned files, and size mismatches. After a final reference check, orphaned files can move into a `.trash` directory inside the same upload volume before restore or permanent deletion. Daily scans, trash retention, and disk-usage alerts are configurable, while System Overview reads the latest persisted scan instead of walking the filesystem on every refresh.
+
 ## 消息偏好 / Message Preferences
 
 登录用户可以在聊天悬浮窗标题栏打开“消息设置”，分别暂停系统、订阅和互动频道的未读提醒，查看已开启免打扰的好友会话，并按会话恢复提醒或一键恢复默认。设置保存在账号级数据中，切换设备后仍然生效。
@@ -199,6 +205,8 @@ pnpm build
 
 ## 文档 / Documentation
 
+- `docs/storage-management.zh-CN.md`
+- `docs/storage-management.en.md`
 - `docs/superpowers/specs/2026-07-09-personal-portal-design.zh-CN.md`
 - `docs/superpowers/specs/2026-07-09-personal-portal-design.md`
 - `docs/superpowers/specs/2026-07-09-auth-rbac-design.zh-CN.md`

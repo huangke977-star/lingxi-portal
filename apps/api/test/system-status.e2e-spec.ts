@@ -1,10 +1,11 @@
-import { INestApplication } from "@nestjs/common";
+import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { BackupService } from "../src/system-status/backup.service";
+import { StorageManagementService } from "../src/system-status/storage-management.service";
 import { SystemStatusService } from "../src/system-status/system-status.service";
 
 const users = [
@@ -117,6 +118,24 @@ describe("system status administration (e2e)", () => {
     deleteBackup: jest.fn(async () => ({ success: true })),
     restoreBackup: jest.fn(async (name: string) => ({ success: true, restored: name, safetyBackup: { name: "pre-restore.sql.gz", sizeBytes: 512, updatedAt: "2026-08-03T12:00:00.000Z" } })),
   };
+  const storageServiceMock = {
+    getOverview: jest.fn(async () => ({
+      configuration: { automaticScanEnabled: true, scanTime: "04:00", timezone: "Asia/Shanghai", trashRetentionDays: 7, warningThresholdPercent: 75, nextRunAt: null, lastScheduledScanDate: null, lastScanAt: null, lastWarningAt: null },
+      latestScan: null,
+      openIssues: { missing: 0, orphan: 0, metadataMismatch: 0, total: 0 },
+      trash: { count: 0, sizeBytes: 0, expiredCount: 0 },
+    })),
+    startScan: jest.fn(async (userId: number) => ({ id: 3, status: "running", trigger: "manual", triggeredById: userId, summary: null, error: null, startedAt: "2026-08-04T06:00:00.000Z", completedAt: null })),
+    getScan: jest.fn(async (id: number) => ({ id, status: "completed", trigger: "manual", triggeredById: 1, summary: null, error: null, startedAt: "2026-08-04T06:00:00.000Z", completedAt: "2026-08-04T06:00:01.000Z" })),
+    listIssues: jest.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 20, pageCount: 0, scan: null })),
+    listTrash: jest.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 20, pageCount: 0 })),
+    getConfiguration: jest.fn(async () => ({ automaticScanEnabled: true, scanTime: "04:00", timezone: "Asia/Shanghai", trashRetentionDays: 7, warningThresholdPercent: 75, nextRunAt: null, lastScheduledScanDate: null, lastScanAt: null, lastWarningAt: null })),
+    updateConfiguration: jest.fn(async () => ({ automaticScanEnabled: false, scanTime: "05:00", timezone: "Asia/Shanghai", trashRetentionDays: 14, warningThresholdPercent: 80, nextRunAt: null, lastScheduledScanDate: null, lastScanAt: null, lastWarningAt: null })),
+    getIssueFile: jest.fn(),
+    trashIssue: jest.fn(async () => ({ id: 1 })),
+    restoreTrash: jest.fn(async () => ({ success: true })),
+    deleteTrash: jest.fn(async () => ({ success: true })),
+  };
 
   beforeEach(async () => {
     process.env.JWT_ACCESS_SECRET = "test-access-token-secret";
@@ -125,9 +144,12 @@ describe("system status administration (e2e)", () => {
       .useValue(prismaMock())
       .overrideProvider(SystemStatusService)
       .useValue(serviceMock)
+      .overrideProvider(StorageManagementService)
+      .useValue(storageServiceMock)
       .compile();
 
     app = moduleRef.createNestApplication();
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
     jwt = moduleRef.get(JwtService);
   });
@@ -216,5 +238,41 @@ describe("system status administration (e2e)", () => {
     const service = new BackupService({} as PrismaService, {} as never, {} as never);
     await expect(service.restoreBackup("manual-20260803_120000.sql.gz", "manual"))
       .rejects.toThrow("请输入完整备份文件名确认恢复操作。");
+  });
+
+  it("allows only the super administrator to inspect and start storage scans", async () => {
+    await request(app.getHttpServer())
+      .get("/admin/system/storage")
+      .set("Authorization", `Bearer ${await tokenFor(2)}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get("/admin/system/storage")
+      .set("Authorization", `Bearer ${await tokenFor(1)}`)
+      .expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({ openIssues: { total: 0 }, trash: { count: 0 } }));
+
+    await request(app.getHttpServer())
+      .post("/admin/system/storage/scans")
+      .set("Authorization", `Bearer ${await tokenFor(1)}`)
+      .expect(201)
+      .expect(({ body }) => expect(body).toMatchObject({ id: 3, status: "running", triggeredById: 1 }));
+
+    expect(storageServiceMock.startScan).toHaveBeenCalledWith(1);
+  });
+
+  it("validates storage policy limits", async () => {
+    await request(app.getHttpServer())
+      .post("/admin/system/storage/configuration")
+      .set("Authorization", `Bearer ${await tokenFor(1)}`)
+      .send({ automaticScanEnabled: true, scanTime: "25:90", trashRetentionDays: 0, warningThresholdPercent: 99 })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post("/admin/system/storage/configuration")
+      .set("Authorization", `Bearer ${await tokenFor(1)}`)
+      .send({ automaticScanEnabled: false, scanTime: "05:00", trashRetentionDays: 14, warningThresholdPercent: 80 })
+      .expect(201)
+      .expect(({ body }) => expect(body).toMatchObject({ automaticScanEnabled: false, trashRetentionDays: 14 }));
   });
 });

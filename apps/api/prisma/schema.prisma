@@ -106,6 +106,23 @@ enum UserNotificationChannel {
   interaction
 }
 
+enum StorageScanStatus {
+  running
+  completed
+  failed
+}
+
+enum StorageScanTrigger {
+  manual
+  scheduled
+}
+
+enum StorageIssueKind {
+  missing
+  orphan
+  metadata_mismatch
+}
+
 enum ChatMessageType {
   text
   attachment
@@ -357,6 +374,81 @@ model BackupConfiguration {
   updatedAt                     DateTime @updatedAt @map("updated_at")
 
   @@map("backup_configurations")
+}
+
+model StorageManagementConfiguration {
+  id                      Int       @id @default(1)
+  automaticScanEnabled    Boolean   @default(true) @map("automatic_scan_enabled")
+  scanTime                String    @default("04:00") @map("scan_time") @db.Char(5)
+  timezone                String    @default("Asia/Shanghai") @db.VarChar(64)
+  trashRetentionDays      Int       @default(7) @map("trash_retention_days")
+  warningThresholdPercent Int       @default(75) @map("warning_threshold_percent")
+  lastScheduledScanDate   String?   @map("last_scheduled_scan_date") @db.Char(10)
+  lastScanAt              DateTime? @map("last_scan_at")
+  lastWarningAt           DateTime? @map("last_warning_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  @@map("storage_management_configurations")
+}
+
+model StorageScan {
+  id            Int                @id @default(autoincrement())
+  status        StorageScanStatus  @default(running)
+  trigger       StorageScanTrigger
+  triggeredById Int?               @map("triggered_by_id")
+  summary       Json?
+  error         String?            @db.VarChar(500)
+  startedAt     DateTime           @default(now()) @map("started_at")
+  completedAt   DateTime?          @map("completed_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  issues        StorageScanIssue[]
+
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@map("storage_scans")
+}
+
+model StorageScanIssue {
+  id                Int              @id @default(autoincrement())
+  scanId            Int              @map("scan_id")
+  scan              StorageScan      @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  kind              StorageIssueKind
+  category          String           @db.VarChar(40)
+  storedName        String           @map("stored_name") @db.VarChar(512)
+  mimeType          String?          @map("mime_type") @db.VarChar(127)
+  expectedSizeBytes Int?             @map("expected_size_bytes")
+  actualSizeBytes   Int?             @map("actual_size_bytes")
+  sourceType        String           @map("source_type") @db.VarChar(64)
+  sourceId          String?          @map("source_id") @db.VarChar(80)
+  sourceLabel       String           @map("source_label") @db.VarChar(255)
+  sourceUrl         String?          @map("source_url") @db.VarChar(512)
+  uploadedBy        String?          @map("uploaded_by") @db.VarChar(80)
+  fileUpdatedAt     DateTime?        @map("file_updated_at")
+  resolvedAt        DateTime?        @map("resolved_at")
+  resolution        String?          @db.VarChar(40)
+  createdAt         DateTime         @default(now()) @map("created_at")
+
+  @@index([scanId, resolvedAt, kind, category])
+  @@index([category, storedName])
+  @@map("storage_scan_issues")
+}
+
+model StorageTrashItem {
+  id                 Int      @id @default(autoincrement())
+  category           String   @db.VarChar(40)
+  originalStoredName String   @map("original_stored_name") @db.VarChar(512)
+  trashStoredName    String   @unique @map("trash_stored_name") @db.VarChar(255)
+  mimeType           String?  @map("mime_type") @db.VarChar(127)
+  sizeBytes          Int      @map("size_bytes")
+  trashedById        Int?     @map("trashed_by_id")
+  deletedAt          DateTime @default(now()) @map("deleted_at")
+  purgeAfter         DateTime @map("purge_after")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([purgeAfter])
+  @@index([category, deletedAt])
+  @@map("storage_trash_items")
 }
 
 model ArticleTaxonomy {

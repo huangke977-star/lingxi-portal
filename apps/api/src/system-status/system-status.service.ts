@@ -1,9 +1,8 @@
 import { Injectable } from "@nestjs/common";
-import { opendir, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
 import { BackupService } from "./backup.service";
+import { StorageManagementService } from "./storage-management.service";
 import { UpdateBackupConfigurationDto } from "./dto/backup.dto";
 import {
   BackupConfigurationResponse,
@@ -11,12 +10,6 @@ import {
   RemoteProvider,
   SystemStatusResponse,
 } from "./system-status.types";
-
-interface DirectoryUsage {
-  available: boolean;
-  sizeBytes: number;
-  fileCount: number;
-}
 
 interface DatabaseVersionRow {
   version: string;
@@ -35,35 +28,21 @@ interface MigrationRow {
   finishedAt: Date | string | null;
 }
 
-const STORAGE_DIRECTORIES = [
-  { key: "backgrounds", label: "背景图片", env: "BACKGROUND_UPLOAD_DIR", fallback: ["uploads", "backgrounds"] },
-  { key: "site-assets", label: "站点资源", env: "SITE_ASSET_UPLOAD_DIR", fallback: ["uploads", "site-assets"] },
-  { key: "android-releases", label: "Android 安装包", env: "ANDROID_RELEASE_UPLOAD_DIR", fallback: ["uploads", "android-releases"] },
-  { key: "avatars", label: "用户头像", env: "AVATAR_UPLOAD_DIR", fallback: ["uploads", "avatars"] },
-  { key: "articles", label: "文章媒体", env: "ARTICLE_UPLOAD_DIR", fallback: ["uploads", "articles"] },
-  { key: "chat", label: "聊天附件", env: "CHAT_UPLOAD_DIR", fallback: ["uploads", "chat"] },
-] as const;
-
 @Injectable()
 export class SystemStatusService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly backups: BackupService,
+    private readonly storageManagement: StorageManagementService,
   ) {}
 
   async getStatus(): Promise<SystemStatusResponse> {
     const memory = process.memoryUsage();
-    const [database, redis, storageItems, backups] = await Promise.all([
+    const [database, redis, storage, backups] = await Promise.all([
       this.databaseStatus(),
       this.redisStatus(),
-      Promise.all(STORAGE_DIRECTORIES.map(async (item) => ({
-        key: item.key,
-        label: item.label,
-        ...await this.directoryUsage(resolve(
-          process.env[item.env] ?? join(process.cwd(), ...item.fallback),
-        )),
-      }))),
+      this.storageManagement.getStatusStorageSummary(),
       this.backupStatus(),
     ]);
 
@@ -84,11 +63,7 @@ export class SystemStatusService {
       },
       database,
       redis,
-      storage: {
-        totalBytes: storageItems.reduce((total, item) => total + item.sizeBytes, 0),
-        totalFiles: storageItems.reduce((total, item) => total + item.fileCount, 0),
-        items: storageItems,
-      },
+      storage,
       backups,
       containerRuntime: {
         connected: false,
@@ -214,29 +189,6 @@ export class SystemStatusService {
 
   private async backupStatus(): Promise<SystemStatusResponse["backups"]> {
     return this.backups.getStatus();
-  }
-
-  private async directoryUsage(directoryPath: string): Promise<DirectoryUsage> {
-    try {
-      const directory = await opendir(directoryPath);
-      let sizeBytes = 0;
-      let fileCount = 0;
-      for await (const entry of directory) {
-        const entryPath = join(directoryPath, entry.name);
-        if (entry.isDirectory()) {
-          const nested = await this.directoryUsage(entryPath);
-          sizeBytes += nested.sizeBytes;
-          fileCount += nested.fileCount;
-        } else if (entry.isFile()) {
-          const file = await stat(entryPath);
-          sizeBytes += file.size;
-          fileCount += 1;
-        }
-      }
-      return { available: true, sizeBytes, fileCount };
-    } catch {
-      return { available: false, sizeBytes: 0, fileCount: 0 };
-    }
   }
 
   private parseRedisInfo(info: string): Map<string, string> {

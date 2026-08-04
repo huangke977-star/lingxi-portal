@@ -18,6 +18,7 @@ import {
   RefreshCcw,
   Save,
   Server,
+  ShieldCheck,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
@@ -31,12 +32,14 @@ import {
   deleteDatabaseBackup,
   downloadDatabaseBackup,
   getBackupConfiguration,
+  getStorageOverview,
   getSystemStatus,
   restoreDatabaseBackup,
   testBackupProvider,
   updateBackupConfiguration,
   type BackupConfiguration,
   type BackupConfigurationUpdate,
+  type StorageOverview,
   type SystemStatus,
 } from "@/lib/system-status-api";
 
@@ -52,6 +55,7 @@ export default function SystemStatusPage() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [storageOverview, setStorageOverview] = useState<StorageOverview | null>(null);
   const [backupConfiguration, setBackupConfiguration] = useState<BackupConfiguration | null>(null);
   const [backupForm, setBackupForm] = useState<BackupConfigurationForm | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,6 +91,10 @@ export default function SystemStatusPage() {
     setBackupForm(toBackupConfigurationForm(configuration));
   }, []);
 
+  const loadStorageOverview = useCallback(async (token: string) => {
+    setStorageOverview(await getStorageOverview(token));
+  }, []);
+
   useEffect(() => {
     let active = true;
     const token = readAccessToken();
@@ -99,7 +107,7 @@ export default function SystemStatusPage() {
         if (!active) return;
         setAccessToken(token);
         setCurrentUser(user);
-        if (user.isSuperAdmin) await Promise.all([loadStatus(token), loadBackupConfiguration(token)]);
+        if (user.isSuperAdmin) await Promise.all([loadStatus(token), loadBackupConfiguration(token), loadStorageOverview(token)]);
       })
       .catch((loadError: unknown) => {
         if (isAuthExpiredError(loadError)) {
@@ -113,13 +121,13 @@ export default function SystemStatusPage() {
         if (active) setIsLoading(false);
       });
     return () => { active = false; };
-  }, [loadBackupConfiguration, loadStatus, router]);
+  }, [loadBackupConfiguration, loadStatus, loadStorageOverview, router]);
 
   useEffect(() => {
     if (!accessToken || !currentUser?.isSuperAdmin) return;
-    const timer = window.setInterval(() => void loadStatus(accessToken), 30_000);
+    const timer = window.setInterval(() => void Promise.all([loadStatus(accessToken), loadStorageOverview(accessToken)]), 30_000);
     return () => window.clearInterval(timer);
-  }, [accessToken, currentUser, loadStatus]);
+  }, [accessToken, currentUser, loadStatus, loadStorageOverview]);
 
   const largestStorageBytes = useMemo(
     () => Math.max(1, ...(status?.storage.items.map((item) => item.sizeBytes) ?? [1])),
@@ -244,7 +252,7 @@ export default function SystemStatusPage() {
       <div><span className="section-label">HLOVET Operations</span><h1>系统运行概览</h1></div>
       <div className="system-status-head-actions">
         {status ? <small>更新于 {formatDateTime(status.generatedAt)}</small> : null}
-        <button aria-label="刷新系统状态" disabled={isRefreshing || !accessToken} onClick={() => accessToken && void loadStatus(accessToken, true)} title="刷新" type="button">
+        <button aria-label="刷新系统状态" disabled={isRefreshing || !accessToken} onClick={() => accessToken && void Promise.all([loadStatus(accessToken, true), loadStorageOverview(accessToken)])} title="刷新" type="button">
           <RefreshCcw aria-hidden="true" className={isRefreshing ? "spin" : ""} size={17} />
         </button>
       </div>
@@ -277,6 +285,10 @@ export default function SystemStatusPage() {
               <b>{formatBytes(item.sizeBytes)}</b>
               <i><span style={{ width: `${Math.max(item.sizeBytes ? 4 : 0, item.sizeBytes / largestStorageBytes * 100)}%` }} /></i>
             </div>)}
+          </div>
+          <div className={`system-storage-health-link ${(storageOverview?.openIssues.total ?? 0) ? "warning" : "ok"}`}>
+            <span><ShieldCheck aria-hidden="true" size={16} /><small>{storageOverview?.latestScan ? `${storageOverview.openIssues.total} 项待处理 · ${formatDateTime(storageOverview.latestScan.completedAt || storageOverview.latestScan.startedAt)}` : "尚未执行完整性扫描"}</small></span>
+            <Link href="/admin/storage">存储管理</Link>
           </div>
         </section>
 
