@@ -423,7 +423,6 @@ export default function ArticleDetailPage() {
   return (
     <section className="page-shell article-detail-page">
       <ArticleCenterNav active="discover" isLoggedIn={isLoggedIn} user={user} />
-      <Link className="article-back-link" href="/articles">返回文章</Link>
       <article className="article-reading-layout">
         <header className="article-reading-header">
           <div className="article-reading-title-row"><h1 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h1><button className={article.readLater ? "active" : undefined} onClick={() => void handleReadLater()} type="button"><Clock3 aria-hidden="true" fill={article.readLater ? "currentColor" : "none"} size={16} />{article.readLater ? "已加入稍后读" : "稍后读"}</button></div>

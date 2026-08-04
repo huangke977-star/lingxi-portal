@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Check, ChevronDown, ImagePlus, Save, Send, Tags, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -388,7 +387,6 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     <section className="page-shell articles-page article-editor-page">
       <ArticleCenterNav active="mine" isLoggedIn user={user} showWrite={false} />
       <div className="article-editor-context">
-        <Link className="article-back-link" href="/articles/mine">返回创作列表</Link>
         <span className={`article-status-dot ${article?.status ?? "draft"}`}>
           {article ? ARTICLE_STATUS_LABEL[article.status] : "新文章"}
         </span>

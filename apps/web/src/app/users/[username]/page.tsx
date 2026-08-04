@@ -162,19 +162,23 @@ export default function UserProfilePage() {
   return <section className="page-shell public-user-page">
     <section className="public-user-profile-card">
       <div className="public-user-avatar">{avatarUrl ? <img alt="" src={avatarUrl} /> : getAvatarFallbackText(profile)}</div>
-      <div className="public-user-copy">
-        <div className="public-user-name"><span><h1>{profile.nickname}</h1><small>@{profile.username}</small></span><span className="public-user-role"><RoleSymbol code={roleCode} />{profile.isSuperAdmin ? "超级管理员" : profile.role.name}</span></div>
-        <p>{profile.profileBio}</p>
-        <div className="public-user-facts"><span><Clock3 aria-hidden="true" size={15} />{formatJoinedAt(profile.createdAt)} 加入</span><span>{articles.total} 篇当前可见内容</span></div>
-        <div className="public-user-stats"><span><FileText aria-hidden="true" size={16} /><small>公开文章</small><strong>{profile.publicArticleCount}</strong></span><span><Heart aria-hidden="true" size={16} /><small>累计获赞</small><strong>{profile.receivedLikeCount}</strong></span><span><Eye aria-hidden="true" size={16} /><small>公开阅读</small><strong>{profile.publicViewCount}</strong></span><span><UsersRound aria-hidden="true" size={16} /><small>订阅者</small><strong>{profile.subscriberCount}</strong></span><span><Rss aria-hidden="true" size={16} /><small>已订阅</small><strong>{profile.followingCount}</strong></span></div>
+      <div className="public-user-overview">
+        <div className="public-user-copy">
+          <div className="public-user-name"><span><h1>{profile.nickname}</h1><small>@{profile.username}</small></span><span className="public-user-role"><RoleSymbol code={roleCode} />{profile.isSuperAdmin ? "超级管理员" : profile.role.name}</span></div>
+          <p className="public-user-bio" title={profile.profileBio}>{profile.profileBio}</p>
+          <div className="public-user-facts"><span><Clock3 aria-hidden="true" size={15} />{formatJoinedAt(profile.createdAt)} 加入</span><span>{articles.total} 篇当前可见内容</span></div>
+        </div>
+        <div className="public-user-side">
+          <div className="public-user-stats"><span><FileText aria-hidden="true" size={16} /><small>公开文章</small><strong>{profile.publicArticleCount}</strong></span><span><Heart aria-hidden="true" size={16} /><small>累计获赞</small><strong>{profile.receivedLikeCount}</strong></span><span><Eye aria-hidden="true" size={16} /><small>公开阅读</small><strong>{profile.publicViewCount}</strong></span><span><UsersRound aria-hidden="true" size={16} /><small>订阅者</small><strong>{profile.subscriberCount}</strong></span><span><Rss aria-hidden="true" size={16} /><small>已订阅</small><strong>{profile.followingCount}</strong></span></div>
+          {!profile.isSelf ? <div className="public-user-actions">
+            <button className={profile.subscribed ? "active" : ""} disabled={isActing} onClick={() => void toggleSubscription()} type="button"><Rss aria-hidden="true" size={16} />{profile.subscribed ? "已订阅" : "订阅"}</button>
+            {!relationship ? <button disabled={isActing} onClick={() => void addFriend()} type="button"><UserPlus aria-hidden="true" size={16} />加好友</button> : null}
+            {relationship?.direction === "outgoing" ? <span><Clock3 aria-hidden="true" size={15} />等待确认</span> : null}
+            {relationship?.direction === "incoming" ? <><button disabled={isActing} onClick={() => void respond("accepted")} type="button"><Check aria-hidden="true" size={16} />接受</button><button disabled={isActing} onClick={() => void respond("declined")} type="button"><X aria-hidden="true" size={16} />拒绝</button></> : null}
+            {relationship?.direction === "accepted" ? <button disabled={isActing} onClick={() => void startChat()} type="button"><MessageCircle aria-hidden="true" size={16} />发消息</button> : null}
+          </div> : null}
+        </div>
       </div>
-      {!profile.isSelf ? <div className="public-user-actions">
-        <button className={profile.subscribed ? "active" : ""} disabled={isActing} onClick={() => void toggleSubscription()} type="button"><Rss aria-hidden="true" size={16} />{profile.subscribed ? "已订阅" : "订阅"}</button>
-        {!relationship ? <button disabled={isActing} onClick={() => void addFriend()} type="button"><UserPlus aria-hidden="true" size={16} />加好友</button> : null}
-        {relationship?.direction === "outgoing" ? <span><Clock3 aria-hidden="true" size={15} />等待确认</span> : null}
-        {relationship?.direction === "incoming" ? <><button disabled={isActing} onClick={() => void respond("accepted")} type="button"><Check aria-hidden="true" size={16} />接受</button><button disabled={isActing} onClick={() => void respond("declined")} type="button"><X aria-hidden="true" size={16} />拒绝</button></> : null}
-        {relationship?.direction === "accepted" ? <button disabled={isActing} onClick={() => void startChat()} type="button"><MessageCircle aria-hidden="true" size={16} />发消息</button> : null}
-      </div> : null}
     </section>
 
     <section className="public-user-articles">

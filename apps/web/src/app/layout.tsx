@@ -3,6 +3,7 @@ import Script from "next/script";
 import { AuthSessionController } from "@/components/auth-session-controller";
 import { ChatDock } from "@/components/chat-dock";
 import { PwaController } from "@/components/pwa-controller";
+import { RouteBackButton } from "@/components/route-back-button";
 import { ScrollToTop } from "@/components/scroll-to-top";
 import { ThemeController } from "@/components/theme-controller";
 import { TopNav } from "@/components/top-nav";
@@ -82,7 +83,10 @@ export default function RootLayout({
         <PwaController />
         <ThemeController />
         <TopNav />
-        <main className="content-shell">{children}</main>
+        <main className="content-shell">
+          <RouteBackButton />
+          {children}
+        </main>
         <ScrollToTop />
         <ChatDock />
       </body>
