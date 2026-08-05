@@ -2169,8 +2169,9 @@ a.entry-item:hover {
   position: fixed;
   inset: 0;
   z-index: 0;
-  background: rgba(255, 248, 251, 0.38);
-  backdrop-filter: blur(14px) saturate(118%);
+  background: rgba(255, 248, 251, 0.22);
+  backdrop-filter: blur(7px) saturate(108%);
+  -webkit-backdrop-filter: blur(7px) saturate(108%);
   content: "";
 }
 
@@ -3359,6 +3360,12 @@ a.entry-item:hover {
   padding: 24px;
   background: rgba(255, 247, 250, 0.58);
   backdrop-filter: blur(14px) saturate(120%);
+}
+
+.modal-backdrop--light {
+  background: rgba(255, 248, 251, 0.22);
+  backdrop-filter: blur(7px) saturate(108%);
+  -webkit-backdrop-filter: blur(7px) saturate(108%);
 }
 
 .modal-panel {
@@ -11546,13 +11553,27 @@ html:has(.article-comment-form) {
 .system-overview-item > div { display: grid; gap: 2px; min-width: 0; }
 .system-overview-item small,
 .system-overview-item em { color: var(--muted); font-size: 0.66rem; font-style: normal; }
+.system-overview-item em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .system-overview-item strong { color: var(--foreground); font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.system-overview-item strong.datetime { font-size: 0.78rem; line-height: 1.18; overflow: visible; text-overflow: clip; white-space: normal; }
 
 .system-status-grid {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 10px;
+}
+
+.system-monitoring-left {
+  display: grid;
+  gap: 10px;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.system-monitoring-left > .system-status-panel,
+.system-status-panel.monitoring-trends {
+  height: 100%;
 }
 
 .system-status-panel {
@@ -11882,7 +11903,7 @@ html:has(.article-comment-form) {
 .storage-health-strip {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-top: 16px;
 }
 

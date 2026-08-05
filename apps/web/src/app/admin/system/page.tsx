@@ -318,8 +318,8 @@ export default function SystemStatusPage() {
         <OverviewItem icon={Server} label="Redis" value={status.redis.connected ? "连接正常" : "连接异常"} detail={status.redis.connected ? `${status.redis.keyCount ?? 0} 个键` : status.redis.error ?? "读取失败"} tone={status.redis.connected ? "ok" : "error"} />
         <OverviewItem icon={Files} label="文件存储" value={formatBytes(status.storage.totalBytes)} detail={`${status.storage.totalFiles} 个文件`} tone="neutral" />
         <OverviewItem icon={Archive} label="媒体备份覆盖" value={formatCoverage(status.reliability.backupCoverage.percentage)} detail={`${status.reliability.backupCoverage.backedUpFiles} / ${status.reliability.backupCoverage.totalFiles} 个文件`} tone={status.reliability.backupCoverage.uncoveredFiles ? "warning" : "ok"} />
-        <OverviewItem icon={Clock3} label="最近备份成功" value={status.reliability.lastSuccessfulBackupAt ? formatDateTime(status.reliability.lastSuccessfulBackupAt) : "暂无成功记录"} detail={formatBackupSource(status.reliability.lastSuccessfulBackupSource)} tone={status.reliability.lastSuccessfulBackupAt ? "ok" : "neutral"} />
-        <OverviewItem icon={CircleAlert} label="运行异常" value={`${status.reliability.anomalies.total} 项`} detail={`近 ${status.reliability.anomalyWindowHours} 小时`} tone={status.reliability.anomalies.total ? "error" : "ok"} />
+        <OverviewItem icon={Clock3} label="最近备份成功" value={status.reliability.lastSuccessfulBackupAt ? formatDateTime(status.reliability.lastSuccessfulBackupAt) : "暂无成功记录"} valueClassName="datetime" detail={formatBackupSource(status.reliability.lastSuccessfulBackupSource)} tone={status.reliability.lastSuccessfulBackupAt ? "ok" : "neutral"} />
+        <OverviewItem icon={CircleAlert} label={`近 ${status.reliability.anomalyWindowHours} 小时异常`} value={`${status.reliability.anomalies.total} 项`} detail={formatAnomalySummary(status.reliability.anomalies)} tone={status.reliability.anomalies.total ? "error" : "ok"} />
       </div>
 
       <div className="system-status-grid">
@@ -382,11 +382,19 @@ export default function SystemStatusPage() {
           </div>
         </section>
 
-        <section className="system-status-panel runtime">
-          <PanelHeading icon={Server} title="容器与宿主机" />
-          <div className="system-runtime-note"><CircleAlert aria-hidden="true" size={20} /><p>{status.containerRuntime.message}</p></div>
-          <div className="system-runtime-links"><span>容器启停、CPU、整机内存和磁盘清理由 1Panel 或 SSH 负责。</span><Link href="/admin/cache">查看 Redis 缓存</Link><Link href="/admin/settings">查看站点资源</Link></div>
-        </section>
+        <div className="system-monitoring-left">
+          <section className="system-status-panel runtime">
+            <PanelHeading icon={Server} title="容器与宿主机" />
+            <div className="system-runtime-note"><CircleAlert aria-hidden="true" size={20} /><p>{status.containerRuntime.message}</p></div>
+            <div className="system-runtime-links"><span>容器启停、CPU、整机内存和磁盘清理由 1Panel 或 SSH 负责。</span><Link href="/admin/cache">查看 Redis 缓存</Link><Link href="/admin/settings">查看站点资源</Link></div>
+          </section>
+
+          <section className="system-status-panel monitoring-events">
+            <header className="system-panel-heading system-monitoring-heading"><span><CircleAlert aria-hidden="true" size={17} /><strong>接口观察</strong></span><small>慢接口阈值 {status.monitoring.slowRequestThresholdMs} ms</small></header>
+            <MonitoringEventList empty="最近没有慢接口" events={status.monitoring.slowRequests.slice(0, 5)} title="慢接口" />
+            <MonitoringEventList empty="最近没有 API 5xx 错误" events={status.monitoring.recentErrors.slice(0, 5)} title="最近错误" />
+          </section>
+        </div>
 
         <section className="system-status-panel monitoring-trends">
           <header className="system-panel-heading system-monitoring-heading"><span><Activity aria-hidden="true" size={17} /><strong>资源趋势</strong></span><small>每分钟采样 · 最近 24 小时</small></header>
@@ -405,12 +413,6 @@ export default function SystemStatusPage() {
               warningValue={status.reliability.storage.warningThresholdPercent}
             />
           </div>
-        </section>
-
-        <section className="system-status-panel monitoring-events">
-          <header className="system-panel-heading system-monitoring-heading"><span><CircleAlert aria-hidden="true" size={17} /><strong>接口观察</strong></span><small>慢接口阈值 {status.monitoring.slowRequestThresholdMs} ms</small></header>
-          <MonitoringEventList empty="最近没有慢接口" events={status.monitoring.slowRequests.slice(0, 5)} title="慢接口" />
-          <MonitoringEventList empty="最近没有 API 5xx 错误" events={status.monitoring.recentErrors.slice(0, 5)} title="最近错误" />
         </section>
 
         {backupConfiguration && backupForm ? <section className="system-status-panel backup-policy">
@@ -475,8 +477,8 @@ export default function SystemStatusPage() {
   </section>;
 }
 
-function OverviewItem({ icon: Icon, label, value, detail, tone }: { icon: typeof Activity; label: string; value: string; detail: string; tone: "ok" | "error" | "warning" | "neutral" }) {
-  return <div className={`system-overview-item ${tone}`}><span><Icon aria-hidden="true" size={18} /></span><div><small>{label}</small><strong>{value}</strong><em>{detail}</em></div></div>;
+function OverviewItem({ icon: Icon, label, value, valueClassName, detail, tone }: { icon: typeof Activity; label: string; value: string; valueClassName?: string; detail: string; tone: "ok" | "error" | "warning" | "neutral" }) {
+  return <div className={`system-overview-item ${tone}`}><span><Icon aria-hidden="true" size={18} /></span><div><small>{label}</small><strong className={valueClassName} title={value}>{value}</strong><em title={detail}>{detail}</em></div></div>;
 }
 
 function PanelHeading({ icon: Icon, title }: { icon: typeof Activity; title: string }) {
@@ -600,6 +602,19 @@ function formatShortTime(value: string): string {
 
 function formatCoverage(value: number | null): string {
   return value === null ? "待生成目录" : `${value.toFixed(value % 1 ? 1 : 0)}%`;
+}
+
+function formatAnomalySummary(anomalies: SystemStatus["reliability"]["anomalies"]): string {
+  const details = [
+    ["备份失败", anomalies.backupFailures],
+    ["磁盘预警", anomalies.diskPressure],
+    ["缺失文件", anomalies.missingFiles],
+    ["孤立文件", anomalies.orphanFiles],
+    ["大小不一致", anomalies.metadataMismatches],
+    ["接口错误", anomalies.recentApiErrors],
+  ].filter((item): item is [string, number] => Number(item[1]) > 0);
+
+  return details.length ? details.map(([label, count]) => `${label} ${count}`).join(" · ") : "当前未发现异常";
 }
 
 function formatBackupSource(value: "media" | "database" | null): string {
