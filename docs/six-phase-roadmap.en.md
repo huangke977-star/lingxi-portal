@@ -33,7 +33,7 @@ Status definitions:
 
 | Phase | Name | Main scope | Status |
 | --- | --- | --- | --- |
-| Phase 1 | Reliability Foundation | Media backup, missing-file repair, lightweight monitoring | Not started |
+| Phase 1 | Reliability Foundation | Media backup, missing-file repair, lightweight monitoring | In progress |
 | Phase 2 | Account Security | Password recovery, email verification, Turnstile, login-risk alerts | Not started |
 | Phase 3 | Content Capability | Autosave, version history, preview, unified search | Not started |
 | Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | Not started |
@@ -59,7 +59,7 @@ Goal: give database records and physical files a verifiable, backed-up, and reco
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P1-01 | Add media backup job, backup object, and manifest data models | Not started |
+| P1-01 | Add media backup job, backup object, and manifest data models | Completed |
 | P1-02 | Cover backgrounds, site assets, APKs, avatars, article images, and chat attachments | Not started |
 | P1-03 | Use hashes, sizes, and manifests for incremental backup | Not started |
 | P1-04 | Reuse encrypted OSS/R2 configuration with enable, disable, and connection tests | Not started |
@@ -275,7 +275,7 @@ A phase can be marked `Completed` only when all conditions are met:
 
 | Phase | Completed | Commit | Deployment | Notes |
 | --- | --- | --- | --- | --- |
-| Phase 1 | - | - | - | Not started |
+| Phase 1 | - | - | - | In progress; P1-01 models and migration completed |
 | Phase 2 | - | - | - | Not started |
 | Phase 3 | - | - | - | Not started |
 | Phase 4 | - | - | - | Not started |

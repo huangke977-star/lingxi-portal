@@ -123,6 +123,32 @@ enum StorageIssueKind {
   metadata_mismatch
 }
 
+enum MediaBackupJobStatus {
+  pending
+  running
+  completed
+  partial
+  failed
+}
+
+enum MediaBackupJobTrigger {
+  manual
+  scheduled
+}
+
+enum MediaBackupProvider {
+  oss
+  r2
+}
+
+enum MediaBackupManifestStatus {
+  pending
+  uploaded
+  reused
+  skipped
+  failed
+}
+
 enum ChatMessageType {
   text
   attachment
@@ -449,6 +475,83 @@ model StorageTrashItem {
   @@index([purgeAfter])
   @@index([category, deletedAt])
   @@map("storage_trash_items")
+}
+
+model MediaBackupJob {
+  id             Int                   @id @default(autoincrement())
+  status         MediaBackupJobStatus  @default(pending)
+  trigger        MediaBackupJobTrigger
+  triggeredById  Int?                  @map("triggered_by_id")
+  providers      Json
+  totalFiles     Int                   @default(0) @map("total_files")
+  processedFiles Int                   @default(0) @map("processed_files")
+  uploadedFiles  Int                   @default(0) @map("uploaded_files")
+  reusedFiles    Int                   @default(0) @map("reused_files")
+  skippedFiles   Int                   @default(0) @map("skipped_files")
+  failedFiles    Int                   @default(0) @map("failed_files")
+  totalBytes     BigInt                @default(0) @map("total_bytes")
+  uploadedBytes  BigInt                @default(0) @map("uploaded_bytes")
+  error          String?               @db.VarChar(500)
+  startedAt      DateTime?             @map("started_at")
+  completedAt    DateTime?             @map("completed_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  manifests      MediaBackupManifest[]
+
+  @@index([status, createdAt])
+  @@index([trigger, createdAt])
+  @@map("media_backup_jobs")
+}
+
+model MediaBackupFile {
+  id             Int                   @id @default(autoincrement())
+  category       String                @db.VarChar(40)
+  storedName     String                @map("stored_name") @db.VarChar(512)
+  mimeType       String?               @map("mime_type") @db.VarChar(127)
+  sourceType     String                @map("source_type") @db.VarChar(64)
+  sourceId       String?               @map("source_id") @db.VarChar(80)
+  sourceLabel    String                @map("source_label") @db.VarChar(255)
+  sourceUrl      String?               @map("source_url") @db.VarChar(512)
+  uploadedBy     String?               @map("uploaded_by") @db.VarChar(80)
+  sizeBytes      Int                   @map("size_bytes")
+  contentHash    String?               @map("content_hash") @db.Char(64)
+  fileUpdatedAt  DateTime?             @map("file_updated_at")
+  lastSeenAt     DateTime              @default(now()) @map("last_seen_at")
+  lastBackedUpAt DateTime?             @map("last_backed_up_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  manifests      MediaBackupManifest[]
+
+  @@unique([category, storedName])
+  @@index([contentHash, sizeBytes])
+  @@index([lastSeenAt])
+  @@map("media_backup_files")
+}
+
+model MediaBackupManifest {
+  id            Int                       @id @default(autoincrement())
+  jobId         Int                       @map("job_id")
+  job           MediaBackupJob            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  fileId        Int                       @map("file_id")
+  file          MediaBackupFile           @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  provider      MediaBackupProvider
+  status        MediaBackupManifestStatus @default(pending)
+  contentHash   String                    @map("content_hash") @db.Char(64)
+  sizeBytes     Int                       @map("size_bytes")
+  fileUpdatedAt DateTime?                 @map("file_updated_at")
+  bucket        String?                   @db.VarChar(128)
+  objectKey     String?                   @map("object_key") @db.VarChar(512)
+  etag          String?                   @db.VarChar(255)
+  error         String?                   @db.VarChar(500)
+  startedAt     DateTime?                 @map("started_at")
+  completedAt   DateTime?                 @map("completed_at")
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  updatedAt     DateTime                  @updatedAt @map("updated_at")
+
+  @@unique([jobId, fileId, provider])
+  @@index([jobId, status], map: "media_backup_manifest_job_status_idx")
+  @@index([fileId, provider, contentHash, status], map: "media_backup_manifest_lookup_idx")
+  @@map("media_backup_manifests")
 }
 
 model ArticleTaxonomy {
