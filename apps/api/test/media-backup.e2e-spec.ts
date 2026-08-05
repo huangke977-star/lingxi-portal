@@ -228,6 +228,36 @@ describe("media backup execution and recovery (e2e)", () => {
     });
   });
 
+  it("skips scheduled media backup when no remote provider is enabled", async () => {
+    prisma.configuration.automaticEnabled = true;
+    prisma.configuration.scheduleTime = "00:00";
+    remote.enabledProviders.mockReturnValue([]);
+    const startBackup = jest.spyOn(service, "startBackup");
+
+    await (service as any).runScheduler();
+
+    expect(startBackup).not.toHaveBeenCalled();
+    expect(prisma.backupConfiguration.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("skips scheduled media backup when encryption is not configured", async () => {
+    prisma.configuration.automaticEnabled = true;
+    prisma.configuration.scheduleTime = "00:00";
+    delete process.env.BACKUP_ENCRYPTION_KEY;
+    service = new MediaBackupService(
+      prisma as unknown as PrismaService,
+      new BackupCryptoService(),
+      remote as unknown as BackupRemoteService,
+      new BackupOperationLockService(),
+    );
+    const startBackup = jest.spyOn(service, "startBackup");
+
+    await (service as any).runScheduler();
+
+    expect(startBackup).not.toHaveBeenCalled();
+    expect(prisma.backupConfiguration.updateMany).not.toHaveBeenCalled();
+  });
+
   it("removes expired task history and unreferenced remote objects", async () => {
     const oldDate = new Date(Date.now() - 100 * 86_400_000);
     prisma.state.jobs.push({
@@ -758,6 +788,7 @@ function prismaMock() {
 
   const mock: any = {
     state,
+    configuration,
     addIssue(storedName: string, sourceId: string) {
       const row = {
         id: ++issueId,

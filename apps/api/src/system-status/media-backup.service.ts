@@ -576,6 +576,8 @@ export class MediaBackupService implements OnModuleInit, OnModuleDestroy {
     try {
       const configuration = await this.ensureConfiguration();
       if (!configuration.automaticEnabled) return;
+      if (!this.remote.enabledProviders(configuration).length) return;
+      if (!this.crypto.isConfigured()) return;
       const now = new Date();
       const dateKey = this.zonedDateKey(now, configuration.timezone);
       scheduledDateKey = dateKey;
