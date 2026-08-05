@@ -275,7 +275,7 @@ A phase can be marked `Completed` only when all conditions are met:
 
 | Phase | Completed | Commit | Deployment | Notes |
 | --- | --- | --- | --- | --- |
-| Phase 1 | - | - | - | In progress; P1-01 models and migration completed |
+| Phase 1 | - | `90e43d3` | P1-01 deployed (2026-08-05) | In progress; P1-01 models, migration, and production verification completed |
 | Phase 2 | - | - | - | Not started |
 | Phase 3 | - | - | - | Not started |
 | Phase 4 | - | - | - | Not started |
