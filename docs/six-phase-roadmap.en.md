@@ -2,8 +2,8 @@
 
 - Document status: Active
 - Created: 2026-08-04
-- Last updated: 2026-08-04
-- Current phase: Phase 1 not started
+- Last updated: 2026-08-05
+- Current phase: Phase 1 in progress
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -60,7 +60,7 @@ Goal: give database records and physical files a verifiable, backed-up, and reco
 | ID | Scope | Status |
 | --- | --- | --- |
 | P1-01 | Add media backup job, backup object, and manifest data models | Completed |
-| P1-02 | Cover backgrounds, site assets, APKs, avatars, article images, and chat attachments | Not started |
+| P1-02 | Cover backgrounds, site assets, APKs, avatars, article images, and chat attachments | Completed |
 | P1-03 | Use hashes, sizes, and manifests for incremental backup | Not started |
 | P1-04 | Reuse encrypted OSS/R2 configuration with enable, disable, and connection tests | Not started |
 | P1-05 | Exclude `.tmp`, `.trash`, and incomplete uploads; default concurrency to one | Not started |
@@ -275,7 +275,7 @@ A phase can be marked `Completed` only when all conditions are met:
 
 | Phase | Completed | Commit | Deployment | Notes |
 | --- | --- | --- | --- | --- |
-| Phase 1 | - | `90e43d3` | P1-01 deployed (2026-08-05) | In progress; P1-01 models, migration, and production verification completed |
+| Phase 1 | - | `90e43d3`, `290aa5c` | P1-01 through P1-02 deployed (2026-08-05) | In progress; production scan #3 cataloged 20 files (10 backgrounds, 1 avatar, 3 article images, and 6 chat attachments); site assets and APKs currently have no production files, while 3 missing article files remain in the repair workflow |
 | Phase 2 | - | - | - | Not started |
 | Phase 3 | - | - | - | Not started |
 | Phase 4 | - | - | - | Not started |
