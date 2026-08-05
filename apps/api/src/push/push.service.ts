@@ -139,6 +139,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
           keys: { p256dh: subscription.p256dh, auth: subscription.auth },
         }, JSON.stringify({
           ...payload,
+          recipientUserId: userId,
           icon: payload.icon || "/icon-192.png",
           badge: payload.badge || "/favicon-48x48.png",
         }), { TTL: 300, urgency: "normal" });

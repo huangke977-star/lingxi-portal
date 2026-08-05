@@ -1,7 +1,17 @@
 import { BadRequestException } from "@nestjs/common";
+import webpush from "web-push";
 import { AuthenticatedUser } from "../src/auth/auth.types";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { PushService } from "../src/push/push.service";
+import type { ChatMessageResponse } from "../src/social/social.types";
+
+jest.mock("web-push", () => ({
+  __esModule: true,
+  default: {
+    setVapidDetails: jest.fn(),
+    sendNotification: jest.fn(async () => undefined),
+  },
+}));
 
 const user: AuthenticatedUser = {
   id: 7,
@@ -38,6 +48,7 @@ describe("browser push subscriptions", () => {
     process.env.VAPID_PUBLIC_KEY = "test-public-key";
     process.env.VAPID_PRIVATE_KEY = "test-private-key";
     process.env.VAPID_SUBJECT = "mailto:test@example.com";
+    (webpush.sendNotification as jest.Mock).mockClear();
   });
 
   afterAll(() => {
@@ -81,6 +92,53 @@ describe("browser push subscriptions", () => {
 
     expect(prisma.pushSubscription.deleteMany).toHaveBeenCalledWith({
       where: { userId: user.id, endpointHash: expect.stringMatching(/^[a-f0-9]{64}$/) },
+    });
+  });
+
+  it("binds each delivered notification to its recipient account", async () => {
+    const prisma = {
+      conversationParticipantState: {
+        findUnique: jest.fn(async () => ({ muted: false })),
+      },
+      pushSubscription: {
+        findMany: jest.fn(async () => [{
+          id: 9,
+          endpoint: "https://push.example.test/id",
+          p256dh: "p256dh-key",
+          auth: "auth-key",
+        }]),
+      },
+    };
+    const service = new PushService(prisma as unknown as PrismaService);
+    const message: ChatMessageResponse = {
+      id: 21,
+      conversationId: 12,
+      body: "测试消息",
+      type: "text",
+      attachments: [],
+      call: null,
+      sender: {
+        id: 8,
+        username: "sender",
+        nickname: "发送者",
+        avatarUrl: null,
+        profileBio: "",
+        isSuperAdmin: false,
+        role: { code: "qi_refining", name: "练气", level: 10 },
+        createdAt: "2026-08-05T00:00:00.000Z",
+      },
+      readAt: null,
+      createdAt: "2026-08-05T00:00:00.000Z",
+    };
+
+    await service.sendChatMessage(message.sender.id, user.id, message);
+
+    expect(webpush.sendNotification).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse((webpush.sendNotification as jest.Mock).mock.calls[0][1] as string);
+    expect(payload).toMatchObject({
+      recipientUserId: user.id,
+      url: `/messages?conversation=${message.conversationId}`,
+      tag: `chat-${message.conversationId}`,
     });
   });
 });

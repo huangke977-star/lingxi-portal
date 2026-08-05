@@ -70,6 +70,14 @@ export async function disableBrowserPush(accessToken: string): Promise<BrowserPu
   return { ...status, supported: true, permission: Notification.permission, subscribed: false };
 }
 
+export async function syncBrowserPushOwner(accessToken: string): Promise<void> {
+  if (!supportsBrowserPush()) return;
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.getSubscription();
+  if (!subscription) return;
+  await registerPushSubscription(accessToken, subscription);
+}
+
 function registerPushSubscription(accessToken: string, subscription: PushSubscription): Promise<PushStatus> {
   return requestJson<PushStatus>("/push/subscriptions", {
     method: "POST",

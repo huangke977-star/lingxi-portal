@@ -2,6 +2,11 @@ export const ACCESS_TOKEN_KEY = 'lingxi_access_token';
 export const REFRESH_TOKEN_KEY = 'lingxi_refresh_token';
 export const AUTH_STATE_CHANGE_EVENT = 'hlovet_auth_state_change';
 
+interface AccessTokenPayload {
+  exp?: unknown;
+  sub?: unknown;
+}
+
 export function saveAuthTokens(tokens: { accessToken: string; refreshToken: string }): void {
   if (typeof window === 'undefined') {
     return;
@@ -29,27 +34,14 @@ export function readRefreshToken(): string | null {
 }
 
 export function readAccessTokenExpiresAt(): number | null {
-  const token = readAccessToken();
-  if (!token) {
-    return null;
-  }
+  const payload = readAccessTokenPayload();
+  return typeof payload?.exp === 'number' ? payload.exp * 1000 : null;
+}
 
-  const payload = token.split('.')[1];
-  if (!payload) {
-    return null;
-  }
-
-  try {
-    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = normalized.padEnd(
-      normalized.length + ((4 - (normalized.length % 4)) % 4),
-      '=',
-    );
-    const decoded = JSON.parse(window.atob(padded)) as { exp?: unknown };
-    return typeof decoded.exp === 'number' ? decoded.exp * 1000 : null;
-  } catch {
-    return null;
-  }
+export function readAccessTokenUserId(): number | null {
+  const payload = readAccessTokenPayload();
+  const userId = typeof payload?.sub === 'number' ? payload.sub : Number(payload?.sub);
+  return Number.isSafeInteger(userId) && userId > 0 ? userId : null;
 }
 
 export function clearAuthTokens(): void {
@@ -60,4 +52,21 @@ export function clearAuthTokens(): void {
   window.localStorage.removeItem(ACCESS_TOKEN_KEY);
   window.localStorage.removeItem(REFRESH_TOKEN_KEY);
   window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
+}
+
+function readAccessTokenPayload(): AccessTokenPayload | null {
+  const token = readAccessToken();
+  const encodedPayload = token?.split('.')[1];
+  if (!encodedPayload) return null;
+
+  try {
+    const normalized = encodedPayload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(
+      normalized.length + ((4 - (normalized.length % 4)) % 4),
+      '=',
+    );
+    return JSON.parse(window.atob(padded)) as AccessTokenPayload;
+  } catch {
+    return null;
+  }
 }
