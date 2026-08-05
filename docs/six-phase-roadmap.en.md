@@ -61,16 +61,16 @@ Goal: give database records and physical files a verifiable, backed-up, and reco
 | --- | --- | --- |
 | P1-01 | Add media backup job, backup object, and manifest data models | Completed |
 | P1-02 | Cover backgrounds, site assets, APKs, avatars, article images, and chat attachments | Completed |
-| P1-03 | Use hashes, sizes, and manifests for incremental backup | Not started |
-| P1-04 | Reuse encrypted OSS/R2 configuration with enable, disable, and connection tests | Not started |
-| P1-05 | Exclude `.tmp`, `.trash`, and incomplete uploads; default concurrency to one | Not started |
-| P1-06 | Add scheduling, retention, retry, and job logs | Not started |
-| P1-07 | Restore one file through staging, validation, and atomic replacement | Not started |
-| P1-08 | Add remote restore, replacement upload, and confirmed-loss workflows | Not started |
-| P1-09 | Add lightweight slow-request, recent-error, memory, and disk trends | Not started |
-| P1-10 | Show backup coverage, last success, and issue counts in System Overview | Not started |
-| P1-11 | Notify super administrators about backup failures, disk pressure, and missing-file changes | Not started |
-| P1-12 | Complete bilingual docs, automated tests, deployment, and a production restore drill | Not started |
+| P1-03 | Use hashes, sizes, and manifests for incremental backup | Completed |
+| P1-04 | Reuse encrypted OSS/R2 configuration with enable, disable, and connection tests | Completed |
+| P1-05 | Exclude `.tmp`, `.trash`, and incomplete uploads; default concurrency to one | Completed |
+| P1-06 | Add scheduling, retention, retry, and job logs | Completed |
+| P1-07 | Restore one file through staging, validation, and atomic replacement | Completed |
+| P1-08 | Add remote restore, replacement upload, and confirmed-loss workflows | Completed |
+| P1-09 | Add lightweight slow-request, recent-error, memory, and disk trends | Completed |
+| P1-10 | Show backup coverage, last success, and issue counts in System Overview | Completed |
+| P1-11 | Notify super administrators about backup failures, disk pressure, and missing-file changes | Completed |
+| P1-12 | Complete bilingual docs, automated tests, deployment, and a production restore drill | In progress |
 
 ### Acceptance
 

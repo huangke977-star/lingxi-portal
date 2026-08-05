@@ -21,6 +21,8 @@ import { basename, dirname, extname, join, relative, resolve, sep } from "node:p
 import {
   Prisma,
   StorageIssueKind,
+  StorageRepairAction,
+  StorageRepairStatus,
   StorageScanStatus,
   StorageScanTrigger,
   UserNotificationChannel,
@@ -83,7 +85,6 @@ const CATEGORY_DEFINITIONS = [
 ] as const;
 
 const TEMPORARY_FILE_PROTECTION_MS = 24 * 60 * 60 * 1000;
-const WARNING_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const MAX_SCANNED_FILES = 50_000;
 const RETAINED_SCAN_COUNT = 10;
 
@@ -445,9 +446,18 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
 
   private async performScan(scanId: number): Promise<void> {
     try {
-      const [references, trashRows] = await Promise.all([
+      const [references, trashRows, repairRows] = await Promise.all([
         this.loadReferences(),
         this.prisma.storageTrashItem.findMany({ select: { category: true, sizeBytes: true } }),
+        this.prisma.storageFileRepair.findMany({
+          where: { status: StorageRepairStatus.completed },
+          orderBy: { id: "desc" },
+          select: {
+            category: true,
+            storedName: true,
+            action: true,
+          },
+        }),
       ]);
       const referencesByCategory = new Map<StorageCategoryKey, Map<string, StorageReference>>();
       for (const category of this.categories) referencesByCategory.set(category.key, new Map());
@@ -463,6 +473,18 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
         current.count += 1;
         current.sizeBytes += item.sizeBytes;
       }
+      const latestRepairByFile = new Map<string, StorageRepairAction>();
+      for (const repair of repairRows) {
+        const key = `${repair.category}\u0000${repair.storedName}`;
+        if (!latestRepairByFile.has(key)) {
+          latestRepairByFile.set(key, repair.action);
+        }
+      }
+      const confirmedUnrecoverable = new Set(
+        [...latestRepairByFile.entries()]
+          .filter(([, action]) => action === StorageRepairAction.confirm_unrecoverable)
+          .map(([key]) => key),
+      );
 
       const issues: Prisma.StorageScanIssueCreateManyInput[] = [];
       const summaries: StorageCategorySummary[] = [];
@@ -476,6 +498,7 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
           trashByCategory.get(category.key) ?? { count: 0, sizeBytes: 0 },
           issues,
           mediaBackupFiles,
+          confirmedUnrecoverable,
         );
         scannedFileCount += result.fileCount;
         if (scannedFileCount > MAX_SCANNED_FILES) {
@@ -505,7 +528,7 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
           update: { lastScanAt: new Date() },
         });
       });
-      await this.notifyStorageWarning(summary);
+      await this.notifyStorageWarning(scanId, summary);
       await this.pruneScans();
     } catch (error) {
       await this.prisma.storageScan.update({
@@ -527,6 +550,7 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
     trash: { count: number; sizeBytes: number },
     issues: Prisma.StorageScanIssueCreateManyInput[],
     mediaBackupFiles: MediaBackupCatalogFile[],
+    confirmedUnrecoverable: Set<string>,
   ): Promise<StorageCategorySummary> {
     let files: ScannedFile[];
     try {
@@ -534,7 +558,13 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
       files = await this.listFiles(category.directory);
     } catch {
       for (const reference of references.values()) {
-        issues.push(this.issueData(scanId, StorageIssueKind.missing, reference, null));
+        issues.push(this.issueData(
+          scanId,
+          StorageIssueKind.missing,
+          reference,
+          null,
+          confirmedUnrecoverable.has(`${reference.category}\u0000${reference.storedName}`),
+        ));
       }
       return {
         key: category.key,
@@ -561,7 +591,13 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
       const file = filesByName.get(reference.storedName);
       if (!file) {
         missingCount += 1;
-        issues.push(this.issueData(scanId, StorageIssueKind.missing, reference, null));
+        issues.push(this.issueData(
+          scanId,
+          StorageIssueKind.missing,
+          reference,
+          null,
+          confirmedUnrecoverable.has(`${reference.category}\u0000${reference.storedName}`),
+        ));
         continue;
       }
       // Missing and orphaned files stay in the repair workflow instead of becoming backup candidates.
@@ -632,6 +668,7 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
     kind: StorageIssueKind,
     reference: StorageReference,
     file: ScannedFile | null,
+    confirmedUnrecoverable = false,
   ): Prisma.StorageScanIssueCreateManyInput {
     return {
       scanId,
@@ -647,6 +684,12 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
       sourceUrl: reference.sourceUrl,
       uploadedBy: reference.uploadedBy,
       fileUpdatedAt: file?.updatedAt ?? null,
+      ...(confirmedUnrecoverable
+        ? {
+            resolvedAt: new Date(),
+            resolution: "confirmed_unrecoverable",
+          }
+        : {}),
     };
   }
 
@@ -767,6 +810,7 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
     })));
 
     const attachments = await this.prisma.chatAttachment.findMany({
+      where: { messageId: { not: null } },
       select: {
         id: true,
         conversationId: true,
@@ -785,7 +829,7 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
       sizeBytes: item.sizeBytes,
       sourceType: "chat_attachment",
       sourceId: String(item.id),
-      sourceLabel: `会话 #${item.conversationId}${item.messageId ? ` · 消息 #${item.messageId}` : " · 待发送"} · ${item.originalName}`,
+      sourceLabel: `会话 #${item.conversationId} · 消息 #${item.messageId} · ${item.originalName}`,
       sourceUrl: null,
       uploadedBy: item.uploadedBy.username,
     })));
@@ -857,21 +901,45 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
     return { capacityBytes: null, usedBytes: null, availableBytes: null, usedPercent: null };
   }
 
-  private async notifyStorageWarning(summary: StorageScanSummary): Promise<void> {
+  private async notifyStorageWarning(
+    scanId: number,
+    summary: StorageScanSummary,
+  ): Promise<void> {
     const configuration = await this.ensureConfiguration();
-    const diskWarning = summary.disk.usedPercent !== null && summary.disk.usedPercent >= configuration.warningThresholdPercent;
-    const integrityWarning = summary.missingCount > 0;
-    if (!diskWarning && !integrityWarning) return;
-    if (configuration.lastWarningAt && Date.now() - configuration.lastWarningAt.getTime() < WARNING_INTERVAL_MS) return;
+    const previousScan = await this.prisma.storageScan.findFirst({
+      where: {
+        id: { lt: scanId },
+        status: StorageScanStatus.completed,
+      },
+      orderBy: { id: "desc" },
+      select: { summary: true },
+    });
+    const previousSummary = previousScan?.summary as unknown as
+      | StorageScanSummary
+      | null;
+    const previousMissingCount = previousSummary?.missingCount ?? 0;
+    const missingChanged = previousMissingCount !== summary.missingCount;
+    const diskWarning =
+      summary.disk.usedPercent !== null &&
+      summary.disk.usedPercent >= configuration.warningThresholdPercent;
+    const previousDiskUsedPercent = previousSummary?.disk?.usedPercent ?? null;
+    const previousDiskWarning =
+      previousDiskUsedPercent !== null &&
+      previousDiskUsedPercent >= configuration.warningThresholdPercent;
+    const diskThresholdCrossed = diskWarning && !previousDiskWarning;
+    if (!diskThresholdCrossed && !missingChanged) return;
     const administrators = await this.prisma.user.findMany({
       where: { isSuperAdmin: true, status: UserStatus.active },
       select: { id: true },
     });
     if (!administrators.length) return;
     const details = [
-      diskWarning ? `磁盘已使用 ${summary.disk.usedPercent}%` : null,
-      integrityWarning ? `发现 ${summary.missingCount} 个缺失文件` : null,
-      summary.orphanCount ? `${summary.orphanCount} 个孤立文件待确认` : null,
+      diskThresholdCrossed
+        ? `磁盘已使用 ${summary.disk.usedPercent}%，超过 ${configuration.warningThresholdPercent}% 预警线`
+        : null,
+      missingChanged
+        ? `缺失文件由 ${previousMissingCount} 个变为 ${summary.missingCount} 个`
+        : null,
     ].filter(Boolean).join("，");
     await this.prisma.$transaction(async (transaction) => {
       await transaction.userNotification.createMany({
@@ -879,9 +947,9 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
           userId: id,
           type: UserNotificationType.system,
           channel: UserNotificationChannel.system,
-          title: "存储检查发现异常",
-          body: `${details}。请进入存储管理查看。`.slice(0, 500),
-          actionUrl: "/admin/storage",
+          title: diskThresholdCrossed ? "存储空间达到预警线" : "缺失文件数量发生变化",
+          body: `${details}。请进入存储管理核查。`.slice(0, 500),
+          actionUrl: `/admin/storage?scan=${scanId}`,
         })),
       });
       await transaction.storageManagementConfiguration.update({

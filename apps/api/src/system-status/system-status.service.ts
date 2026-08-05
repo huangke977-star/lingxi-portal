@@ -2,6 +2,8 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
 import { BackupService } from "./backup.service";
+import { LightweightMonitoringService } from "./lightweight-monitoring.service";
+import { ReliabilityOverviewService } from "./reliability-overview.service";
 import { StorageManagementService } from "./storage-management.service";
 import { UpdateBackupConfigurationDto } from "./dto/backup.dto";
 import {
@@ -35,16 +37,24 @@ export class SystemStatusService {
     private readonly redis: RedisService,
     private readonly backups: BackupService,
     private readonly storageManagement: StorageManagementService,
+    private readonly monitoring: LightweightMonitoringService,
+    private readonly reliabilityOverview: ReliabilityOverviewService,
   ) {}
 
   async getStatus(): Promise<SystemStatusResponse> {
     const memory = process.memoryUsage();
-    const [database, redis, storage, backups] = await Promise.all([
+    const [database, redis, storage, backups, monitoring, storageOverview] = await Promise.all([
       this.databaseStatus(),
       this.redisStatus(),
       this.storageManagement.getStatusStorageSummary(),
       this.backupStatus(),
+      this.monitoring.getSnapshot(),
+      this.storageManagement.getOverview(),
     ]);
+    const reliability = await this.reliabilityOverview.getOverview(
+      monitoring.recentErrors.length,
+      storageOverview,
+    );
 
     return {
       generatedAt: new Date().toISOString(),
@@ -65,6 +75,8 @@ export class SystemStatusService {
       redis,
       storage,
       backups,
+      monitoring,
+      reliability,
       containerRuntime: {
         connected: false,
         message: "为避免授予 Web API 宿主机控制权限，容器状态请在 1Panel 或 SSH 中查看。",

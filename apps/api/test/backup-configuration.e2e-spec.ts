@@ -1,6 +1,7 @@
 import { BackupConfiguration } from "../src/generated/prisma/client";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { BackupCryptoService } from "../src/system-status/backup-crypto.service";
+import { BackupOperationLockService } from "../src/system-status/backup-operation-lock.service";
 import { BackupService } from "../src/system-status/backup.service";
 
 function configuration(): BackupConfiguration {
@@ -26,6 +27,7 @@ function configuration(): BackupConfiguration {
     r2AccessKeyIdEncrypted: null,
     r2SecretAccessKeyEncrypted: null,
     lastAutomaticBackupDate: null,
+    lastMediaBackupDate: null,
     lastSuccessAt: null,
     lastFailureAt: null,
     lastFailureMessage: null,
@@ -55,7 +57,7 @@ describe("backup configuration", () => {
       },
     } as unknown as PrismaService;
     const crypto = new BackupCryptoService();
-    const service = new BackupService(prisma, crypto, {} as never);
+    const service = new BackupService(prisma, crypto, {} as never, new BackupOperationLockService());
 
     const response = await service.updateConfiguration({
       automaticEnabled: true,
@@ -91,7 +93,12 @@ describe("backup configuration", () => {
     const prisma = {
       backupConfiguration: { upsert: jest.fn(async () => stored) },
     } as unknown as PrismaService;
-    const service = new BackupService(prisma, new BackupCryptoService(), {} as never);
+    const service = new BackupService(
+      prisma,
+      new BackupCryptoService(),
+      {} as never,
+      new BackupOperationLockService(),
+    );
 
     await expect(service.updateConfiguration({
       automaticEnabled: false,

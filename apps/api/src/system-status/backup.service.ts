@@ -16,6 +16,10 @@ import { createGunzip, createGzip } from "node:zlib";
 import type { BackupConfiguration } from "../generated/prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { BackupCryptoService } from "./backup-crypto.service";
+import {
+  BackupOperationBusyException,
+  BackupOperationLockService,
+} from "./backup-operation-lock.service";
 import { BackupRemoteService } from "./backup-remote.service";
 import { UpdateBackupConfigurationDto } from "./dto/backup.dto";
 import type {
@@ -40,6 +44,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly crypto: BackupCryptoService,
     private readonly remote: BackupRemoteService,
+    private readonly operationLock: BackupOperationLockService,
   ) {}
 
   onModuleInit(): void {
@@ -219,6 +224,14 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
         const result = await this.withBackupLock("automatic", () => this.performBackup("automatic", true));
         if (result.warning) await this.notifyBackupFailure(result.warning);
       } catch (error) {
+        if (error instanceof BackupOperationBusyException) {
+          await this.prisma.backupConfiguration.updateMany({
+            where: { id: 1, lastAutomaticBackupDate: dateKey },
+            data: { lastAutomaticBackupDate: null },
+          });
+          this.logger.log("Automatic database backup deferred because another backup operation is active.");
+          return;
+        }
         const message = this.errorMessage(error);
         await this.recordFailure(message);
         await this.notifyBackupFailure(message);
@@ -382,6 +395,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       encryptionConfigured: this.crypto.isConfigured(),
       nextRunAt: this.nextRunAt(configuration),
       lastAutomaticBackupDate: configuration.lastAutomaticBackupDate,
+      lastMediaBackupDate: configuration.lastMediaBackupDate,
       lastSuccessAt: configuration.lastSuccessAt?.toISOString() ?? null,
       lastFailureAt: configuration.lastFailureAt?.toISOString() ?? null,
       lastFailureMessage: configuration.lastFailureMessage,
@@ -514,12 +528,24 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     if (this.activeBackupOperation) {
       throw new ConflictException(`数据库备份任务正在执行：${this.activeBackupOperation}`);
     }
+    const releaseOperationLock = this.operationLock.acquire(`数据库${this.operationLabel(operation)}`);
     this.activeBackupOperation = operation;
     try {
       return await action();
     } finally {
       this.activeBackupOperation = null;
+      releaseOperationLock();
     }
+  }
+
+  private operationLabel(operation: string): string {
+    const labels: Record<string, string> = {
+      automatic: "定时备份",
+      manual: "手动备份",
+      delete: "备份删除",
+      restore: "备份恢复",
+    };
+    return labels[operation] ?? "备份任务";
   }
 
   private backupName(rawName: string): string {

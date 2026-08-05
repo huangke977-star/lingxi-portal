@@ -9,17 +9,20 @@ import {
   CircleCheck,
   Cloud,
   CloudCog,
+  CloudUpload,
   Clock3,
   Database,
   Download,
   Files,
   HardDrive,
   KeyRound,
+  ListChecks,
   RefreshCcw,
   Save,
   Server,
   ShieldCheck,
   Trash2,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -32,13 +35,18 @@ import {
   deleteDatabaseBackup,
   downloadDatabaseBackup,
   getBackupConfiguration,
+  getMediaBackupJob,
   getStorageOverview,
   getSystemStatus,
+  listMediaBackupJobs,
   restoreDatabaseBackup,
+  startMediaBackup,
   testBackupProvider,
   updateBackupConfiguration,
   type BackupConfiguration,
   type BackupConfigurationUpdate,
+  type MediaBackupJob,
+  type MediaBackupJobDetail,
   type StorageOverview,
   type SystemStatus,
 } from "@/lib/system-status-api";
@@ -58,6 +66,9 @@ export default function SystemStatusPage() {
   const [storageOverview, setStorageOverview] = useState<StorageOverview | null>(null);
   const [backupConfiguration, setBackupConfiguration] = useState<BackupConfiguration | null>(null);
   const [backupForm, setBackupForm] = useState<BackupConfigurationForm | null>(null);
+  const [mediaJobs, setMediaJobs] = useState<MediaBackupJob[]>([]);
+  const [selectedMediaJob, setSelectedMediaJob] = useState<MediaBackupJobDetail | null>(null);
+  const [mediaBusy, setMediaBusy] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -95,6 +106,12 @@ export default function SystemStatusPage() {
     setStorageOverview(await getStorageOverview(token));
   }, []);
 
+  const loadMediaJobs = useCallback(async (token: string) => {
+    const result = await listMediaBackupJobs(token, 5);
+    setMediaJobs(result.items);
+    return result.items;
+  }, []);
+
   useEffect(() => {
     let active = true;
     const token = readAccessToken();
@@ -107,7 +124,7 @@ export default function SystemStatusPage() {
         if (!active) return;
         setAccessToken(token);
         setCurrentUser(user);
-        if (user.isSuperAdmin) await Promise.all([loadStatus(token), loadBackupConfiguration(token), loadStorageOverview(token)]);
+        if (user.isSuperAdmin) await Promise.all([loadStatus(token), loadBackupConfiguration(token), loadStorageOverview(token), loadMediaJobs(token)]);
       })
       .catch((loadError: unknown) => {
         if (isAuthExpiredError(loadError)) {
@@ -121,13 +138,21 @@ export default function SystemStatusPage() {
         if (active) setIsLoading(false);
       });
     return () => { active = false; };
-  }, [loadBackupConfiguration, loadStatus, loadStorageOverview, router]);
+  }, [loadBackupConfiguration, loadMediaJobs, loadStatus, loadStorageOverview, router]);
 
   useEffect(() => {
     if (!accessToken || !currentUser?.isSuperAdmin) return;
-    const timer = window.setInterval(() => void Promise.all([loadStatus(accessToken), loadStorageOverview(accessToken)]), 30_000);
+    const timer = window.setInterval(() => void Promise.all([loadStatus(accessToken), loadStorageOverview(accessToken), loadMediaJobs(accessToken)]), 30_000);
     return () => window.clearInterval(timer);
-  }, [accessToken, currentUser, loadStatus, loadStorageOverview]);
+  }, [accessToken, currentUser, loadMediaJobs, loadStatus, loadStorageOverview]);
+
+  useEffect(() => {
+    if (!accessToken || !mediaJobs.some((job) => job.status === "pending" || job.status === "running")) return;
+    const timer = window.setInterval(() => {
+      void Promise.all([loadMediaJobs(accessToken), loadStatus(accessToken)]);
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [accessToken, loadMediaJobs, loadStatus, mediaJobs]);
 
   const largestStorageBytes = useMemo(
     () => Math.max(1, ...(status?.storage.items.map((item) => item.sizeBytes) ?? [1])),
@@ -151,6 +176,34 @@ export default function SystemStatusPage() {
       setError(actionError instanceof Error ? actionError.message : "数据库备份创建失败。");
     } finally {
       setBackupBusy("");
+    }
+  }
+
+  async function handleStartMediaBackup() {
+    if (!accessToken || mediaBusy) return;
+    setMediaBusy("start");
+    setError("");
+    try {
+      const job = await startMediaBackup(accessToken);
+      await loadMediaJobs(accessToken);
+      setNotice(`媒体备份任务 #${job.id} 已开始。`);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "媒体备份启动失败。");
+    } finally {
+      setMediaBusy("");
+    }
+  }
+
+  async function handleOpenMediaJob(id: number) {
+    if (!accessToken || mediaBusy) return;
+    setMediaBusy(`detail:${id}`);
+    setError("");
+    try {
+      setSelectedMediaJob(await getMediaBackupJob(accessToken, id));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "媒体备份任务读取失败。");
+    } finally {
+      setMediaBusy("");
     }
   }
 
@@ -252,7 +305,7 @@ export default function SystemStatusPage() {
       <div><span className="section-label">HLOVET Operations</span><h1>系统运行概览</h1></div>
       <div className="system-status-head-actions">
         {status ? <small>更新于 {formatDateTime(status.generatedAt)}</small> : null}
-        <button aria-label="刷新系统状态" disabled={isRefreshing || !accessToken} onClick={() => accessToken && void Promise.all([loadStatus(accessToken, true), loadStorageOverview(accessToken)])} title="刷新" type="button">
+        <button aria-label="刷新系统状态" disabled={isRefreshing || !accessToken} onClick={() => accessToken && void Promise.all([loadStatus(accessToken, true), loadStorageOverview(accessToken), loadMediaJobs(accessToken)])} title="刷新" type="button">
           <RefreshCcw aria-hidden="true" className={isRefreshing ? "spin" : ""} size={17} />
         </button>
       </div>
@@ -264,6 +317,9 @@ export default function SystemStatusPage() {
         <OverviewItem icon={Database} label="MySQL" value={status.database.connected ? "连接正常" : "连接异常"} detail={status.database.connected ? `${status.database.latencyMs ?? 0} ms` : status.database.error ?? "读取失败"} tone={status.database.connected ? "ok" : "error"} />
         <OverviewItem icon={Server} label="Redis" value={status.redis.connected ? "连接正常" : "连接异常"} detail={status.redis.connected ? `${status.redis.keyCount ?? 0} 个键` : status.redis.error ?? "读取失败"} tone={status.redis.connected ? "ok" : "error"} />
         <OverviewItem icon={Files} label="文件存储" value={formatBytes(status.storage.totalBytes)} detail={`${status.storage.totalFiles} 个文件`} tone="neutral" />
+        <OverviewItem icon={Archive} label="媒体备份覆盖" value={formatCoverage(status.reliability.backupCoverage.percentage)} detail={`${status.reliability.backupCoverage.backedUpFiles} / ${status.reliability.backupCoverage.totalFiles} 个文件`} tone={status.reliability.backupCoverage.uncoveredFiles ? "warning" : "ok"} />
+        <OverviewItem icon={Clock3} label="最近备份成功" value={status.reliability.lastSuccessfulBackupAt ? formatDateTime(status.reliability.lastSuccessfulBackupAt) : "暂无成功记录"} detail={formatBackupSource(status.reliability.lastSuccessfulBackupSource)} tone={status.reliability.lastSuccessfulBackupAt ? "ok" : "neutral"} />
+        <OverviewItem icon={CircleAlert} label="运行异常" value={`${status.reliability.anomalies.total} 项`} detail={`近 ${status.reliability.anomalyWindowHours} 小时`} tone={status.reliability.anomalies.total ? "error" : "ok"} />
       </div>
 
       <div className="system-status-grid">
@@ -304,10 +360,57 @@ export default function SystemStatusPage() {
           </div>
         </section>
 
+        <section className="system-status-panel media-backups">
+          <header className="system-panel-heading system-backup-heading">
+            <span><CloudUpload aria-hidden="true" size={17} /><strong>媒体文件备份</strong></span>
+            <button disabled={Boolean(mediaBusy) || mediaJobs.some((job) => job.status === "pending" || job.status === "running")} onClick={() => void handleStartMediaBackup()} type="button">
+              {mediaBusy === "start" ? "启动中" : mediaJobs.some((job) => job.status === "pending" || job.status === "running") ? "备份中" : "立即备份"}
+            </button>
+          </header>
+          <div className="media-backup-summary">
+            <span><small>覆盖率</small><strong>{formatCoverage(status.reliability.backupCoverage.percentage)}</strong></span>
+            <span><small>未备份</small><strong>{status.reliability.backupCoverage.uncoveredFiles} 个文件</strong></span>
+            <span><small>远端</small><strong>{backupConfiguration ? enabledProviderLabel(backupConfiguration) : "读取中"}</strong></span>
+          </div>
+          <div className="media-backup-job-list">
+            {mediaJobs.map((job) => <button disabled={Boolean(mediaBusy)} key={job.id} onClick={() => void handleOpenMediaJob(job.id)} type="button">
+              <span><i className={mediaJobTone(job.status)}>{mediaJobStatusLabel(job.status)}</i><strong>任务 #{job.id}</strong><small>{formatDateTime(job.completedAt || job.startedAt || job.createdAt)}</small></span>
+              <span><b>{job.processedFiles} / {job.totalFiles}</b><small>上传 {job.uploadedFiles} · 复用 {job.reusedFiles} · 失败 {job.failedFiles}</small></span>
+              <ListChecks aria-hidden="true" size={15} />
+            </button>)}
+            {!mediaJobs.length ? <p>还没有媒体备份任务。配置并启用 OSS 或 R2 后可开始首轮备份。</p> : null}
+          </div>
+        </section>
+
         <section className="system-status-panel runtime">
           <PanelHeading icon={Server} title="容器与宿主机" />
           <div className="system-runtime-note"><CircleAlert aria-hidden="true" size={20} /><p>{status.containerRuntime.message}</p></div>
           <div className="system-runtime-links"><span>容器启停、CPU、整机内存和磁盘清理由 1Panel 或 SSH 负责。</span><Link href="/admin/cache">查看 Redis 缓存</Link><Link href="/admin/settings">查看站点资源</Link></div>
+        </section>
+
+        <section className="system-status-panel monitoring-trends">
+          <header className="system-panel-heading system-monitoring-heading"><span><Activity aria-hidden="true" size={17} /><strong>资源趋势</strong></span><small>每分钟采样 · 最近 24 小时</small></header>
+          <div className="system-trend-list">
+            <TrendChart
+              detail={status.monitoring.memoryTrend.length ? `当前 ${formatBytes(status.monitoring.memoryTrend.at(-1)?.rssBytes ?? 0)}` : "等待首次采样"}
+              formatter={formatBytes}
+              label="API RSS 内存"
+              points={status.monitoring.memoryTrend.map((point) => ({ recordedAt: point.recordedAt, value: point.rssBytes }))}
+            />
+            <TrendChart
+              detail={status.monitoring.diskTrend.length ? `预警线 ${status.reliability.storage.warningThresholdPercent}%` : "等待首次采样"}
+              formatter={(value) => `${value.toFixed(1)}%`}
+              label="磁盘使用率"
+              points={status.monitoring.diskTrend.map((point) => ({ recordedAt: point.recordedAt, value: point.usedPercent }))}
+              warningValue={status.reliability.storage.warningThresholdPercent}
+            />
+          </div>
+        </section>
+
+        <section className="system-status-panel monitoring-events">
+          <header className="system-panel-heading system-monitoring-heading"><span><CircleAlert aria-hidden="true" size={17} /><strong>接口观察</strong></span><small>慢接口阈值 {status.monitoring.slowRequestThresholdMs} ms</small></header>
+          <MonitoringEventList empty="最近没有慢接口" events={status.monitoring.slowRequests.slice(0, 5)} title="慢接口" />
+          <MonitoringEventList empty="最近没有 API 5xx 错误" events={status.monitoring.recentErrors.slice(0, 5)} title="最近错误" />
         </section>
 
         {backupConfiguration && backupForm ? <section className="system-status-panel backup-policy">
@@ -363,10 +466,16 @@ export default function SystemStatusPage() {
       </div>
     </> : <div className="system-status-empty"><CircleAlert aria-hidden="true" size={22} /><span>暂时无法读取系统状态，请稍后刷新。</span></div>}
     {restoreTarget ? <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !backupBusy) setRestoreTarget(""); }} role="presentation"><div aria-modal="true" className="modal-panel backup-restore-modal" role="dialog"><div className="modal-heading"><span className="section-label">Database restore</span><h2>恢复数据库</h2><p>恢复会覆盖当前数据库，系统会先自动创建一份恢复前备份。请输入完整文件名确认。</p></div><label className="backup-confirm-field"><span>{restoreTarget}</span><input autoFocus onChange={(event) => setRestoreConfirmation(event.target.value)} placeholder="输入上方完整文件名" value={restoreConfirmation} /></label><div className="actions"><button className="button" disabled={restoreConfirmation !== restoreTarget || Boolean(backupBusy)} onClick={() => void handleRestoreBackup()} type="button">{backupBusy ? "恢复中" : "确认恢复"}</button><button className="button secondary" disabled={Boolean(backupBusy)} onClick={() => setRestoreTarget("")} type="button">取消</button></div></div></div> : null}
+    {selectedMediaJob ? <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedMediaJob(null); }} role="presentation"><div aria-modal="true" className="modal-panel media-backup-detail-modal" role="dialog">
+      <header><span><small>Media backup</small><h2>媒体备份任务 #{selectedMediaJob.id}</h2></span><button aria-label="关闭任务详情" onClick={() => setSelectedMediaJob(null)} title="关闭" type="button"><X aria-hidden="true" size={18} /></button></header>
+      <div className="media-backup-detail-summary"><span><small>状态</small><strong className={mediaJobTone(selectedMediaJob.status)}>{mediaJobStatusLabel(selectedMediaJob.status)}</strong></span><span><small>文件</small><strong>{selectedMediaJob.processedFiles} / {selectedMediaJob.totalFiles}</strong></span><span><small>上传流量</small><strong>{formatBytes(selectedMediaJob.uploadedBytes)}</strong></span><span><small>提供商</small><strong>{selectedMediaJob.providers.map(providerLabel).join("、") || "未配置"}</strong></span></div>
+      <section><h3>任务日志</h3><div className="media-backup-log-list">{selectedMediaJob.logs.map((log) => <article className={log.level} key={log.id}><time>{formatDateTime(log.createdAt)}</time><span>{log.message}</span></article>)}{!selectedMediaJob.logs.length ? <p>暂无任务日志。</p> : null}</div></section>
+      <section><h3>文件清单</h3><div className="media-backup-manifest-list">{selectedMediaJob.manifests.map((manifest) => <article key={manifest.id}><span><strong title={manifest.storedName}>{manifest.storedName}</strong><small>{providerLabel(manifest.provider)} · {formatBytes(manifest.sizeBytes)}</small></span><i className={mediaManifestTone(manifest.status)}>{mediaManifestStatusLabel(manifest.status)}</i></article>)}{!selectedMediaJob.manifests.length ? <p>任务尚未生成文件清单。</p> : null}</div></section>
+    </div></div> : null}
   </section>;
 }
 
-function OverviewItem({ icon: Icon, label, value, detail, tone }: { icon: typeof Activity; label: string; value: string; detail: string; tone: "ok" | "error" | "neutral" }) {
+function OverviewItem({ icon: Icon, label, value, detail, tone }: { icon: typeof Activity; label: string; value: string; detail: string; tone: "ok" | "error" | "warning" | "neutral" }) {
   return <div className={`system-overview-item ${tone}`}><span><Icon aria-hidden="true" size={18} /></span><div><small>{label}</small><strong>{value}</strong><em>{detail}</em></div></div>;
 }
 
@@ -376,6 +485,50 @@ function PanelHeading({ icon: Icon, title }: { icon: typeof Activity; title: str
 
 function StatusLine({ label, value, ok }: { label: string; value: string; ok: boolean }) {
   return <div className="system-status-line"><span>{ok ? <CircleCheck aria-hidden="true" size={15} /> : <CircleAlert aria-hidden="true" size={15} />}<small>{label}</small></span><strong title={value}>{value}</strong></div>;
+}
+
+function TrendChart({ detail, formatter, label, points, warningValue }: {
+  detail: string;
+  formatter: (value: number) => string;
+  label: string;
+  points: Array<{ recordedAt: string; value: number }>;
+  warningValue?: number;
+}) {
+  const visiblePoints = points.slice(-90);
+  const values = visiblePoints.map((point) => point.value);
+  const minimum = values.length ? Math.min(...values) : 0;
+  const maximum = values.length ? Math.max(...values) : 0;
+  const range = Math.max(1, maximum - minimum);
+  const line = visiblePoints.map((point, index) => {
+    const x = visiblePoints.length < 2 ? 120 : index / (visiblePoints.length - 1) * 240;
+    const y = 58 - (point.value - minimum) / range * 48;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  const latestValue = values.at(-1) ?? null;
+  const warning = latestValue !== null && warningValue !== undefined && latestValue >= warningValue;
+  return <div className={`system-trend-row ${warning ? "warning" : ""}`}>
+    <div><span><strong>{label}</strong><small>{detail}</small></span><b>{latestValue === null ? "-" : formatter(latestValue)}</b></div>
+    <svg aria-label={`${label}趋势`} preserveAspectRatio="none" role="img" viewBox="0 0 240 64">
+      <line x1="0" x2="240" y1="58" y2="58" />
+      {line ? <polyline fill="none" points={line} vectorEffect="non-scaling-stroke" /> : null}
+    </svg>
+    <footer><span>{values.length ? formatter(minimum) : "暂无数据"}</span><span>{visiblePoints.length > 1 ? formatShortTime(visiblePoints[0].recordedAt) : ""}</span><span>{visiblePoints.length > 1 ? formatShortTime(visiblePoints.at(-1)?.recordedAt ?? "") : ""}</span><span>{values.length ? formatter(maximum) : ""}</span></footer>
+  </div>;
+}
+
+function MonitoringEventList({ empty, events, title }: {
+  empty: string;
+  events: SystemStatus["monitoring"]["slowRequests"];
+  title: string;
+}) {
+  return <div className="system-monitoring-events">
+    <header><strong>{title}</strong><span>{events.length} 条</span></header>
+    {events.length ? <div>{events.map((event, index) => <article key={`${event.occurredAt}-${event.method}-${event.path}-${index}`}>
+      <span><b>{event.method}</b><strong title={event.path}>{event.path}</strong></span>
+      <span><em>{event.statusCode}</em><em>{event.durationMs.toFixed(1)} ms</em><time>{formatDateTime(event.occurredAt)}</time></span>
+      {event.message ? <p title={event.message}>{event.message}</p> : null}
+    </article>)}</div> : <p>{empty}</p>}
+  </div>;
 }
 
 function toBackupConfigurationForm(configuration: BackupConfiguration): BackupConfigurationForm {
@@ -435,4 +588,56 @@ function formatDateTime(value: string): string {
     year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
   }).format(date);
+}
+
+function formatShortTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(date);
+}
+
+function formatCoverage(value: number | null): string {
+  return value === null ? "待生成目录" : `${value.toFixed(value % 1 ? 1 : 0)}%`;
+}
+
+function formatBackupSource(value: "media" | "database" | null): string {
+  if (value === "media") return "媒体文件备份";
+  if (value === "database") return "数据库备份";
+  return "等待首次成功任务";
+}
+
+function enabledProviderLabel(configuration: BackupConfiguration): string {
+  const providers = [
+    configuration.oss.enabled ? "OSS" : null,
+    configuration.r2.enabled ? "R2" : null,
+  ].filter(Boolean);
+  return providers.length ? providers.join(" + ") : "未启用";
+}
+
+function providerLabel(provider: "oss" | "r2"): string {
+  return provider === "oss" ? "阿里云 OSS" : "Cloudflare R2";
+}
+
+function mediaJobStatusLabel(status: MediaBackupJob["status"]): string {
+  return ({ pending: "等待中", running: "执行中", completed: "已完成", partial: "部分失败", failed: "失败" })[status];
+}
+
+function mediaJobTone(status: MediaBackupJob["status"]): string {
+  if (status === "completed") return "success";
+  if (status === "partial") return "warning";
+  if (status === "failed") return "error";
+  return "running";
+}
+
+function mediaManifestStatusLabel(status: MediaBackupJobDetail["manifests"][number]["status"]): string {
+  return ({ pending: "等待中", uploaded: "已上传", reused: "已复用", skipped: "已跳过", failed: "失败" })[status];
+}
+
+function mediaManifestTone(status: MediaBackupJobDetail["manifests"][number]["status"]): string {
+  if (status === "uploaded" || status === "reused") return "success";
+  if (status === "skipped") return "warning";
+  if (status === "failed") return "error";
+  return "running";
 }

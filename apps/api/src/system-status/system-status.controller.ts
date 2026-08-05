@@ -1,4 +1,19 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Query, Res, StreamableFile, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Post,
+  Query,
+  Res,
+  StreamableFile,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { createReadStream } from "node:fs";
 import type { Response } from "express";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -7,13 +22,30 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { SuperAdminGuard } from "../auth/guards/super-admin.guard";
 import { SystemStatusService } from "./system-status.service";
 import { SystemStatusResponse } from "./system-status.types";
-import { RestoreBackupDto, TestBackupProviderDto, UpdateBackupConfigurationDto } from "./dto/backup.dto";
+import {
+  RestoreBackupDto,
+  TestBackupProviderDto,
+  UpdateBackupConfigurationDto,
+} from "./dto/backup.dto";
 import {
   StorageIssueQueryDto,
   StorageTrashQueryDto,
   UpdateStorageManagementConfigurationDto,
 } from "./dto/storage-management.dto";
 import { StorageManagementService } from "./storage-management.service";
+import {
+  ConfirmStorageIssueUnrecoverableDto,
+  MediaBackupFileQueryDto,
+  MediaBackupJobQueryDto,
+  RestoreMediaBackupFileDto,
+  RestoreMissingStorageIssueDto,
+} from "./dto/media-backup.dto";
+import { MediaBackupService } from "./media-backup.service";
+import {
+  MEDIA_REPAIR_MAX_FILE_SIZE_BYTES,
+  UploadedMediaRepairFile,
+  createMediaRepairUploadStorage,
+} from "./media-repair-upload.storage";
 
 @Controller("admin/system")
 @UseGuards(JwtAuthGuard, SuperAdminGuard)
@@ -21,6 +53,7 @@ export class SystemStatusController {
   constructor(
     private readonly systemStatusService: SystemStatusService,
     private readonly storageManagementService: StorageManagementService,
+    private readonly mediaBackupService: MediaBackupService,
   ) {}
 
   @Get("status")
@@ -74,6 +107,38 @@ export class SystemStatusController {
     return this.systemStatusService.restoreBackup(name, dto.confirmation);
   }
 
+  @Post("media-backups/jobs")
+  startMediaBackup(@CurrentUser() user: AuthenticatedUser) {
+    return this.mediaBackupService.startBackup(user.id);
+  }
+
+  @Get("media-backups/jobs")
+  listMediaBackupJobs(@Query() query: MediaBackupJobQueryDto) {
+    return this.mediaBackupService.listJobs(query);
+  }
+
+  @Get("media-backups/jobs/:id")
+  getMediaBackupJob(@Param("id", ParseIntPipe) id: number) {
+    return this.mediaBackupService.getJob(id);
+  }
+
+  @Get("media-backups/files")
+  listMediaBackupFiles(@Query() query: MediaBackupFileQueryDto) {
+    return this.mediaBackupService.listFiles(query);
+  }
+
+  @Post("media-backups/files/:id/restore")
+  restoreMediaBackupFile(
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: RestoreMediaBackupFileDto,
+  ) {
+    return this.mediaBackupService.restoreFile(
+      id,
+      dto.confirmation,
+      dto.provider,
+    );
+  }
+
   @Get("storage")
   getStorageOverview() {
     return this.storageManagementService.getOverview();
@@ -118,6 +183,52 @@ export class SystemStatusController {
     return this.storageManagementService.trashIssue(id, user.id);
   }
 
+  @Post("storage/issues/:id/restore-remote")
+  restoreMissingStorageIssue(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RestoreMissingStorageIssueDto,
+  ) {
+    return this.mediaBackupService.restoreMissingIssue(
+      id,
+      user.id,
+      dto.provider,
+    );
+  }
+
+  @Post("storage/issues/:id/reupload")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: createMediaRepairUploadStorage(),
+      limits: { fileSize: MEDIA_REPAIR_MAX_FILE_SIZE_BYTES, files: 1 },
+    }),
+  )
+  reuploadMissingStorageIssue(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: UploadedMediaRepairFile | undefined,
+  ) {
+    return this.mediaBackupService.reuploadMissingIssue(id, user.id, file);
+  }
+
+  @Post("storage/issues/:id/confirm-unrecoverable")
+  confirmMissingStorageIssueUnrecoverable(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ConfirmStorageIssueUnrecoverableDto,
+  ) {
+    return this.mediaBackupService.confirmMissingIssueUnrecoverable(
+      id,
+      user.id,
+      dto.note,
+    );
+  }
+
+  @Get("storage/issues/:id/repairs")
+  listStorageIssueRepairs(@Param("id", ParseIntPipe) id: number) {
+    return this.mediaBackupService.listIssueRepairs(id);
+  }
+
   @Get("storage/trash")
   listStorageTrash(@Query() query: StorageTrashQueryDto) {
     return this.storageManagementService.listTrash(query);
@@ -139,7 +250,9 @@ export class SystemStatusController {
   }
 
   @Post("storage/configuration")
-  updateStorageConfiguration(@Body() dto: UpdateStorageManagementConfigurationDto) {
+  updateStorageConfiguration(
+    @Body() dto: UpdateStorageManagementConfigurationDto,
+  ) {
     return this.storageManagementService.updateConfiguration(dto);
   }
 }

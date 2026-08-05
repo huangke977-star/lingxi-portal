@@ -1,3 +1,31 @@
+import type { LightweightMonitoringSnapshot } from "./lightweight-monitoring.types";
+
+export interface ReliabilityOverview {
+  backupCoverage: {
+    totalFiles: number;
+    backedUpFiles: number;
+    uncoveredFiles: number;
+    percentage: number | null;
+  };
+  lastSuccessfulBackupAt: string | null;
+  lastSuccessfulBackupSource: "media" | "database" | null;
+  anomalyWindowHours: number;
+  anomalies: {
+    total: number;
+    backupFailures: number;
+    diskPressure: number;
+    missingFiles: number;
+    orphanFiles: number;
+    metadataMismatches: number;
+    recentApiErrors: number;
+  };
+  storage: {
+    latestScanAt: string | null;
+    diskUsedPercent: number | null;
+    warningThresholdPercent: number;
+  };
+}
+
 export interface SystemStatusResponse {
   generatedAt: string;
   application: {
@@ -47,6 +75,8 @@ export interface SystemStatusResponse {
     }>;
   };
   backups: BackupStatusResponse;
+  monitoring: LightweightMonitoringSnapshot;
+  reliability: ReliabilityOverview;
   containerRuntime: {
     connected: false;
     message: string;
@@ -95,6 +125,7 @@ export interface BackupConfigurationResponse {
   encryptionConfigured: boolean;
   nextRunAt: string | null;
   lastAutomaticBackupDate: string | null;
+  lastMediaBackupDate: string | null;
   lastSuccessAt: string | null;
   lastFailureAt: string | null;
   lastFailureMessage: string | null;

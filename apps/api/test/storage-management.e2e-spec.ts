@@ -197,6 +197,40 @@ describe("storage management scanning (e2e)", () => {
       lastBackedUpAt: null,
     });
   });
+
+  it("notifies only when the missing-file count changes", async () => {
+    prisma.user.findMany.mockResolvedValue([{ id: 1 }]);
+    const firstScan = await service.startScan(1);
+    await waitForScan(service, firstScan.id);
+    expect(prisma.userNotification.createMany).toHaveBeenCalledTimes(1);
+    expect(prisma.userNotification.createMany).toHaveBeenLastCalledWith({
+      data: [
+        expect.objectContaining({
+          title: "缺失文件数量发生变化",
+          actionUrl: `/admin/storage?scan=${firstScan.id}`,
+        }),
+      ],
+    });
+
+    const unchangedScan = await service.startScan(1);
+    await waitForScan(service, unchangedScan.id);
+    expect(prisma.userNotification.createMany).toHaveBeenCalledTimes(1);
+
+    await writeFile(
+      join(process.env.ARTICLE_UPLOAD_DIR!, "missing.png"),
+      Buffer.alloc(100),
+    );
+    const recoveredScan = await service.startScan(1);
+    await waitForScan(service, recoveredScan.id);
+    expect(prisma.userNotification.createMany).toHaveBeenCalledTimes(2);
+    expect(prisma.userNotification.createMany).toHaveBeenLastCalledWith({
+      data: [
+        expect.objectContaining({
+          body: expect.stringContaining("由 1 个变为 0 个"),
+        }),
+      ],
+    });
+  });
 });
 
 async function waitForScan(service: StorageManagementService, id: number) {
@@ -232,8 +266,12 @@ function prismaMock() {
   let trashId = 0;
 
   const storageScan = {
-    findFirst: jest.fn(async ({ where }: { where?: { status?: string } } = {}) => {
-      const filtered = where?.status ? scans.filter((item) => item.status === where.status) : scans;
+    findFirst: jest.fn(async ({ where }: { where?: { status?: string; id?: { lt?: number } } } = {}) => {
+      const filtered = scans.filter((item) => {
+        if (where?.status && item.status !== where.status) return false;
+        if (where?.id?.lt && Number(item.id) >= where.id.lt) return false;
+        return true;
+      });
       return filtered.at(-1) ?? null;
     }),
     findUnique: jest.fn(async ({ where }: { where: { id: number } }) => scans.find((item) => item.id === where.id) ?? null),
@@ -366,6 +404,9 @@ function prismaMock() {
     storageScan,
     storageScanIssue,
     storageTrashItem,
+    storageFileRepair: {
+      findMany: jest.fn(async () => []),
+    },
     mediaBackupFile,
     userNotification: { createMany: jest.fn(async () => ({ count: 0 })) },
     $transaction: jest.fn(),

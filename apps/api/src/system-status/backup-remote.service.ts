@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import type { S3Client } from "@aws-sdk/client-s3";
 import type OSS from "ali-oss";
-import { createReadStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
+import { unlink } from "node:fs/promises";
+import { pipeline } from "node:stream/promises";
 import type { BackupConfiguration } from "../generated/prisma/client";
 import { BackupCryptoService } from "./backup-crypto.service";
 import type { RemoteBackupResult, RemoteProvider } from "./system-status.types";
@@ -10,6 +12,12 @@ interface AliOssListResult {
   objects?: Array<{ name: string; lastModified?: string }>;
   isTruncated?: boolean;
   nextMarker?: string;
+}
+
+interface MediaRemoteObjectResult {
+  bucket: string;
+  objectKey: string;
+  etag: string | null;
 }
 
 @Injectable()
@@ -67,6 +75,128 @@ export class BackupRemoteService {
       }
     }
     return { success: true, provider };
+  }
+
+  async uploadMedia(
+    sourcePath: string,
+    contentHash: string,
+    provider: RemoteProvider,
+    configuration: BackupConfiguration,
+  ): Promise<MediaRemoteObjectResult> {
+    const encrypted = await this.crypto.encryptFile(sourcePath);
+    const objectKey = this.mediaObjectKey(provider, contentHash, configuration);
+    try {
+      if (provider === "oss") {
+        const client = await this.ossClient(configuration);
+        await client.put(objectKey, encrypted.filePath, {
+          headers: {
+            "x-oss-object-acl": "private",
+            "content-type": "application/octet-stream",
+          },
+        });
+        return {
+          bucket: this.providerBucket(provider, configuration),
+          objectKey,
+          etag: null,
+        };
+      }
+
+      const { PutObjectCommand } = await this.awsSdk();
+      const client = await this.r2Client(configuration);
+      try {
+        const result = await client.send(new PutObjectCommand({
+          Bucket: this.providerBucket(provider, configuration),
+          Key: objectKey,
+          Body: createReadStream(encrypted.filePath),
+          ContentType: "application/octet-stream",
+        }));
+        return {
+          bucket: this.providerBucket(provider, configuration),
+          objectKey,
+          etag: result.ETag ?? null,
+        };
+      } finally {
+        client.destroy();
+      }
+    } finally {
+      await encrypted.cleanup();
+    }
+  }
+
+  async downloadMedia(
+    provider: RemoteProvider,
+    objectKey: string,
+    destinationPath: string,
+    configuration: BackupConfiguration,
+  ): Promise<void> {
+    try {
+      if (provider === "oss") {
+        const client = await this.ossClient(configuration);
+        const result = await client.getStream(objectKey);
+        await pipeline(
+          result.stream,
+          createWriteStream(destinationPath, { flags: "wx", mode: 0o600 }),
+        );
+        return;
+      }
+
+      const { GetObjectCommand } = await this.awsSdk();
+      const client = await this.r2Client(configuration);
+      try {
+        const result = await client.send(new GetObjectCommand({
+          Bucket: this.providerBucket(provider, configuration),
+          Key: objectKey,
+        }));
+        if (!result.Body) throw new Error("远端备份对象没有返回文件内容。");
+        await pipeline(
+          result.Body as NodeJS.ReadableStream,
+          createWriteStream(destinationPath, { flags: "wx", mode: 0o600 }),
+        );
+      } finally {
+        client.destroy();
+      }
+    } catch (error) {
+      await unlink(destinationPath).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async deleteMediaObject(
+    provider: RemoteProvider,
+    objectKey: string,
+    configuration: BackupConfiguration,
+  ): Promise<void> {
+    if (provider === "oss") {
+      const client = await this.ossClient(configuration);
+      await client.delete(objectKey);
+      return;
+    }
+    const { DeleteObjectCommand } = await this.awsSdk();
+    const client = await this.r2Client(configuration);
+    try {
+      await client.send(new DeleteObjectCommand({
+        Bucket: this.providerBucket(provider, configuration),
+        Key: objectKey,
+      }));
+    } finally {
+      client.destroy();
+    }
+  }
+
+  enabledProviders(configuration: BackupConfiguration): RemoteProvider[] {
+    const providers: RemoteProvider[] = [];
+    if (configuration.ossEnabled) providers.push("oss");
+    if (configuration.r2Enabled) providers.push("r2");
+    return providers;
+  }
+
+  providerBucket(
+    provider: RemoteProvider,
+    configuration: BackupConfiguration,
+  ): string {
+    return provider === "oss"
+      ? this.required(configuration.ossBucket, "OSS Bucket")
+      : this.required(configuration.r2Bucket, "R2 Bucket");
   }
 
   private async uploadOss(
@@ -181,13 +311,6 @@ export class BackupRemoteService {
     return import("@aws-sdk/client-s3");
   }
 
-  private enabledProviders(configuration: BackupConfiguration): RemoteProvider[] {
-    const providers: RemoteProvider[] = [];
-    if (configuration.ossEnabled) providers.push("oss");
-    if (configuration.r2Enabled) providers.push("r2");
-    return providers;
-  }
-
   private decryptRequired(value: string | null, label: string): string {
     if (!value) throw new BadRequestException(`${label} 尚未配置。`);
     return this.crypto.decryptSecret(value);
@@ -202,6 +325,20 @@ export class BackupRemoteService {
   private objectKey(prefix: string, objectName: string): string {
     const datePath = new Date().toISOString().slice(0, 10).replaceAll("-", "/");
     return `${this.prefix(prefix)}${datePath}/${objectName}`;
+  }
+
+  private mediaObjectKey(
+    provider: RemoteProvider,
+    contentHash: string,
+    configuration: BackupConfiguration,
+  ): string {
+    if (!/^[a-f\d]{64}$/i.test(contentHash)) {
+      throw new BadRequestException("媒体备份文件哈希无效。");
+    }
+    const prefix = provider === "oss"
+      ? configuration.ossPrefix
+      : configuration.r2Prefix;
+    return `${this.prefix(prefix)}media/sha256/${contentHash.slice(0, 2)}/${contentHash}.enc`;
   }
 
   private prefix(value: string): string {

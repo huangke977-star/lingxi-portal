@@ -4,7 +4,9 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
+import { BackupOperationLockService } from "../src/system-status/backup-operation-lock.service";
 import { BackupService } from "../src/system-status/backup.service";
+import { MediaBackupService } from "../src/system-status/media-backup.service";
 import { StorageManagementService } from "../src/system-status/storage-management.service";
 import { SystemStatusService } from "../src/system-status/system-status.service";
 
@@ -86,6 +88,39 @@ const statusResponse = {
   },
   storage: { totalBytes: 1024, totalFiles: 1, items: [] },
   backups: { available: true, totalBytes: 512, fileCount: 1, latest: null, items: [] },
+  monitoring: {
+    retentionMinutes: 1440,
+    slowRequestThresholdMs: 1000,
+    slowRequests: [],
+    recentErrors: [],
+    memoryTrend: [],
+    diskTrend: [],
+  },
+  reliability: {
+    backupCoverage: {
+      totalFiles: 20,
+      backedUpFiles: 12,
+      uncoveredFiles: 8,
+      percentage: 60,
+    },
+    lastSuccessfulBackupAt: "2026-07-31T05:30:00.000Z",
+    lastSuccessfulBackupSource: "media" as const,
+    anomalyWindowHours: 24,
+    anomalies: {
+      total: 3,
+      backupFailures: 1,
+      diskPressure: 0,
+      missingFiles: 1,
+      orphanFiles: 0,
+      metadataMismatches: 0,
+      recentApiErrors: 1,
+    },
+    storage: {
+      latestScanAt: "2026-07-31T05:00:00.000Z",
+      diskUsedPercent: 62,
+      warningThresholdPercent: 75,
+    },
+  },
   containerRuntime: { connected: false as const, message: "Use 1Panel or SSH." },
 };
 
@@ -98,6 +133,7 @@ const backupConfigurationResponse = {
   encryptionConfigured: true,
   nextRunAt: "2026-08-04T19:00:00.000Z",
   lastAutomaticBackupDate: null,
+  lastMediaBackupDate: null,
   lastSuccessAt: null,
   lastFailureAt: null,
   lastFailureMessage: null,
@@ -136,6 +172,21 @@ describe("system status administration (e2e)", () => {
     restoreTrash: jest.fn(async () => ({ success: true })),
     deleteTrash: jest.fn(async () => ({ success: true })),
   };
+  const mediaBackupServiceMock = {
+    startBackup: jest.fn(async (userId: number) => ({
+      id: 9,
+      status: "pending",
+      triggeredById: userId,
+    })),
+    listJobs: jest.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 20, pageCount: 0 })),
+    getJob: jest.fn(async (id: number) => ({ id, status: "completed", manifests: [], logs: [] })),
+    listFiles: jest.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 20, pageCount: 0 })),
+    restoreFile: jest.fn(async (id: number) => ({ success: true, file: { id } })),
+    restoreMissingIssue: jest.fn(async (id: number) => ({ id, action: "remote_restore", status: "completed" })),
+    reuploadMissingIssue: jest.fn(async (id: number) => ({ id, action: "reupload", status: "completed" })),
+    confirmMissingIssueUnrecoverable: jest.fn(async (id: number) => ({ id, action: "confirm_unrecoverable", status: "completed" })),
+    listIssueRepairs: jest.fn(async () => []),
+  };
 
   beforeEach(async () => {
     process.env.JWT_ACCESS_SECRET = "test-access-token-secret";
@@ -146,6 +197,8 @@ describe("system status administration (e2e)", () => {
       .useValue(serviceMock)
       .overrideProvider(StorageManagementService)
       .useValue(storageServiceMock)
+      .overrideProvider(MediaBackupService)
+      .useValue(mediaBackupServiceMock)
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -183,6 +236,10 @@ describe("system status administration (e2e)", () => {
       application: { service: "lingxi-api", status: "ok" },
       database: { connected: true, migrationCount: 12 },
       redis: { connected: true, keyCount: 8 },
+      reliability: {
+        backupCoverage: { percentage: 60, uncoveredFiles: 8 },
+        anomalies: { total: 3 },
+      },
       containerRuntime: { connected: false },
     });
   });
@@ -235,7 +292,12 @@ describe("system status administration (e2e)", () => {
   });
 
   it("requires the complete backup filename before restore starts", async () => {
-    const service = new BackupService({} as PrismaService, {} as never, {} as never);
+    const service = new BackupService(
+      {} as PrismaService,
+      {} as never,
+      {} as never,
+      new BackupOperationLockService(),
+    );
     await expect(service.restoreBackup("manual-20260803_120000.sql.gz", "manual"))
       .rejects.toThrow("请输入完整备份文件名确认恢复操作。");
   });
@@ -274,5 +336,43 @@ describe("system status administration (e2e)", () => {
       .send({ automaticScanEnabled: false, scanTime: "05:00", trashRetentionDays: 14, warningThresholdPercent: 80 })
       .expect(201)
       .expect(({ body }) => expect(body).toMatchObject({ automaticScanEnabled: false, trashRetentionDays: 14 }));
+  });
+
+  it("exposes media backup and repair endpoints only to the super administrator", async () => {
+    await request(app.getHttpServer())
+      .post("/admin/system/media-backups/jobs")
+      .set("Authorization", `Bearer ${await tokenFor(2)}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post("/admin/system/media-backups/jobs")
+      .set("Authorization", `Bearer ${await tokenFor(1)}`)
+      .expect(201)
+      .expect(({ body }) => expect(body).toMatchObject({ id: 9, triggeredById: 1 }));
+
+    await request(app.getHttpServer())
+      .get("/admin/system/media-backups/jobs?page=1&pageSize=10")
+      .set("Authorization", `Bearer ${await tokenFor(1)}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post("/admin/system/storage/issues/7/restore-remote")
+      .set("Authorization", `Bearer ${await tokenFor(1)}`)
+      .send({ provider: "oss" })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post("/admin/system/storage/issues/7/confirm-unrecoverable")
+      .set("Authorization", `Bearer ${await tokenFor(1)}`)
+      .send({ note: "源文件无法重新取得" })
+      .expect(201);
+
+    expect(mediaBackupServiceMock.startBackup).toHaveBeenCalledWith(1);
+    expect(mediaBackupServiceMock.restoreMissingIssue).toHaveBeenCalledWith(7, 1, "oss");
+    expect(mediaBackupServiceMock.confirmMissingIssueUnrecoverable).toHaveBeenCalledWith(
+      7,
+      1,
+      "源文件无法重新取得",
+    );
   });
 });

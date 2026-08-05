@@ -149,6 +149,24 @@ enum MediaBackupManifestStatus {
   failed
 }
 
+enum MediaBackupJobLogLevel {
+  info
+  warning
+  error
+}
+
+enum StorageRepairAction {
+  remote_restore
+  reupload
+  confirm_unrecoverable
+}
+
+enum StorageRepairStatus {
+  running
+  completed
+  failed
+}
+
 enum ChatMessageType {
   text
   attachment
@@ -392,6 +410,7 @@ model BackupConfiguration {
   r2AccessKeyIdEncrypted        String?  @map("r2_access_key_id_encrypted") @db.Text
   r2SecretAccessKeyEncrypted    String?  @map("r2_secret_access_key_encrypted") @db.Text
   lastAutomaticBackupDate       String?  @map("last_automatic_backup_date") @db.Char(10)
+  lastMediaBackupDate           String?  @map("last_media_backup_date") @db.Char(10)
   lastSuccessAt                 DateTime? @map("last_success_at")
   lastFailureAt                 DateTime? @map("last_failure_at")
   lastFailureMessage            String?  @map("last_failure_message") @db.VarChar(500)
@@ -454,6 +473,7 @@ model StorageScanIssue {
   resolvedAt        DateTime?        @map("resolved_at")
   resolution        String?          @db.VarChar(40)
   createdAt         DateTime         @default(now()) @map("created_at")
+  repairs           StorageFileRepair[]
 
   @@index([scanId, resolvedAt, kind, category])
   @@index([category, storedName])
@@ -497,6 +517,7 @@ model MediaBackupJob {
   createdAt      DateTime              @default(now()) @map("created_at")
   updatedAt      DateTime              @updatedAt @map("updated_at")
   manifests      MediaBackupManifest[]
+  logs           MediaBackupJobLog[]
 
   @@index([status, createdAt])
   @@index([trigger, createdAt])
@@ -543,6 +564,8 @@ model MediaBackupManifest {
   objectKey     String?                   @map("object_key") @db.VarChar(512)
   etag          String?                   @db.VarChar(255)
   error         String?                   @db.VarChar(500)
+  attemptCount  Int                       @default(0) @map("attempt_count")
+  lastAttemptAt DateTime?                 @map("last_attempt_at")
   startedAt     DateTime?                 @map("started_at")
   completedAt   DateTime?                 @map("completed_at")
   createdAt     DateTime                  @default(now()) @map("created_at")
@@ -551,7 +574,56 @@ model MediaBackupManifest {
   @@unique([jobId, fileId, provider])
   @@index([jobId, status], map: "media_backup_manifest_job_status_idx")
   @@index([fileId, provider, contentHash, status], map: "media_backup_manifest_lookup_idx")
+  @@index([provider, contentHash, sizeBytes, status], map: "media_backup_manifest_content_idx")
   @@map("media_backup_manifests")
+}
+
+model MediaBackupJobLog {
+  id        Int                    @id @default(autoincrement())
+  jobId     Int                    @map("job_id")
+  job       MediaBackupJob         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  level     MediaBackupJobLogLevel @default(info)
+  event     String                 @db.VarChar(64)
+  message   String                 @db.VarChar(500)
+  fileId    Int?                   @map("file_id")
+  provider  MediaBackupProvider?
+  attempt   Int?
+  createdAt DateTime               @default(now()) @map("created_at")
+
+  @@index([jobId, id])
+  @@index([level, createdAt])
+  @@map("media_backup_job_logs")
+}
+
+model StorageFileRepair {
+  id           Int                  @id @default(autoincrement())
+  issueId      Int?                 @map("issue_id")
+  issue        StorageScanIssue?    @relation(fields: [issueId], references: [id], onDelete: SetNull)
+  category     String               @db.VarChar(40)
+  storedName   String               @map("stored_name") @db.VarChar(512)
+  sourceType   String               @map("source_type") @db.VarChar(64)
+  sourceId     String?              @map("source_id") @db.VarChar(80)
+  action       StorageRepairAction
+  status       StorageRepairStatus  @default(running)
+  provider     MediaBackupProvider?
+  manifestId   Int?                 @map("manifest_id")
+  actorId      Int?                 @map("actor_id")
+  originalName String?              @map("original_name") @db.VarChar(255)
+  mimeType     String?              @map("mime_type") @db.VarChar(127)
+  sizeBytes    Int?                 @map("size_bytes")
+  expectedHash String?              @map("expected_hash") @db.Char(64)
+  actualHash   String?              @map("actual_hash") @db.Char(64)
+  note         String?              @db.VarChar(500)
+  error        String?              @db.VarChar(500)
+  startedAt    DateTime             @default(now()) @map("started_at")
+  completedAt  DateTime?            @map("completed_at")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  @@index([category, storedName, createdAt])
+  @@index([issueId, createdAt])
+  @@index([status, createdAt])
+  @@map("storage_file_repairs")
 }
 
 model ArticleTaxonomy {

@@ -2,20 +2,24 @@
 
 import {
   ArchiveRestore,
+  Ban,
   CircleAlert,
   CircleCheck,
+  CloudDownload,
   Download,
   Eye,
   FileQuestion,
   FileWarning,
   Gauge,
   HardDrive,
+  History,
   RefreshCcw,
   Save,
   Search,
   Settings2,
   ShieldCheck,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import Image from "next/image";
@@ -26,12 +30,16 @@ import { AppToast } from "@/components/app-toast";
 import { type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import {
+  confirmStorageIssueUnrecoverable,
   deleteStorageTrash,
   getStorageIssueFile,
   getStorageOverview,
   getStorageScan,
+  listStorageIssueRepairs,
   listStorageIssues,
   listStorageTrash,
+  reuploadMissingStorageIssue,
+  restoreMissingStorageIssue,
   restoreStorageTrash,
   startStorageScan,
   trashStorageIssue,
@@ -40,6 +48,7 @@ import {
   type StorageIssue,
   type StorageIssueKind,
   type StorageIssueList,
+  type StorageFileRepair,
   type StorageManagementConfiguration,
   type StorageOverview,
   type StorageTrashList,
@@ -85,6 +94,9 @@ export default function StorageManagementPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [preview, setPreview] = useState<{ name: string; url: string } | null>(null);
+  const [unrecoverableTarget, setUnrecoverableTarget] = useState<StorageIssue | null>(null);
+  const [unrecoverableNote, setUnrecoverableNote] = useState("");
+  const [repairHistory, setRepairHistory] = useState<{ issue: StorageIssue; items: StorageFileRepair[] } | null>(null);
 
   const handleError = useCallback((loadError: unknown, fallback: string) => {
     if (isAuthExpiredError(loadError)) {
@@ -253,6 +265,66 @@ export default function StorageManagementPage() {
     }
   }
 
+  async function handleRemoteRestore(issue: StorageIssue) {
+    if (!accessToken || busyAction || !window.confirm(`从远端备份恢复 ${issue.storedName} 吗？`)) return;
+    setBusyAction(`remote:${issue.id}`);
+    setError("");
+    try {
+      await restoreMissingStorageIssue(accessToken, issue.id);
+      await refreshAll(accessToken);
+      setNotice("文件已从远端备份恢复并通过校验。");
+    } catch (actionError) {
+      handleError(actionError, "远端恢复失败。");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function handleReplacementUpload(issue: StorageIssue, file: File | undefined) {
+    if (!accessToken || !file || busyAction) return;
+    setBusyAction(`reupload:${issue.id}`);
+    setError("");
+    try {
+      await reuploadMissingStorageIssue(accessToken, issue.id, file);
+      await refreshAll(accessToken);
+      setNotice("替换文件已上传并写回原位置。");
+    } catch (actionError) {
+      handleError(actionError, "替换文件上传失败。");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function handleConfirmUnrecoverable() {
+    if (!accessToken || !unrecoverableTarget || busyAction) return;
+    setBusyAction(`unrecoverable:${unrecoverableTarget.id}`);
+    setError("");
+    try {
+      await confirmStorageIssueUnrecoverable(accessToken, unrecoverableTarget.id, unrecoverableNote.trim());
+      setUnrecoverableTarget(null);
+      setUnrecoverableNote("");
+      await refreshAll(accessToken);
+      setNotice("已记录为无法恢复，后续扫描不会重复列为待处理项。");
+    } catch (actionError) {
+      handleError(actionError, "无法保存处理结果。");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function handleRepairHistory(issue: StorageIssue) {
+    if (!accessToken || busyAction) return;
+    setBusyAction(`history:${issue.id}`);
+    setError("");
+    try {
+      setRepairHistory({ issue, items: await listStorageIssueRepairs(accessToken, issue.id) });
+    } catch (actionError) {
+      handleError(actionError, "修复记录读取失败。");
+    } finally {
+      setBusyAction("");
+    }
+  }
+
   async function handleRestore(id: number) {
     if (!accessToken || busyAction) return;
     setBusyAction(`restore:${id}`);
@@ -345,6 +417,10 @@ export default function StorageManagementPage() {
             {issue.sourceUrl ? <Link aria-label="定位来源" href={issue.sourceUrl} title="定位来源"><Search aria-hidden="true" size={15} /></Link> : null}
             {issue.previewable ? <button aria-label="预览文件" disabled={Boolean(busyAction)} onClick={() => void handleFile(issue, false)} title="预览" type="button"><Eye aria-hidden="true" size={15} /></button> : null}
             {issue.kind === "orphan" ? <button aria-label="下载文件" disabled={Boolean(busyAction)} onClick={() => void handleFile(issue, true)} title="下载" type="button"><Download aria-hidden="true" size={15} /></button> : null}
+            {issue.kind === "missing" ? <button aria-label="从远端备份恢复" disabled={Boolean(busyAction)} onClick={() => void handleRemoteRestore(issue)} title="远端恢复" type="button"><CloudDownload aria-hidden="true" size={15} /></button> : null}
+            {issue.kind === "missing" ? <label aria-label="重新上传文件" className="storage-repair-upload" title="重新上传"><Upload aria-hidden="true" size={15} /><input disabled={Boolean(busyAction)} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void handleReplacementUpload(issue, file); }} type="file" /></label> : null}
+            {issue.kind === "missing" ? <button aria-label="确认无法恢复" className="danger" disabled={Boolean(busyAction)} onClick={() => { setUnrecoverableTarget(issue); setUnrecoverableNote(""); }} title="确认无法恢复" type="button"><Ban aria-hidden="true" size={15} /></button> : null}
+            {issue.kind === "missing" ? <button aria-label="查看修复记录" disabled={Boolean(busyAction)} onClick={() => void handleRepairHistory(issue)} title="修复记录" type="button"><History aria-hidden="true" size={15} /></button> : null}
             {issue.canTrash ? <button aria-label="移入回收站" className="danger" disabled={Boolean(busyAction)} onClick={() => void handleTrashIssue(issue)} title="移入回收站" type="button"><Trash2 aria-hidden="true" size={15} /></button> : null}
           </div>
         </article>)}
@@ -375,6 +451,8 @@ export default function StorageManagementPage() {
     </section> : null}
 
     {preview ? <div className="storage-preview-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { URL.revokeObjectURL(preview.url); setPreview(null); } }} role="presentation"><div aria-modal="true" className="storage-preview-panel" role="dialog"><button aria-label="关闭预览" onClick={() => { URL.revokeObjectURL(preview.url); setPreview(null); }} title="关闭" type="button"><X aria-hidden="true" size={19} /></button><Image alt={preview.name} height={800} src={preview.url} unoptimized width={1200} /><strong title={preview.name}>{preview.name}</strong></div></div> : null}
+    {unrecoverableTarget ? <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busyAction) setUnrecoverableTarget(null); }} role="presentation"><div aria-modal="true" className="modal-panel storage-repair-modal" role="dialog"><header><span><small>Missing file</small><h2>确认无法恢复</h2></span><button aria-label="关闭" disabled={Boolean(busyAction)} onClick={() => setUnrecoverableTarget(null)} title="关闭" type="button"><X aria-hidden="true" size={18} /></button></header><p title={unrecoverableTarget.storedName}>{unrecoverableTarget.storedName}</p><label><span>处理说明（可选）</span><textarea maxLength={500} onChange={(event) => setUnrecoverableNote(event.target.value)} placeholder="例如：原始文件和远端备份均无法取得" rows={3} value={unrecoverableNote} /></label><footer><button className="button" disabled={Boolean(busyAction)} onClick={() => void handleConfirmUnrecoverable()} type="button">{busyAction ? "处理中" : "确认记录"}</button><button className="button secondary" disabled={Boolean(busyAction)} onClick={() => setUnrecoverableTarget(null)} type="button">取消</button></footer></div></div> : null}
+    {repairHistory ? <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setRepairHistory(null); }} role="presentation"><div aria-modal="true" className="modal-panel storage-repair-history-modal" role="dialog"><header><span><small>Repair history</small><h2>文件修复记录</h2></span><button aria-label="关闭" onClick={() => setRepairHistory(null)} title="关闭" type="button"><X aria-hidden="true" size={18} /></button></header><p title={repairHistory.issue.storedName}>{repairHistory.issue.storedName}</p><div>{repairHistory.items.map((repair) => <article className={repair.status} key={repair.id}><span><strong>{repairActionLabel(repair.action)}</strong><small>{formatDateTime(repair.completedAt || repair.startedAt)}</small></span><i>{repairStatusLabel(repair.status)}</i>{repair.error || repair.note ? <p>{repair.error || repair.note}</p> : null}</article>)}{!repairHistory.items.length ? <div className="storage-empty-state"><History aria-hidden="true" size={20} /><span>暂无修复记录。</span></div> : null}</div></div></div> : null}
   </section>;
 }
 
@@ -391,6 +469,14 @@ function issueLabel(kind: StorageIssueKind): string {
   if (kind === "missing") return "文件缺失";
   if (kind === "orphan") return "孤立文件";
   return "大小不一致";
+}
+
+function repairActionLabel(action: StorageFileRepair["action"]): string {
+  return ({ remote_restore: "远端恢复", reupload: "重新上传", confirm_unrecoverable: "确认无法恢复" })[action];
+}
+
+function repairStatusLabel(status: StorageFileRepair["status"]): string {
+  return ({ running: "处理中", completed: "已完成", failed: "失败" })[status];
 }
 
 function formatIssueSize(issue: StorageIssue): string {

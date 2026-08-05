@@ -130,6 +130,19 @@ export class RedisService implements OnModuleDestroy {
     return this.client.lrange(key, start, stop);
   }
 
+  async pushCappedList(
+    key: string,
+    value: string,
+    maximumLength: number,
+    expiresInSeconds: number,
+  ): Promise<void> {
+    const transaction = this.client.multi();
+    transaction.lpush(key, value);
+    transaction.ltrim(key, 0, Math.max(0, maximumLength - 1));
+    transaction.expire(key, expiresInSeconds);
+    await transaction.exec();
+  }
+
   async llen(key: string): Promise<number> {
     return this.client.llen(key);
   }

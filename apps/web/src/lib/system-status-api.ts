@@ -22,6 +22,7 @@ export interface BackupConfiguration {
   encryptionConfigured: boolean;
   nextRunAt: string | null;
   lastAutomaticBackupDate: string | null;
+  lastMediaBackupDate: string | null;
   lastSuccessAt: string | null;
   lastFailureAt: string | null;
   lastFailureMessage: string | null;
@@ -119,10 +120,122 @@ export interface SystemStatus {
     latest: DatabaseBackup | null;
     items: DatabaseBackup[];
   };
+  monitoring: {
+    retentionMinutes: number;
+    slowRequestThresholdMs: number;
+    slowRequests: HttpMonitoringEvent[];
+    recentErrors: HttpMonitoringEvent[];
+    memoryTrend: Array<{
+      recordedAt: string;
+      rssBytes: number;
+      heapUsedBytes: number;
+    }>;
+    diskTrend: Array<{
+      recordedAt: string;
+      capacityBytes: number;
+      usedBytes: number;
+      availableBytes: number;
+      usedPercent: number;
+    }>;
+  };
+  reliability: {
+    backupCoverage: {
+      totalFiles: number;
+      backedUpFiles: number;
+      uncoveredFiles: number;
+      percentage: number | null;
+    };
+    lastSuccessfulBackupAt: string | null;
+    lastSuccessfulBackupSource: "media" | "database" | null;
+    anomalyWindowHours: number;
+    anomalies: {
+      total: number;
+      backupFailures: number;
+      diskPressure: number;
+      missingFiles: number;
+      orphanFiles: number;
+      metadataMismatches: number;
+      recentApiErrors: number;
+    };
+    storage: {
+      latestScanAt: string | null;
+      diskUsedPercent: number | null;
+      warningThresholdPercent: number;
+    };
+  };
   containerRuntime: {
     connected: false;
     message: string;
   };
+}
+
+export interface HttpMonitoringEvent {
+  occurredAt: string;
+  method: string;
+  path: string;
+  statusCode: number;
+  durationMs: number;
+  message: string | null;
+}
+
+export interface MediaBackupJob {
+  id: number;
+  status: "pending" | "running" | "completed" | "partial" | "failed";
+  trigger: "manual" | "scheduled";
+  triggeredById: number | null;
+  providers: Array<"oss" | "r2">;
+  totalFiles: number;
+  processedFiles: number;
+  uploadedFiles: number;
+  reusedFiles: number;
+  skippedFiles: number;
+  failedFiles: number;
+  totalBytes: number;
+  uploadedBytes: number;
+  error: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+export interface MediaBackupJobDetail extends MediaBackupJob {
+  manifests: Array<{
+    id: number;
+    fileId: number;
+    category: StorageCategoryKey;
+    storedName: string;
+    sourceLabel: string;
+    provider: "oss" | "r2";
+    status: "pending" | "uploaded" | "reused" | "skipped" | "failed";
+    contentHash: string;
+    sizeBytes: number;
+    bucket: string | null;
+    objectKey: string | null;
+    etag: string | null;
+    error: string | null;
+    attemptCount: number;
+    lastAttemptAt: string | null;
+    startedAt: string | null;
+    completedAt: string | null;
+  }>;
+  logs: Array<{
+    id: number;
+    level: "info" | "warning" | "error";
+    event: string;
+    message: string;
+    fileId: number | null;
+    provider: "oss" | "r2" | null;
+    attempt: number | null;
+    createdAt: string;
+  }>;
+}
+
+export interface MediaBackupJobList {
+  items: MediaBackupJob[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
 }
 
 export type StorageCategoryKey = "backgrounds" | "site-assets" | "android-releases" | "avatars" | "articles" | "chat";
@@ -225,6 +338,27 @@ export interface StorageIssue {
   createdAt: string;
 }
 
+export interface StorageFileRepair {
+  id: number;
+  issueId: number | null;
+  category: StorageCategoryKey;
+  storedName: string;
+  action: "remote_restore" | "reupload" | "confirm_unrecoverable";
+  status: "running" | "completed" | "failed";
+  provider: "oss" | "r2" | null;
+  manifestId: number | null;
+  actorId: number | null;
+  originalName: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  expectedHash: string | null;
+  actualHash: string | null;
+  note: string | null;
+  error: string | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
 export interface StorageIssueList {
   items: StorageIssue[];
   total: number;
@@ -312,6 +446,43 @@ export function trashStorageIssue(accessToken: string, id: number): Promise<Stor
   });
 }
 
+export function restoreMissingStorageIssue(accessToken: string, id: number): Promise<StorageFileRepair> {
+  return requestJson(`/admin/system/storage/issues/${id}/restore-remote`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({}),
+  });
+}
+
+export function reuploadMissingStorageIssue(accessToken: string, id: number, file: File): Promise<StorageFileRepair> {
+  const body = new FormData();
+  body.append("file", file);
+  return requestJson(`/admin/system/storage/issues/${id}/reupload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body,
+  });
+}
+
+export function confirmStorageIssueUnrecoverable(
+  accessToken: string,
+  id: number,
+  note: string,
+): Promise<StorageFileRepair> {
+  return requestJson(`/admin/system/storage/issues/${id}/confirm-unrecoverable`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ note }),
+  });
+}
+
+export function listStorageIssueRepairs(accessToken: string, id: number): Promise<StorageFileRepair[]> {
+  return requestJson(`/admin/system/storage/issues/${id}/repairs`, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
 export function listStorageTrash(
   accessToken: string,
   query: { page?: number; pageSize?: number; category?: StorageCategoryKey | "" },
@@ -353,6 +524,27 @@ export function updateStorageConfiguration(
 
 export function createDatabaseBackup(accessToken: string): Promise<DatabaseBackup> {
   return requestJson("/admin/system/backups", { method: "POST", headers: { Authorization: `Bearer ${accessToken}` } });
+}
+
+export function startMediaBackup(accessToken: string): Promise<MediaBackupJob> {
+  return requestJson("/admin/system/media-backups/jobs", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function listMediaBackupJobs(accessToken: string, pageSize = 5): Promise<MediaBackupJobList> {
+  return requestJson(`/admin/system/media-backups/jobs?page=1&pageSize=${pageSize}`, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function getMediaBackupJob(accessToken: string, id: number): Promise<MediaBackupJobDetail> {
+  return requestJson(`/admin/system/media-backups/jobs/${id}`, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
 }
 
 export function getBackupConfiguration(accessToken: string): Promise<BackupConfiguration> {
