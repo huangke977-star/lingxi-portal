@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { StorageIssueKind, StorageScanStatus } from "../src/generated/prisma/client";
 import { PrismaService } from "../src/prisma/prisma.service";
+import { MediaBackupCatalogService } from "../src/system-status/media-backup-catalog.service";
 import { StorageManagementService } from "../src/system-status/storage-management.service";
 
 describe("storage management scanning (e2e)", () => {
@@ -31,7 +32,8 @@ describe("storage management scanning (e2e)", () => {
     await writeFile(join(paths.ARTICLE_UPLOAD_DIR, ".tmp", "fresh.upload"), Buffer.from("uploading"));
 
     prisma = prismaMock();
-    service = new StorageManagementService(prisma as unknown as PrismaService);
+    const mediaBackupCatalog = new MediaBackupCatalogService(prisma as unknown as PrismaService);
+    service = new StorageManagementService(prisma as unknown as PrismaService, mediaBackupCatalog);
   });
 
   afterEach(async () => {
@@ -74,6 +76,127 @@ describe("storage management scanning (e2e)", () => {
     expect((await stat(join(root, "articles", "orphan.png"))).isFile()).toBe(true);
     expect((await service.listTrash({ page: 1, pageSize: 20 })).items).toHaveLength(0);
   });
+
+  it("catalogs referenced files from all six persistent media categories", async () => {
+    const fixtures = [
+      ["BACKGROUND_UPLOAD_DIR", "background.webp", "backgrounds"],
+      ["SITE_ASSET_UPLOAD_DIR", "logo.png", "site-assets"],
+      ["ANDROID_RELEASE_UPLOAD_DIR", "release.apk", "android-releases"],
+      ["AVATAR_UPLOAD_DIR", "avatar.webp", "avatars"],
+      ["ARTICLE_UPLOAD_DIR", "article.png", "articles"],
+      ["CHAT_UPLOAD_DIR", "attachment.bin", "chat"],
+    ] as const;
+    for (const [environmentKey, storedName] of fixtures) {
+      await writeFile(
+        join(process.env[environmentKey]!, storedName),
+        Buffer.from(storedName),
+      );
+    }
+    prisma.backgroundImage.findMany.mockResolvedValueOnce([
+      {
+        id: 1,
+        originalName: "background.webp",
+        storedName: "background.webp",
+        mimeType: "image/webp",
+        sizeBytes: 15,
+        isActive: true,
+        uploadedBy: { username: "admin" },
+      },
+    ]);
+    prisma.siteAsset.findMany.mockResolvedValueOnce([
+      {
+        id: 2,
+        kind: "logo",
+        originalName: "logo.png",
+        storedName: "logo.png",
+        mimeType: "image/png",
+        sizeBytes: 8,
+        uploadedBy: { username: "admin" },
+      },
+    ]);
+    prisma.androidRelease.findMany.mockResolvedValueOnce([
+      {
+        id: 3,
+        versionName: "1.0.0",
+        originalName: "release.apk",
+        storedName: "release.apk",
+        mimeType: "application/vnd.android.package-archive",
+        sizeBytes: 11,
+        uploadedBy: { username: "admin" },
+      },
+    ]);
+    prisma.user.findMany.mockResolvedValueOnce([
+      {
+        id: 4,
+        username: "member",
+        nickname: "Member",
+        avatarStoredName: "avatar.webp",
+        avatarMimeType: "image/webp",
+        avatarSizeBytes: 11,
+      },
+    ]);
+    prisma.articleImage.findMany.mockResolvedValueOnce([
+      {
+        id: 5,
+        originalName: "article.png",
+        storedName: "article.png",
+        mimeType: "image/png",
+        sizeBytes: 11,
+        article: {
+          title: "Article",
+          slug: "article",
+          author: { username: "member" },
+        },
+      },
+    ]);
+    prisma.chatAttachment.findMany.mockResolvedValueOnce([
+      {
+        id: 6,
+        conversationId: 1,
+        messageId: 1,
+        originalName: "attachment.bin",
+        storedName: "attachment.bin",
+        mimeType: "application/octet-stream",
+        sizeBytes: 14,
+        uploadedBy: { username: "member" },
+      },
+    ]);
+
+    const scan = await service.startScan(1);
+    const completed = await waitForScan(service, scan.id);
+
+    expect(completed.status).toBe(StorageScanStatus.completed);
+    const catalogedCategories = prisma.mediaBackupFile.upsert.mock.calls.map(
+      ([call]) => call.create.category,
+    );
+    expect(new Set(catalogedCategories)).toEqual(
+      new Set(fixtures.map((fixture) => fixture[2])),
+    );
+  });
+
+  it("invalidates the previous hash when a cataloged file changes", async () => {
+    const firstScan = await service.startScan(1);
+    await waitForScan(service, firstScan.id);
+    const [catalogedFile] = await prisma.mediaBackupFile.findMany();
+    expect(catalogedFile).toBeDefined();
+    Object.assign(catalogedFile, {
+      contentHash: "a".repeat(64),
+      lastBackedUpAt: new Date("2026-08-04T08:00:00.000Z"),
+    });
+
+    const filePath = join(process.env.ARTICLE_UPLOAD_DIR!, "mismatch.png");
+    await writeFile(filePath, Buffer.from("changed-content"));
+    const changedAt = new Date(Date.now() + 10_000);
+    await utimes(filePath, changedAt, changedAt);
+
+    const secondScan = await service.startScan(1);
+    await waitForScan(service, secondScan.id);
+    const latestUpsert = prisma.mediaBackupFile.upsert.mock.calls.at(-1)?.[0];
+    expect(latestUpsert?.update).toMatchObject({
+      contentHash: null,
+      lastBackedUpAt: null,
+    });
+  });
 });
 
 async function waitForScan(service: StorageManagementService, id: number) {
@@ -103,6 +226,7 @@ function prismaMock() {
   const scans: Array<Record<string, unknown>> = [];
   const issues: Array<Record<string, unknown>> = [];
   const trash: Array<Record<string, unknown>> = [];
+  const mediaBackupFiles: Array<Record<string, unknown>> = [];
   let scanId = 0;
   let issueId = 0;
   let trashId = 0;
@@ -162,12 +286,64 @@ function prismaMock() {
     }),
   };
 
-  const mock: Record<string, unknown> = {
-    backgroundImage: { findMany: jest.fn(async () => []), findUnique: jest.fn(async () => null) },
-    siteAsset: { findMany: jest.fn(async () => []), findUnique: jest.fn(async () => null) },
-    androidRelease: { findMany: jest.fn(async () => []), findUnique: jest.fn(async () => null) },
+  const mediaBackupFile = {
+    findMany: jest.fn(async () => mediaBackupFiles),
+    upsert: jest.fn(
+      async ({ where, create, update }: {
+        where: {
+          category_storedName: { category: string; storedName: string };
+        };
+        create: Record<string, unknown>;
+        update: Record<string, unknown>;
+      }) => {
+        const key = where.category_storedName;
+        const existing = mediaBackupFiles.find(
+          (item) =>
+            item.category === key.category &&
+            item.storedName === key.storedName,
+        );
+        if (existing) {
+          Object.assign(existing, update);
+          return existing;
+        }
+        const created = {
+          id: mediaBackupFiles.length + 1,
+          contentHash: null,
+          lastBackedUpAt: null,
+          ...create,
+        };
+        mediaBackupFiles.push(created);
+        return created;
+      },
+    ),
+  };
+
+  const mock = {
+    backgroundImage: {
+      findMany: jest.fn(
+        async (): Promise<Array<Record<string, unknown>>> => [],
+      ),
+      findUnique: jest.fn(async () => null),
+    },
+    siteAsset: {
+      findMany: jest.fn(
+        async (): Promise<Array<Record<string, unknown>>> => [],
+      ),
+      findUnique: jest.fn(async () => null),
+    },
+    androidRelease: {
+      findMany: jest.fn(
+        async (): Promise<Array<Record<string, unknown>>> => [],
+      ),
+      findUnique: jest.fn(async () => null),
+    },
     user: {
-      findMany: jest.fn(async ({ where }: { where?: { isSuperAdmin?: boolean } } = {}) => where?.isSuperAdmin ? [] : []),
+      findMany: jest.fn(
+        async (
+          { where }: { where?: { isSuperAdmin?: boolean } } = {},
+        ): Promise<Array<Record<string, unknown>>> =>
+          where?.isSuperAdmin ? [] : [],
+      ),
       findUnique: jest.fn(async () => null),
     },
     articleImage: {
@@ -177,7 +353,12 @@ function prismaMock() {
       ]),
       findUnique: jest.fn(async ({ where }: { where: { storedName: string } }) => where.storedName === "mismatch.png" || where.storedName === "missing.png" ? { id: 1 } : null),
     },
-    chatAttachment: { findMany: jest.fn(async () => []), findUnique: jest.fn(async () => null) },
+    chatAttachment: {
+      findMany: jest.fn(
+        async (): Promise<Array<Record<string, unknown>>> => [],
+      ),
+      findUnique: jest.fn(async () => null),
+    },
     storageManagementConfiguration: {
       upsert: jest.fn(async ({ create, update }: { create: Record<string, unknown>; update: Record<string, unknown> }) => Object.assign(configuration, create, update)),
       update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => Object.assign(configuration, data)),
@@ -185,9 +366,18 @@ function prismaMock() {
     storageScan,
     storageScanIssue,
     storageTrashItem,
+    mediaBackupFile,
     userNotification: { createMany: jest.fn(async () => ({ count: 0 })) },
+    $transaction: jest.fn(),
   };
-  mock.$transaction = jest.fn(async (action: (transaction: unknown) => Promise<unknown>): Promise<unknown> => action(mock));
+  mock.$transaction.mockImplementation(
+    async (
+      action:
+        | Array<Promise<unknown>>
+        | ((transaction: unknown) => Promise<unknown>),
+    ): Promise<unknown> =>
+      Array.isArray(action) ? Promise.all(action) : action(mock),
+  );
   return mock;
 }
 

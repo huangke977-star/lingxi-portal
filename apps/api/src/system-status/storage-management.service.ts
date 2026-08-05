@@ -33,6 +33,8 @@ import {
   StorageTrashQueryDto,
   UpdateStorageManagementConfigurationDto,
 } from "./dto/storage-management.dto";
+import { MediaBackupCatalogService } from "./media-backup-catalog.service";
+import type { MediaBackupCatalogFile } from "./media-backup-catalog.types";
 import type {
   StorageCategoryKey,
   StorageCategorySummary,
@@ -99,7 +101,10 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
   private schedulerRunning = false;
   private lastPurgeCheckAt = 0;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mediaBackupCatalog: MediaBackupCatalogService,
+  ) {}
 
   onModuleInit(): void {
     if (process.env.NODE_ENV === "test") return;
@@ -461,6 +466,7 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
 
       const issues: Prisma.StorageScanIssueCreateManyInput[] = [];
       const summaries: StorageCategorySummary[] = [];
+      const mediaBackupFiles: MediaBackupCatalogFile[] = [];
       let scannedFileCount = 0;
       for (const category of this.categories) {
         const result = await this.scanCategory(
@@ -469,6 +475,7 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
           referencesByCategory.get(category.key) ?? new Map(),
           trashByCategory.get(category.key) ?? { count: 0, sizeBytes: 0 },
           issues,
+          mediaBackupFiles,
         );
         scannedFileCount += result.fileCount;
         if (scannedFileCount > MAX_SCANNED_FILES) {
@@ -476,6 +483,8 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
         }
         summaries.push(result);
       }
+      const catalogResult = await this.mediaBackupCatalog.synchronize(mediaBackupFiles);
+      this.logger.log(`Media backup catalog synchronized ${catalogResult.totalFiles} files across six categories.`);
       const summary = this.buildSummary(summaries, await this.diskUsage());
 
       await this.prisma.$transaction(async (transaction) => {
@@ -517,6 +526,7 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
     references: Map<string, StorageReference>,
     trash: { count: number; sizeBytes: number },
     issues: Prisma.StorageScanIssueCreateManyInput[],
+    mediaBackupFiles: MediaBackupCatalogFile[],
   ): Promise<StorageCategorySummary> {
     let files: ScannedFile[];
     try {
@@ -554,6 +564,19 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
         issues.push(this.issueData(scanId, StorageIssueKind.missing, reference, null));
         continue;
       }
+      // Missing and orphaned files stay in the repair workflow instead of becoming backup candidates.
+      mediaBackupFiles.push({
+        category: reference.category,
+        storedName: reference.storedName,
+        mimeType: reference.mimeType,
+        sourceType: reference.sourceType,
+        sourceId: reference.sourceId,
+        sourceLabel: reference.sourceLabel,
+        sourceUrl: reference.sourceUrl,
+        uploadedBy: reference.uploadedBy,
+        sizeBytes: file.sizeBytes,
+        fileUpdatedAt: file.updatedAt,
+      });
       filesByName.delete(reference.storedName);
       if (reference.sizeBytes !== null && reference.sizeBytes !== file.sizeBytes) {
         mismatchCount += 1;

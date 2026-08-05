@@ -8,10 +8,18 @@ import { StorageManagementService } from "./storage-management.service";
 import { BackupCryptoService } from "./backup-crypto.service";
 import { BackupRemoteService } from "./backup-remote.service";
 import { BackupService } from "./backup.service";
+import { MediaBackupCatalogService } from "./media-backup-catalog.service";
 
 @Module({
   imports: [JwtModule.register({}), RedisModule, UsersModule],
   controllers: [SystemStatusController],
-  providers: [BackupCryptoService, BackupRemoteService, BackupService, StorageManagementService, SystemStatusService],
+  providers: [
+    BackupCryptoService,
+    BackupRemoteService,
+    BackupService,
+    MediaBackupCatalogService,
+    StorageManagementService,
+    SystemStatusService,
+  ],
 })
 export class SystemStatusModule {}
