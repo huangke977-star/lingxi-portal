@@ -234,6 +234,8 @@ export function ChatDock() {
   const sessionUserIdRef = useRef(0);
   const openRef = useRef(false);
   const minimizedRef = useRef(false);
+  const desktopRef = useRef(false);
+  const mobileConversationOpenRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const iconDraggedRef = useRef(false);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -432,7 +434,9 @@ export function ChatDock() {
   useEffect(() => {
     openRef.current = isOpen;
     minimizedRef.current = isMinimized;
-  }, [isMinimized, isOpen]);
+    desktopRef.current = isDesktop;
+    mobileConversationOpenRef.current = isMobileConversationOpen;
+  }, [isDesktop, isMinimized, isMobileConversationOpen, isOpen]);
 
   useEffect(() => {
     if (!isAddFriendOpen || userSearch.trim().length < 2) {
@@ -715,7 +719,10 @@ export function ChatDock() {
     socketRef.current = socket;
     setChatSocket(socket);
     socket.on("chat:message", (message: ChatMessage) => {
-      const isViewing = message.conversationId === selectedIdRef.current && openRef.current && !minimizedRef.current;
+      const isViewing = message.conversationId === selectedIdRef.current &&
+        openRef.current &&
+        !minimizedRef.current &&
+        (desktopRef.current || mobileConversationOpenRef.current);
       setConversations((current) => {
         const existing = current.find((item) => item.id === message.conversationId);
         if (!existing) {
@@ -807,11 +814,21 @@ export function ChatDock() {
     if (!token || selectedId <= 0) {
       // A cleared session also clears the locally displayed conversation.
       setMessages([]);
+      setIsMessagesLoading(false);
       return;
     }
+    const isConversationVisible = isOpen &&
+      !isMinimized &&
+      (isDesktop || isMobileConversationOpen);
+    if (!isConversationVisible) {
+      setIsMessagesLoading(false);
+      return;
+    }
+    let active = true;
     setIsMessagesLoading(true);
     listMessages(token, selectedId)
       .then((result) => {
+        if (!active) return null;
         setMessages(result.items);
         setHasMore(result.hasMore);
         setConversations((current) => current.map((item) =>
@@ -819,13 +836,21 @@ export function ChatDock() {
         ));
         return markConversationRead(token, selectedId);
       })
-      .then(() => {
+      .then((result) => {
+        if (!active || result === null) return;
         socketRef.current?.emit("chat:read", { conversationId: selectedId });
         notifySocialStateChange();
       })
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "聊天记录加载失败。"))
-      .finally(() => setIsMessagesLoading(false));
-  }, [selectedId]);
+      .catch((loadError) => {
+        if (active) setError(loadError instanceof Error ? loadError.message : "聊天记录加载失败。");
+      })
+      .finally(() => {
+        if (active) setIsMessagesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isDesktop, isMinimized, isMobileConversationOpen, isOpen, selectedId]);
 
   useEffect(() => {
     if (!isMessagesLoading && isOpen && !isMinimized) {
