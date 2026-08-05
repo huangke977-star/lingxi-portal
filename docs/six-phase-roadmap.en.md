@@ -3,7 +3,7 @@
 - Document status: Active
 - Created: 2026-08-04
 - Last updated: 2026-08-05
-- Current phase: Phase 1 in progress
+- Current phase: Phase 1 blocked on external acceptance
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -33,7 +33,7 @@ Status definitions:
 
 | Phase | Name | Main scope | Status |
 | --- | --- | --- | --- |
-| Phase 1 | Reliability Foundation | Media backup, missing-file repair, lightweight monitoring | In progress |
+| Phase 1 | Reliability Foundation | Media backup, missing-file repair, lightweight monitoring | Blocked (remote restore drill only) |
 | Phase 2 | Account Security | Password recovery, email verification, Turnstile, login-risk alerts | Not started |
 | Phase 3 | Content Capability | Autosave, version history, preview, unified search | Not started |
 | Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | Not started |
@@ -70,7 +70,15 @@ Goal: give database records and physical files a verifiable, backed-up, and reco
 | P1-09 | Add lightweight slow-request, recent-error, memory, and disk trends | Completed |
 | P1-10 | Show backup coverage, last success, and issue counts in System Overview | Completed |
 | P1-11 | Notify super administrators about backup failures, disk pressure, and missing-file changes | Completed |
-| P1-12 | Complete bilingual docs, automated tests, deployment, and a production restore drill | In progress |
+| P1-12 | Complete bilingual docs, automated tests, deployment, and a production restore drill | Blocked (OSS/R2 credentials missing) |
+
+### Current Acceptance Results
+
+- Code, migrations, UI, automated tests, and production deployment are complete for P1-01 through P1-11.
+- All 26 API suites with 159 tests, frontend/backend lint and builds, Prisma generation/validation, and production Compose validation passed.
+- GitHub Actions runs `30986260663` and hotfix run `30987181919` succeeded. Production recreated only API/Web or API without unrelated MySQL, Redis, Caddy, or TURN restarts.
+- Production storage scan `#5` completed with 20 healthy files, 3 historical missing article files, and no orphan files. Desktop and 390px iPhone widths had no horizontal overflow.
+- OSS/R2 and remote credentials are not configured. A real remote upload and production restore drill cannot run yet, so the phase cannot be marked fully accepted.
 
 ### Acceptance
 
@@ -275,7 +283,7 @@ A phase can be marked `Completed` only when all conditions are met:
 
 | Phase | Completed | Commit | Deployment | Notes |
 | --- | --- | --- | --- | --- |
-| Phase 1 | - | `90e43d3`, `290aa5c` | P1-01 through P1-02 deployed (2026-08-05) | In progress; production scan #3 cataloged 20 files (10 backgrounds, 1 avatar, 3 article images, and 6 chat attachments); site assets and APKs currently have no production files, while 3 missing article files remain in the repair workflow |
+| Phase 1 | - | `90e43d3`, `290aa5c`, `fe6c619`, `0569d1a` | P1-01 through P1-11 deployed (2026-08-05) | P1-12 is blocked only on the OSS/R2 production restore drill; scan #5 found 20 healthy files, 3 historical missing article files, and no orphan files |
 | Phase 2 | - | - | - | Not started |
 | Phase 3 | - | - | - | Not started |
 | Phase 4 | - | - | - | Not started |

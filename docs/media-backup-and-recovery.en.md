@@ -99,3 +99,11 @@ Without remote credentials, only catalog, hash, manifest, and local staging chec
 - Hash mismatch: preserve staged data for diagnosis and never overwrite the destination.
 - Disk pressure: disable automatic media backup, clean trash and approved orphan files, then resume.
 - Lost encryption key: existing encrypted remote objects cannot be restored; back up the key separately as a server secret.
+
+## 11. Production Acceptance Record For 2026-08-05
+
+- Production scan `#5` checked and synchronized all six directories. It found 20 healthy files, kept 3 historical missing article files in the repair workflow, and found no orphan files.
+- Automated tests cover incremental hashing, deduplication, retry, retention, single-file restore, all three missing-file resolutions, the shared I/O lock, lightweight monitoring, and notification rules.
+- All 26 API suites with 159 tests passed. System Overview and Storage Management had no horizontal overflow at desktop or 390px iPhone widths.
+- The production API health check passed. With no remote provider or encryption key, the scheduler now skips silently without claiming the current schedule date; a manual job still returns an explicit configuration message.
+- Production currently has no enabled OSS/R2 provider or remote credentials. Real remote upload and the production restore drill have not run and must not be recorded as passed.
