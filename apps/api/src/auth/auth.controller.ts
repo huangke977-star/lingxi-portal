@@ -27,13 +27,47 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { AccountSecurityService } from '../security/account-security.service';
+import { SecurityConfigurationService } from '../security/security-configuration.service';
+import {
+  ConfirmEmailVerificationDto,
+  PasswordRecoveryRequestDto,
+  PasswordRecoveryResetDto,
+  RegistrationCodeDto,
+  UpdateSecurityPreferencesDto,
+} from '../security/dto/security.dto';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly usersService: UsersService,
+    private readonly accountSecurity: AccountSecurityService,
+    private readonly securityConfiguration: SecurityConfigurationService,
   ) {}
+
+  @Get('security-policy')
+  securityPolicy() {
+    return this.securityConfiguration.getPublicPolicy();
+  }
+
+  @Post('registration-code')
+  @HttpCode(200)
+  requestRegistrationCode(@Body() dto: RegistrationCodeDto, @Req() request: SessionRequest) {
+    return this.accountSecurity.requestRegistrationCode(dto.email, dto.turnstileToken, this.sessionContext(request));
+  }
+
+  @Post('password-recovery/request')
+  @HttpCode(200)
+  requestPasswordRecovery(@Body() dto: PasswordRecoveryRequestDto, @Req() request: SessionRequest) {
+    return this.accountSecurity.requestPasswordReset(dto.email, dto.turnstileToken, this.sessionContext(request));
+  }
+
+  @Post('password-recovery/reset')
+  @HttpCode(200)
+  resetPassword(@Body() dto: PasswordRecoveryResetDto, @Req() request: SessionRequest) {
+    return this.authService.resetPassword(dto, this.sessionContext(request));
+  }
 
   @Post('register')
   @HttpCode(200)
@@ -122,8 +156,45 @@ export class AuthController {
     @CurrentUser() user: AuthenticatedUser,
     @CurrentSessionId() sessionId: string | null,
     @Body() dto: ChangePasswordDto,
+    @Req() request: SessionRequest,
   ): Promise<{ success: true; revokedSessions: number }> {
-    return this.authService.changePassword(user, sessionId, dto);
+    return this.authService.changePassword(user, sessionId, dto, this.sessionContext(request));
+  }
+
+  @Get('me/security')
+  @UseGuards(JwtAuthGuard)
+  getMySecurity(@CurrentUser() user: AuthenticatedUser) {
+    return this.accountSecurity.getMySecurity(user.id);
+  }
+
+  @Patch('me/security/preferences')
+  @UseGuards(JwtAuthGuard)
+  updateMySecurityPreferences(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateSecurityPreferencesDto,
+  ) {
+    return this.accountSecurity.updatePreferences(user.id, dto);
+  }
+
+  @Post('me/email-verification/send')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  sendMyEmailVerification(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: SessionRequest,
+  ) {
+    return this.accountSecurity.sendAccountEmailCode(user, this.sessionContext(request));
+  }
+
+  @Post('me/email-verification/confirm')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  confirmMyEmailVerification(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ConfirmEmailVerificationDto,
+    @Req() request: SessionRequest,
+  ) {
+    return this.accountSecurity.confirmAccountEmail(user, dto, this.sessionContext(request));
   }
 
   @Post('me/avatar')
@@ -146,6 +217,7 @@ export class AuthController {
   private sessionContext(request: SessionRequest): RefreshSessionContext {
     const forwardedFor = request.headers?.['x-forwarded-for'];
     const userAgent = request.headers?.['user-agent'];
+    const deviceId = request.headers?.['x-device-id'];
     const forwardedIp = Array.isArray(forwardedFor)
       ? forwardedFor[0]
       : forwardedFor?.split(',')[0];
@@ -154,6 +226,7 @@ export class AuthController {
       userAgent: Array.isArray(userAgent)
         ? userAgent[0] ?? 'unknown'
         : userAgent ?? 'unknown',
+      deviceId: Array.isArray(deviceId) ? deviceId[0] : deviceId,
     };
   }
 }

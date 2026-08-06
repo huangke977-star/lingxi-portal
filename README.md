@@ -130,6 +130,14 @@ Authentication cache TTL values are controlled by the access/refresh-token polic
 
 认证缓存的 TTL 由 Access Token / Refresh Token 策略统一控制，缓存管理页不能手动修改，以保证令牌记录和用户会话索引一致。撤销 Refresh Token 后，已经签发的短期 Access Token 不会被追溯失效，最迟会在自身到期时停止使用。
 
+## 账号安全 / Account Security
+
+HLOVET 支持可选的注册邮箱验证、密码找回、Cloudflare Turnstile、人机验证后的登录风险识别、可信设备记录，以及站内和邮件安全提醒。管理员可以查询邮件任务、验证码请求和风险事件；只有超级管理员可以修改 SMTP 与 Turnstile 配置。所有外部功能默认关闭，不会在尚未配置服务凭据时阻断现有注册和登录。
+
+HLOVET supports optional registration email verification, password recovery, Cloudflare Turnstile, login-risk detection, known-device history, and in-app or email security alerts. Administrators can inspect mail jobs, verification requests, and risk events, while only the super administrator can change SMTP and Turnstile configuration. External integrations default to disabled, so deployment does not interrupt existing registration or login before credentials are configured.
+
+See [账号安全配置与运维](docs/account-security.zh-CN.md) or [Account Security Configuration And Operations](docs/account-security.en.md) for configuration, permissions, rate limits, release steps, and key-management requirements.
+
 ## Docker 全栈 / Docker Stack
 
 ```bash
@@ -207,6 +215,8 @@ pnpm build
 
 - `docs/six-phase-roadmap.zh-CN.md`
 - `docs/six-phase-roadmap.en.md`
+- `docs/account-security.zh-CN.md`
+- `docs/account-security.en.md`
 - `docs/storage-management.zh-CN.md`
 - `docs/storage-management.en.md`
 - `docs/superpowers/specs/2026-07-09-personal-portal-design.zh-CN.md`

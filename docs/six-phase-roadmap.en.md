@@ -2,8 +2,8 @@
 
 - Document status: Active
 - Created: 2026-08-04
-- Last updated: 2026-08-05
-- Current phase: Phase 1 blocked on external acceptance
+- Last updated: 2026-08-06
+- Current phase: Phase 2 awaiting deployment and external acceptance
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -34,7 +34,7 @@ Status definitions:
 | Phase | Name | Main scope | Status |
 | --- | --- | --- | --- |
 | Phase 1 | Reliability Foundation | Media backup, missing-file repair, lightweight monitoring | Blocked (remote restore drill only) |
-| Phase 2 | Account Security | Password recovery, email verification, Turnstile, login-risk alerts | Not started |
+| Phase 2 | Account Security | Password recovery, email verification, Turnstile, login-risk alerts | In progress (deployment and real-credential integration pending) |
 | Phase 3 | Content Capability | Autosave, version history, preview, unified search | Not started |
 | Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | Not started |
 | Phase 5 | Social Capability | Group chat, group files, moderation, temporary conversations | Not started |
@@ -104,16 +104,23 @@ Goal: add account recovery, bot protection, and login-risk awareness while keepi
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P2-01 | Add encrypted SMTP administration and connection tests | Not started |
-| P2-02 | Add registration email verification and request limits | Not started |
-| P2-03 | Add password recovery and revoke all old sessions after reset | Not started |
-| P2-04 | Apply Turnstile to registration, repeated login failures, and recovery | Not started |
-| P2-05 | Detect new devices, unfamiliar IP addresses, and abnormal login frequency | Not started |
-| P2-06 | Deliver login-risk alerts through in-app messages and email | Not started |
-| P2-07 | Add account security history to the profile area | Not started |
-| P2-08 | Add login, email, and new-device notification preferences | Not started |
-| P2-09 | Add administrative views for mail jobs, verification requests, and risk events | Not started |
-| P2-10 | Complete throttling, token invalidation, security tests, and bilingual docs | Not started |
+| P2-01 | Add encrypted SMTP administration and connection tests | Completed |
+| P2-02 | Add registration email verification and request limits | Completed |
+| P2-03 | Add password recovery and revoke all old sessions after reset | Completed |
+| P2-04 | Apply Turnstile to registration, repeated login failures, and recovery | Completed |
+| P2-05 | Detect new devices, unfamiliar IP addresses, and abnormal login frequency | Completed |
+| P2-06 | Deliver login-risk alerts through in-app messages and email | Completed |
+| P2-07 | Add account security history to the profile area | Completed |
+| P2-08 | Add login, email, and new-device notification preferences | Completed |
+| P2-09 | Add administrative views for mail jobs, verification requests, and risk events | Completed |
+| P2-10 | Complete throttling, token invalidation, security tests, and bilingual docs | Completed |
+
+### Current Acceptance Results
+
+- Code, the additive migration, desktop and mobile UI, authorization, automated tests, and bilingual documentation are complete for P2-01 through P2-10.
+- All 27 API suites with 173 tests passed. Prisma generation/validation, frontend/backend lint and production builds, and production Compose validation also passed.
+- New features default to disabled, historical users remain email-verified after migration, and password recovery revokes every refresh session while immediately invalidating old access tokens through the account security version.
+- Production deployment and existing-login regression will run after image publication. Real SMTP and Turnstile credentials have not been supplied, so live mail delivery and Cloudflare challenge verification remain pending external integration.
 
 ### Acceptance
 
@@ -284,7 +291,7 @@ A phase can be marked `Completed` only when all conditions are met:
 | Phase | Completed | Commit | Deployment | Notes |
 | --- | --- | --- | --- | --- |
 | Phase 1 | - | `90e43d3`, `290aa5c`, `fe6c619`, `0569d1a` | P1-01 through P1-11 deployed (2026-08-05) | P1-12 is blocked only on the OSS/R2 production restore drill; scan #5 found 20 healthy files, 3 historical missing article files, and no orphan files |
-| Phase 2 | - | - | - | Not started |
+| Phase 2 | - | - | Awaiting deployment | P2-01 through P2-10 passed code and automated acceptance; real SMTP/Turnstile integration awaits credentials |
 | Phase 3 | - | - | - | Not started |
 | Phase 4 | - | - | - | Not started |
 | Phase 5 | - | - | - | Not started |

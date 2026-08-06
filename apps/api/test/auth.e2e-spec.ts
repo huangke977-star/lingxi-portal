@@ -4,12 +4,16 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisService } from '../src/redis/redis.service';
+import { AccountSecurityService } from '../src/security/account-security.service';
+import { SecurityConfigurationService } from '../src/security/security-configuration.service';
+import { TurnstileService } from '../src/security/turnstile.service';
 
 interface StoredUser {
   id: number;
   username: string;
   nickname: string;
   email: string;
+  emailVerifiedAt: Date | null;
   passwordHash: string;
   roleId: number;
   isSuperAdmin: boolean;
@@ -70,6 +74,28 @@ const defaultSiteSetting = {
   updatedAt: new Date('2026-07-20T00:00:00.000Z'),
 };
 
+const defaultSecurityConfiguration = {
+  id: 1,
+  smtpEnabled: false,
+  smtpHost: null,
+  smtpPort: 587,
+  smtpSecure: false,
+  smtpUsername: null,
+  smtpPasswordEncrypted: null,
+  smtpFromName: 'HLOVET',
+  smtpFromEmail: null,
+  registrationEmailVerificationEnabled: false,
+  passwordRecoveryEnabled: false,
+  turnstileSiteKey: null,
+  turnstileSecretEncrypted: null,
+  turnstileRegistrationEnabled: false,
+  turnstileLoginEnabled: false,
+  turnstileRecoveryEnabled: false,
+  loginFailureTurnstileThreshold: 3,
+  createdAt: new Date('2026-08-06T00:00:00.000Z'),
+  updatedAt: new Date('2026-08-06T00:00:00.000Z'),
+};
+
 function createPrismaMock() {
   const users: StoredUser[] = [];
   const withRole = (user: StoredUser) => ({
@@ -77,6 +103,7 @@ function createPrismaMock() {
     username: user.username,
     nickname: user.nickname,
     email: user.email,
+    emailVerifiedAt: user.emailVerifiedAt,
     passwordHash: user.passwordHash,
     status: user.status,
     isSuperAdmin: user.isSuperAdmin,
@@ -116,6 +143,7 @@ function createPrismaMock() {
               username: string;
               nickname: string;
               email: string;
+              emailVerifiedAt?: Date | null;
               passwordHash: string;
               roleId: number;
               profileBio?: string;
@@ -126,6 +154,7 @@ function createPrismaMock() {
               username: data.username,
               nickname: data.nickname,
               email: data.email,
+              emailVerifiedAt: data.emailVerifiedAt ?? null,
               passwordHash: data.passwordHash,
               roleId: data.roleId,
               isSuperAdmin: false,
@@ -214,6 +243,7 @@ function createRedisMock() {
         return next;
       }),
       expire: jest.fn(async () => 1),
+      pushCappedList: jest.fn(async () => undefined),
     },
   };
 }
@@ -239,6 +269,26 @@ describe('AuthController (e2e)', () => {
       .useValue(prismaState.prisma)
       .overrideProvider(RedisService)
       .useValue(redisState.redis)
+      .overrideProvider(SecurityConfigurationService)
+      .useValue({
+        getConfiguration: jest.fn(async () => defaultSecurityConfiguration),
+        getPublicPolicy: jest.fn(async () => ({
+          registrationEmailVerificationEnabled: false,
+          passwordRecoveryEnabled: false,
+          turnstile: { siteKey: '', registrationEnabled: false, loginEnabled: false, recoveryEnabled: false, loginFailureThreshold: 3 },
+        })),
+      })
+      .overrideProvider(TurnstileService)
+      .useValue({ verify: jest.fn(async () => undefined) })
+      .overrideProvider(AccountSecurityService)
+      .useValue({
+        consumeRegistrationCode: jest.fn(async () => undefined),
+        recordLogin: jest.fn(async () => undefined),
+        recordBlockedLogin: jest.fn(async () => undefined),
+        recordPasswordEvent: jest.fn(async () => undefined),
+        getMySecurity: jest.fn(async () => ({ emailVerifiedAt: null, preferences: {}, events: [], trustedDevices: [] })),
+        updatePreferences: jest.fn(async (userId: number, dto: unknown) => dto),
+      })
       .compile();
 
     app = moduleRef.createNestApplication();

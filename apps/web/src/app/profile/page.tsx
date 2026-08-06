@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import Cropper, { type Area, type CropperProps } from "react-easy-crop";
 import { KeyRound, MonitorSmartphone, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
+import { AccountSecurityPanel } from "@/components/account-security-panel";
 import { PasswordInput } from "@/components/password-input";
 import { RoleSymbol } from "@/components/role-symbol";
 import {
@@ -945,6 +946,8 @@ export default function ProfilePage() {
               </div>
             </section>
           ) : null}
+
+          <AccountSecurityPanel email={user.email} />
 
           <section className="profile-panel theme-panel">
             <div className="panel-heading">

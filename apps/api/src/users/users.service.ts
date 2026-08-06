@@ -28,6 +28,8 @@ interface UserRecord {
   username: string;
   nickname: string;
   email: string;
+  emailVerifiedAt: Date | null;
+  authVersion: number;
   passwordHash?: string;
   status: string;
   isSuperAdmin: boolean;
@@ -142,6 +144,7 @@ export class UsersService {
     email: string;
     passwordHash: string;
     roleCode?: string;
+    emailVerifiedAt?: Date | null;
   }): Promise<AuthenticatedUser & { passwordHash: string }> {
     const username = input.username.trim();
     const roleCode = input.roleCode?.trim() || "qi_refining";
@@ -159,6 +162,7 @@ export class UsersService {
         username,
         nickname: this.normalizeNickname(input.nickname, ""),
         email: input.email.trim().toLowerCase(),
+        emailVerifiedAt: input.emailVerifiedAt ?? null,
         passwordHash: input.passwordHash,
         roleId: role.id,
         profileBio: pickDefaultProfileBio(),
@@ -314,11 +318,14 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
-  async updateOwnPassword(id: number, password: string): Promise<void> {
+  async updateOwnPassword(id: number, password: string, invalidateAll = false): Promise<void> {
     const passwordHash = await this.passwordService.hashPassword(password);
     await this.prisma.user.update({
       where: { id },
-      data: { passwordHash },
+      data: {
+        passwordHash,
+        ...(invalidateAll ? { authVersion: { increment: 1 } } : {}),
+      },
     });
   }
 
@@ -395,7 +402,12 @@ export class UsersService {
 
     const user = await this.prisma.user.update({
       where: { id },
-      data: { nickname, email, profileBio: profile.profileBio },
+      data: {
+        nickname,
+        email,
+        profileBio: profile.profileBio,
+        ...(email !== current.email ? { emailVerifiedAt: null } : {}),
+      },
       select: this.userSelect(),
     });
 
@@ -475,6 +487,8 @@ export class UsersService {
       username: true,
       nickname: true,
       email: true,
+      emailVerifiedAt: true,
+      authVersion: true,
       status: true,
       isSuperAdmin: true,
       appearanceThemeId: true,
@@ -513,6 +527,8 @@ export class UsersService {
       username: user.username,
       nickname: user.nickname,
       email: user.email,
+      emailVerifiedAt: user.emailVerifiedAt,
+      authVersion: user.authVersion,
       status: user.status as UserStatus,
       isSuperAdmin: user.isSuperAdmin,
       avatarUrl: user.avatarStoredName

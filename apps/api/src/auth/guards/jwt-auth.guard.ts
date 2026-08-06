@@ -32,6 +32,9 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     request.user = await this.usersService.findActiveById(payload.sub);
+    if ((payload.av ?? 0) !== (request.user.authVersion ?? 0)) {
+      throw new UnauthorizedException('Access token has been revoked.');
+    }
     request.sessionId = payload.sid ?? null;
     return true;
   }

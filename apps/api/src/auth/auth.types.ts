@@ -17,6 +17,8 @@ export interface AuthenticatedUser {
   username: string;
   nickname: string;
   email: string;
+  emailVerifiedAt?: Date | null;
+  authVersion?: number;
   status: UserStatus;
   isSuperAdmin: boolean;
   avatarUrl: string | null;
@@ -39,6 +41,7 @@ export interface AuthResponse {
 export interface RefreshSessionContext {
   ip: string;
   userAgent: string;
+  deviceId?: string;
 }
 
 export interface AuthSessionSummary {
@@ -54,4 +57,5 @@ export interface AccessTokenPayload {
   sub: number;
   username: string;
   sid?: string;
+  av?: number;
 }

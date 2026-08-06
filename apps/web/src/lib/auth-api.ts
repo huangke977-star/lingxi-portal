@@ -58,12 +58,14 @@ export interface AuthSession {
 
 interface ApiErrorBody {
   message?: string | string[];
+  code?: string;
 }
 
 export class ApiRequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -80,6 +82,7 @@ export function isAuthExpiredError(error: unknown): boolean {
 export async function login(input: {
   account: string;
   password: string;
+  turnstileToken?: string;
 }): Promise<AuthResponse> {
   const response = await requestJson<AuthResponse>("/auth/login", {
     method: "POST",
@@ -94,10 +97,16 @@ export async function register(input: {
   nickname: string;
   email: string;
   password: string;
+  verificationCode?: string;
+  turnstileToken?: string;
+  deviceId?: string;
 }): Promise<AuthResponse> {
   const response = await requestJson<AuthResponse>("/auth/register", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      ...input,
+      deviceId: input.deviceId ?? getOrCreateDeviceId() ?? undefined,
+    }),
   });
 
   return normalizeAuthResponse(response);
@@ -261,6 +270,7 @@ export async function requestJson<T>(
   if (!isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+  appendDeviceIdHeader(headers);
 
   let response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
     ...init,
@@ -284,10 +294,8 @@ export async function requestJson<T>(
   }
 
   if (!response.ok) {
-    throw new ApiRequestError(
-      await readErrorMessage(response),
-      response.status,
-    );
+    const error = await readApiError(response);
+    throw new ApiRequestError(error.message, response.status, error.code);
   }
 
   return response.json() as Promise<T>;
@@ -298,6 +306,7 @@ export async function requestBlob(
   init: RequestInit = {},
 ): Promise<Blob> {
   const headers = new Headers(init.headers);
+  appendDeviceIdHeader(headers);
   let response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
     ...init,
     headers,
@@ -320,10 +329,8 @@ export async function requestBlob(
   }
 
   if (!response.ok) {
-    throw new ApiRequestError(
-      await readErrorMessage(response),
-      response.status,
-    );
+    const error = await readApiError(response);
+    throw new ApiRequestError(error.message, response.status, error.code);
   }
 
   return response.blob();
@@ -518,17 +525,54 @@ export function resolveApiUrl(path: string): string {
   return `${getBrowserApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+const DEVICE_ID_STORAGE_KEY = "hlovet_device_id";
+
+export function getOrCreateDeviceId(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const storedDeviceId = window.localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+  if (storedDeviceId) {
+    return storedDeviceId;
+  }
+
+  const deviceId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `device-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
+  window.localStorage.setItem(DEVICE_ID_STORAGE_KEY, deviceId);
+  return deviceId;
+}
+
+function appendDeviceIdHeader(headers: Headers): void {
+  if (headers.has("X-Device-ID")) {
+    return;
+  }
+
+  const deviceId = getOrCreateDeviceId();
+  if (deviceId) {
+    headers.set("X-Device-ID", deviceId);
+  }
+}
+
 export async function readErrorMessage(response: Response): Promise<string> {
+  return (await readApiError(response)).message;
+}
+
+async function readApiError(
+  response: Response,
+): Promise<{ message: string; code?: string }> {
   const fallback = `请求失败，状态码 ${response.status}`;
 
   try {
     const body = (await response.json()) as ApiErrorBody;
     if (Array.isArray(body.message)) {
-      return body.message[0] ?? fallback;
+      return { message: body.message[0] ?? fallback, code: body.code };
     }
 
-    return body.message ?? fallback;
+    return { message: body.message ?? fallback, code: body.code };
   } catch {
-    return fallback;
+    return { message: fallback };
   }
 }

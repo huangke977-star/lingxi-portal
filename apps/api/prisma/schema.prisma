@@ -106,6 +106,57 @@ enum UserNotificationChannel {
   interaction
 }
 
+enum EmailVerificationPurpose {
+  registration
+  account_email
+}
+
+enum EmailVerificationStatus {
+  pending
+  verified
+  consumed
+  expired
+}
+
+enum PasswordResetStatus {
+  pending
+  consumed
+  expired
+}
+
+enum MailJobType {
+  registration_verification
+  account_email_verification
+  password_reset
+  login_risk
+  security_notice
+}
+
+enum MailJobStatus {
+  pending
+  sending
+  sent
+  failed
+}
+
+enum LoginSecurityEventType {
+  login_success
+  new_device
+  new_ip
+  unusual_frequency
+  login_blocked
+  password_reset
+  password_changed
+  email_verified
+}
+
+enum LoginRiskLevel {
+  info
+  low
+  medium
+  high
+}
+
 enum StorageScanStatus {
   running
   completed
@@ -214,68 +265,76 @@ model Role {
 }
 
 model User {
-  id                      Int                    @id @default(autoincrement())
-  username                String                 @unique @db.VarChar(32)
-  nickname                String                 @db.VarChar(32)
-  email                   String                 @unique @db.VarChar(191)
-  passwordHash            String                 @map("password_hash") @db.VarChar(255)
-  roleId                  Int                    @map("role_id")
-  role                    Role                   @relation(fields: [roleId], references: [id])
-  isSuperAdmin            Boolean                @default(false) @map("is_super_admin")
-  status                  UserStatus             @default(active)
-  appearanceThemeId       String                 @default("cloud-blue") @map("appearance_theme_id") @db.VarChar(64)
-  customAccent            String                 @default("#1814f0") @map("custom_accent") @db.VarChar(7)
-  customSurface           String                 @default("#dfc8c8") @map("custom_surface") @db.VarChar(7)
-  customForeground        String                 @default("#2b2530") @map("custom_foreground") @db.VarChar(7)
-  customMuted             String                 @default("#665867") @map("custom_muted") @db.VarChar(7)
-  cardAlpha               Int                    @default(50) @map("card_alpha")
-  glassBlur               Int                    @default(18) @map("glass_blur")
-  glassTint               String                 @default("#fff3f6") @map("glass_tint") @db.VarChar(7)
-  glassTintAlpha          Int                    @default(0) @map("glass_tint_alpha")
-  appearanceCustomized    Boolean                @default(false) @map("appearance_customized")
-  avatarOriginalName      String?                @map("avatar_original_name") @db.VarChar(255)
-  avatarStoredName        String?                @unique @map("avatar_stored_name") @db.VarChar(255)
-  avatarMimeType          String?                @map("avatar_mime_type") @db.VarChar(64)
-  avatarSizeBytes         Int?                   @map("avatar_size_bytes")
-  profileBio              String                 @default("我懒，我不写") @map("profile_bio") @db.VarChar(180)
-  lastLoginAt             DateTime?              @map("last_login_at")
-  createdAt               DateTime               @default(now()) @map("created_at")
-  updatedAt               DateTime               @updatedAt @map("updated_at")
-  backgroundImages        BackgroundImage[]
-  siteAssets              SiteAsset[]
-  androidReleases         AndroidRelease[]
-  portalCategoriesCreated PortalCategory[]       @relation("PortalCategoryCreatedBy")
-  portalCategoriesUpdated PortalCategory[]       @relation("PortalCategoryUpdatedBy")
-  portalEntriesCreated    PortalEntry[]          @relation("PortalEntryCreatedBy")
-  portalEntriesUpdated    PortalEntry[]          @relation("PortalEntryUpdatedBy")
-  articles                Article[]              @relation("ArticleAuthor")
-  articleComments         ArticleComment[]       @relation("ArticleCommentAuthor")
-  articleLikes            ArticleLike[]
-  articleFavorites        ArticleFavorite[]
-  articleViews            ArticleView[]
-  articleReadLater        ArticleReadLater[]
-  articleReadingHistory   ArticleReadingHistory[]
-  articleCommentLikes     ArticleCommentLike[]
-  articleCommentReports   ArticleCommentReport[] @relation("ArticleCommentReporter")
-  handledCommentReports   ArticleCommentReport[] @relation("ArticleCommentReportHandler")
-  friendshipsAsOne        Friendship[]           @relation("FriendshipUserOne")
-  friendshipsAsTwo        Friendship[]           @relation("FriendshipUserTwo")
-  friendshipRequests      Friendship[]           @relation("FriendshipRequester")
-  blockedFriendships      Friendship[]           @relation("FriendshipBlocker")
-  chatMessages            ChatMessage[]          @relation("ChatMessageSender")
-  conversationStates      ConversationParticipantState[]
-  hiddenChatMessages      ChatMessageDeletion[]
-  chatAttachments         ChatAttachment[]       @relation("ChatAttachmentUploader")
-  callsStarted            CallSession[]           @relation("CallSessionCaller")
-  callsReceived           CallSession[]           @relation("CallSessionCallee")
-  callsEnded              CallSession[]           @relation("CallSessionEndedBy")
-  notifications           UserNotification[]     @relation("UserNotificationRecipient")
-  notificationActions     UserNotification[]     @relation("UserNotificationActor")
+  id                        Int                            @id @default(autoincrement())
+  username                  String                         @unique @db.VarChar(32)
+  nickname                  String                         @db.VarChar(32)
+  email                     String                         @unique @db.VarChar(191)
+  emailVerifiedAt           DateTime?                      @map("email_verified_at")
+  authVersion               Int                            @default(0) @map("auth_version")
+  passwordHash              String                         @map("password_hash") @db.VarChar(255)
+  roleId                    Int                            @map("role_id")
+  role                      Role                           @relation(fields: [roleId], references: [id])
+  isSuperAdmin              Boolean                        @default(false) @map("is_super_admin")
+  status                    UserStatus                     @default(active)
+  appearanceThemeId         String                         @default("cloud-blue") @map("appearance_theme_id") @db.VarChar(64)
+  customAccent              String                         @default("#1814f0") @map("custom_accent") @db.VarChar(7)
+  customSurface             String                         @default("#dfc8c8") @map("custom_surface") @db.VarChar(7)
+  customForeground          String                         @default("#2b2530") @map("custom_foreground") @db.VarChar(7)
+  customMuted               String                         @default("#665867") @map("custom_muted") @db.VarChar(7)
+  cardAlpha                 Int                            @default(50) @map("card_alpha")
+  glassBlur                 Int                            @default(18) @map("glass_blur")
+  glassTint                 String                         @default("#fff3f6") @map("glass_tint") @db.VarChar(7)
+  glassTintAlpha            Int                            @default(0) @map("glass_tint_alpha")
+  appearanceCustomized      Boolean                        @default(false) @map("appearance_customized")
+  avatarOriginalName        String?                        @map("avatar_original_name") @db.VarChar(255)
+  avatarStoredName          String?                        @unique @map("avatar_stored_name") @db.VarChar(255)
+  avatarMimeType            String?                        @map("avatar_mime_type") @db.VarChar(64)
+  avatarSizeBytes           Int?                           @map("avatar_size_bytes")
+  profileBio                String                         @default("我懒，我不写") @map("profile_bio") @db.VarChar(180)
+  lastLoginAt               DateTime?                      @map("last_login_at")
+  createdAt                 DateTime                       @default(now()) @map("created_at")
+  updatedAt                 DateTime                       @updatedAt @map("updated_at")
+  backgroundImages          BackgroundImage[]
+  siteAssets                SiteAsset[]
+  androidReleases           AndroidRelease[]
+  portalCategoriesCreated   PortalCategory[]               @relation("PortalCategoryCreatedBy")
+  portalCategoriesUpdated   PortalCategory[]               @relation("PortalCategoryUpdatedBy")
+  portalEntriesCreated      PortalEntry[]                  @relation("PortalEntryCreatedBy")
+  portalEntriesUpdated      PortalEntry[]                  @relation("PortalEntryUpdatedBy")
+  articles                  Article[]                      @relation("ArticleAuthor")
+  articleComments           ArticleComment[]               @relation("ArticleCommentAuthor")
+  articleLikes              ArticleLike[]
+  articleFavorites          ArticleFavorite[]
+  articleViews              ArticleView[]
+  articleReadLater          ArticleReadLater[]
+  articleReadingHistory     ArticleReadingHistory[]
+  articleCommentLikes       ArticleCommentLike[]
+  articleCommentReports     ArticleCommentReport[]         @relation("ArticleCommentReporter")
+  handledCommentReports     ArticleCommentReport[]         @relation("ArticleCommentReportHandler")
+  friendshipsAsOne          Friendship[]                   @relation("FriendshipUserOne")
+  friendshipsAsTwo          Friendship[]                   @relation("FriendshipUserTwo")
+  friendshipRequests        Friendship[]                   @relation("FriendshipRequester")
+  blockedFriendships        Friendship[]                   @relation("FriendshipBlocker")
+  chatMessages              ChatMessage[]                  @relation("ChatMessageSender")
+  conversationStates        ConversationParticipantState[]
+  hiddenChatMessages        ChatMessageDeletion[]
+  chatAttachments           ChatAttachment[]               @relation("ChatAttachmentUploader")
+  callsStarted              CallSession[]                  @relation("CallSessionCaller")
+  callsReceived             CallSession[]                  @relation("CallSessionCallee")
+  callsEnded                CallSession[]                  @relation("CallSessionEndedBy")
+  notifications             UserNotification[]             @relation("UserNotificationRecipient")
+  notificationActions       UserNotification[]             @relation("UserNotificationActor")
   notificationChannelStates UserNotificationChannelState[]
-  subscriptionsGiven      UserSubscription[]     @relation("UserSubscriptionSubscriber")
-  subscriptionsReceived   UserSubscription[]     @relation("UserSubscriptionAuthor")
-  auditLogs                AuditLog[]             @relation("AuditLogActor")
-  pushSubscriptions       PushSubscription[]
+  subscriptionsGiven        UserSubscription[]             @relation("UserSubscriptionSubscriber")
+  subscriptionsReceived     UserSubscription[]             @relation("UserSubscriptionAuthor")
+  auditLogs                 AuditLog[]                     @relation("AuditLogActor")
+  pushSubscriptions         PushSubscription[]
+  securityPreference        UserSecurityPreference?
+  knownLoginDevices         KnownLoginDevice[]
+  loginSecurityEvents       LoginSecurityEvent[]
+  emailVerificationRequests EmailVerificationRequest[]
+  passwordResetRequests     PasswordResetRequest[]
+  mailJobs                  MailJob[]
 
   @@index([roleId])
   @@index([createdAt])
@@ -340,83 +399,83 @@ model AndroidRelease {
 }
 
 model SiteSetting {
-  id                              Int               @id @default(1)
-  siteName                        String            @default("HLOVET") @map("site_name") @db.VarChar(80)
-  browserTitle                    String            @default("HLOVET") @map("browser_title") @db.VarChar(120)
-  logoPath                        String            @default("/favicon.svg") @map("logo_path") @db.VarChar(512)
-  pwaIconPath                     String            @default("/icon-192.png") @map("pwa_icon_path") @db.VarChar(512)
-  defaultBackgroundUrl            String            @default("/images/hlovet-cloud-blue.jpeg") @map("default_background_url") @db.VarChar(512)
-  defaultThemeId                  String            @default("cloud-blue") @map("default_theme_id") @db.VarChar(64)
-  defaultAccent                   String            @default("#1814f0") @map("default_accent") @db.VarChar(7)
-  defaultSurface                  String            @default("#dfc8c8") @map("default_surface") @db.VarChar(7)
-  defaultForeground               String            @default("#2b2530") @map("default_foreground") @db.VarChar(7)
-  defaultMuted                    String            @default("#665867") @map("default_muted") @db.VarChar(7)
-  defaultCardAlpha                Int               @default(50) @map("default_card_alpha")
-  defaultGlassBlur                Int               @default(18) @map("default_glass_blur")
-  defaultGlassTint                String            @default("#fff3f6") @map("default_glass_tint") @db.VarChar(7)
-  defaultGlassTintAlpha           Int               @default(0) @map("default_glass_tint_alpha")
-  registrationOpen                Boolean           @default(true) @map("registration_open")
-  defaultRoleCode                 String            @default("qi_refining") @map("default_role_code") @db.VarChar(64)
-  installPageEnabled              Boolean           @default(true) @map("install_page_enabled")
-  apkHistoryEnabled               Boolean           @default(true) @map("apk_history_enabled")
-  apkAutoCleanupEnabled           Boolean           @default(false) @map("apk_auto_cleanup_enabled")
-  apkRetentionCount               Int               @default(3) @map("apk_retention_count")
-  defaultArticleVisibility        ArticleVisibility @default(public) @map("default_article_visibility")
-  articleImageMaxSizeMb           Int               @default(10) @map("article_image_max_size_mb")
-  commentsEnabled                 Boolean           @default(true) @map("comments_enabled")
-  reportsEnabled                  Boolean           @default(true) @map("reports_enabled")
-  notifyArticleLiked              Boolean           @default(true) @map("notify_article_liked")
-  notifyArticleFavorited          Boolean           @default(true) @map("notify_article_favorited")
-  notifyArticleCommented          Boolean           @default(true) @map("notify_article_commented")
-  notifyCommentReplied            Boolean           @default(true) @map("notify_comment_replied")
-  notifyAuthorSubscribed          Boolean           @default(true) @map("notify_author_subscribed")
-  notifySubscriptionPublished     Boolean           @default(true) @map("notify_subscription_published")
-  notifyFriendRequest             Boolean           @default(true) @map("notify_friend_request")
-  notifyCommentReport             Boolean           @default(true) @map("notify_comment_report")
-  notifySystem                    Boolean           @default(true) @map("notify_system")
-  templateArticleLiked            String            @default("{actor} 点赞了《{article}》。") @map("template_article_liked") @db.VarChar(240)
-  templateArticleFavorited        String            @default("{actor} 收藏了《{article}》。") @map("template_article_favorited") @db.VarChar(240)
-  templateArticleCommented        String            @default("{actor} 评论了《{article}》。") @map("template_article_commented") @db.VarChar(240)
-  templateCommentReplied          String            @default("{actor} 回复了你在《{article}》中的评论。") @map("template_comment_replied") @db.VarChar(240)
-  templateAuthorSubscribed        String            @default("{actor} 订阅了你。") @map("template_author_subscribed") @db.VarChar(240)
-  templateSubscriptionPublished   String            @default("{author} 发布了《{article}》。") @map("template_subscription_published") @db.VarChar(240)
-  templateFriendRequest           String            @default("{actor} 向你发送了好友申请。") @map("template_friend_request") @db.VarChar(240)
-  templateCommentReportHandled    String            @default("你对《{article}》中评论的举报已{result}。") @map("template_comment_report_handled") @db.VarChar(240)
-  templateCommentAuthorModerated  String            @default("你在《{article}》中的评论已被{result}。") @map("template_comment_author_moderated") @db.VarChar(240)
-  createdAt                       DateTime          @default(now()) @map("created_at")
-  updatedAt                       DateTime          @updatedAt @map("updated_at")
+  id                             Int               @id @default(1)
+  siteName                       String            @default("HLOVET") @map("site_name") @db.VarChar(80)
+  browserTitle                   String            @default("HLOVET") @map("browser_title") @db.VarChar(120)
+  logoPath                       String            @default("/favicon.svg") @map("logo_path") @db.VarChar(512)
+  pwaIconPath                    String            @default("/icon-192.png") @map("pwa_icon_path") @db.VarChar(512)
+  defaultBackgroundUrl           String            @default("/images/hlovet-cloud-blue.jpeg") @map("default_background_url") @db.VarChar(512)
+  defaultThemeId                 String            @default("cloud-blue") @map("default_theme_id") @db.VarChar(64)
+  defaultAccent                  String            @default("#1814f0") @map("default_accent") @db.VarChar(7)
+  defaultSurface                 String            @default("#dfc8c8") @map("default_surface") @db.VarChar(7)
+  defaultForeground              String            @default("#2b2530") @map("default_foreground") @db.VarChar(7)
+  defaultMuted                   String            @default("#665867") @map("default_muted") @db.VarChar(7)
+  defaultCardAlpha               Int               @default(50) @map("default_card_alpha")
+  defaultGlassBlur               Int               @default(18) @map("default_glass_blur")
+  defaultGlassTint               String            @default("#fff3f6") @map("default_glass_tint") @db.VarChar(7)
+  defaultGlassTintAlpha          Int               @default(0) @map("default_glass_tint_alpha")
+  registrationOpen               Boolean           @default(true) @map("registration_open")
+  defaultRoleCode                String            @default("qi_refining") @map("default_role_code") @db.VarChar(64)
+  installPageEnabled             Boolean           @default(true) @map("install_page_enabled")
+  apkHistoryEnabled              Boolean           @default(true) @map("apk_history_enabled")
+  apkAutoCleanupEnabled          Boolean           @default(false) @map("apk_auto_cleanup_enabled")
+  apkRetentionCount              Int               @default(3) @map("apk_retention_count")
+  defaultArticleVisibility       ArticleVisibility @default(public) @map("default_article_visibility")
+  articleImageMaxSizeMb          Int               @default(10) @map("article_image_max_size_mb")
+  commentsEnabled                Boolean           @default(true) @map("comments_enabled")
+  reportsEnabled                 Boolean           @default(true) @map("reports_enabled")
+  notifyArticleLiked             Boolean           @default(true) @map("notify_article_liked")
+  notifyArticleFavorited         Boolean           @default(true) @map("notify_article_favorited")
+  notifyArticleCommented         Boolean           @default(true) @map("notify_article_commented")
+  notifyCommentReplied           Boolean           @default(true) @map("notify_comment_replied")
+  notifyAuthorSubscribed         Boolean           @default(true) @map("notify_author_subscribed")
+  notifySubscriptionPublished    Boolean           @default(true) @map("notify_subscription_published")
+  notifyFriendRequest            Boolean           @default(true) @map("notify_friend_request")
+  notifyCommentReport            Boolean           @default(true) @map("notify_comment_report")
+  notifySystem                   Boolean           @default(true) @map("notify_system")
+  templateArticleLiked           String            @default("{actor} 点赞了《{article}》。") @map("template_article_liked") @db.VarChar(240)
+  templateArticleFavorited       String            @default("{actor} 收藏了《{article}》。") @map("template_article_favorited") @db.VarChar(240)
+  templateArticleCommented       String            @default("{actor} 评论了《{article}》。") @map("template_article_commented") @db.VarChar(240)
+  templateCommentReplied         String            @default("{actor} 回复了你在《{article}》中的评论。") @map("template_comment_replied") @db.VarChar(240)
+  templateAuthorSubscribed       String            @default("{actor} 订阅了你。") @map("template_author_subscribed") @db.VarChar(240)
+  templateSubscriptionPublished  String            @default("{author} 发布了《{article}》。") @map("template_subscription_published") @db.VarChar(240)
+  templateFriendRequest          String            @default("{actor} 向你发送了好友申请。") @map("template_friend_request") @db.VarChar(240)
+  templateCommentReportHandled   String            @default("你对《{article}》中评论的举报已{result}。") @map("template_comment_report_handled") @db.VarChar(240)
+  templateCommentAuthorModerated String            @default("你在《{article}》中的评论已被{result}。") @map("template_comment_author_moderated") @db.VarChar(240)
+  createdAt                      DateTime          @default(now()) @map("created_at")
+  updatedAt                      DateTime          @updatedAt @map("updated_at")
 
   @@map("site_settings")
 }
 
 model BackupConfiguration {
-  id                            Int      @id @default(1)
-  automaticEnabled              Boolean  @default(false) @map("automatic_enabled")
-  scheduleTime                  String   @default("03:00") @map("schedule_time") @db.Char(5)
-  timezone                      String   @default("Asia/Shanghai") @db.VarChar(64)
-  localRetentionDays            Int      @default(7) @map("local_retention_days")
-  remoteRetentionDays           Int      @default(90) @map("remote_retention_days")
-  ossEnabled                    Boolean  @default(false) @map("oss_enabled")
-  ossRegion                     String?  @map("oss_region") @db.VarChar(80)
-  ossEndpoint                   String?  @map("oss_endpoint") @db.VarChar(255)
-  ossBucket                     String?  @map("oss_bucket") @db.VarChar(128)
-  ossPrefix                     String   @default("database") @map("oss_prefix") @db.VarChar(255)
-  ossAccessKeyIdEncrypted       String?  @map("oss_access_key_id_encrypted") @db.Text
-  ossAccessKeySecretEncrypted   String?  @map("oss_access_key_secret_encrypted") @db.Text
-  r2Enabled                     Boolean  @default(false) @map("r2_enabled")
-  r2AccountId                   String?  @map("r2_account_id") @db.VarChar(64)
-  r2Bucket                      String?  @map("r2_bucket") @db.VarChar(128)
-  r2Prefix                      String   @default("database") @map("r2_prefix") @db.VarChar(255)
-  r2AccessKeyIdEncrypted        String?  @map("r2_access_key_id_encrypted") @db.Text
-  r2SecretAccessKeyEncrypted    String?  @map("r2_secret_access_key_encrypted") @db.Text
-  lastAutomaticBackupDate       String?  @map("last_automatic_backup_date") @db.Char(10)
-  lastMediaBackupDate           String?  @map("last_media_backup_date") @db.Char(10)
-  lastSuccessAt                 DateTime? @map("last_success_at")
-  lastFailureAt                 DateTime? @map("last_failure_at")
-  lastFailureMessage            String?  @map("last_failure_message") @db.VarChar(500)
-  lastBackupName                String?  @map("last_backup_name") @db.VarChar(255)
-  createdAt                     DateTime @default(now()) @map("created_at")
-  updatedAt                     DateTime @updatedAt @map("updated_at")
+  id                          Int       @id @default(1)
+  automaticEnabled            Boolean   @default(false) @map("automatic_enabled")
+  scheduleTime                String    @default("03:00") @map("schedule_time") @db.Char(5)
+  timezone                    String    @default("Asia/Shanghai") @db.VarChar(64)
+  localRetentionDays          Int       @default(7) @map("local_retention_days")
+  remoteRetentionDays         Int       @default(90) @map("remote_retention_days")
+  ossEnabled                  Boolean   @default(false) @map("oss_enabled")
+  ossRegion                   String?   @map("oss_region") @db.VarChar(80)
+  ossEndpoint                 String?   @map("oss_endpoint") @db.VarChar(255)
+  ossBucket                   String?   @map("oss_bucket") @db.VarChar(128)
+  ossPrefix                   String    @default("database") @map("oss_prefix") @db.VarChar(255)
+  ossAccessKeyIdEncrypted     String?   @map("oss_access_key_id_encrypted") @db.Text
+  ossAccessKeySecretEncrypted String?   @map("oss_access_key_secret_encrypted") @db.Text
+  r2Enabled                   Boolean   @default(false) @map("r2_enabled")
+  r2AccountId                 String?   @map("r2_account_id") @db.VarChar(64)
+  r2Bucket                    String?   @map("r2_bucket") @db.VarChar(128)
+  r2Prefix                    String    @default("database") @map("r2_prefix") @db.VarChar(255)
+  r2AccessKeyIdEncrypted      String?   @map("r2_access_key_id_encrypted") @db.Text
+  r2SecretAccessKeyEncrypted  String?   @map("r2_secret_access_key_encrypted") @db.Text
+  lastAutomaticBackupDate     String?   @map("last_automatic_backup_date") @db.Char(10)
+  lastMediaBackupDate         String?   @map("last_media_backup_date") @db.Char(10)
+  lastSuccessAt               DateTime? @map("last_success_at")
+  lastFailureAt               DateTime? @map("last_failure_at")
+  lastFailureMessage          String?   @map("last_failure_message") @db.VarChar(500)
+  lastBackupName              String?   @map("last_backup_name") @db.VarChar(255)
+  createdAt                   DateTime  @default(now()) @map("created_at")
+  updatedAt                   DateTime  @updatedAt @map("updated_at")
 
   @@map("backup_configurations")
 }
@@ -455,24 +514,24 @@ model StorageScan {
 }
 
 model StorageScanIssue {
-  id                Int              @id @default(autoincrement())
-  scanId            Int              @map("scan_id")
-  scan              StorageScan      @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  id                Int                 @id @default(autoincrement())
+  scanId            Int                 @map("scan_id")
+  scan              StorageScan         @relation(fields: [scanId], references: [id], onDelete: Cascade)
   kind              StorageIssueKind
-  category          String           @db.VarChar(40)
-  storedName        String           @map("stored_name") @db.VarChar(512)
-  mimeType          String?          @map("mime_type") @db.VarChar(127)
-  expectedSizeBytes Int?             @map("expected_size_bytes")
-  actualSizeBytes   Int?             @map("actual_size_bytes")
-  sourceType        String           @map("source_type") @db.VarChar(64)
-  sourceId          String?          @map("source_id") @db.VarChar(80)
-  sourceLabel       String           @map("source_label") @db.VarChar(255)
-  sourceUrl         String?          @map("source_url") @db.VarChar(512)
-  uploadedBy        String?          @map("uploaded_by") @db.VarChar(80)
-  fileUpdatedAt     DateTime?        @map("file_updated_at")
-  resolvedAt        DateTime?        @map("resolved_at")
-  resolution        String?          @db.VarChar(40)
-  createdAt         DateTime         @default(now()) @map("created_at")
+  category          String              @db.VarChar(40)
+  storedName        String              @map("stored_name") @db.VarChar(512)
+  mimeType          String?             @map("mime_type") @db.VarChar(127)
+  expectedSizeBytes Int?                @map("expected_size_bytes")
+  actualSizeBytes   Int?                @map("actual_size_bytes")
+  sourceType        String              @map("source_type") @db.VarChar(64)
+  sourceId          String?             @map("source_id") @db.VarChar(80)
+  sourceLabel       String              @map("source_label") @db.VarChar(255)
+  sourceUrl         String?             @map("source_url") @db.VarChar(512)
+  uploadedBy        String?             @map("uploaded_by") @db.VarChar(80)
+  fileUpdatedAt     DateTime?           @map("file_updated_at")
+  resolvedAt        DateTime?           @map("resolved_at")
+  resolution        String?             @db.VarChar(40)
+  createdAt         DateTime            @default(now()) @map("created_at")
   repairs           StorageFileRepair[]
 
   @@index([scanId, resolvedAt, kind, category])
@@ -702,38 +761,38 @@ model PortalEntryRole {
 }
 
 model Article {
-  id            Int                  @id @default(autoincrement())
-  authorId      Int                  @map("author_id")
-  author        User                 @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  title         String               @db.VarChar(120)
-  slug          String               @unique @db.VarChar(180)
-  summary       String               @default("") @db.VarChar(300)
-  content       String               @db.LongText
-  coverPath     String?              @map("cover_path") @db.VarChar(512)
-  category      String               @default("") @db.VarChar(80)
-  tags          String               @default("") @db.VarChar(500)
-  titleColor    String               @default("") @map("title_color") @db.VarChar(7)
-  visibility    ArticleVisibility    @default(public)
-  status        ArticleStatus        @default(draft)
-  isPinned      Boolean              @default(false) @map("is_pinned")
-  pinOrder      Int                  @default(0) @map("pin_order")
-  publishedAt   DateTime?            @map("published_at")
-  blockedReason String?              @map("blocked_reason") @db.VarChar(255)
-  viewCount     Int                  @default(0) @map("view_count")
-  likeCount     Int                  @default(0) @map("like_count")
-  favoriteCount Int                  @default(0) @map("favorite_count")
-  commentCount  Int                  @default(0) @map("comment_count")
-  allowedRoles  ArticleAllowedRole[]
-  images        ArticleImage[]
-  comments      ArticleComment[]
-  likes         ArticleLike[]
-  favorites     ArticleFavorite[]
-  views         ArticleView[]
-  readLater     ArticleReadLater[]
+  id             Int                     @id @default(autoincrement())
+  authorId       Int                     @map("author_id")
+  author         User                    @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  title          String                  @db.VarChar(120)
+  slug           String                  @unique @db.VarChar(180)
+  summary        String                  @default("") @db.VarChar(300)
+  content        String                  @db.LongText
+  coverPath      String?                 @map("cover_path") @db.VarChar(512)
+  category       String                  @default("") @db.VarChar(80)
+  tags           String                  @default("") @db.VarChar(500)
+  titleColor     String                  @default("") @map("title_color") @db.VarChar(7)
+  visibility     ArticleVisibility       @default(public)
+  status         ArticleStatus           @default(draft)
+  isPinned       Boolean                 @default(false) @map("is_pinned")
+  pinOrder       Int                     @default(0) @map("pin_order")
+  publishedAt    DateTime?               @map("published_at")
+  blockedReason  String?                 @map("blocked_reason") @db.VarChar(255)
+  viewCount      Int                     @default(0) @map("view_count")
+  likeCount      Int                     @default(0) @map("like_count")
+  favoriteCount  Int                     @default(0) @map("favorite_count")
+  commentCount   Int                     @default(0) @map("comment_count")
+  allowedRoles   ArticleAllowedRole[]
+  images         ArticleImage[]
+  comments       ArticleComment[]
+  likes          ArticleLike[]
+  favorites      ArticleFavorite[]
+  views          ArticleView[]
+  readLater      ArticleReadLater[]
   readingHistory ArticleReadingHistory[]
-  notifications UserNotification[]
-  createdAt     DateTime             @default(now()) @map("created_at")
-  updatedAt     DateTime             @updatedAt @map("updated_at")
+  notifications  UserNotification[]
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
 
   @@index([authorId, status, updatedAt])
   @@index([status, visibility, isPinned, pinOrder])
@@ -769,22 +828,22 @@ model ArticleImage {
 }
 
 model ArticleComment {
-  id        Int                    @id @default(autoincrement())
-  articleId Int                    @map("article_id")
-  article   Article                @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  authorId  Int                    @map("author_id")
-  author    User                   @relation("ArticleCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  parentId  Int?                   @map("parent_id")
-  parent    ArticleComment?        @relation("ArticleCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies   ArticleComment[]       @relation("ArticleCommentReplies")
-  body      String                 @db.Text
-  status    ArticleCommentStatus   @default(active)
-  likeCount Int                    @default(0) @map("like_count")
-  likes     ArticleCommentLike[]
-  reports   ArticleCommentReport[]
+  id            Int                    @id @default(autoincrement())
+  articleId     Int                    @map("article_id")
+  article       Article                @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  authorId      Int                    @map("author_id")
+  author        User                   @relation("ArticleCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  parentId      Int?                   @map("parent_id")
+  parent        ArticleComment?        @relation("ArticleCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies       ArticleComment[]       @relation("ArticleCommentReplies")
+  body          String                 @db.Text
+  status        ArticleCommentStatus   @default(active)
+  likeCount     Int                    @default(0) @map("like_count")
+  likes         ArticleCommentLike[]
+  reports       ArticleCommentReport[]
   notifications UserNotification[]
-  createdAt DateTime               @default(now()) @map("created_at")
-  updatedAt DateTime               @updatedAt @map("updated_at")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
 
   @@index([articleId, status, createdAt])
   @@index([parentId])
@@ -938,34 +997,34 @@ model Friendship {
 }
 
 model Conversation {
-  id           Int              @id @default(autoincrement())
-  friendshipId Int              @unique @map("friendship_id")
-  friendship   Friendship       @relation(fields: [friendshipId], references: [id], onDelete: Cascade)
-  messages     ChatMessage[]
-  attachments  ChatAttachment[]
-  calls        CallSession[]
+  id                Int                            @id @default(autoincrement())
+  friendshipId      Int                            @unique @map("friendship_id")
+  friendship        Friendship                     @relation(fields: [friendshipId], references: [id], onDelete: Cascade)
+  messages          ChatMessage[]
+  attachments       ChatAttachment[]
+  calls             CallSession[]
   participantStates ConversationParticipantState[]
-  createdAt    DateTime         @default(now()) @map("created_at")
-  updatedAt    DateTime         @updatedAt @map("updated_at")
+  createdAt         DateTime                       @default(now()) @map("created_at")
+  updatedAt         DateTime                       @updatedAt @map("updated_at")
 
   @@index([updatedAt])
   @@map("conversations")
 }
 
 model ChatMessage {
-  id             Int              @id @default(autoincrement())
-  conversationId Int              @map("conversation_id")
-  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderId       Int              @map("sender_id")
-  sender         User             @relation("ChatMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
-  callSessionId  Int?             @unique @map("call_session_id")
-  callSession    CallSession?     @relation(fields: [callSessionId], references: [id], onDelete: SetNull)
-  body           String           @db.Text
-  type           ChatMessageType  @default(text)
+  id             Int                   @id @default(autoincrement())
+  conversationId Int                   @map("conversation_id")
+  conversation   Conversation          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       Int                   @map("sender_id")
+  sender         User                  @relation("ChatMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  callSessionId  Int?                  @unique @map("call_session_id")
+  callSession    CallSession?          @relation(fields: [callSessionId], references: [id], onDelete: SetNull)
+  body           String                @db.Text
+  type           ChatMessageType       @default(text)
   attachments    ChatAttachment[]
   deletions      ChatMessageDeletion[]
-  readAt         DateTime?        @map("read_at")
-  createdAt      DateTime         @default(now()) @map("created_at")
+  readAt         DateTime?             @map("read_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
 
   @@index([conversationId, id])
   @@index([senderId, createdAt])
@@ -973,15 +1032,15 @@ model ChatMessage {
 }
 
 model ConversationParticipantState {
-  conversationId        Int          @map("conversation_id")
-  conversation          Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  userId                Int          @map("user_id")
-  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  hidden                Boolean      @default(false)
-  muted                 Boolean      @default(false)
-  clearedBeforeMessageId Int?        @map("cleared_before_message_id")
-  createdAt             DateTime     @default(now()) @map("created_at")
-  updatedAt             DateTime     @updatedAt @map("updated_at")
+  conversationId         Int          @map("conversation_id")
+  conversation           Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId                 Int          @map("user_id")
+  user                   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hidden                 Boolean      @default(false)
+  muted                  Boolean      @default(false)
+  clearedBeforeMessageId Int?         @map("cleared_before_message_id")
+  createdAt              DateTime     @default(now()) @map("created_at")
+  updatedAt              DateTime     @updatedAt @map("updated_at")
 
   @@id([conversationId, userId])
   @@index([userId, hidden, updatedAt])
@@ -1049,30 +1108,30 @@ model CallSession {
 }
 
 model UserNotification {
-  id              Int                   @id @default(autoincrement())
-  userId          Int                   @map("user_id")
-  user            User                  @relation("UserNotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
-  actorId         Int?                  @map("actor_id")
-  actor           User?                 @relation("UserNotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  id              Int                     @id @default(autoincrement())
+  userId          Int                     @map("user_id")
+  user            User                    @relation("UserNotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actorId         Int?                    @map("actor_id")
+  actor           User?                   @relation("UserNotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
   type            UserNotificationType
   channel         UserNotificationChannel @default(system)
-  title           String                @db.VarChar(120)
-  body            String                @db.VarChar(500)
-  actionUrl       String?               @map("action_url") @db.VarChar(512)
-  articleId       Int?                  @map("article_id")
-  article         Article?              @relation(fields: [articleId], references: [id], onDelete: SetNull)
-  commentId       Int?                  @map("comment_id")
-  comment         ArticleComment?       @relation(fields: [commentId], references: [id], onDelete: SetNull)
-  friendshipId    Int?                  @map("friendship_id")
-  friendship      Friendship?           @relation(fields: [friendshipId], references: [id], onDelete: SetNull)
-  commentReportId Int?                  @map("comment_report_id")
-  commentReport   ArticleCommentReport? @relation(fields: [commentReportId], references: [id], onDelete: SetNull)
-  aggregateCount  Int                   @default(1) @map("aggregate_count")
-  readAt          DateTime?             @map("read_at")
-  openedAt        DateTime?             @map("opened_at")
-  pushDeliveredAt DateTime?             @map("push_delivered_at")
-  createdAt       DateTime              @default(now()) @map("created_at")
-  updatedAt       DateTime              @updatedAt @map("updated_at")
+  title           String                  @db.VarChar(120)
+  body            String                  @db.VarChar(500)
+  actionUrl       String?                 @map("action_url") @db.VarChar(512)
+  articleId       Int?                    @map("article_id")
+  article         Article?                @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  commentId       Int?                    @map("comment_id")
+  comment         ArticleComment?         @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  friendshipId    Int?                    @map("friendship_id")
+  friendship      Friendship?             @relation(fields: [friendshipId], references: [id], onDelete: SetNull)
+  commentReportId Int?                    @map("comment_report_id")
+  commentReport   ArticleCommentReport?   @relation(fields: [commentReportId], references: [id], onDelete: SetNull)
+  aggregateCount  Int                     @default(1) @map("aggregate_count")
+  readAt          DateTime?               @map("read_at")
+  openedAt        DateTime?               @map("opened_at")
+  pushDeliveredAt DateTime?               @map("push_delivered_at")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
 
   @@index([userId, channel, readAt, id])
   @@index([pushDeliveredAt, id])
@@ -1095,6 +1154,137 @@ model UserNotificationChannelState {
 
   @@id([userId, channel])
   @@map("user_notification_channel_states")
+}
+
+model SecurityConfiguration {
+  id                                   Int      @id @default(1)
+  smtpEnabled                          Boolean  @default(false) @map("smtp_enabled")
+  smtpHost                             String?  @map("smtp_host") @db.VarChar(255)
+  smtpPort                             Int      @default(587) @map("smtp_port")
+  smtpSecure                           Boolean  @default(false) @map("smtp_secure")
+  smtpUsername                         String?  @map("smtp_username") @db.VarChar(255)
+  smtpPasswordEncrypted                String?  @map("smtp_password_encrypted") @db.Text
+  smtpFromName                         String   @default("HLOVET") @map("smtp_from_name") @db.VarChar(120)
+  smtpFromEmail                        String?  @map("smtp_from_email") @db.VarChar(191)
+  registrationEmailVerificationEnabled Boolean  @default(false) @map("registration_email_verification_enabled")
+  passwordRecoveryEnabled              Boolean  @default(false) @map("password_recovery_enabled")
+  turnstileSiteKey                     String?  @map("turnstile_site_key") @db.VarChar(255)
+  turnstileSecretEncrypted             String?  @map("turnstile_secret_encrypted") @db.Text
+  turnstileRegistrationEnabled         Boolean  @default(false) @map("turnstile_registration_enabled")
+  turnstileLoginEnabled                Boolean  @default(false) @map("turnstile_login_enabled")
+  turnstileRecoveryEnabled             Boolean  @default(false) @map("turnstile_recovery_enabled")
+  loginFailureTurnstileThreshold       Int      @default(3) @map("login_failure_turnstile_threshold")
+  createdAt                            DateTime @default(now()) @map("created_at")
+  updatedAt                            DateTime @updatedAt @map("updated_at")
+
+  @@map("security_configurations")
+}
+
+model UserSecurityPreference {
+  userId                 Int      @id @map("user_id")
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  loginAlertsEnabled     Boolean  @default(true) @map("login_alerts_enabled")
+  emailAlertsEnabled     Boolean  @default(true) @map("email_alerts_enabled")
+  newDeviceAlertsEnabled Boolean  @default(true) @map("new_device_alerts_enabled")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@map("user_security_preferences")
+}
+
+model KnownLoginDevice {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fingerprint String   @db.Char(64)
+  label       String   @db.VarChar(160)
+  userAgent   String   @map("user_agent") @db.VarChar(500)
+  firstIp     String   @map("first_ip") @db.VarChar(80)
+  lastIp      String   @map("last_ip") @db.VarChar(80)
+  firstSeenAt DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt  DateTime @default(now()) @map("last_seen_at")
+
+  @@unique([userId, fingerprint])
+  @@index([userId, lastSeenAt])
+  @@map("known_login_devices")
+}
+
+model LoginSecurityEvent {
+  id                Int                    @id @default(autoincrement())
+  userId            Int                    @map("user_id")
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              LoginSecurityEventType
+  riskLevel         LoginRiskLevel         @default(info) @map("risk_level")
+  summary           String                 @db.VarChar(255)
+  ip                String                 @db.VarChar(80)
+  userAgent         String                 @map("user_agent") @db.VarChar(500)
+  deviceFingerprint String                 @map("device_fingerprint") @db.Char(64)
+  deviceLabel       String                 @map("device_label") @db.VarChar(160)
+  metadata          Json?
+  createdAt         DateTime               @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([type, riskLevel, createdAt])
+  @@index([ip, createdAt])
+  @@map("login_security_events")
+}
+
+model EmailVerificationRequest {
+  id         Int                      @id @default(autoincrement())
+  userId     Int?                     @map("user_id")
+  user       User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose    EmailVerificationPurpose
+  email      String                   @db.VarChar(191)
+  codeHash   String                   @map("code_hash") @db.Char(64)
+  status     EmailVerificationStatus  @default(pending)
+  attempts   Int                      @default(0)
+  ip         String                   @db.VarChar(80)
+  expiresAt  DateTime                 @map("expires_at")
+  verifiedAt DateTime?                @map("verified_at")
+  consumedAt DateTime?                @map("consumed_at")
+  createdAt  DateTime                 @default(now()) @map("created_at")
+  updatedAt  DateTime                 @updatedAt @map("updated_at")
+
+  @@index([email, purpose, status, createdAt])
+  @@index([userId, createdAt])
+  @@map("email_verification_requests")
+}
+
+model PasswordResetRequest {
+  id         Int                 @id @default(autoincrement())
+  userId     Int                 @map("user_id")
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String              @unique @map("token_hash") @db.Char(64)
+  status     PasswordResetStatus @default(pending)
+  ip         String              @db.VarChar(80)
+  expiresAt  DateTime            @map("expires_at")
+  consumedAt DateTime?           @map("consumed_at")
+  createdAt  DateTime            @default(now()) @map("created_at")
+  updatedAt  DateTime            @updatedAt @map("updated_at")
+
+  @@index([userId, status, createdAt])
+  @@map("password_reset_requests")
+}
+
+model MailJob {
+  id        Int           @id @default(autoincrement())
+  userId    Int?          @map("user_id")
+  user      User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  type      MailJobType
+  status    MailJobStatus @default(pending)
+  recipient String        @db.VarChar(191)
+  subject   String        @db.VarChar(255)
+  attempts  Int           @default(0)
+  lastError String?       @map("last_error") @db.VarChar(1000)
+  metadata  Json?
+  sentAt    DateTime?     @map("sent_at")
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([recipient, createdAt])
+  @@map("mail_jobs")
 }
 
 model PushSubscription {

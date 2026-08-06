@@ -14,6 +14,11 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { PasswordService } from './password.service';
 import { RefreshTokenService } from './refresh-token.service';
+import { AccountSecurityService } from '../security/account-security.service';
+import { SecurityConfigurationService } from '../security/security-configuration.service';
+import { TurnstileService } from '../security/turnstile.service';
+import { PasswordRecoveryResetDto } from '../security/dto/security.dto';
+import { LoginSecurityEventType } from '../generated/prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -27,6 +32,9 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly redis: RedisService,
     private readonly siteSettingsService: SiteSettingsService,
+    private readonly accountSecurity: AccountSecurityService,
+    private readonly securityConfiguration: SecurityConfigurationService,
+    private readonly turnstile: TurnstileService,
   ) {}
 
   async register(dto: RegisterDto, context: RefreshSessionContext): Promise<AuthResponse> {
@@ -38,9 +46,21 @@ export class AuthService {
     const username = dto.username.trim();
     const nickname = dto.nickname.trim();
     const email = dto.email.trim().toLowerCase();
+    const securityConfiguration = await this.securityConfiguration.getConfiguration();
 
     if ((await this.usersService.findForLogin(username)) || (await this.usersService.findForLogin(email))) {
       throw new ConflictException('Username or email already exists.');
+    }
+
+    if (securityConfiguration.registrationEmailVerificationEnabled) {
+      if (!dto.verificationCode) throw new BadRequestException('请输入邮箱验证码。');
+      await this.accountSecurity.consumeRegistrationCode(email, dto.verificationCode);
+    } else {
+      await this.turnstile.verify(
+        dto.turnstileToken,
+        context.ip,
+        securityConfiguration.turnstileRegistrationEnabled,
+      );
     }
 
     const passwordHash = await this.passwordService.hashPassword(dto.password);
@@ -50,6 +70,7 @@ export class AuthService {
       email,
       passwordHash,
       roleCode: registrationPolicy.defaultRoleCode,
+      emailVerifiedAt: securityConfiguration.registrationEmailVerificationEnabled ? new Date() : null,
     });
 
     return this.createAuthResponse(user, context);
@@ -58,6 +79,14 @@ export class AuthService {
   async login(dto: LoginDto, context: RefreshSessionContext): Promise<AuthResponse> {
     const account = dto.account.trim();
     const failureKey = this.loginFailureKey(account, context.ip);
+    const failures = Number((await this.redis.get(failureKey)) ?? '0');
+    const securityConfiguration = await this.securityConfiguration.getConfiguration();
+    if (
+      securityConfiguration.turnstileLoginEnabled &&
+      failures >= securityConfiguration.loginFailureTurnstileThreshold
+    ) {
+      await this.turnstile.verify(dto.turnstileToken, context.ip, true);
+    }
     await this.assertNotLocked(failureKey);
 
     const user = await this.usersService.findForLogin(account);
@@ -71,11 +100,12 @@ export class AuthService {
 
     const passwordMatches = await this.passwordService.verifyPassword(dto.password, user.passwordHash);
     if (!passwordMatches) {
-      await this.recordLoginFailure(failureKey);
+      await this.recordLoginFailure(failureKey, user.id, context);
     }
 
     await this.redis.del(failureKey);
     await this.usersService.markLoginSuccess(user.id);
+    await this.accountSecurity.recordLogin(user, context);
     return this.createAuthResponse(user, context);
   }
 
@@ -135,6 +165,7 @@ export class AuthService {
     user: AuthenticatedUser,
     sessionId: string | null,
     dto: ChangePasswordDto,
+    context: RefreshSessionContext,
   ): Promise<{ success: true; revokedSessions: number }> {
     const storedUser = await this.usersService.findForLogin(user.username);
     if (!storedUser) {
@@ -162,6 +193,28 @@ export class AuthService {
       user.id,
       sessionId,
     );
+    await this.accountSecurity.recordPasswordEvent(user.id, LoginSecurityEventType.password_changed, context);
+    return { success: true, revokedSessions };
+  }
+
+  async resetPassword(
+    dto: PasswordRecoveryResetDto,
+    context: RefreshSessionContext,
+  ): Promise<{ success: true; revokedSessions: number }> {
+    const securityConfiguration = await this.securityConfiguration.getConfiguration();
+    await this.turnstile.verify(
+      dto.turnstileToken,
+      context.ip,
+      securityConfiguration.turnstileRecoveryEnabled,
+    );
+    const request = await this.accountSecurity.consumePasswordResetToken(dto.token);
+    await this.usersService.updateOwnPassword(request.userId, dto.newPassword, true);
+    const revokedSessions = await this.refreshTokenService.revokeAllSessions(request.userId);
+    await this.accountSecurity.recordPasswordEvent(
+      request.userId,
+      LoginSecurityEventType.password_reset,
+      context,
+    );
     return { success: true, revokedSessions };
   }
 
@@ -186,6 +239,7 @@ export class AuthService {
         sub: user.id,
         username: user.username,
         sid: sessionId,
+        av: user.authVersion ?? 0,
       },
       {
         secret: process.env.JWT_ACCESS_SECRET ?? 'dev-access-token-secret',
@@ -200,6 +254,7 @@ export class AuthService {
       username: user.username,
       nickname: user.nickname,
       email: user.email,
+      emailVerifiedAt: user.emailVerifiedAt,
       status: user.status,
       isSuperAdmin: user.isSuperAdmin,
       avatarUrl: user.avatarUrl,
@@ -217,13 +272,18 @@ export class AuthService {
     }
   }
 
-  private async recordLoginFailure(failureKey: string): Promise<never> {
+  private async recordLoginFailure(
+    failureKey: string,
+    userId?: number,
+    context?: RefreshSessionContext,
+  ): Promise<never> {
     const failures = await this.redis.incr(failureKey);
     if (failures === 1) {
       await this.redis.expire(failureKey, this.loginFailureTtlSeconds);
     }
 
     if (failures >= this.loginFailureLimit) {
+      if (userId && context) await this.accountSecurity.recordBlockedLogin(userId, context);
       throw new ForbiddenException('Too many failed login attempts.');
     }
 
