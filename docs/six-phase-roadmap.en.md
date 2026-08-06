@@ -3,7 +3,7 @@
 - Document status: Active
 - Created: 2026-08-04
 - Last updated: 2026-08-06
-- Current phase: Phase 2 awaiting deployment and external acceptance
+- Current phase: Phase 2 blocked on external acceptance
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -34,7 +34,7 @@ Status definitions:
 | Phase | Name | Main scope | Status |
 | --- | --- | --- | --- |
 | Phase 1 | Reliability Foundation | Media backup, missing-file repair, lightweight monitoring | Blocked (remote restore drill only) |
-| Phase 2 | Account Security | Password recovery, email verification, Turnstile, login-risk alerts | In progress (deployment and real-credential integration pending) |
+| Phase 2 | Account Security | Password recovery, email verification, Turnstile, login-risk alerts | Blocked (real SMTP/Turnstile integration only) |
 | Phase 3 | Content Capability | Autosave, version history, preview, unified search | Not started |
 | Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | Not started |
 | Phase 5 | Social Capability | Group chat, group files, moderation, temporary conversations | Not started |
@@ -120,7 +120,9 @@ Goal: add account recovery, bot protection, and login-risk awareness while keepi
 - Code, the additive migration, desktop and mobile UI, authorization, automated tests, and bilingual documentation are complete for P2-01 through P2-10.
 - All 27 API suites with 173 tests passed. Prisma generation/validation, frontend/backend lint and production builds, and production Compose validation also passed.
 - New features default to disabled, historical users remain email-verified after migration, and password recovery revokes every refresh session while immediately invalidating old access tokens through the account security version.
-- Production deployment and existing-login regression will run after image publication. Real SMTP and Turnstile credentials have not been supplied, so live mail delivery and Cloudflare challenge verification remain pending external integration.
+- Commit `a22a04f` was pushed and GitHub Actions run `31064603456` published both API and Web images. Production applied migration 28 on 2026-08-06 and recreated only API/Web; MySQL, Redis, Caddy, and TURN were not restarted.
+- Home, login, registration, recovery, Profile, Security Management, and health pages returned `200`. Public policy, unauthenticated `401`, default-disabled state, the server-side credential-encryption environment, and 390px mobile overflow were verified, with no API/Web startup errors.
+- Real SMTP and Turnstile credentials have not been supplied. Live mail delivery, recovery email, and Cloudflare challenge verification remain pending external integration, so Phase 2 stays blocked only on external acceptance.
 
 ### Acceptance
 
@@ -291,7 +293,7 @@ A phase can be marked `Completed` only when all conditions are met:
 | Phase | Completed | Commit | Deployment | Notes |
 | --- | --- | --- | --- | --- |
 | Phase 1 | - | `90e43d3`, `290aa5c`, `fe6c619`, `0569d1a` | P1-01 through P1-11 deployed (2026-08-05) | P1-12 is blocked only on the OSS/R2 production restore drill; scan #5 found 20 healthy files, 3 historical missing article files, and no orphan files |
-| Phase 2 | - | - | Awaiting deployment | P2-01 through P2-10 passed code and automated acceptance; real SMTP/Turnstile integration awaits credentials |
+| Phase 2 | - | `a22a04f` | P2-01 through P2-10 deployed (2026-08-06) | Actions `31064603456` succeeded; only real SMTP/Turnstile integration awaits credentials |
 | Phase 3 | - | - | - | Not started |
 | Phase 4 | - | - | - | Not started |
 | Phase 5 | - | - | - | Not started |
