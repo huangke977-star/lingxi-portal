@@ -3,7 +3,7 @@
 - Document status: Active
 - Created: 2026-08-04
 - Last updated: 2026-08-07
-- Current phase: Phase 2 trusted-device enhancement awaiting deployment
+- Current phase: Phase 2 controlled acceptance for untrusted-device email verification
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -34,7 +34,7 @@ Status definitions:
 | Phase | Name | Main scope | Status |
 | --- | --- | --- | --- |
 | Phase 1 | Reliability Foundation | Media backup, missing-file repair, lightweight monitoring | Blocked (remote restore drill only) |
-| Phase 2 | Account Security | Password recovery, email verification, Turnstile, login-risk alerts | In progress (trusted-device enhancement awaiting deployment) |
+| Phase 2 | Account Security | Password recovery, email verification, Turnstile, login-risk alerts | Blocked (controlled untrusted-device email acceptance only) |
 | Phase 3 | Content Capability | Autosave, version history, preview, unified search | Not started |
 | Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | Not started |
 | Phase 5 | Social Capability | Group chat, group files, moderation, temporary conversations | Not started |
@@ -114,7 +114,7 @@ Goal: add account recovery, bot protection, and login-risk awareness while keepi
 | P2-08 | Add login, email, and new-device notification preferences | Completed |
 | P2-09 | Add administrative views for mail jobs, verification requests, and risk events | Completed |
 | P2-10 | Complete throttling, token invalidation, security tests, and bilingual docs | Completed |
-| P2-11 | Add untrusted-device email verification, trusted-device management, and per-session sign-out | In progress (local work complete; deployment pending) |
+| P2-11 | Add untrusted-device email verification, trusted-device management, and per-session sign-out | Blocked (deployed; controlled live device-verification acceptance pending) |
 
 ### Current Acceptance Results
 
@@ -123,8 +123,8 @@ Goal: add account recovery, bot protection, and login-risk awareness while keepi
 - New features default to disabled, historical users remain email-verified after migration, and password recovery revokes every refresh session while immediately invalidating old access tokens through the account security version.
 - Commit `a22a04f` was pushed and GitHub Actions run `31064603456` published both API and Web images. Production applied migration 28 on 2026-08-06 and recreated only API/Web; MySQL, Redis, Caddy, and TURN were not restarted.
 - Home, login, registration, recovery, Profile, Security Management, and health pages returned `200`. Public policy, unauthenticated `401`, default-disabled state, the server-side credential-encryption environment, and 390px mobile overflow were verified, with no API/Web startup errors.
-- Real SMTP and Turnstile credentials have not been supplied. Live mail delivery, recovery email, and Cloudflare challenge verification remain pending external integration, so Phase 2 stays blocked only on external acceptance.
-- P2-11 now has its additive migration, API/Web implementation, and bilingual documentation complete locally. All 27 API suites with 178 tests, frontend/backend lint, Prisma validation, production builds, and desktop/390px no-overflow checks passed. Push, image build, production migration, and real SMTP device verification have not run, so the task is not complete yet.
+- SMTP registration verification, password recovery, and Turnstile were manually verified in production. P2-11 untrusted-device email verification remains disabled by default and needs a controlled live acceptance run after preserving a signed-in super-admin session.
+- P2-11 commits `8e97c4c` and production fix `c139889` were pushed, and Actions runs `31152045165` and `31152920263` succeeded. Production applied migration 29 on 2026-08-07 and recreated only API/Web. Acceptance caught and rolled back a Socket.IO session-validation crash; after the fix, all 28 API suites with 179 tests passed, repeated API health checks returned `200`, the API restart count stayed at zero, logs were clean, all 14 Redis login sessions remained, and MySQL, Redis, Caddy, and TURN were not restarted.
 
 ### Acceptance
 
@@ -295,7 +295,7 @@ A phase can be marked `Completed` only when all conditions are met:
 | Phase | Completed | Commit | Deployment | Notes |
 | --- | --- | --- | --- | --- |
 | Phase 1 | - | `90e43d3`, `290aa5c`, `fe6c619`, `0569d1a` | P1-01 through P1-11 deployed (2026-08-05) | P1-12 is blocked only on the OSS/R2 production restore drill; scan #5 found 20 healthy files, 3 historical missing article files, and no orphan files |
-| Phase 2 | - | `a22a04f` | P2-01 through P2-10 deployed (2026-08-06) | P2-11 passed local verification and awaits push/deployment; real SMTP/Turnstile integration also remains pending |
+| Phase 2 | - | `a22a04f`, `8e97c4c`, `c139889` | P2-01 through P2-11 deployed (2026-08-07) | P2-11's default-disabled untrusted-device email gate still needs controlled live acceptance; all other production checks passed |
 | Phase 3 | - | - | - | Not started |
 | Phase 4 | - | - | - | Not started |
 | Phase 5 | - | - | - | Not started |
