@@ -12,6 +12,7 @@ import {
   ArticleCommentReportStatus,
   ArticleCommentStatus,
   ArticleStatus,
+  ArticleVersionSource,
   ArticleVisibility,
   Prisma,
   UserNotificationChannel,
@@ -20,10 +21,12 @@ import {
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
+import { buildSearchFields } from "../search/search-normalization";
 import { SiteSettingsService } from "../site-settings/site-settings.service";
 import {
   ARTICLE_STATUSES,
   ArticleStatusValue,
+  AutosaveArticleDto,
   CreateArticleCommentDto,
   CreateArticleDto,
   ListArticleCommentsQueryDto,
@@ -46,6 +49,8 @@ import {
   ArticleMineSummaryResponse,
   ArticleResponse,
   ArticleReadLaterResponse,
+  ArticleVersionResponse,
+  ArticleVersionSummaryResponse,
   ReadingProgressResponse,
 } from "./articles.types";
 
@@ -106,6 +111,20 @@ const ARTICLE_IMAGE_FORMATS: SupportedArticleImageFormat[] = [
       ["avif", "avis"].includes(buffer.subarray(8, 12).toString("ascii")),
   },
 ];
+
+const ARTICLE_AUTOSAVE_VERSION_LIMIT = 50;
+
+const ARTICLE_VERSION_FIELDS = [
+  "title",
+  "summary",
+  "content",
+  "category",
+  "tags",
+  "titleColor",
+  "visibility",
+  "status",
+  "roleCodes",
+] as const;
 
 const articleInclude = {
   author: {
@@ -456,6 +475,7 @@ export class ArticlesService {
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
     const status = this.normalizeAuthorStatus(dto.status);
     const slug = await this.createUniqueSlug(title);
+    const tags = this.normalizeTags(dto.tags);
     const article = await this.prisma.$transaction(async (transaction) => {
       const created = await transaction.article.create({ data: {
         authorId: user.id,
@@ -464,15 +484,163 @@ export class ArticlesService {
         summary: dto.summary?.trim() ?? "",
         content,
         category: dto.category?.trim() ?? "",
-        tags: this.normalizeTags(dto.tags),
+        tags,
         titleColor: this.normalizeTitleColor(dto.titleColor),
         visibility,
         status,
         publishedAt: status === ArticleStatus.published ? new Date() : null,
+        ...buildSearchFields([title, dto.category?.trim() ?? "", tags]),
         allowedRoles: { create: roles.map((role) => ({ roleId: role.id })) },
       }, include: articleInclude });
+      await this.createVersionSnapshot(transaction, created, user.id, ArticleVersionSource.manual);
       if (status === ArticleStatus.published) await this.notifySubscribersOfPublication(transaction, created);
       return created;
+    });
+    return this.toResponse(article, user.id);
+  }
+
+  async createAutosave(user: AuthenticatedUser, dto: AutosaveArticleDto): Promise<ArticleResponse> {
+    const publishPolicy = await this.siteSettingsService.getArticlePublishPolicy();
+    const title = dto.title?.trim() ?? "";
+    const category = dto.category?.trim() ?? "";
+    const tags = this.normalizeTags(dto.tags);
+    const visibility = dto.visibility ?? publishPolicy.defaultArticleVisibility;
+    const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
+    const slug = await this.createUniqueSlug(title || "untitled-article");
+    const article = await this.prisma.$transaction(async (transaction) => {
+      const created = await transaction.article.create({
+        data: {
+          authorId: user.id,
+          title,
+          slug,
+          summary: dto.summary?.trim() ?? "",
+          content: dto.content ?? "",
+          category,
+          tags,
+          titleColor: this.normalizeTitleColor(dto.titleColor),
+          visibility,
+          status: ArticleStatus.draft,
+          ...buildSearchFields([title, category, tags]),
+          allowedRoles: { create: roles.map((role) => ({ roleId: role.id })) },
+        },
+        include: articleInclude,
+      });
+      await this.createVersionSnapshot(transaction, created, user.id, ArticleVersionSource.autosave);
+      return created;
+    });
+    return this.toResponse(article, user.id);
+  }
+
+  async autosave(
+    id: number,
+    user: AuthenticatedUser,
+    dto: AutosaveArticleDto,
+  ): Promise<ArticleResponse> {
+    const existing = await this.getArticleOrThrow(id);
+    this.assertCanEdit(existing, user);
+    if (existing.status === ArticleStatus.deleted) {
+      throw new BadRequestException("回收站中的文章不能自动保存。");
+    }
+    const title = dto.title === undefined ? existing.title : dto.title.trim();
+    const content = dto.content === undefined ? existing.content : dto.content;
+    const category = dto.category === undefined ? existing.category : dto.category.trim();
+    const tags = dto.tags === undefined ? existing.tags : this.normalizeTags(dto.tags);
+    const visibility = dto.visibility ?? existing.visibility;
+    const roles = await this.resolveRoles(visibility, dto.roleCodes ?? this.roleCodes(existing));
+    const article = await this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.article.update({
+        where: { id },
+        data: {
+          title,
+          summary: dto.summary === undefined ? existing.summary : dto.summary.trim(),
+          content,
+          category,
+          tags,
+          titleColor: dto.titleColor === undefined ? existing.titleColor : this.normalizeTitleColor(dto.titleColor),
+          visibility,
+          ...buildSearchFields([title, category, tags]),
+          allowedRoles: {
+            deleteMany: {},
+            create: roles.map((role) => ({ roleId: role.id })),
+          },
+        },
+        include: articleInclude,
+      });
+      await this.createVersionSnapshot(transaction, updated, user.id, ArticleVersionSource.autosave);
+      return updated;
+    });
+    return this.toResponse(article, user.id);
+  }
+
+  async listVersions(id: number, user: AuthenticatedUser): Promise<{ items: ArticleVersionSummaryResponse[] }> {
+    const article = await this.getArticleOrThrow(id);
+    this.assertCanEdit(article, user);
+    const versions = await this.prisma.articleVersion.findMany({
+      where: { articleId: id },
+      orderBy: [{ versionNumber: "desc" }],
+      take: 100,
+      select: {
+        id: true,
+        versionNumber: true,
+        source: true,
+        changedFields: true,
+        createdAt: true,
+        editor: { select: { id: true, username: true, nickname: true } },
+      },
+    });
+    return { items: versions.map((version) => this.toVersionSummary(version)) };
+  }
+
+  async getVersion(id: number, versionId: number, user: AuthenticatedUser): Promise<ArticleVersionResponse> {
+    const article = await this.getArticleOrThrow(id);
+    this.assertCanEdit(article, user);
+    const version = await this.prisma.articleVersion.findFirst({
+      where: { id: versionId, articleId: id },
+      include: { editor: { select: { id: true, username: true, nickname: true } } },
+    });
+    if (!version) throw new NotFoundException("文章版本不存在。");
+    return this.toVersionResponse(version);
+  }
+
+  async restoreVersion(
+    id: number,
+    versionId: number,
+    user: AuthenticatedUser,
+  ): Promise<ArticleResponse> {
+    const existing = await this.getArticleOrThrow(id);
+    this.assertCanEdit(existing, user);
+    if (existing.status === ArticleStatus.deleted) {
+      throw new BadRequestException("请先从回收站恢复文章，再恢复历史版本。");
+    }
+    const version = await this.prisma.articleVersion.findFirst({
+      where: { id: versionId, articleId: id },
+    });
+    if (!version) throw new NotFoundException("文章版本不存在。");
+    const roleCodes = version.roleCodes.split(",").filter(Boolean);
+    const roles = await this.resolveRoles(version.visibility, roleCodes);
+    const restoredStatus = existing.status === ArticleStatus.blocked ? ArticleStatus.blocked : ArticleStatus.draft;
+    const article = await this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.article.update({
+        where: { id },
+        data: {
+          title: version.title,
+          summary: version.summary,
+          content: version.content,
+          category: version.category,
+          tags: version.tags,
+          titleColor: version.titleColor,
+          visibility: version.visibility,
+          status: restoredStatus,
+          ...buildSearchFields([version.title, version.category, version.tags]),
+          allowedRoles: {
+            deleteMany: {},
+            create: roles.map((role) => ({ roleId: role.id })),
+          },
+        },
+        include: articleInclude,
+      });
+      await this.createVersionSnapshot(transaction, updated, user.id, ArticleVersionSource.restore);
+      return updated;
     });
     return this.toResponse(article, user.id);
   }
@@ -490,16 +658,20 @@ export class ArticlesService {
       ? ArticleStatus.blocked
       : requestedStatus;
     const isFirstPublication = status === ArticleStatus.published && existing.publishedAt === null;
+    const title = dto.title?.trim() || existing.title;
+    const category = dto.category === undefined ? existing.category : dto.category.trim();
+    const tags = dto.tags === undefined ? existing.tags : this.normalizeTags(dto.tags);
     const article = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.article.update({ where: { id }, data: {
-        title: dto.title?.trim() || existing.title,
+        title,
         summary: dto.summary === undefined ? existing.summary : dto.summary.trim(),
         content: dto.content === undefined ? existing.content : dto.content.trim(),
-        category: dto.category === undefined ? existing.category : dto.category.trim(),
-        tags: dto.tags === undefined ? existing.tags : this.normalizeTags(dto.tags),
+        category,
+        tags,
         titleColor: dto.titleColor === undefined ? existing.titleColor : this.normalizeTitleColor(dto.titleColor),
         visibility,
         status,
+        ...buildSearchFields([title, category, tags]),
         publishedAt:
           status === ArticleStatus.published
             ? existing.publishedAt ?? new Date()
@@ -511,6 +683,7 @@ export class ArticlesService {
           create: roles.map((role) => ({ roleId: role.id })),
         },
       }, include: articleInclude });
+      await this.createVersionSnapshot(transaction, updated, user.id, ArticleVersionSource.manual);
       if (isFirstPublication) await this.notifySubscribersOfPublication(transaction, updated);
       return updated;
     });
@@ -533,6 +706,7 @@ export class ArticlesService {
         data: { status: ArticleStatus.published, publishedAt: existing.publishedAt ?? new Date(), blockedReason: null },
         include: articleInclude,
       });
+      await this.createVersionSnapshot(transaction, updated, user.id, ArticleVersionSource.publish);
       if (isFirstPublication) await this.notifySubscribersOfPublication(transaction, updated);
       return updated;
     });
@@ -1665,6 +1839,120 @@ export class ArticlesService {
     const prefix = `${this.uploadDirectory}${process.platform === "win32" ? "\\" : "/"}`;
     if (!filePath.startsWith(prefix)) throw new NotFoundException("文章图片不存在。");
     return filePath;
+  }
+
+  private async createVersionSnapshot(
+    transaction: Prisma.TransactionClient,
+    article: ArticleRecord,
+    editorId: number,
+    source: ArticleVersionSource,
+  ): Promise<void> {
+    const roleCodes = this.roleCodes(article).join(",");
+    const snapshot = {
+      title: article.title,
+      summary: article.summary,
+      content: article.content,
+      category: article.category,
+      tags: article.tags,
+      titleColor: article.titleColor,
+      visibility: article.visibility,
+      status: article.status,
+      roleCodes,
+    };
+    const contentHash = createHash("sha256").update(JSON.stringify(snapshot)).digest("hex");
+    const latest = await transaction.articleVersion.findFirst({
+      where: { articleId: article.id },
+      orderBy: { versionNumber: "desc" },
+      select: {
+        versionNumber: true,
+        contentHash: true,
+        title: true,
+        summary: true,
+        content: true,
+        category: true,
+        tags: true,
+        titleColor: true,
+        visibility: true,
+        status: true,
+        roleCodes: true,
+      },
+    });
+    if (latest?.contentHash === contentHash) return;
+    const changedFields = latest
+      ? ARTICLE_VERSION_FIELDS.filter((field) => latest[field] !== snapshot[field])
+      : [...ARTICLE_VERSION_FIELDS];
+    await transaction.articleVersion.create({
+      data: {
+        articleId: article.id,
+        editorId,
+        versionNumber: (latest?.versionNumber ?? 0) + 1,
+        source,
+        ...snapshot,
+        contentHash,
+        changedFields,
+      },
+    });
+    if (source !== ArticleVersionSource.autosave) return;
+    const expired = await transaction.articleVersion.findMany({
+      where: { articleId: article.id, source: ArticleVersionSource.autosave },
+      orderBy: { versionNumber: "desc" },
+      skip: ARTICLE_AUTOSAVE_VERSION_LIMIT,
+      select: { id: true },
+    });
+    if (expired.length) {
+      await transaction.articleVersion.deleteMany({ where: { id: { in: expired.map(({ id }) => id) } } });
+    }
+  }
+
+  private toVersionSummary(version: {
+    id: number;
+    versionNumber: number;
+    source: ArticleVersionSource;
+    changedFields: Prisma.JsonValue;
+    editor: { id: number; username: string; nickname: string } | null;
+    createdAt: Date;
+  }): ArticleVersionSummaryResponse {
+    return {
+      id: version.id,
+      versionNumber: version.versionNumber,
+      source: version.source,
+      changedFields: Array.isArray(version.changedFields)
+        ? version.changedFields.filter((field): field is string => typeof field === "string")
+        : [],
+      editor: version.editor,
+      createdAt: version.createdAt.toISOString(),
+    };
+  }
+
+  private toVersionResponse(version: {
+    id: number;
+    versionNumber: number;
+    source: ArticleVersionSource;
+    changedFields: Prisma.JsonValue;
+    editor: { id: number; username: string; nickname: string } | null;
+    createdAt: Date;
+    title: string;
+    summary: string;
+    content: string;
+    category: string;
+    tags: string;
+    titleColor: string;
+    visibility: ArticleVisibility;
+    status: ArticleStatus;
+    roleCodes: string;
+  }): ArticleVersionResponse {
+    return {
+      ...this.toVersionSummary(version),
+      title: version.title,
+      summary: version.summary,
+      content: version.content,
+      category: version.category,
+      tags: version.tags.split(",").filter(Boolean),
+      titleColor: version.titleColor,
+      visibility: version.visibility,
+      status: version.status,
+      roleCodes: version.roleCodes.split(",").filter(Boolean),
+    };
   }
 
   private toResponse(

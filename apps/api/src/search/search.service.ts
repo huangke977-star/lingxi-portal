@@ -12,12 +12,15 @@ import {
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import { SearchQueryDto } from "./dto/search.dto";
+import { normalizeSearchKeyword, searchNeedles } from "./search-normalization";
 import {
   GlobalSearchResponse,
+  HotSearchResponse,
   SearchArticleResult,
   SearchCategoryFilter,
   SearchEntryResult,
   SearchGroup,
+  SearchHistoryResponse,
   SearchUserResult,
 } from "./search.types";
 
@@ -26,6 +29,7 @@ export class SearchService {
   constructor(private readonly prisma: PrismaService) {}
 
   async search(query: SearchQueryDto, user: AuthenticatedUser | null): Promise<GlobalSearchResponse> {
+    query.sort ??= "relevance";
     const keyword = query.q.trim();
     const activeScope = query.scope ?? "all";
     const wants = (scope: Exclude<SearchQueryDto["scope"], undefined>) => activeScope === "all" || activeScope === scope;
@@ -36,7 +40,58 @@ export class SearchService {
       wants("tools") ? this.searchEntries(keyword, query, user, "tools") : Promise.resolve(this.emptyGroup<SearchEntryResult>(query)),
       this.listFilters(user),
     ]);
-    return { query: keyword, articles, users, navigation, tools, filters };
+    return { query: keyword, sort: query.sort, articles, users, navigation, tools, filters };
+  }
+
+  async listHistory(userId: number): Promise<{ items: SearchHistoryResponse[] }> {
+    const records = await this.prisma.searchHistory.findMany({
+      where: { userId },
+      orderBy: [{ lastSearchedAt: "desc" }, { id: "desc" }],
+      take: 20,
+      select: { id: true, keyword: true, searchCount: true, lastSearchedAt: true },
+    });
+    return { items: records.map((record) => ({
+      ...record,
+      lastSearchedAt: record.lastSearchedAt.toISOString(),
+    })) };
+  }
+
+  async listHot(limit: number): Promise<{ items: HotSearchResponse[] }> {
+    const records = await this.prisma.searchKeywordStat.findMany({
+      orderBy: [{ searchCount: "desc" }, { lastSearchedAt: "desc" }],
+      take: limit,
+      select: { keyword: true, searchCount: true },
+    });
+    return { items: records };
+  }
+
+  async recordSearch(keywordInput: string, userId: number): Promise<{ success: true }> {
+    const keyword = keywordInput.trim();
+    const normalizedKey = normalizeSearchKeyword(keyword);
+    if (!normalizedKey) return { success: true };
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.searchHistory.upsert({
+        where: { userId_normalizedKey: { userId, normalizedKey } },
+        create: { userId, keyword, normalizedKey, lastSearchedAt: now },
+        update: { keyword, searchCount: { increment: 1 }, lastSearchedAt: now },
+      }),
+      this.prisma.searchKeywordStat.upsert({
+        where: { normalizedKey },
+        create: { keyword, normalizedKey, lastSearchedAt: now },
+        update: { keyword, searchCount: { increment: 1 }, lastSearchedAt: now },
+      }),
+    ]);
+    return { success: true };
+  }
+
+  async deleteHistory(id: number, userId: number): Promise<{ success: true }> {
+    await this.prisma.searchHistory.deleteMany({ where: { id, userId } });
+    return { success: true };
+  }
+
+  async clearHistory(userId: number): Promise<{ count: number }> {
+    return this.prisma.searchHistory.deleteMany({ where: { userId } });
   }
 
   private async searchArticles(
@@ -45,6 +100,8 @@ export class SearchService {
     user: AuthenticatedUser | null,
   ): Promise<SearchGroup<SearchArticleResult>> {
     const visibility = this.articleVisibility(user);
+    const normalizedKeyword = normalizeSearchKeyword(keyword);
+    const needles = searchNeedles(keyword);
     const where: Prisma.ArticleWhereInput = {
       status: ArticleStatus.published,
       category: query.category?.trim() || undefined,
@@ -52,12 +109,10 @@ export class SearchService {
         visibility,
         {
           OR: [
-            { title: { contains: keyword } },
-            { content: { contains: keyword } },
-            { category: { contains: keyword } },
-            { tags: { contains: keyword } },
-            { author: { is: { nickname: { contains: keyword } } } },
-            { author: { is: { username: { contains: keyword } } } },
+            ...this.indexConditions<Prisma.ArticleWhereInput>(needles),
+            { content: { contains: normalizedKeyword } },
+            { author: { is: { searchText: { contains: normalizedKeyword } } } },
+            ...needles.map((needle) => ({ author: { is: { searchPinyin: { contains: needle } } } })),
           ],
         },
       ],
@@ -66,7 +121,7 @@ export class SearchService {
       this.prisma.article.count({ where }),
       this.prisma.article.findMany({
         where,
-        orderBy: [{ isPinned: "desc" }, { publishedAt: "desc" }, { id: "desc" }],
+        orderBy: this.articleOrderBy(query.sort),
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
         select: {
@@ -112,13 +167,10 @@ export class SearchService {
   }
 
   private async searchUsers(keyword: string, query: SearchQueryDto): Promise<SearchGroup<SearchUserResult>> {
+    const needles = searchNeedles(keyword);
     const where: Prisma.UserWhereInput = {
       status: UserStatus.active,
-      OR: [
-        { username: { contains: keyword } },
-        { nickname: { contains: keyword } },
-        { profileBio: { contains: keyword } },
-      ],
+      OR: this.indexConditions<Prisma.UserWhereInput>(needles),
     };
     const [total, records] = await Promise.all([
       this.prisma.user.count({ where }),
@@ -160,6 +212,7 @@ export class SearchService {
     const kinds = scope === "navigation"
       ? [PortalCategoryKind.navigation, PortalCategoryKind.custom_page]
       : [PortalCategoryKind.tool];
+    const needles = searchNeedles(keyword);
     const where: Prisma.PortalEntryWhereInput = {
       status: PortalRecordStatus.active,
       category: {
@@ -169,14 +222,19 @@ export class SearchService {
       },
       AND: [
         this.portalVisibility(user),
-        { OR: [{ title: { contains: keyword } }, { description: { contains: keyword } }] },
+        { OR: [
+          ...this.indexConditions<Prisma.PortalEntryWhereInput>(needles),
+          ...needles.map((needle) => ({ category: { name: { contains: needle } } })),
+        ] },
       ],
     };
     const [total, records] = await Promise.all([
       this.prisma.portalEntry.count({ where }),
       this.prisma.portalEntry.findMany({
         where,
-        orderBy: [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }, { id: "asc" }],
+        orderBy: query.sort === "latest"
+          ? [{ updatedAt: "desc" }, { id: "desc" }]
+          : [{ category: { sortOrder: "asc" } }, { sortOrder: "asc" }, { id: "asc" }],
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
         select: {
@@ -250,6 +308,28 @@ export class SearchService {
       { visibility: PortalVisibility.authenticated },
       { visibility: PortalVisibility.role_restricted, allowedRoles: { some: { role: { code: user.role.code } } } },
     ] };
+  }
+
+  private indexConditions<T>(needles: string[]): T[] {
+    return needles.flatMap((needle) => [
+      { searchText: { contains: needle } } as T,
+      { searchPinyin: { contains: needle } } as T,
+    ]);
+  }
+
+  private articleOrderBy(sort: SearchQueryDto["sort"]): Prisma.ArticleOrderByWithRelationInput[] {
+    if (sort === "latest") return [{ publishedAt: "desc" }, { id: "desc" }];
+    if (sort === "popular") {
+      return [
+        { isPinned: "desc" },
+        { viewCount: "desc" },
+        { likeCount: "desc" },
+        { favoriteCount: "desc" },
+        { commentCount: "desc" },
+        { publishedAt: "desc" },
+      ];
+    }
+    return [{ isPinned: "desc" }, { publishedAt: "desc" }, { id: "desc" }];
   }
 
   private emptyGroup<T>(query: SearchQueryDto): SearchGroup<T> {

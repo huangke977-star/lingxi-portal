@@ -2,14 +2,14 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Compass, ExternalLink, FileText, Search, UserRound, Wrench, X } from "lucide-react";
+import { Clock3, Compass, ExternalLink, FileText, Flame, Search, UserRound, Wrench, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
-import { globalSearch, GlobalSearchResult } from "@/lib/search-api";
+import { clearSearchHistory, globalSearch, GlobalSearchResult, HotSearchItem, listHotSearches, listSearchHistory, recordSearch, SearchHistoryItem } from "@/lib/search-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
 
 export function GlobalSearch() {
@@ -19,6 +19,8 @@ export function GlobalSearch() {
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<GlobalSearchResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [history, setHistory] = useState<SearchHistoryItem[]>([]);
+  const [hot, setHot] = useState<HotSearchItem[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -31,6 +33,18 @@ export function GlobalSearch() {
       window.cancelAnimationFrame(frame);
       document.removeEventListener("keydown", handleKey);
     };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const token = readAccessToken();
+    Promise.all([
+      listHotSearches(8).catch(() => ({ items: [] })),
+      token ? listSearchHistory(token).catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
+    ]).then(([hotResult, historyResult]) => {
+      setHot(hotResult.items);
+      setHistory(historyResult.items);
+    });
   }, [isOpen]);
 
   useEffect(() => {
@@ -54,8 +68,21 @@ export function GlobalSearch() {
     event.preventDefault();
     const keyword = query.trim();
     if (!keyword) return;
-    setIsOpen(false);
+    openSearch(keyword);
+  }
+
+  function openSearch(keyword: string) {
+    const token = readAccessToken();
+    if (token) void recordSearch(token, keyword).catch(() => undefined);
+    close();
     router.push(`/search?q=${encodeURIComponent(keyword)}`);
+  }
+
+  async function clearHistory() {
+    const token = readAccessToken();
+    if (!token) return;
+    await clearSearchHistory(token).catch(() => undefined);
+    setHistory([]);
   }
 
   function updateQuery(value: string) {
@@ -84,7 +111,7 @@ export function GlobalSearch() {
             {query ? <button aria-label="清空搜索" onClick={() => updateQuery("")} type="button"><X aria-hidden="true" size={17} /></button> : null}
           </form>
           <div className="global-search-results">
-            {!query.trim() ? <div className="global-search-hint"><Search aria-hidden="true" size={24} /><span>输入关键词开始搜索。</span></div> : null}
+            {!query.trim() ? <div className="global-search-suggestions">{history.length ? <section><header><span><Clock3 aria-hidden="true" size={15} /><strong>最近搜索</strong></span><button onClick={() => void clearHistory()} type="button">清空</button></header><div>{history.slice(0, 8).map((item) => <button key={item.id} onClick={() => openSearch(item.keyword)} type="button"><span>{item.keyword}</span><small>{item.searchCount > 1 ? `${item.searchCount} 次` : ""}</small></button>)}</div></section> : null}{hot.length ? <section><header><span><Flame aria-hidden="true" size={15} /><strong>热门搜索</strong></span></header><div>{hot.map((item, index) => <button key={item.keyword} onClick={() => openSearch(item.keyword)} type="button"><b>{index + 1}</b><span>{item.keyword}</span><small>{item.searchCount}</small></button>)}</div></section> : null}{!history.length && !hot.length ? <div className="global-search-hint"><Search aria-hidden="true" size={24} /><span>输入关键词开始搜索。</span></div> : null}</div> : null}
             {isLoading ? <div className="global-search-hint"><span>正在搜索。</span></div> : null}
             {!isLoading && result ? <>
               <SearchSection count={result.articles.total} icon={FileText} title="文章">
@@ -102,7 +129,7 @@ export function GlobalSearch() {
               {!result.articles.total && !result.users.total && !result.navigation.total && !result.tools.total ? <div className="global-search-hint"><span>没有找到匹配内容。</span></div> : null}
             </> : null}
           </div>
-          {query.trim() ? <button className="global-search-all" onClick={() => { close(); router.push(`/search?q=${encodeURIComponent(query.trim())}`); }} type="button">查看全部搜索结果</button> : null}
+          {query.trim() ? <button className="global-search-all" onClick={() => openSearch(query.trim())} type="button">查看全部搜索结果</button> : null}
         </section>
       </div>,
       document.body,

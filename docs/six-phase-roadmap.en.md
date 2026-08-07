@@ -3,7 +3,7 @@
 - Document status: Active
 - Created: 2026-08-04
 - Last updated: 2026-08-07
-- Current phase: Phase 2 controlled acceptance for untrusted-device email verification
+- Current phase: Phase 3 locally complete, pending production deployment and verification
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -34,8 +34,8 @@ Status definitions:
 | Phase | Name | Main scope | Status |
 | --- | --- | --- | --- |
 | Phase 1 | Reliability Foundation | Media backup, missing-file repair, lightweight monitoring | Blocked (remote restore drill only) |
-| Phase 2 | Account Security | Password recovery, email verification, Turnstile, login-risk alerts | Blocked (controlled untrusted-device email acceptance only) |
-| Phase 3 | Content Capability | Autosave, version history, preview, unified search | Not started |
+| Phase 2 | Account Security | Password recovery, email verification, Turnstile, login-risk alerts | Completed |
+| Phase 3 | Content Capability | Autosave, version history, preview, unified search | In progress (locally complete; production verification pending) |
 | Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | Not started |
 | Phase 5 | Social Capability | Group chat, group files, moderation, temporary conversations | Not started |
 | Phase 6 | Operations Console | Operational analytics, announcements, scheduling, read statistics | Not started |
@@ -114,7 +114,7 @@ Goal: add account recovery, bot protection, and login-risk awareness while keepi
 | P2-08 | Add login, email, and new-device notification preferences | Completed |
 | P2-09 | Add administrative views for mail jobs, verification requests, and risk events | Completed |
 | P2-10 | Complete throttling, token invalidation, security tests, and bilingual docs | Completed |
-| P2-11 | Add untrusted-device email verification, trusted-device management, and per-session sign-out | Blocked (deployed; controlled live device-verification acceptance pending) |
+| P2-11 | Add untrusted-device email verification, trusted-device management, and per-session sign-out | Completed |
 
 ### Current Acceptance Results
 
@@ -124,7 +124,7 @@ Goal: add account recovery, bot protection, and login-risk awareness while keepi
 - Commit `a22a04f` was pushed and GitHub Actions run `31064603456` published both API and Web images. Production applied migration 28 on 2026-08-06 and recreated only API/Web; MySQL, Redis, Caddy, and TURN were not restarted.
 - Home, login, registration, recovery, Profile, Security Management, and health pages returned `200`. Public policy, unauthenticated `401`, default-disabled state, the server-side credential-encryption environment, and 390px mobile overflow were verified, with no API/Web startup errors.
 - SMTP registration verification, password recovery, and Turnstile were manually verified in production. P2-11 untrusted-device email verification remains disabled by default and needs a controlled live acceptance run after preserving a signed-in super-admin session.
-- P2-11 commits `8e97c4c` and production fix `c139889` were pushed, and Actions runs `31152045165` and `31152920263` succeeded. Production applied migration 29 on 2026-08-07 and recreated only API/Web. Acceptance caught and rolled back a Socket.IO session-validation crash; after the fix, all 28 API suites with 179 tests passed, repeated API health checks returned `200`, the API restart count stayed at zero, logs were clean, all 14 Redis login sessions remained, and MySQL, Redis, Caddy, and TURN were not restarted.
+- P2-11 commits `8e97c4c` and production fix `c139889` were pushed, and Actions runs `31152045165` and `31152920263` succeeded. Production applied migration 29 on 2026-08-07 and recreated only API/Web. Acceptance caught and rolled back a Socket.IO session-validation crash; after the fix, all 28 API suites with 179 tests passed, repeated API health checks returned `200`, the API restart count stayed at zero, logs were clean, all 14 Redis login sessions remained, and MySQL, Redis, Caddy, and TURN were not restarted. Live acceptance then passed for untrusted-device email verification, trust removal, and per-session sign-out, completing Phase 2.
 
 ### Acceptance
 
@@ -148,17 +148,25 @@ Goal: reduce editing-loss risk and provide unified search across articles, users
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P3-01 | Add debounced editor autosave and visible save state | Not started |
-| P3-02 | Keep a local fallback draft when server autosave fails | Not started |
-| P3-03 | Add article snapshots, version lists, and version metadata | Not started |
-| P3-04 | Restore a historical version by creating a new version | Not started |
-| P3-05 | Add pre-publication preview matching the reading page | Not started |
-| P3-06 | Add a unified search index and normalized search fields | Not started |
-| P3-07 | Search and group articles, users, navigation entries, and tools | Not started |
-| P3-08 | Match nicknames, usernames, titles, tags, categories, and pinyin fields | Not started |
-| P3-09 | Add search history, trending searches, and history cleanup | Not started |
-| P3-10 | Add ranking, permission filtering, pagination, and performance tests | Not started |
-| P3-11 | Complete bilingual docs, mobile adaptation, and production verification | Not started |
+| P3-01 | Add debounced editor autosave and visible save state | In progress (locally complete) |
+| P3-02 | Keep a local fallback draft when server autosave fails | In progress (locally complete) |
+| P3-03 | Add article snapshots, version lists, and version metadata | In progress (locally complete) |
+| P3-04 | Restore a historical version by creating a new version | In progress (locally complete) |
+| P3-05 | Add pre-publication preview matching the reading page | In progress (locally complete) |
+| P3-06 | Add a unified search index and normalized search fields | In progress (locally complete) |
+| P3-07 | Search and group articles, users, navigation entries, and tools | In progress (locally complete) |
+| P3-08 | Match nicknames, usernames, titles, tags, categories, and pinyin fields | In progress (locally complete) |
+| P3-09 | Add search history, trending searches, and history cleanup | In progress (locally complete) |
+| P3-10 | Add ranking, permission filtering, pagination, and performance tests | In progress (locally complete) |
+| P3-11 | Complete bilingual docs, mobile adaptation, and production verification | In progress (production verification pending) |
+
+### Current Acceptance Results
+
+- Autosave, local recovery, immutable snapshots, version restoration, and publication preview are locally implemented.
+- Unified search reuses the existing four result groups and authorization rules while adding normalized fields, full pinyin and initials, history, trending terms, and sorting.
+- The migration is additive and introduces no Elasticsearch cluster or other persistent service. Legacy records are backfilled in batches of 100 at API startup.
+- Bilingual implementation and acceptance documentation is available in `docs/content-reliability-and-search.zh-CN.md` and `docs/content-reliability-and-search.en.md`.
+- The phase has not been pushed or deployed. Full automated-test results, desktop/390px checks, and production verification will be recorded after local acceptance and deployment.
 
 ### Acceptance
 
@@ -296,7 +304,7 @@ A phase can be marked `Completed` only when all conditions are met:
 | --- | --- | --- | --- | --- |
 | Phase 1 | - | `90e43d3`, `290aa5c`, `fe6c619`, `0569d1a` | P1-01 through P1-11 deployed (2026-08-05) | P1-12 is blocked only on the OSS/R2 production restore drill; scan #5 found 20 healthy files, 3 historical missing article files, and no orphan files |
 | Phase 2 | - | `a22a04f`, `8e97c4c`, `c139889` | P2-01 through P2-11 deployed (2026-08-07) | P2-11's default-disabled untrusted-device email gate still needs controlled live acceptance; all other production checks passed |
-| Phase 3 | - | - | - | Not started |
+| Phase 3 | - | - | Local implementation and acceptance complete; commit and deployment pending | P3-01 through P3-10 are locally complete; P3-11 awaits production verification |
 | Phase 4 | - | - | - | Not started |
 | Phase 5 | - | - | - | Not started |
 | Phase 6 | - | - | - | Not started |

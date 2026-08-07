@@ -34,6 +34,7 @@
     "dotenv": "latest",
     "ioredis": "latest",
     "nodemailer": "^9.0.4",
+    "pinyin-pro": "^3.28.2",
     "reflect-metadata": "latest",
     "rxjs": "latest",
     "sharp": "0.34.5",

@@ -45,6 +45,7 @@ export interface SearchGroup<T> {
 
 export interface GlobalSearchResult {
   query: string;
+  sort: SearchSort;
   articles: SearchGroup<SearchArticleResult>;
   users: SearchGroup<SearchUserResult>;
   navigation: SearchGroup<SearchEntryResult>;
@@ -54,6 +55,20 @@ export interface GlobalSearchResult {
     navigationCategories: SearchCategoryFilter[];
     toolCategories: SearchCategoryFilter[];
   };
+}
+
+export type SearchSort = "relevance" | "latest" | "popular";
+
+export interface SearchHistoryItem {
+  id: number;
+  keyword: string;
+  searchCount: number;
+  lastSearchedAt: string;
+}
+
+export interface HotSearchItem {
+  keyword: string;
+  searchCount: number;
 }
 
 export interface SearchCategoryFilter {
@@ -69,6 +84,7 @@ export function globalSearch(
     pageSize?: number;
     scope?: "all" | "articles" | "users" | "navigation" | "tools";
     category?: string;
+    sort?: SearchSort;
   } = {},
 ): Promise<GlobalSearchResult> {
   const params = new URLSearchParams({
@@ -76,11 +92,42 @@ export function globalSearch(
     page: String(options.page ?? 1),
     pageSize: String(options.pageSize ?? 12),
     scope: options.scope ?? "all",
+    sort: options.sort ?? "relevance",
   });
   if (options.category) params.set("category", options.category);
   const path = options.accessToken ? "/search/visible" : "/search/public";
   return requestJson<GlobalSearchResult>(`${path}?${params}`, {
     cache: "no-store",
     headers: options.accessToken ? { Authorization: `Bearer ${options.accessToken}` } : undefined,
+  });
+}
+
+export function listSearchHistory(accessToken: string): Promise<{ items: SearchHistoryItem[] }> {
+  return requestJson("/search/history", { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } });
+}
+
+export function listHotSearches(limit = 10): Promise<{ items: HotSearchItem[] }> {
+  return requestJson(`/search/hot?limit=${limit}`, { cache: "no-store" });
+}
+
+export function recordSearch(accessToken: string, keyword: string): Promise<{ success: true }> {
+  return requestJson("/search/history", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ keyword }),
+  });
+}
+
+export function deleteSearchHistory(accessToken: string, id: number): Promise<{ success: true }> {
+  return requestJson(`/search/history/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function clearSearchHistory(accessToken: string): Promise<{ count: number }> {
+  return requestJson("/search/history", {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
 }

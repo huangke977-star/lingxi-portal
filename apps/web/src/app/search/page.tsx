@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Compass, ExternalLink, FileText, Search, UserRound, Wrench, X } from "lucide-react";
+import { Clock3, Compass, ExternalLink, FileText, Flame, Search, Trash2, UserRound, Wrench, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useState } from "react";
@@ -10,7 +10,7 @@ import { AppToast } from "@/components/app-toast";
 import { RoleSymbol } from "@/components/role-symbol";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
-import { globalSearch, GlobalSearchResult, SearchCategoryFilter } from "@/lib/search-api";
+import { clearSearchHistory, deleteSearchHistory, globalSearch, GlobalSearchResult, HotSearchItem, listHotSearches, listSearchHistory, recordSearch, SearchCategoryFilter, SearchHistoryItem, SearchSort } from "@/lib/search-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
 
 type SearchTab = "all" | "articles" | "users" | "navigation" | "tools";
@@ -24,16 +24,19 @@ function SearchContent() {
   const query = searchParams.get("q")?.trim() ?? "";
   const activeTab = normalizeTab(searchParams.get("tab"));
   const category = searchParams.get("category") ?? "";
+  const sort = normalizeSort(searchParams.get("sort"));
   const page = Math.max(1, Number(searchParams.get("page") ?? 1) || 1);
-  return <SearchResults activeTab={activeTab} category={category} key={`${query}-${activeTab}-${category}`} page={page} query={query} />;
+  return <SearchResults activeTab={activeTab} category={category} key={`${query}-${activeTab}-${category}-${sort}`} page={page} query={query} sort={sort} />;
 }
 
-function SearchResults({ activeTab, category, page, query }: { activeTab: SearchTab; category: string; page: number; query: string }) {
+function SearchResults({ activeTab, category, page, query, sort }: { activeTab: SearchTab; category: string; page: number; query: string; sort: SearchSort }) {
   const router = useRouter();
   const [draft, setDraft] = useState(query);
   const [result, setResult] = useState<GlobalSearchResult | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(query));
   const [error, setError] = useState("");
+  const [history, setHistory] = useState<SearchHistoryItem[]>([]);
+  const [hot, setHot] = useState<HotSearchItem[]>([]);
 
   useEffect(() => {
     if (!query) return;
@@ -47,28 +50,62 @@ function SearchResults({ activeTab, category, page, query }: { activeTab: Search
         pageSize: activeTab === "all" ? 6 : 12,
         scope: activeTab,
         category: category || undefined,
+        sort,
       })
         .then((next) => { if (active) setResult(next); })
         .catch((loadError) => { if (active) setError(loadError instanceof Error ? loadError.message : "搜索失败。"); })
         .finally(() => { if (active) setIsLoading(false); });
     }, 0);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [activeTab, category, page, query]);
+  }, [activeTab, category, page, query, sort]);
+
+  useEffect(() => {
+    if (query) return;
+    const token = readAccessToken();
+    Promise.all([
+      listHotSearches(12).catch(() => ({ items: [] })),
+      token ? listSearchHistory(token).catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
+    ]).then(([hotResult, historyResult]) => {
+      setHot(hotResult.items);
+      setHistory(historyResult.items);
+    });
+  }, [query]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const keyword = draft.trim();
     if (!keyword) return;
-    router.push(`/search?q=${encodeURIComponent(keyword)}&tab=${activeTab}`);
+    openSearch(keyword);
   }
 
-  function navigate(next: { tab?: SearchTab; category?: string; page?: number }) {
+  function openSearch(keyword: string) {
+    const token = readAccessToken();
+    if (token) void recordSearch(token, keyword).catch(() => undefined);
+    router.push(`/search?q=${encodeURIComponent(keyword)}&tab=${activeTab}&sort=${sort}`);
+  }
+
+  function navigate(next: { tab?: SearchTab; category?: string; page?: number; sort?: SearchSort }) {
     const tab = next.tab ?? activeTab;
     const nextCategory = next.category ?? (next.tab && next.tab !== activeTab ? "" : category);
     const params = new URLSearchParams({ q: query, tab });
+    params.set("sort", next.sort ?? sort);
     if (nextCategory) params.set("category", nextCategory);
     if ((next.page ?? 1) > 1) params.set("page", String(next.page));
     router.replace(`/search?${params}`);
+  }
+
+  async function removeHistory(id: number) {
+    const token = readAccessToken();
+    if (!token) return;
+    await deleteSearchHistory(token, id).catch(() => undefined);
+    setHistory((current) => current.filter((item) => item.id !== id));
+  }
+
+  async function clearHistory() {
+    const token = readAccessToken();
+    if (!token) return;
+    await clearSearchHistory(token).catch(() => undefined);
+    setHistory([]);
   }
 
   const totalPages = activeTab === "articles" ? result?.articles.totalPages ?? 1
@@ -84,8 +121,9 @@ function SearchResults({ activeTab, category, page, query }: { activeTab: Search
     <form className="search-page-field" onSubmit={submit}><Search aria-hidden="true" size={21} /><input aria-label="全站搜索" autoFocus onChange={(event) => setDraft(event.target.value)} placeholder="搜索文章、用户、导航和工具" value={draft} />{draft ? <button aria-label="清空" onClick={() => setDraft("")} type="button"><X aria-hidden="true" size={17} /></button> : null}</form>
     {query ? <nav className="search-tabs"><SearchTabButton active={activeTab === "all"} count={total} label="全部" onClick={() => navigate({ tab: "all" })} /><SearchTabButton active={activeTab === "articles"} count={result?.articles.total ?? 0} label="文章" onClick={() => navigate({ tab: "articles" })} /><SearchTabButton active={activeTab === "users"} count={result?.users.total ?? 0} label="用户" onClick={() => navigate({ tab: "users" })} /><SearchTabButton active={activeTab === "navigation"} count={result?.navigation.total ?? 0} label="导航" onClick={() => navigate({ tab: "navigation" })} /><SearchTabButton active={activeTab === "tools"} count={result?.tools.total ?? 0} label="工具" onClick={() => navigate({ tab: "tools" })} /></nav> : null}
     {filters.length ? <SearchFilters active={category} items={filters} onChange={(value) => navigate({ category: value, page: 1 })} /> : null}
+    {query ? <div className="search-sort-row"><span>排序</span><div><button className={sort === "relevance" ? "active" : undefined} onClick={() => navigate({ sort: "relevance", page: 1 })} type="button">综合</button><button className={sort === "latest" ? "active" : undefined} onClick={() => navigate({ sort: "latest", page: 1 })} type="button">最新</button><button className={sort === "popular" ? "active" : undefined} onClick={() => navigate({ sort: "popular", page: 1 })} type="button">热门</button></div></div> : null}
     {isLoading ? <div className="search-page-empty">正在搜索。</div> : null}
-    {!isLoading && !query ? <div className="search-page-empty"><Search aria-hidden="true" size={28} /><strong>搜索 HLOVET</strong><span>文章、公开用户资料、导航和工具会集中展示。</span></div> : null}
+    {!isLoading && !query ? <div className="search-page-start">{history.length ? <section><header><span><Clock3 aria-hidden="true" size={16} /><strong>最近搜索</strong></span><button onClick={() => void clearHistory()} type="button"><Trash2 aria-hidden="true" size={14} />清空</button></header><div>{history.map((item) => <span key={item.id}><button onClick={() => openSearch(item.keyword)} type="button">{item.keyword}</button><button aria-label={`删除搜索记录 ${item.keyword}`} onClick={() => void removeHistory(item.id)} title="删除" type="button"><X aria-hidden="true" size={13} /></button></span>)}</div></section> : null}{hot.length ? <section><header><span><Flame aria-hidden="true" size={16} /><strong>热门搜索</strong></span></header><div>{hot.map((item, index) => <button key={item.keyword} onClick={() => openSearch(item.keyword)} type="button"><b>{index + 1}</b><span>{item.keyword}</span><small>{item.searchCount} 次</small></button>)}</div></section> : null}{!history.length && !hot.length ? <div className="search-page-empty"><Search aria-hidden="true" size={28} /><strong>搜索 HLOVET</strong><span>文章、公开用户资料、导航和工具会集中展示。</span></div> : null}</div> : null}
     {!isLoading && result ? <div className="search-page-results">
       {(activeTab === "all" || activeTab === "articles") && result.articles.total ? <SearchResultSection count={result.articles.total} icon={FileText} title="文章"><div className="search-article-list">{result.articles.items.map((article) => <Link className="search-article-row" href={`/articles/${article.slug}`} key={article.id}><span><strong>{article.title}</strong><small>{article.author.nickname} · {article.category || "随笔"} · {formatTime(article.publishedAt)}</small></span><span>{article.tags.slice(0, 3).map((tag) => <em key={tag}>#{tag}</em>)}</span><b>{article.viewCount} 阅读 · {article.commentCount} 评论</b></Link>)}</div></SearchResultSection> : null}
       {(activeTab === "all" || activeTab === "users") && result.users.total ? <SearchResultSection count={result.users.total} icon={UserRound} title="用户"><div className="search-user-grid">{result.users.items.map((user) => <Link href={`/users/${encodeURIComponent(user.username)}`} key={user.id}><span className="search-user-avatar">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : getAvatarFallbackText(user)}</span><span><strong>{user.nickname}</strong><small>@{user.username}</small><p>{user.profileBio}</p></span><RoleSymbol code={user.isSuperAdmin ? "super_administrator" : user.role.code} /></Link>)}</div></SearchResultSection> : null}
@@ -117,6 +155,10 @@ function SearchResultSection({ count, icon: Icon, title, children }: { count: nu
 
 function normalizeTab(value: string | null): SearchTab {
   return value === "articles" || value === "users" || value === "navigation" || value === "tools" ? value : "all";
+}
+
+function normalizeSort(value: string | null): SearchSort {
+  return value === "latest" || value === "popular" ? value : "relevance";
 }
 
 function formatTime(value: string | null): string {

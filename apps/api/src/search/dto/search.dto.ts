@@ -26,4 +26,24 @@ export class SearchQueryDto {
   @IsString()
   @MaxLength(80)
   category?: string;
+
+  @IsOptional()
+  @IsIn(["relevance", "latest", "popular"])
+  sort?: "relevance" | "latest" | "popular" = "relevance";
+}
+
+export class RecordSearchDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(80)
+  keyword!: string;
+}
+
+export class HotSearchQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  limit = 10;
 }

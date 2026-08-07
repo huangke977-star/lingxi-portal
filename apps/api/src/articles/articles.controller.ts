@@ -31,6 +31,7 @@ import {
 import {
   CreateArticleCommentDto,
   CreateArticleDto,
+  AutosaveArticleDto,
   ListArticleCommentsQueryDto,
   ListArticlesQueryDto,
   ModerateArticleCommentDto,
@@ -214,6 +215,48 @@ export class ArticlesController {
   @UseGuards(JwtAuthGuard)
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateArticleDto) {
     return this.articlesService.create(user, dto);
+  }
+
+  @Post("autosave")
+  @UseGuards(JwtAuthGuard)
+  createAutosave(@CurrentUser() user: AuthenticatedUser, @Body() dto: AutosaveArticleDto) {
+    return this.articlesService.createAutosave(user, dto);
+  }
+
+  @Post(":id/autosave")
+  @UseGuards(JwtAuthGuard)
+  autosave(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: AutosaveArticleDto,
+  ) {
+    return this.articlesService.autosave(id, user, dto);
+  }
+
+  @Get(":id/versions")
+  @UseGuards(JwtAuthGuard)
+  listVersions(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.listVersions(id, user);
+  }
+
+  @Get(":id/versions/:versionId")
+  @UseGuards(JwtAuthGuard)
+  getVersion(
+    @Param("id", ParseIntPipe) id: number,
+    @Param("versionId", ParseIntPipe) versionId: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.articlesService.getVersion(id, versionId, user);
+  }
+
+  @Post(":id/versions/:versionId/restore")
+  @UseGuards(JwtAuthGuard)
+  restoreVersion(
+    @Param("id", ParseIntPipe) id: number,
+    @Param("versionId", ParseIntPipe) versionId: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.articlesService.restoreVersion(id, versionId, user);
   }
 
   @Patch(":id")

@@ -48,6 +48,7 @@ export interface SearchGroup<T> {
 
 export interface GlobalSearchResponse {
   query: string;
+  sort: "relevance" | "latest" | "popular";
   articles: SearchGroup<SearchArticleResult>;
   users: SearchGroup<SearchUserResult>;
   navigation: SearchGroup<SearchEntryResult>;
@@ -57,4 +58,16 @@ export interface GlobalSearchResponse {
     navigationCategories: SearchCategoryFilter[];
     toolCategories: SearchCategoryFilter[];
   };
+}
+
+export interface SearchHistoryResponse {
+  id: number;
+  keyword: string;
+  searchCount: number;
+  lastSearchedAt: string;
+}
+
+export interface HotSearchResponse {
+  keyword: string;
+  searchCount: number;
 }

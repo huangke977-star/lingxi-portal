@@ -8,6 +8,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
+import { buildSearchFields } from "../search/search-normalization";
 import {
   CreatePortalCategoryDto,
   CreatePortalEntryDto,
@@ -134,7 +135,7 @@ export class PortalService {
         }
       }
 
-      return transaction.portalCategory.update({
+      const updatedCategory = await transaction.portalCategory.update({
         where: { id },
         data: {
           kind: targetKind,
@@ -146,6 +147,17 @@ export class PortalService {
         },
         select: this.categorySelect(),
       });
+      if (updatedCategory.name !== existing.name) {
+        const entries = await transaction.portalEntry.findMany({
+          where: { categoryId: id },
+          select: { id: true, title: true, description: true },
+        });
+        await Promise.all(entries.map((entry) => transaction.portalEntry.update({
+          where: { id: entry.id },
+          data: buildSearchFields([entry.title, entry.description, updatedCategory.name]),
+        })));
+      }
+      return updatedCategory;
     });
 
     return this.toCategoryResponse(category);
@@ -185,6 +197,7 @@ export class PortalService {
         visibility,
         sortOrder: dto.sortOrder,
         status: dto.status,
+        ...buildSearchFields([dto.title, dto.description, category.name]),
         createdById: actor.id,
         updatedById: actor.id,
         allowedRoles: {
@@ -219,19 +232,22 @@ export class PortalService {
     const roleCodes =
       category.kind === "server" ? [] : (dto.roleCodes ?? existingRoleCodes);
     const roles = await this.resolveRoles(visibility, roleCodes);
+    const title = dto.title ?? existing.title;
+    const description = dto.description ?? existing.description;
 
     const entry = await this.prisma.portalEntry.update({
       where: { id },
       data: {
         categoryId: category.id,
-        title: dto.title ?? existing.title,
-        description: dto.description ?? existing.description,
+        title,
+        description,
         url: dto.url === undefined ? existing.url : dto.url,
         iconPath: dto.iconPath === undefined ? existing.iconPath : dto.iconPath,
         openInNewTab: dto.openInNewTab ?? existing.openInNewTab,
         visibility,
         sortOrder: dto.sortOrder ?? existing.sortOrder,
         status: dto.status ?? existing.status,
+        ...buildSearchFields([title, description, category.name]),
         updatedById: actor.id,
         allowedRoles: {
           deleteMany: {},

@@ -45,6 +45,13 @@ enum ArticleVisibility {
   private
 }
 
+enum ArticleVersionSource {
+  autosave
+  manual
+  publish
+  restore
+}
+
 enum SiteAssetKind {
   logo
   pwa_icon
@@ -293,6 +300,8 @@ model User {
   avatarMimeType            String?                        @map("avatar_mime_type") @db.VarChar(64)
   avatarSizeBytes           Int?                           @map("avatar_size_bytes")
   profileBio                String                         @default("我懒，我不写") @map("profile_bio") @db.VarChar(180)
+  searchText                String                         @default("") @map("search_text") @db.VarChar(4096)
+  searchPinyin              String                         @default("") @map("search_pinyin") @db.VarChar(4096)
   lastLoginAt               DateTime?                      @map("last_login_at")
   createdAt                 DateTime                       @default(now()) @map("created_at")
   updatedAt                 DateTime                       @updatedAt @map("updated_at")
@@ -304,6 +313,7 @@ model User {
   portalEntriesCreated      PortalEntry[]                  @relation("PortalEntryCreatedBy")
   portalEntriesUpdated      PortalEntry[]                  @relation("PortalEntryUpdatedBy")
   articles                  Article[]                      @relation("ArticleAuthor")
+  articleVersionsEdited     ArticleVersion[]               @relation("ArticleVersionEditor")
   articleComments           ArticleComment[]               @relation("ArticleCommentAuthor")
   articleLikes              ArticleLike[]
   articleFavorites          ArticleFavorite[]
@@ -337,6 +347,7 @@ model User {
   emailVerificationRequests EmailVerificationRequest[]
   passwordResetRequests     PasswordResetRequest[]
   mailJobs                  MailJob[]
+  searchHistory             SearchHistory[]
 
   @@index([roleId])
   @@index([createdAt])
@@ -736,6 +747,8 @@ model PortalEntry {
   visibility   PortalVisibility   @default(public)
   sortOrder    Int                @default(0) @map("sort_order")
   status       PortalRecordStatus @default(active)
+  searchText   String             @default("") @map("search_text") @db.VarChar(4096)
+  searchPinyin String             @default("") @map("search_pinyin") @db.VarChar(4096)
   createdById  Int?               @map("created_by_id")
   createdBy    User?              @relation("PortalEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedById  Int?               @map("updated_by_id")
@@ -784,6 +797,8 @@ model Article {
   likeCount      Int                     @default(0) @map("like_count")
   favoriteCount  Int                     @default(0) @map("favorite_count")
   commentCount   Int                     @default(0) @map("comment_count")
+  searchText     String                  @default("") @map("search_text") @db.VarChar(4096)
+  searchPinyin   String                  @default("") @map("search_pinyin") @db.VarChar(4096)
   allowedRoles   ArticleAllowedRole[]
   images         ArticleImage[]
   comments       ArticleComment[]
@@ -793,6 +808,7 @@ model Article {
   readLater      ArticleReadLater[]
   readingHistory ArticleReadingHistory[]
   notifications  UserNotification[]
+  versions       ArticleVersion[]
   createdAt      DateTime                @default(now()) @map("created_at")
   updatedAt      DateTime                @updatedAt @map("updated_at")
 
@@ -801,6 +817,61 @@ model Article {
   @@index([category, status])
   @@index([publishedAt])
   @@map("articles")
+}
+
+model ArticleVersion {
+  id             Int                  @id @default(autoincrement())
+  articleId      Int                  @map("article_id")
+  article        Article              @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  editorId       Int?                 @map("editor_id")
+  editor         User?                @relation("ArticleVersionEditor", fields: [editorId], references: [id], onDelete: SetNull)
+  versionNumber  Int                  @map("version_number")
+  source         ArticleVersionSource
+  title          String               @db.VarChar(120)
+  summary        String               @default("") @db.VarChar(300)
+  content        String               @db.LongText
+  category       String               @default("") @db.VarChar(80)
+  tags           String               @default("") @db.VarChar(500)
+  titleColor     String               @default("") @map("title_color") @db.VarChar(7)
+  visibility     ArticleVisibility
+  status         ArticleStatus
+  roleCodes      String               @default("") @map("role_codes") @db.VarChar(500)
+  contentHash    String               @map("content_hash") @db.Char(64)
+  changedFields  Json?                @map("changed_fields")
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  @@unique([articleId, versionNumber])
+  @@index([articleId, createdAt])
+  @@index([editorId])
+  @@index([source, createdAt])
+  @@map("article_versions")
+}
+
+model SearchHistory {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @map("user_id")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keyword        String   @db.VarChar(80)
+  normalizedKey  String   @map("normalized_key") @db.VarChar(80)
+  searchCount    Int      @default(1) @map("search_count")
+  lastSearchedAt DateTime @default(now()) @map("last_searched_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, normalizedKey])
+  @@index([userId, lastSearchedAt])
+  @@map("search_history")
+}
+
+model SearchKeywordStat {
+  id             Int      @id @default(autoincrement())
+  keyword        String   @db.VarChar(80)
+  normalizedKey  String   @unique @map("normalized_key") @db.VarChar(80)
+  searchCount    Int      @default(1) @map("search_count")
+  lastSearchedAt DateTime @default(now()) @map("last_searched_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([searchCount, lastSearchedAt])
+  @@map("search_keyword_stats")
 }
 
 model ArticleAllowedRole {

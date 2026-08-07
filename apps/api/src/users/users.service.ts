@@ -12,6 +12,7 @@ import { access, mkdir, unlink, writeFile } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 import { AuthenticatedUser, UserStatus } from "../auth/auth.types";
 import { PasswordService } from "../auth/password.service";
+import { buildSearchFields } from "../search/search-normalization";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   FALLBACK_PROFILE_BIO,
@@ -157,15 +158,18 @@ export class UsersService {
       throw new InternalServerErrorException("Default role is not configured.");
     }
 
+    const nickname = this.normalizeNickname(input.nickname, "");
+    const profileBio = pickDefaultProfileBio();
     const user = await this.prisma.user.create({
       data: {
         username,
-        nickname: this.normalizeNickname(input.nickname, ""),
+        nickname,
         email: input.email.trim().toLowerCase(),
         emailVerifiedAt: input.emailVerifiedAt ?? null,
         passwordHash: input.passwordHash,
         roleId: role.id,
-        profileBio: pickDefaultProfileBio(),
+        profileBio,
+        ...buildSearchFields([username, nickname, profileBio]),
       },
       select: this.userWithPasswordSelect(),
     });
@@ -342,7 +346,10 @@ export class UsersService {
 
     const user = await this.prisma.user.update({
       where: { id },
-      data: { nickname: target.username },
+      data: {
+        nickname: target.username,
+        ...buildSearchFields([target.username, target.username, target.profileBio]),
+      },
       select: this.userSelect(),
     });
 
@@ -379,7 +386,7 @@ export class UsersService {
   ): Promise<AuthenticatedUser> {
     const current = await this.prisma.user.findUnique({
       where: { id },
-      select: { nickname: true, email: true },
+      select: { username: true, nickname: true, email: true },
     });
 
     if (!current) {
@@ -406,6 +413,7 @@ export class UsersService {
         nickname,
         email,
         profileBio: profile.profileBio,
+        ...buildSearchFields([current.username, nickname, profile.profileBio]),
         ...(email !== current.email ? { emailVerifiedAt: null } : {}),
       },
       select: this.userSelect(),

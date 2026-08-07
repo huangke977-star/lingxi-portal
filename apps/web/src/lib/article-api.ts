@@ -133,6 +133,29 @@ export interface ArticleInput {
   roleCodes: string[];
 }
 
+export type ArticleVersionSource = "autosave" | "manual" | "publish" | "restore";
+
+export interface ArticleVersionSummary {
+  id: number;
+  versionNumber: number;
+  source: ArticleVersionSource;
+  changedFields: string[];
+  editor: { id: number; username: string; nickname: string } | null;
+  createdAt: string;
+}
+
+export interface ArticleVersion extends ArticleVersionSummary {
+  title: string;
+  summary: string;
+  content: string;
+  category: string;
+  tags: string[];
+  titleColor: string;
+  visibility: ArticleVisibility;
+  status: ArticleStatus;
+  roleCodes: string[];
+}
+
 export const ARTICLE_STATUS_LABEL: Record<ArticleStatus, string> = {
   draft: "草稿",
   published: "已发布",
@@ -278,6 +301,35 @@ export function updateArticle(accessToken: string, id: number, input: ArticleInp
     method: "PATCH",
     headers: authHeaders(accessToken),
     body: JSON.stringify(input),
+  });
+}
+
+export function autosaveArticle(accessToken: string, id: number | null, input: ArticleInput): Promise<Article> {
+  return requestJson<Article>(id ? `/articles/${id}/autosave` : "/articles/autosave", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(input),
+  });
+}
+
+export function listArticleVersions(accessToken: string, id: number): Promise<{ items: ArticleVersionSummary[] }> {
+  return requestJson(`/articles/${id}/versions`, {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function getArticleVersion(accessToken: string, id: number, versionId: number): Promise<ArticleVersion> {
+  return requestJson(`/articles/${id}/versions/${versionId}`, {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function restoreArticleVersion(accessToken: string, id: number, versionId: number): Promise<Article> {
+  return requestJson(`/articles/${id}/versions/${versionId}/restore`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
   });
 }
 

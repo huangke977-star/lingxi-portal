@@ -454,6 +454,12 @@ describe("ArticlesService article center extensions", () => {
     const published = { ...articleRecord(), publishedAt: new Date("2026-07-24T10:00:00.000Z") };
     const transaction = {
       article: { update: jest.fn(async () => published) },
+      articleVersion: {
+        findFirst: jest.fn(async () => null),
+        create: jest.fn(async () => ({ id: 1 })),
+        findMany: jest.fn(async () => []),
+        deleteMany: jest.fn(async () => ({ count: 0 })),
+      },
       userSubscription: { findMany: jest.fn(async () => [{ subscriberId: 21 }, { subscriberId: 22 }]) },
       userNotification: { createMany: jest.fn(async () => ({ count: 2 })) },
     };

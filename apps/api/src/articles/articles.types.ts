@@ -142,3 +142,24 @@ export interface ReadingProgressResponse {
 export interface ArticleReadLaterResponse {
   readLater: boolean;
 }
+
+export interface ArticleVersionSummaryResponse {
+  id: number;
+  versionNumber: number;
+  source: "autosave" | "manual" | "publish" | "restore";
+  changedFields: string[];
+  editor: { id: number; username: string; nickname: string } | null;
+  createdAt: string;
+}
+
+export interface ArticleVersionResponse extends ArticleVersionSummaryResponse {
+  title: string;
+  summary: string;
+  content: string;
+  category: string;
+  tags: string[];
+  titleColor: string;
+  visibility: ArticleVisibilityValue;
+  status: ArticleStatusValue;
+  roleCodes: string[];
+}
