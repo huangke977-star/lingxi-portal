@@ -10,7 +10,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from "@nestjs/websockets";
-import type { Server, Socket } from "socket.io";
+import type { Namespace, Socket } from "socket.io";
 import { AccessTokenPayload } from "../auth/auth.types";
 import { CallStatus, CallType } from "../generated/prisma/client";
 import { RedisService } from "../redis/redis.service";
@@ -96,7 +96,7 @@ interface RuntimeCall extends CallDescriptor {
 })
 export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy {
   @WebSocketServer()
-  private server!: Server;
+  private server!: Namespace;
 
   private readonly socketsByUser = new Map<number, Set<string>>();
   private readonly runtimeCalls = new Map<number, RuntimeCall>();
@@ -503,7 +503,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   private async disconnectRevokedSessions(): Promise<void> {
     const sockets = Array.from(this.socketsByUser.values()).flatMap((ids) =>
       Array.from(ids)
-        .map((id) => this.server.sockets.sockets.get(id))
+        .map((id) => this.server.sockets.get(id))
         .filter((socket): socket is Socket => Boolean(socket)),
     );
     await Promise.all(
