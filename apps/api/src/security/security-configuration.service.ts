@@ -24,6 +24,7 @@ export class SecurityConfigurationService {
     return {
       registrationEmailVerificationEnabled: config.registrationEmailVerificationEnabled,
       passwordRecoveryEnabled: config.passwordRecoveryEnabled,
+      untrustedDeviceEmailVerificationEnabled: config.untrustedDeviceEmailVerificationEnabled,
       turnstile: {
         siteKey: config.turnstileSiteKey ?? "",
         registrationEnabled: config.turnstileRegistrationEnabled,
@@ -62,6 +63,7 @@ export class SecurityConfigurationService {
       smtpFromEmail: this.optionalText(dto.smtpFromEmail, current.smtpFromEmail),
       registrationEmailVerificationEnabled: dto.registrationEmailVerificationEnabled ?? current.registrationEmailVerificationEnabled,
       passwordRecoveryEnabled: dto.passwordRecoveryEnabled ?? current.passwordRecoveryEnabled,
+      untrustedDeviceEmailVerificationEnabled: dto.untrustedDeviceEmailVerificationEnabled ?? current.untrustedDeviceEmailVerificationEnabled,
       turnstileSiteKey: this.optionalText(dto.turnstileSiteKey, current.turnstileSiteKey),
       turnstileSecretEncrypted,
       turnstileRegistrationEnabled: dto.turnstileRegistrationEnabled ?? current.turnstileRegistrationEnabled,
@@ -70,7 +72,10 @@ export class SecurityConfigurationService {
       loginFailureTurnstileThreshold: dto.loginFailureTurnstileThreshold ?? current.loginFailureTurnstileThreshold,
     };
     this.validate(next);
-    const saved = await this.prisma.securityConfiguration.update({ where: { id: 1 }, data: next });
+    const saved = await this.prisma.securityConfiguration.update({
+      where: { id: 1 },
+      data: next,
+    });
     return this.toAdminResponse(saved);
   }
 
@@ -84,12 +89,26 @@ export class SecurityConfigurationService {
     return this.crypto.decrypt(config.turnstileSecretEncrypted);
   }
 
-  private validate(config: Pick<SecurityConfiguration,
-    "smtpEnabled" | "smtpHost" | "smtpUsername" | "smtpPasswordEncrypted" | "smtpFromEmail" |
-    "registrationEmailVerificationEnabled" | "passwordRecoveryEnabled" | "turnstileSiteKey" |
-    "turnstileSecretEncrypted" | "turnstileRegistrationEnabled" | "turnstileLoginEnabled" | "turnstileRecoveryEnabled"
-  >): void {
-    const mailRequired = config.smtpEnabled || config.registrationEmailVerificationEnabled || config.passwordRecoveryEnabled;
+  private validate(
+    config: Pick<
+      SecurityConfiguration,
+      | "smtpEnabled"
+      | "smtpHost"
+      | "smtpUsername"
+      | "smtpPasswordEncrypted"
+      | "smtpFromEmail"
+      | "registrationEmailVerificationEnabled"
+      | "passwordRecoveryEnabled"
+      | "untrustedDeviceEmailVerificationEnabled"
+      | "turnstileSiteKey"
+      | "turnstileSecretEncrypted"
+      | "turnstileRegistrationEnabled"
+      | "turnstileLoginEnabled"
+      | "turnstileRecoveryEnabled"
+    >,
+  ): void {
+    const mailRequired =
+      config.smtpEnabled || config.registrationEmailVerificationEnabled || config.passwordRecoveryEnabled || config.untrustedDeviceEmailVerificationEnabled;
     if (mailRequired && (!config.smtpEnabled || !config.smtpHost || !config.smtpUsername || !config.smtpPasswordEncrypted || !config.smtpFromEmail)) {
       throw new BadRequestException("启用邮件功能前请完整配置 SMTP 主机、账号、密码和发件地址。");
     }
@@ -111,6 +130,7 @@ export class SecurityConfigurationService {
       smtpFromEmail: config.smtpFromEmail ?? "",
       registrationEmailVerificationEnabled: config.registrationEmailVerificationEnabled,
       passwordRecoveryEnabled: config.passwordRecoveryEnabled,
+      untrustedDeviceEmailVerificationEnabled: config.untrustedDeviceEmailVerificationEnabled,
       turnstileSiteKey: config.turnstileSiteKey ?? "",
       turnstileSecretConfigured: Boolean(config.turnstileSecretEncrypted),
       turnstileRegistrationEnabled: config.turnstileRegistrationEnabled,

@@ -29,11 +29,14 @@ interface VerificationWhere {
   purpose?: EmailVerificationPurpose;
   status?: EmailVerificationStatus;
   userId?: number;
+  challengeTokenHash?: string;
 }
 
 interface VerificationData {
   status?: EmailVerificationStatus;
-  attempts?: { increment: number };
+  attempts?: number | { increment: number };
+  codeHash?: string;
+  expiresAt?: Date;
   verifiedAt?: Date;
   consumedAt?: Date;
 }
@@ -55,11 +58,10 @@ const sessionContext: RefreshSessionContext = {
   ip: "203.0.113.10",
   userAgent: "Mozilla/5.0 (Windows NT 10.0) Chrome/130.0.0.0",
   deviceId: "browser-installation-1",
+  trustedDeviceToken: "trusted-device-token-for-account-security-tests",
 };
 
-function securityConfiguration(
-  overrides: Partial<SecurityConfiguration> = {},
-): SecurityConfiguration {
+function securityConfiguration(overrides: Partial<SecurityConfiguration> = {}): SecurityConfiguration {
   const now = new Date("2026-08-06T00:00:00.000Z");
   return {
     id: 1,
@@ -73,6 +75,7 @@ function securityConfiguration(
     smtpFromEmail: null,
     registrationEmailVerificationEnabled: false,
     passwordRecoveryEnabled: false,
+    untrustedDeviceEmailVerificationEnabled: false,
     turnstileSiteKey: null,
     turnstileSecretEncrypted: null,
     turnstileRegistrationEnabled: false,
@@ -112,23 +115,18 @@ function authenticatedUser(): AuthenticatedUser {
   };
 }
 
-function matchesVerification(
-  request: EmailVerificationRequest,
-  where: VerificationWhere,
-): boolean {
+function matchesVerification(request: EmailVerificationRequest, where: VerificationWhere): boolean {
   return (
     (where.id === undefined || request.id === where.id) &&
     (where.email === undefined || request.email === where.email) &&
     (where.purpose === undefined || request.purpose === where.purpose) &&
     (where.status === undefined || request.status === where.status) &&
-    (where.userId === undefined || request.userId === where.userId)
+    (where.userId === undefined || request.userId === where.userId) &&
+    (where.challengeTokenHash === undefined || request.challengeTokenHash === where.challengeTokenHash)
   );
 }
 
-function matchesPasswordReset(
-  request: PasswordResetRequest,
-  where: PasswordResetWhere,
-): boolean {
+function matchesPasswordReset(request: PasswordResetRequest, where: PasswordResetWhere): boolean {
   return (
     (where.id === undefined || request.id === where.id) &&
     (where.tokenHash === undefined || request.tokenHash === where.tokenHash) &&
@@ -162,74 +160,83 @@ function createAccountSecurityHarness(options?: {
   const sendMail = jest.fn(async () => undefined);
   const verifyTurnstile = jest.fn(async () => undefined);
   const configuration = securityConfiguration(options?.configuration);
-  const recoveryUser = options?.recoveryUser === undefined
-    ? {
-        id: 17,
-        email: "security@example.com",
-        nickname: "安全测试用户",
-        status: "active",
-        emailVerifiedAt: new Date("2026-08-01T00:00:00.000Z"),
-      }
-    : options.recoveryUser;
+  const recoveryUser =
+    options?.recoveryUser === undefined
+      ? {
+          id: 17,
+          email: "security@example.com",
+          nickname: "安全测试用户",
+          status: "active",
+          emailVerifiedAt: new Date("2026-08-01T00:00:00.000Z"),
+        }
+      : options.recoveryUser;
 
   const emailVerificationRequest = {
-    create: jest.fn(async ({ data }: {
-      data: {
-        userId?: number;
-        purpose: EmailVerificationPurpose;
-        email: string;
-        codeHash: string;
-        ip: string;
-        expiresAt: Date;
-      };
-    }) => {
-      const now = new Date();
-      const request: EmailVerificationRequest = {
-        id: verificationRequests.length + 1,
-        userId: data.userId ?? null,
-        purpose: data.purpose,
-        email: data.email,
-        codeHash: data.codeHash,
-        status: EmailVerificationStatus.pending,
-        attempts: 0,
-        ip: data.ip,
-        expiresAt: data.expiresAt,
-        verifiedAt: null,
-        consumedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      verificationRequests.push(request);
-      return request;
-    }),
-    findFirst: jest.fn(async ({ where }: { where: VerificationWhere }) =>
-      [...verificationRequests]
-        .reverse()
-        .find((request) => matchesVerification(request, where)) ?? null,
+    create: jest.fn(
+      async ({
+        data,
+      }: {
+        data: {
+          userId?: number;
+          purpose: EmailVerificationPurpose;
+          email: string;
+          codeHash: string;
+          challengeTokenHash?: string;
+          deviceFingerprint?: string;
+          ip: string;
+          expiresAt: Date;
+        };
+      }) => {
+        const now = new Date();
+        const request: EmailVerificationRequest = {
+          id: verificationRequests.length + 1,
+          userId: data.userId ?? null,
+          purpose: data.purpose,
+          email: data.email,
+          codeHash: data.codeHash,
+          challengeTokenHash: data.challengeTokenHash ?? null,
+          deviceFingerprint: data.deviceFingerprint ?? null,
+          status: EmailVerificationStatus.pending,
+          attempts: 0,
+          ip: data.ip,
+          expiresAt: data.expiresAt,
+          verifiedAt: null,
+          consumedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        verificationRequests.push(request);
+        return request;
+      },
     ),
-    update: jest.fn(async ({ where, data }: {
-      where: { id: number };
-      data: VerificationData;
-    }) => {
+    findFirst: jest.fn(
+      async ({ where }: { where: VerificationWhere }) => [...verificationRequests].reverse().find((request) => matchesVerification(request, where)) ?? null,
+    ),
+    findUnique: jest.fn(async ({ where }: { where: VerificationWhere }) => {
+      const request = verificationRequests.find((item) => matchesVerification(item, where));
+      return request ? { ...request, user: recoveryUser } : null;
+    }),
+    update: jest.fn(async ({ where, data }: { where: { id: number }; data: VerificationData }) => {
       const request = verificationRequests.find((item) => item.id === where.id);
       if (!request) throw new Error("Verification request not found in test store.");
       if (data.status !== undefined) request.status = data.status;
-      if (data.attempts) request.attempts += data.attempts.increment;
+      if (typeof data.attempts === "number") request.attempts = data.attempts;
+      else if (data.attempts) request.attempts += data.attempts.increment;
+      if (data.codeHash !== undefined) request.codeHash = data.codeHash;
+      if (data.expiresAt !== undefined) request.expiresAt = data.expiresAt;
       if (data.verifiedAt !== undefined) request.verifiedAt = data.verifiedAt;
       if (data.consumedAt !== undefined) request.consumedAt = data.consumedAt;
       request.updatedAt = new Date();
       return request;
     }),
-    updateMany: jest.fn(async ({ where, data }: {
-      where: VerificationWhere;
-      data: VerificationData;
-    }) => {
-      const matches = verificationRequests.filter((request) =>
-        matchesVerification(request, where),
-      );
+    updateMany: jest.fn(async ({ where, data }: { where: VerificationWhere; data: VerificationData }) => {
+      const matches = verificationRequests.filter((request) => matchesVerification(request, where));
       for (const request of matches) {
         if (data.status !== undefined) request.status = data.status;
-        if (data.attempts) request.attempts += data.attempts.increment;
+        if (typeof data.attempts === "number") request.attempts = data.attempts;
+        else if (data.attempts) request.attempts += data.attempts.increment;
+        if (data.codeHash !== undefined) request.codeHash = data.codeHash;
+        if (data.expiresAt !== undefined) request.expiresAt = data.expiresAt;
         if (data.verifiedAt !== undefined) request.verifiedAt = data.verifiedAt;
         if (data.consumedAt !== undefined) request.consumedAt = data.consumedAt;
         request.updatedAt = new Date();
@@ -239,38 +246,37 @@ function createAccountSecurityHarness(options?: {
   };
 
   const passwordResetRequest = {
-    create: jest.fn(async ({ data }: {
-      data: {
-        userId: number;
-        tokenHash: string;
-        ip: string;
-        expiresAt: Date;
-      };
-    }) => {
-      const now = new Date();
-      const request: PasswordResetRequest = {
-        id: passwordResetRequests.length + 1,
-        userId: data.userId,
-        tokenHash: data.tokenHash,
-        status: PasswordResetStatus.pending,
-        ip: data.ip,
-        expiresAt: data.expiresAt,
-        consumedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      passwordResetRequests.push(request);
-      return request;
-    }),
-    findUnique: jest.fn(async ({ where }: { where: PasswordResetWhere }) =>
-      passwordResetRequests.find((request) =>
-        matchesPasswordReset(request, where),
-      ) ?? null,
+    create: jest.fn(
+      async ({
+        data,
+      }: {
+        data: {
+          userId: number;
+          tokenHash: string;
+          ip: string;
+          expiresAt: Date;
+        };
+      }) => {
+        const now = new Date();
+        const request: PasswordResetRequest = {
+          id: passwordResetRequests.length + 1,
+          userId: data.userId,
+          tokenHash: data.tokenHash,
+          status: PasswordResetStatus.pending,
+          ip: data.ip,
+          expiresAt: data.expiresAt,
+          consumedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        passwordResetRequests.push(request);
+        return request;
+      },
     ),
-    update: jest.fn(async ({ where, data }: {
-      where: { id: number };
-      data: PasswordResetData;
-    }) => {
+    findUnique: jest.fn(
+      async ({ where }: { where: PasswordResetWhere }) => passwordResetRequests.find((request) => matchesPasswordReset(request, where)) ?? null,
+    ),
+    update: jest.fn(async ({ where, data }: { where: { id: number }; data: PasswordResetData }) => {
       const request = passwordResetRequests.find((item) => item.id === where.id);
       if (!request) throw new Error("Password reset request not found in test store.");
       if (data.status !== undefined) request.status = data.status;
@@ -278,13 +284,8 @@ function createAccountSecurityHarness(options?: {
       request.updatedAt = new Date();
       return request;
     }),
-    updateMany: jest.fn(async ({ where, data }: {
-      where: PasswordResetWhere;
-      data: PasswordResetData;
-    }) => {
-      const matches = passwordResetRequests.filter((request) =>
-        matchesPasswordReset(request, where),
-      );
+    updateMany: jest.fn(async ({ where, data }: { where: PasswordResetWhere; data: PasswordResetData }) => {
+      const matches = passwordResetRequests.filter((request) => matchesPasswordReset(request, where));
       for (const request of matches) {
         if (data.status !== undefined) request.status = data.status;
         if (data.consumedAt !== undefined) request.consumedAt = data.consumedAt;
@@ -294,16 +295,24 @@ function createAccountSecurityHarness(options?: {
     }),
   };
 
+  const trustedDeviceUpsert = jest.fn(async () => undefined);
   const prisma = {
     user: {
       findUnique: jest.fn(async ({ where }: { where: { email: string } }) => {
         if (where.email === recoveryUser?.email) return recoveryUser;
         return null;
       }),
+      update: jest.fn(async () => undefined),
+    },
+    knownLoginDevice: {
+      upsert: trustedDeviceUpsert,
     },
     emailVerificationRequest,
     passwordResetRequest,
-  };
+  } as Record<string, unknown>;
+  prisma.$transaction = jest.fn(async (operation: unknown) =>
+    typeof operation === "function" ? (operation as (transaction: typeof prisma) => Promise<unknown>)(prisma) : Promise.all(operation as Promise<unknown>[]),
+  );
   const configurationService = {
     getConfiguration: jest.fn(async () => configuration),
   };
@@ -324,6 +333,7 @@ function createAccountSecurityHarness(options?: {
     redis,
     sendMail,
     verifyTurnstile,
+    trustedDeviceUpsert,
   };
 }
 
@@ -417,14 +427,9 @@ describe("P2 account security", () => {
           update,
         },
       } as unknown as PrismaService;
-      const service = new SecurityConfigurationService(
-        prisma,
-        new SecretCryptoService(),
-      );
+      const service = new SecurityConfigurationService(prisma, new SecretCryptoService());
 
-      await expect(
-        service.update({ smtpEnabled: true, passwordRecoveryEnabled: true }),
-      ).rejects.toThrow("完整配置 SMTP");
+      await expect(service.update({ smtpEnabled: true, passwordRecoveryEnabled: true })).rejects.toThrow("完整配置 SMTP");
       expect(update).not.toHaveBeenCalled();
     });
 
@@ -437,10 +442,7 @@ describe("P2 account security", () => {
           update,
         },
       } as unknown as PrismaService;
-      const service = new SecurityConfigurationService(
-        prisma,
-        new SecretCryptoService(),
-      );
+      const service = new SecurityConfigurationService(prisma, new SecretCryptoService());
 
       await expect(
         service.update({
@@ -460,11 +462,7 @@ describe("P2 account security", () => {
       });
       const email = "new-user@example.com";
 
-      await harness.service.requestRegistrationCode(
-        email,
-        "turnstile-token",
-        sessionContext,
-      );
+      await harness.service.requestRegistrationCode(email, "turnstile-token", sessionContext);
       const code = verificationCodeFrom(latestMailText(harness.sendMail));
       await harness.service.consumeRegistrationCode(email, code);
 
@@ -472,9 +470,7 @@ describe("P2 account security", () => {
         status: EmailVerificationStatus.consumed,
         attempts: 0,
       });
-      await expect(
-        harness.service.consumeRegistrationCode(email, code),
-      ).rejects.toThrow("验证码无效或已过期");
+      await expect(harness.service.consumeRegistrationCode(email, code)).rejects.toThrow("验证码无效或已过期");
     });
 
     it("expires an elapsed verification code", async () => {
@@ -487,12 +483,8 @@ describe("P2 account security", () => {
       const code = verificationCodeFrom(latestMailText(harness.sendMail));
       harness.verificationRequests[0].expiresAt = new Date(Date.now() - 1);
 
-      await expect(
-        harness.service.consumeRegistrationCode(email, code),
-      ).rejects.toThrow("验证码无效或已过期");
-      expect(harness.verificationRequests[0].status).toBe(
-        EmailVerificationStatus.expired,
-      );
+      await expect(harness.service.consumeRegistrationCode(email, code)).rejects.toThrow("验证码无效或已过期");
+      expect(harness.verificationRequests[0].status).toBe(EmailVerificationStatus.expired);
     });
 
     it("expires a verification code after five failed attempts", async () => {
@@ -505,17 +497,11 @@ describe("P2 account security", () => {
       const correctCode = verificationCodeFrom(latestMailText(harness.sendMail));
 
       for (let attempt = 0; attempt < 5; attempt += 1) {
-        await expect(
-          harness.service.consumeRegistrationCode(email, "000000"),
-        ).rejects.toThrow("验证码不正确");
+        await expect(harness.service.consumeRegistrationCode(email, "000000")).rejects.toThrow("验证码不正确");
       }
       expect(harness.verificationRequests[0].attempts).toBe(5);
-      await expect(
-        harness.service.consumeRegistrationCode(email, correctCode),
-      ).rejects.toThrow("验证码尝试次数过多");
-      expect(harness.verificationRequests[0].status).toBe(
-        EmailVerificationStatus.expired,
-      );
+      await expect(harness.service.consumeRegistrationCode(email, correctCode)).rejects.toThrow("验证码尝试次数过多");
+      expect(harness.verificationRequests[0].status).toBe(EmailVerificationStatus.expired);
     });
 
     it("enforces Redis email and IP frequency limits with TTLs", async () => {
@@ -526,22 +512,12 @@ describe("P2 account security", () => {
       const email = "limited@example.com";
 
       await harness.service.requestRegistrationCode(email, undefined, sessionContext);
-      const secondRequest = harness.service.requestRegistrationCode(
-        email,
-        undefined,
-        sessionContext,
-      );
+      const secondRequest = harness.service.requestRegistrationCode(email, undefined, sessionContext);
 
       await expect(secondRequest).rejects.toBeInstanceOf(HttpException);
       await expect(secondRequest).rejects.toMatchObject({ status: 429 });
-      expect(harness.redis.expire).toHaveBeenCalledWith(
-        `security:code:email:registration:${email}`,
-        60,
-      );
-      expect(harness.redis.expire).toHaveBeenCalledWith(
-        `security:code:ip:registration:${sessionContext.ip}`,
-        3600,
-      );
+      expect(harness.redis.expire).toHaveBeenCalledWith(`security:code:email:registration:${email}`, 60);
+      expect(harness.redis.expire).toHaveBeenCalledWith(`security:code:ip:registration:${sessionContext.ip}`, 3600);
       expect(harness.sendMail).toHaveBeenCalledTimes(1);
     });
 
@@ -550,23 +526,49 @@ describe("P2 account security", () => {
         configuration: { passwordRecoveryEnabled: true },
       });
 
-      await harness.service.requestPasswordReset(
-        "security@example.com",
-        undefined,
-        sessionContext,
-      );
+      await harness.service.requestPasswordReset("security@example.com", undefined, sessionContext);
       const token = resetTokenFrom(latestMailText(harness.sendMail));
 
       expect(harness.passwordResetRequests[0].tokenHash).not.toBe(token);
-      await expect(
-        harness.service.consumePasswordResetToken(token),
-      ).resolves.toEqual({ userId: 17 });
-      expect(harness.passwordResetRequests[0].status).toBe(
-        PasswordResetStatus.consumed,
+      await expect(harness.service.consumePasswordResetToken(token)).resolves.toEqual({ userId: 17 });
+      expect(harness.passwordResetRequests[0].status).toBe(PasswordResetStatus.consumed);
+      await expect(harness.service.consumePasswordResetToken(token)).rejects.toThrow("重置链接无效或已过期");
+    });
+
+    it("binds a new-device email code to the browser credential and trusts it after verification", async () => {
+      const harness = createAccountSecurityHarness();
+      const challenge = await harness.service.requestDeviceLoginVerification(authenticatedUser(), sessionContext);
+      const code = verificationCodeFrom(latestMailText(harness.sendMail));
+
+      await expect(harness.service.consumeDeviceLoginVerification(challenge.challengeToken, code, sessionContext)).resolves.toEqual({ userId: 17 });
+
+      expect(harness.verificationRequests[0]).toMatchObject({
+        purpose: EmailVerificationPurpose.device_login,
+        status: EmailVerificationStatus.consumed,
+      });
+      expect(harness.trustedDeviceUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            userId: 17,
+            trustedAt: expect.any(Date),
+          }),
+          update: expect.objectContaining({ trustedAt: expect.any(Date) }),
+        }),
       );
+    });
+
+    it("rejects a device verification code from another browser credential", async () => {
+      const harness = createAccountSecurityHarness();
+      const challenge = await harness.service.requestDeviceLoginVerification(authenticatedUser(), sessionContext);
+      const code = verificationCodeFrom(latestMailText(harness.sendMail));
+
       await expect(
-        harness.service.consumePasswordResetToken(token),
-      ).rejects.toThrow("重置链接无效或已过期");
+        harness.service.consumeDeviceLoginVerification(challenge.challengeToken, code, {
+          ...sessionContext,
+          trustedDeviceToken: "another-browser-device-token-value",
+        }),
+      ).rejects.toThrow("设备验证信息不匹配");
+      expect(harness.trustedDeviceUpsert).not.toHaveBeenCalled();
     });
   });
 
@@ -596,13 +598,7 @@ describe("P2 account security", () => {
         expectedType: LoginSecurityEventType.unusual_frequency,
         expectedRisk: LoginRiskLevel.high,
       },
-    ])("identifies $name and emits enabled notifications", async ({
-      knownDevice,
-      knownIp,
-      recentLogins,
-      expectedType,
-      expectedRisk,
-    }) => {
+    ])("identifies $name and emits enabled notifications", async ({ knownDevice, knownIp, recentLogins, expectedType, expectedRisk }) => {
       const createEvent = jest.fn(async ({ data }: { data: { type: LoginSecurityEventType } }) => data);
       const createNotification = jest.fn(async () => undefined);
       const sendMail = jest.fn(async () => undefined);
@@ -624,9 +620,7 @@ describe("P2 account security", () => {
           })),
         },
         userNotification: { create: createNotification },
-        $transaction: jest.fn(async (operations: unknown[]) =>
-          Promise.all(operations),
-        ),
+        $transaction: jest.fn(async (operations: unknown[]) => Promise.all(operations)),
       };
       const service = new AccountSecurityService(
         prisma as unknown as PrismaService,
@@ -636,7 +630,9 @@ describe("P2 account security", () => {
             turnstileRecoveryEnabled: false,
           })),
         } as unknown as SecurityConfigurationService,
-        { verify: jest.fn(async () => undefined) } as unknown as TurnstileService,
+        {
+          verify: jest.fn(async () => undefined),
+        } as unknown as TurnstileService,
         { send: sendMail } as unknown as MailService,
       );
 
@@ -676,9 +672,7 @@ describe("P2 account security", () => {
           })),
         },
         userNotification: { create: createNotification },
-        $transaction: jest.fn(async (operations: unknown[]) =>
-          Promise.all(operations),
-        ),
+        $transaction: jest.fn(async (operations: unknown[]) => Promise.all(operations)),
       };
       const service = new AccountSecurityService(
         prisma as unknown as PrismaService,
@@ -718,25 +712,24 @@ describe("P2 account security", () => {
             turnstileRecoveryEnabled: false,
           })),
         } as unknown as SecurityConfigurationService,
-        { verify: jest.fn(async () => undefined) } as unknown as TurnstileService,
+        {
+          verify: jest.fn(async () => undefined),
+        } as unknown as TurnstileService,
       );
 
       const result = await service.resetPassword(
-        { token: "one-time-password-reset-token", newPassword: "NewSecret123!" },
+        {
+          token: "one-time-password-reset-token",
+          newPassword: "NewSecret123!",
+        },
         sessionContext,
       );
 
       expect(result).toEqual({ success: true, revokedSessions: 4 });
       expect(updateOwnPassword).toHaveBeenCalledWith(17, "NewSecret123!", true);
       expect(revokeAllSessions).toHaveBeenCalledWith(17);
-      expect(recordPasswordEvent).toHaveBeenCalledWith(
-        17,
-        LoginSecurityEventType.password_reset,
-        sessionContext,
-      );
-      expect(updateOwnPassword.mock.invocationCallOrder[0]).toBeLessThan(
-        revokeAllSessions.mock.invocationCallOrder[0],
-      );
+      expect(recordPasswordEvent).toHaveBeenCalledWith(17, LoginSecurityEventType.password_reset, sessionContext);
+      expect(updateOwnPassword.mock.invocationCallOrder[0]).toBeLessThan(revokeAllSessions.mock.invocationCallOrder[0]);
     });
   });
 });

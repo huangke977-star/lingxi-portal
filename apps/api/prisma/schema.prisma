@@ -109,6 +109,7 @@ enum UserNotificationChannel {
 enum EmailVerificationPurpose {
   registration
   account_email
+  device_login
 }
 
 enum EmailVerificationStatus {
@@ -127,6 +128,7 @@ enum PasswordResetStatus {
 enum MailJobType {
   registration_verification
   account_email_verification
+  device_login_verification
   password_reset
   login_risk
   security_notice
@@ -1168,6 +1170,7 @@ model SecurityConfiguration {
   smtpFromEmail                        String?  @map("smtp_from_email") @db.VarChar(191)
   registrationEmailVerificationEnabled Boolean  @default(false) @map("registration_email_verification_enabled")
   passwordRecoveryEnabled              Boolean  @default(false) @map("password_recovery_enabled")
+  untrustedDeviceEmailVerificationEnabled Boolean @default(false) @map("untrusted_device_email_verification_enabled")
   turnstileSiteKey                     String?  @map("turnstile_site_key") @db.VarChar(255)
   turnstileSecretEncrypted             String?  @map("turnstile_secret_encrypted") @db.Text
   turnstileRegistrationEnabled         Boolean  @default(false) @map("turnstile_registration_enabled")
@@ -1203,6 +1206,7 @@ model KnownLoginDevice {
   lastIp      String   @map("last_ip") @db.VarChar(80)
   firstSeenAt DateTime @default(now()) @map("first_seen_at")
   lastSeenAt  DateTime @default(now()) @map("last_seen_at")
+  trustedAt   DateTime? @map("trusted_at")
 
   @@unique([userId, fingerprint])
   @@index([userId, lastSeenAt])
@@ -1236,6 +1240,8 @@ model EmailVerificationRequest {
   purpose    EmailVerificationPurpose
   email      String                   @db.VarChar(191)
   codeHash   String                   @map("code_hash") @db.Char(64)
+  challengeTokenHash String?          @unique @map("challenge_token_hash") @db.Char(64)
+  deviceFingerprint String?           @map("device_fingerprint") @db.Char(64)
   status     EmailVerificationStatus  @default(pending)
   attempts   Int                      @default(0)
   ip         String                   @db.VarChar(80)

@@ -14,3 +14,22 @@ export class LoginDto {
   @MaxLength(2048)
   turnstileToken?: string;
 }
+
+export class DeviceLoginVerificationDto {
+  @IsString()
+  @MinLength(20)
+  @MaxLength(512)
+  challengeToken!: string;
+
+  @IsString()
+  @MinLength(6)
+  @MaxLength(6)
+  code!: string;
+}
+
+export class DeviceLoginVerificationResendDto {
+  @IsString()
+  @MinLength(20)
+  @MaxLength(512)
+  challengeToken!: string;
+}

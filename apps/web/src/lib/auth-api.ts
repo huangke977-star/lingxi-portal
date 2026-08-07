@@ -47,6 +47,16 @@ export interface AuthResponse {
   refreshToken: string;
 }
 
+export interface DeviceLoginVerificationRequired {
+  deviceVerificationRequired: true;
+  challengeToken: string;
+  emailHint: string;
+  expiresAt: string;
+  retryAfterSeconds: number;
+}
+
+export type LoginResponse = AuthResponse | DeviceLoginVerificationRequired;
+
 export interface AuthSession {
   id: string;
   issuedAt: string;
@@ -73,23 +83,49 @@ export class ApiRequestError extends Error {
 }
 
 export function isAuthExpiredError(error: unknown): boolean {
-  return (
-    error instanceof ApiRequestError &&
-    error.status === 401
-  );
+  return error instanceof ApiRequestError && error.status === 401;
 }
 
 export async function login(input: {
   account: string;
   password: string;
   turnstileToken?: string;
-}): Promise<AuthResponse> {
-  const response = await requestJson<AuthResponse>("/auth/login", {
+}): Promise<LoginResponse> {
+  const response = await requestJson<LoginResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify(input),
   });
 
+  return "deviceVerificationRequired" in response
+    ? response
+    : normalizeAuthResponse(response);
+}
+
+export async function verifyDeviceLogin(input: {
+  challengeToken: string;
+  code: string;
+}): Promise<AuthResponse> {
+  const response = await requestJson<AuthResponse>(
+    "/auth/login/device-verification",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
   return normalizeAuthResponse(response);
+}
+
+export function resendDeviceLoginVerification(challengeToken: string): Promise<{
+  success: true;
+  challengeToken: string;
+  emailHint: string;
+  expiresAt: string;
+  retryAfterSeconds: number;
+}> {
+  return requestJson("/auth/login/device-verification/resend", {
+    method: "POST",
+    body: JSON.stringify({ challengeToken }),
+  });
 }
 
 export async function register(input: {
@@ -163,6 +199,16 @@ export async function revokeAllSessions(accessToken: string): Promise<number> {
     },
   );
   return result.revokedSessions;
+}
+
+export function revokeSession(
+  accessToken: string,
+  sessionId: string,
+): Promise<{ success: true; current: boolean }> {
+  return requestJson(`/auth/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
 }
 
 export async function getMe(accessToken: string): Promise<AuthUser> {
@@ -273,6 +319,7 @@ export async function requestJson<T>(
   appendDeviceIdHeader(headers);
 
   let response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
+    credentials: "include",
     ...init,
     headers,
   });
@@ -287,6 +334,7 @@ export async function requestJson<T>(
     if (session) {
       headers.set("Authorization", `Bearer ${session.accessToken}`);
       response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
+        credentials: "include",
         ...init,
         headers,
       });
@@ -308,6 +356,7 @@ export async function requestBlob(
   const headers = new Headers(init.headers);
   appendDeviceIdHeader(headers);
   let response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
+    credentials: "include",
     ...init,
     headers,
   });
@@ -322,6 +371,7 @@ export async function requestBlob(
     if (session) {
       headers.set("Authorization", `Bearer ${session.accessToken}`);
       response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
+        credentials: "include",
         ...init,
         headers,
       });

@@ -2,12 +2,12 @@
 
 import {
   BadgeCheck,
-  Clock3,
   Laptop,
   MailCheck,
   MailWarning,
   ShieldAlert,
   ShieldCheck,
+  ShieldOff,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -15,6 +15,7 @@ import { AppToast } from "@/components/app-toast";
 import { isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import {
+  cancelTrustedDevice,
   confirmMyEmailVerification,
   getMySecurity,
   sendMyEmailVerification,
@@ -64,6 +65,9 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
   const [isConfirmingVerification, setIsConfirmingVerification] =
     useState(false);
   const [retryAfter, setRetryAfter] = useState(0);
+  const [removingDeviceId, setRemovingDeviceId] = useState<
+    string | number | null
+  >(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -195,6 +199,48 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
     }
   }
 
+  async function handleCancelTrust(device: TrustedDevice) {
+    const token = readAccessToken();
+    if (!token || removingDeviceId !== null) return;
+    const label = device.deviceLabel || device.label || "这台设备";
+    if (
+      !window.confirm(
+        `确定取消信任 ${label} 吗？当前会话不会退出，下次登录需要邮箱验证。`,
+      )
+    ) {
+      return;
+    }
+
+    setRemovingDeviceId(device.id);
+    setError("");
+    setNotice("");
+    try {
+      await cancelTrustedDevice(token, device.id);
+      setOverview((current) =>
+        current
+          ? {
+              ...current,
+              trustedDevices: current.trustedDevices.filter(
+                (item) => item.id !== device.id,
+              ),
+            }
+          : current,
+      );
+      setNotice("已取消信任，下次登录将验证邮箱。");
+    } catch (removeError) {
+      if (isAuthExpiredError(removeError)) {
+        clearAuthTokens();
+        router.replace("/");
+        return;
+      }
+      setError(
+        removeError instanceof Error ? removeError.message : "取消信任失败。",
+      );
+    } finally {
+      setRemovingDeviceId(null);
+    }
+  }
+
   return (
     <section className="profile-panel account-security-panel">
       <div className="account-security-heading">
@@ -284,7 +330,10 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
                     checked={overview.preferences[option.key]}
                     disabled={savingPreference !== null}
                     onChange={(event) =>
-                      void handlePreferenceChange(option.key, event.target.checked)
+                      void handlePreferenceChange(
+                        option.key,
+                        event.target.checked,
+                      )
                     }
                     type="checkbox"
                   />
@@ -294,7 +343,11 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
           </div>
 
           <SecurityEvents events={overview.events} />
-          <TrustedDevices devices={overview.trustedDevices} />
+          <TrustedDevices
+            devices={overview.trustedDevices}
+            onCancelTrust={handleCancelTrust}
+            removingDeviceId={removingDeviceId}
+          />
         </div>
       ) : (
         <p className="account-security-empty">暂时无法显示账号安全信息</p>
@@ -341,27 +394,45 @@ function SecurityEvents({ events }: { events: SecurityEvent[] }) {
   );
 }
 
-function TrustedDevices({ devices }: { devices: TrustedDevice[] }) {
+function TrustedDevices({
+  devices,
+  onCancelTrust,
+  removingDeviceId,
+}: {
+  devices: TrustedDevice[];
+  onCancelTrust: (device: TrustedDevice) => void;
+  removingDeviceId: string | number | null;
+}) {
   return (
     <div className="security-compact-list">
       <div className="security-list-heading">
         <Laptop aria-hidden="true" size={16} />
-        <strong>可信设备</strong>
+        <strong>信任设备</strong>
       </div>
       {devices.length ? (
         devices.slice(0, 5).map((device) => (
           <div className="trusted-device-row" key={device.id}>
             <BadgeCheck aria-hidden="true" size={16} />
             <div>
-              <strong>{device.deviceLabel || device.label || "已识别设备"}</strong>
-              <small>{device.lastIp || device.ip || "IP 未记录"}</small>
+              <strong>
+                {device.deviceLabel || device.label || "已识别设备"}
+              </strong>
+              <small>
+                {device.lastIp || device.ip || "IP 未记录"} · 信任于{" "}
+                {formatDateTime(device.trustedAt || device.firstSeenAt || "")}
+              </small>
             </div>
-            <span>
-              <Clock3 aria-hidden="true" size={12} />
-              {formatDateTime(
-                device.lastSeenAt || device.trustedAt || device.firstSeenAt || "",
-              )}
-            </span>
+            {device.current ? <em>当前设备</em> : null}
+            <button
+              aria-label={`取消信任 ${device.deviceLabel || device.label || "设备"}`}
+              className="trusted-device-remove"
+              disabled={removingDeviceId !== null}
+              onClick={() => onCancelTrust(device)}
+              title="取消信任"
+              type="button"
+            >
+              <ShieldOff aria-hidden="true" size={16} />
+            </button>
           </div>
         ))
       ) : (

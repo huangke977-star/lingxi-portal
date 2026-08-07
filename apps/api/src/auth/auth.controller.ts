@@ -1,29 +1,39 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   HttpCode,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
   Req,
+  Res,
   StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { createReadStream } from 'node:fs';
 import { UsersService, AVATAR_MAX_FILE_SIZE_BYTES } from '../users/users.service';
 import { UpdateUserAppearanceDto } from '../users/dto/update-user-appearance.dto';
 import { UpdateUserProfileDto } from '../users/dto/update-user-profile.dto';
 import { AuthService } from './auth.service';
-import { AuthResponse, AuthenticatedUser, AuthSessionSummary, RefreshSessionContext } from './auth.types';
+import {
+  AuthResponse,
+  AuthenticatedUser,
+  AuthSessionSummary,
+  LoginResponse,
+  RefreshSessionContext,
+} from './auth.types';
 import { CurrentSessionId } from './current-session-id.decorator';
 import { CurrentUser } from './current-user.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
-import { LoginDto } from './dto/login.dto';
+import { DeviceLoginVerificationDto, DeviceLoginVerificationResendDto, LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -36,6 +46,7 @@ import {
   RegistrationCodeDto,
   UpdateSecurityPreferencesDto,
 } from '../security/dto/security.dto';
+import { createTrustedDeviceToken, readTrustedDeviceToken, setTrustedDeviceCookie } from './trusted-device-cookie';
 
 @Controller('auth')
 export class AuthController {
@@ -71,25 +82,49 @@ export class AuthController {
 
   @Post('register')
   @HttpCode(200)
-  register(
+  async register(
     @Body() dto: RegisterDto,
     @Req() request: SessionRequest,
+    @Res({ passthrough: true }) response: Response,
   ): Promise<AuthResponse> {
-    return this.authService.register(dto, this.sessionContext(request));
+    const context = this.sessionContext(request);
+    const shouldSetCookie = !context.trustedDeviceToken;
+    context.trustedDeviceToken ??= createTrustedDeviceToken();
+    const result = await this.authService.register(dto, context);
+    if (shouldSetCookie) setTrustedDeviceCookie(response, context.trustedDeviceToken);
+    return result;
   }
 
   @Post('login')
   @HttpCode(200)
-  login(@Body() dto: LoginDto, @Req() request: SessionRequest): Promise<AuthResponse> {
-    return this.authService.login(dto, this.sessionContext(request));
+  async login(
+    @Body() dto: LoginDto,
+    @Req() request: SessionRequest,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<LoginResponse> {
+    const context = this.sessionContext(request);
+    const shouldSetCookie = !context.trustedDeviceToken;
+    context.trustedDeviceToken ??= createTrustedDeviceToken();
+    const result = await this.authService.login(dto, context);
+    if (shouldSetCookie) setTrustedDeviceCookie(response, context.trustedDeviceToken);
+    return result;
+  }
+
+  @Post('login/device-verification')
+  @HttpCode(200)
+  verifyDeviceLogin(@Body() dto: DeviceLoginVerificationDto, @Req() request: SessionRequest): Promise<AuthResponse> {
+    return this.authService.verifyDeviceLogin(dto, this.sessionContext(request));
+  }
+
+  @Post('login/device-verification/resend')
+  @HttpCode(200)
+  resendDeviceLoginVerification(@Body() dto: DeviceLoginVerificationResendDto, @Req() request: SessionRequest) {
+    return this.accountSecurity.resendDeviceLoginVerification(dto.challengeToken, this.sessionContext(request));
   }
 
   @Post('refresh')
   @HttpCode(200)
-  refresh(
-    @Body() dto: RefreshTokenDto,
-    @Req() request: SessionRequest,
-  ): Promise<AuthResponse> {
+  refresh(@Body() dto: RefreshTokenDto, @Req() request: SessionRequest): Promise<AuthResponse> {
     return this.authService.refresh(dto.refreshToken, this.sessionContext(request));
   }
 
@@ -123,10 +158,19 @@ export class AuthController {
   @Post('sessions/revoke-all')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
-  revokeAllSessions(
-    @CurrentUser() user: AuthenticatedUser,
-  ): Promise<{ revokedSessions: number }> {
+  revokeAllSessions(@CurrentUser() user: AuthenticatedUser): Promise<{ revokedSessions: number }> {
     return this.authService.revokeAllSessions(user.id);
+  }
+
+  @Delete('sessions/:sessionId')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  revokeSession(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentSessionId() currentSessionId: string | null,
+    @Param('sessionId') targetSessionId: string,
+  ): Promise<{ success: true; current: boolean }> {
+    return this.authService.revokeSession(user.id, currentSessionId, targetSessionId);
   }
 
   @Get('me')
@@ -163,26 +207,31 @@ export class AuthController {
 
   @Get('me/security')
   @UseGuards(JwtAuthGuard)
-  getMySecurity(@CurrentUser() user: AuthenticatedUser) {
-    return this.accountSecurity.getMySecurity(user.id);
+  getMySecurity(@CurrentUser() user: AuthenticatedUser, @Req() request: SessionRequest) {
+    return this.accountSecurity.getMySecurity(user.id, this.sessionContext(request));
+  }
+
+  @Delete('me/security/trusted-devices/:deviceId')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  cancelTrustedDevice(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('deviceId', ParseIntPipe) deviceId: number,
+    @Req() request: SessionRequest,
+  ): Promise<{ success: true; current: boolean }> {
+    return this.accountSecurity.cancelTrustedDevice(user.id, deviceId, this.sessionContext(request));
   }
 
   @Patch('me/security/preferences')
   @UseGuards(JwtAuthGuard)
-  updateMySecurityPreferences(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: UpdateSecurityPreferencesDto,
-  ) {
+  updateMySecurityPreferences(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateSecurityPreferencesDto) {
     return this.accountSecurity.updatePreferences(user.id, dto);
   }
 
   @Post('me/email-verification/send')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
-  sendMyEmailVerification(
-    @CurrentUser() user: AuthenticatedUser,
-    @Req() request: SessionRequest,
-  ) {
+  sendMyEmailVerification(@CurrentUser() user: AuthenticatedUser, @Req() request: SessionRequest) {
     return this.accountSecurity.sendAccountEmailCode(user, this.sessionContext(request));
   }
 
@@ -199,10 +248,15 @@ export class AuthController {
 
   @Post('me/avatar')
   @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: AVATAR_MAX_FILE_SIZE_BYTES, files: 1 } }))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: AVATAR_MAX_FILE_SIZE_BYTES, files: 1 },
+    }),
+  )
   uploadAvatar(
     @CurrentUser() user: AuthenticatedUser,
-    @UploadedFile() file: { buffer: Buffer; mimetype: string; originalname: string; size: number } | undefined,
+    @UploadedFile()
+    file: { buffer: Buffer; mimetype: string; originalname: string; size: number } | undefined,
   ): Promise<AuthenticatedUser> {
     return this.usersService.updateOwnAvatar(user.id, file);
   }
@@ -211,22 +265,23 @@ export class AuthController {
   @Header('Cache-Control', 'public, max-age=31536000, immutable')
   async getAvatar(@Param('storedName') storedName: string): Promise<StreamableFile> {
     const file = await this.usersService.getAvatarFile(storedName);
-    return new StreamableFile(createReadStream(file.filePath), { type: file.mimeType });
+    return new StreamableFile(createReadStream(file.filePath), {
+      type: file.mimeType,
+    });
   }
 
   private sessionContext(request: SessionRequest): RefreshSessionContext {
     const forwardedFor = request.headers?.['x-forwarded-for'];
     const userAgent = request.headers?.['user-agent'];
     const deviceId = request.headers?.['x-device-id'];
-    const forwardedIp = Array.isArray(forwardedFor)
-      ? forwardedFor[0]
-      : forwardedFor?.split(',')[0];
+    const forwardedIp = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor?.split(',')[0];
     return {
       ip: normalizeIp(forwardedIp?.trim() || request.ip || 'unknown'),
-      userAgent: Array.isArray(userAgent)
-        ? userAgent[0] ?? 'unknown'
-        : userAgent ?? 'unknown',
+      userAgent: Array.isArray(userAgent) ? (userAgent[0] ?? 'unknown') : (userAgent ?? 'unknown'),
       deviceId: Array.isArray(deviceId) ? deviceId[0] : deviceId,
+      trustedDeviceToken: readTrustedDeviceToken(
+        Array.isArray(request.headers?.cookie) ? request.headers.cookie[0] : request.headers?.cookie,
+      ),
     };
   }
 }

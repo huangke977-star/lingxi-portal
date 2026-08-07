@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { RedisService } from '../redis/redis.service';
 import { SiteSettingsService } from '../site-settings/site-settings.service';
@@ -7,9 +13,10 @@ import {
   AuthenticatedUser,
   AuthResponse,
   AuthSessionSummary,
+  LoginResponse,
   RefreshSessionContext,
 } from './auth.types';
-import { LoginDto } from './dto/login.dto';
+import { DeviceLoginVerificationDto, LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { PasswordService } from './password.service';
@@ -56,11 +63,7 @@ export class AuthService {
       if (!dto.verificationCode) throw new BadRequestException('请输入邮箱验证码。');
       await this.accountSecurity.consumeRegistrationCode(email, dto.verificationCode);
     } else {
-      await this.turnstile.verify(
-        dto.turnstileToken,
-        context.ip,
-        securityConfiguration.turnstileRegistrationEnabled,
-      );
+      await this.turnstile.verify(dto.turnstileToken, context.ip, securityConfiguration.turnstileRegistrationEnabled);
     }
 
     const passwordHash = await this.passwordService.hashPassword(dto.password);
@@ -73,10 +76,14 @@ export class AuthService {
       emailVerifiedAt: securityConfiguration.registrationEmailVerificationEnabled ? new Date() : null,
     });
 
+    if (securityConfiguration.registrationEmailVerificationEnabled && context.trustedDeviceToken) {
+      await this.accountSecurity.trustCurrentDevice(user.id, context);
+    }
+    await this.accountSecurity.recordRegistrationLogin(user, context);
     return this.createAuthResponse(user, context);
   }
 
-  async login(dto: LoginDto, context: RefreshSessionContext): Promise<AuthResponse> {
+  async login(dto: LoginDto, context: RefreshSessionContext): Promise<LoginResponse> {
     const account = dto.account.trim();
     const failureKey = this.loginFailureKey(account, context.ip);
     const failures = Number((await this.redis.get(failureKey)) ?? '0');
@@ -104,8 +111,22 @@ export class AuthService {
     }
 
     await this.redis.del(failureKey);
+    if (
+      securityConfiguration.untrustedDeviceEmailVerificationEnabled &&
+      !(await this.accountSecurity.isTrustedDevice(user.id, context))
+    ) {
+      return this.accountSecurity.requestDeviceLoginVerification(user, context);
+    }
     await this.usersService.markLoginSuccess(user.id);
     await this.accountSecurity.recordLogin(user, context);
+    return this.createAuthResponse(user, context);
+  }
+
+  async verifyDeviceLogin(dto: DeviceLoginVerificationDto, context: RefreshSessionContext): Promise<AuthResponse> {
+    const verified = await this.accountSecurity.consumeDeviceLoginVerification(dto.challengeToken, dto.code, context);
+    const user = await this.usersService.findActiveById(verified.userId);
+    await this.usersService.markLoginSuccess(user.id);
+    await this.accountSecurity.recordVerifiedDeviceLogin(user, context);
     return this.createAuthResponse(user, context);
   }
 
@@ -129,32 +150,28 @@ export class AuthService {
     context: RefreshSessionContext,
   ): Promise<{ sessions: AuthSessionSummary[] }> {
     return {
-      sessions: await this.refreshTokenService.listSessions(
-        userId,
-        sessionId,
-        context,
-      ),
+      sessions: await this.refreshTokenService.listSessions(userId, sessionId, context),
     };
   }
 
-  async revokeOtherSessions(
-    userId: number,
-    sessionId: string | null,
-  ): Promise<{ revokedSessions: number }> {
+  async revokeOtherSessions(userId: number, sessionId: string | null): Promise<{ revokedSessions: number }> {
     return {
-      revokedSessions: await this.refreshTokenService.revokeOtherSessions(
-        userId,
-        sessionId,
-      ),
+      revokedSessions: await this.refreshTokenService.revokeOtherSessions(userId, sessionId),
     };
   }
 
-  async revokeAllSessions(
-    userId: number,
-  ): Promise<{ revokedSessions: number }> {
+  async revokeAllSessions(userId: number): Promise<{ revokedSessions: number }> {
     return {
       revokedSessions: await this.refreshTokenService.revokeAllSessions(userId),
     };
+  }
+
+  async revokeSession(
+    userId: number,
+    currentSessionId: string | null,
+    targetSessionId: string,
+  ): Promise<{ success: true; current: boolean }> {
+    return this.refreshTokenService.revokeSession(userId, currentSessionId, targetSessionId);
   }
 
   me(user: AuthenticatedUser): AuthenticatedUser {
@@ -180,19 +197,13 @@ export class AuthService {
       throw new BadRequestException('Current password is incorrect.');
     }
 
-    const passwordIsUnchanged = await this.passwordService.verifyPassword(
-      dto.newPassword,
-      storedUser.passwordHash,
-    );
+    const passwordIsUnchanged = await this.passwordService.verifyPassword(dto.newPassword, storedUser.passwordHash);
     if (passwordIsUnchanged) {
       throw new BadRequestException('New password must be different.');
     }
 
     await this.usersService.updateOwnPassword(user.id, dto.newPassword);
-    const revokedSessions = await this.refreshTokenService.revokeOtherSessions(
-      user.id,
-      sessionId,
-    );
+    const revokedSessions = await this.refreshTokenService.revokeOtherSessions(user.id, sessionId);
     await this.accountSecurity.recordPasswordEvent(user.id, LoginSecurityEventType.password_changed, context);
     return { success: true, revokedSessions };
   }
@@ -202,26 +213,15 @@ export class AuthService {
     context: RefreshSessionContext,
   ): Promise<{ success: true; revokedSessions: number }> {
     const securityConfiguration = await this.securityConfiguration.getConfiguration();
-    await this.turnstile.verify(
-      dto.turnstileToken,
-      context.ip,
-      securityConfiguration.turnstileRecoveryEnabled,
-    );
+    await this.turnstile.verify(dto.turnstileToken, context.ip, securityConfiguration.turnstileRecoveryEnabled);
     const request = await this.accountSecurity.consumePasswordResetToken(dto.token);
     await this.usersService.updateOwnPassword(request.userId, dto.newPassword, true);
     const revokedSessions = await this.refreshTokenService.revokeAllSessions(request.userId);
-    await this.accountSecurity.recordPasswordEvent(
-      request.userId,
-      LoginSecurityEventType.password_reset,
-      context,
-    );
+    await this.accountSecurity.recordPasswordEvent(request.userId, LoginSecurityEventType.password_reset, context);
     return { success: true, revokedSessions };
   }
 
-  private async createAuthResponse(
-    user: AuthenticatedUser,
-    context: RefreshSessionContext,
-  ): Promise<AuthResponse> {
+  private async createAuthResponse(user: AuthenticatedUser, context: RefreshSessionContext): Promise<AuthResponse> {
     const refresh = await this.refreshTokenService.issue(user.id, context);
     return {
       user: this.toPublicUser(user),
@@ -230,10 +230,7 @@ export class AuthService {
     };
   }
 
-  private async signAccessToken(
-    user: AuthenticatedUser,
-    sessionId: string,
-  ): Promise<string> {
+  private async signAccessToken(user: AuthenticatedUser, sessionId: string): Promise<string> {
     return this.jwtService.signAsync(
       {
         sub: user.id,

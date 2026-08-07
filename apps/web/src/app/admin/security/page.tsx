@@ -13,11 +13,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { PasswordInput } from "@/components/password-input";
-import {
-  type AuthUser,
-  getMe,
-  isAuthExpiredError,
-} from "@/lib/auth-api";
+import { type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import {
   getSecurityAdminConfig,
@@ -209,12 +205,13 @@ export default function SecurityAdminPage() {
         registrationEmailVerificationEnabled:
           draft.registrationEmailVerificationEnabled,
         passwordRecoveryEnabled: draft.passwordRecoveryEnabled,
+        untrustedDeviceEmailVerificationEnabled:
+          draft.untrustedDeviceEmailVerificationEnabled,
         turnstileSiteKey: draft.turnstileSiteKey,
         turnstileRegistrationEnabled: draft.turnstileRegistrationEnabled,
         turnstileLoginEnabled: draft.turnstileLoginEnabled,
         turnstileRecoveryEnabled: draft.turnstileRecoveryEnabled,
-        loginFailureTurnstileThreshold:
-          draft.loginFailureTurnstileThreshold,
+        loginFailureTurnstileThreshold: draft.loginFailureTurnstileThreshold,
         ...(draft.smtpPassword ? { smtpPassword: draft.smtpPassword } : {}),
         ...(draft.turnstileSecret
           ? { turnstileSecret: draft.turnstileSecret }
@@ -313,7 +310,9 @@ export default function SecurityAdminPage() {
               <Field label="SMTP 主机">
                 <input
                   disabled={!canEdit}
-                  onChange={(event) => updateDraft("smtpHost", event.target.value)}
+                  onChange={(event) =>
+                    updateDraft("smtpHost", event.target.value)
+                  }
                   value={draft.smtpHost}
                 />
               </Field>
@@ -347,7 +346,9 @@ export default function SecurityAdminPage() {
                     updateDraft("smtpPassword", event.target.value)
                   }
                   placeholder={
-                    draft.smtpPasswordConfigured ? "已配置，留空保持不变" : "输入 SMTP 密码"
+                    draft.smtpPasswordConfigured
+                      ? "已配置，留空保持不变"
+                      : "输入 SMTP 密码"
                   }
                   value={draft.smtpPassword ?? ""}
                 />
@@ -402,6 +403,17 @@ export default function SecurityAdminPage() {
                 label="密码找回"
                 onChange={(checked) =>
                   updateDraft("passwordRecoveryEnabled", checked)
+                }
+              />
+              <ToggleField
+                checked={draft.untrustedDeviceEmailVerificationEnabled}
+                disabled={!canEdit}
+                label="非信任设备邮箱验证"
+                onChange={(checked) =>
+                  updateDraft(
+                    "untrustedDeviceEmailVerificationEnabled",
+                    checked,
+                  )
                 }
               />
             </div>
@@ -580,7 +592,13 @@ export default function SecurityAdminPage() {
   );
 }
 
-function Field({ children, label }: { children: React.ReactNode; label: string }) {
+function Field({
+  children,
+  label,
+}: {
+  children: React.ReactNode;
+  label: string;
+}) {
   return (
     <label className="security-field">
       <span>{label}</span>
@@ -695,7 +713,11 @@ function SecurityRecordRow({
           <StatusBadge value={item.status} />
         </td>
         <td>
-          <strong>{item.sentAt ? formatDateTime(item.sentAt) : `${item.attempts ?? 0} 次尝试`}</strong>
+          <strong>
+            {item.sentAt
+              ? formatDateTime(item.sentAt)
+              : `${item.attempts ?? 0} 次尝试`}
+          </strong>
           {item.lastError ? <small>{item.lastError}</small> : null}
         </td>
       </tr>

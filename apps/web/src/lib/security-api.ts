@@ -3,6 +3,7 @@ import { requestJson } from "./auth-api";
 export interface SecurityPolicy {
   registrationEmailVerificationEnabled: boolean;
   passwordRecoveryEnabled: boolean;
+  untrustedDeviceEmailVerificationEnabled: boolean;
   turnstile: {
     siteKey: string;
     registrationEnabled: boolean;
@@ -61,6 +62,7 @@ export interface SecurityAdminConfig {
   smtpFromEmail: string;
   registrationEmailVerificationEnabled: boolean;
   passwordRecoveryEnabled: boolean;
+  untrustedDeviceEmailVerificationEnabled: boolean;
   turnstileSiteKey: string;
   turnstileSecret?: string;
   turnstileSecretConfigured: boolean;
@@ -83,6 +85,7 @@ export type SecurityAdminConfigUpdate = Pick<
   | "smtpFromEmail"
   | "registrationEmailVerificationEnabled"
   | "passwordRecoveryEnabled"
+  | "untrustedDeviceEmailVerificationEnabled"
   | "turnstileSiteKey"
   | "turnstileRegistrationEnabled"
   | "turnstileLoginEnabled"
@@ -94,9 +97,7 @@ export type SecurityAdminConfigUpdate = Pick<
 };
 
 export type SecurityAdminTab =
-  | "mail-jobs"
-  | "verification-codes"
-  | "risk-events";
+  "mail-jobs" | "verification-codes" | "risk-events";
 
 export interface SecurityAdminOverviewItem {
   id: string | number;
@@ -183,15 +184,27 @@ export function updateMySecurityPreferences(
   accessToken: string,
   preferences: SecurityPreferences,
 ): Promise<SecurityPreferences> {
-  return requestJson<SecurityPreferences | { preferences: SecurityPreferences }>(
-    "/auth/me/security/preferences",
-    {
-      method: "PATCH",
-      headers: { Authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify(preferences),
-    },
-  ).then((response) =>
+  return requestJson<
+    SecurityPreferences | { preferences: SecurityPreferences }
+  >("/auth/me/security/preferences", {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(preferences),
+  }).then((response) =>
     "preferences" in response ? response.preferences : response,
+  );
+}
+
+export function cancelTrustedDevice(
+  accessToken: string,
+  deviceId: string | number,
+): Promise<{ success: true; current: boolean }> {
+  return requestJson(
+    `/auth/me/security/trusted-devices/${encodeURIComponent(String(deviceId))}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
   );
 }
 

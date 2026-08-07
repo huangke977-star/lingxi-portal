@@ -86,6 +86,7 @@ const defaultSecurityConfiguration = {
   smtpFromEmail: null,
   registrationEmailVerificationEnabled: false,
   passwordRecoveryEnabled: false,
+  untrustedDeviceEmailVerificationEnabled: false,
   turnstileSiteKey: null,
   turnstileSecretEncrypted: null,
   turnstileRegistrationEnabled: false,
@@ -252,6 +253,10 @@ describe('AuthController (e2e)', () => {
   let app: INestApplication;
   let prismaState: ReturnType<typeof createPrismaMock>;
   let redisState: ReturnType<typeof createRedisMock>;
+  let securityConfigurationState: typeof defaultSecurityConfiguration;
+  let accountSecurityState: {
+    [key: string]: jest.Mock;
+  };
 
   beforeEach(async () => {
     process.env.JWT_ACCESS_SECRET = 'test-access-token-secret';
@@ -262,6 +267,37 @@ describe('AuthController (e2e)', () => {
 
     prismaState = createPrismaMock();
     redisState = createRedisMock();
+    securityConfigurationState = { ...defaultSecurityConfiguration };
+    accountSecurityState = {
+      consumeRegistrationCode: jest.fn(async () => undefined),
+      recordRegistrationLogin: jest.fn(async () => undefined),
+      recordLogin: jest.fn(async () => undefined),
+      recordVerifiedDeviceLogin: jest.fn(async () => undefined),
+      isTrustedDevice: jest.fn(async () => true),
+      trustCurrentDevice: jest.fn(async () => undefined),
+      requestDeviceLoginVerification: jest.fn(async () => ({
+        deviceVerificationRequired: true,
+        challengeToken: 'device-challenge-token-1234567890',
+        emailHint: 'te****@example.com',
+        expiresAt: new Date(Date.now() + 600_000).toISOString(),
+        retryAfterSeconds: 60,
+      })),
+      consumeDeviceLoginVerification: jest.fn(async () => ({ userId: 1 })),
+      resendDeviceLoginVerification: jest.fn(async () => ({ success: true })),
+      cancelTrustedDevice: jest.fn(async () => ({
+        success: true,
+        current: false,
+      })),
+      recordBlockedLogin: jest.fn(async () => undefined),
+      recordPasswordEvent: jest.fn(async () => undefined),
+      getMySecurity: jest.fn(async () => ({
+        emailVerifiedAt: null,
+        preferences: {},
+        events: [],
+        trustedDevices: [],
+      })),
+      updatePreferences: jest.fn(async (userId: number, dto: unknown) => dto),
+    };
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -271,24 +307,24 @@ describe('AuthController (e2e)', () => {
       .useValue(redisState.redis)
       .overrideProvider(SecurityConfigurationService)
       .useValue({
-        getConfiguration: jest.fn(async () => defaultSecurityConfiguration),
+        getConfiguration: jest.fn(async () => securityConfigurationState),
         getPublicPolicy: jest.fn(async () => ({
           registrationEmailVerificationEnabled: false,
           passwordRecoveryEnabled: false,
-          turnstile: { siteKey: '', registrationEnabled: false, loginEnabled: false, recoveryEnabled: false, loginFailureThreshold: 3 },
+          untrustedDeviceEmailVerificationEnabled: false,
+          turnstile: {
+            siteKey: '',
+            registrationEnabled: false,
+            loginEnabled: false,
+            recoveryEnabled: false,
+            loginFailureThreshold: 3,
+          },
         })),
       })
       .overrideProvider(TurnstileService)
       .useValue({ verify: jest.fn(async () => undefined) })
       .overrideProvider(AccountSecurityService)
-      .useValue({
-        consumeRegistrationCode: jest.fn(async () => undefined),
-        recordLogin: jest.fn(async () => undefined),
-        recordBlockedLogin: jest.fn(async () => undefined),
-        recordPasswordEvent: jest.fn(async () => undefined),
-        getMySecurity: jest.fn(async () => ({ emailVerifiedAt: null, preferences: {}, events: [], trustedDevices: [] })),
-        updatePreferences: jest.fn(async (userId: number, dto: unknown) => dto),
-      })
+      .useValue(accountSecurityState)
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -330,9 +366,7 @@ describe('AuthController (e2e)', () => {
     expect(response.body.accessToken).toEqual(expect.any(String));
     expect(response.body.refreshToken).toEqual(expect.any(String));
     expect(response.body.user.passwordHash).toBeUndefined();
-    expect(readJwtPayload(response.body.accessToken as string).sid).toEqual(
-      expect.any(String),
-    );
+    expect(readJwtPayload(response.body.accessToken as string).sid).toEqual(expect.any(String));
   });
 
   it('rejects duplicate username or email', async () => {
@@ -345,7 +379,11 @@ describe('AuthController (e2e)', () => {
   it('requires a nickname during registration', async () => {
     await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ username: 'missing_nickname', email: 'missing@example.com', password: 'Secret123!' })
+      .send({
+        username: 'missing_nickname',
+        email: 'missing@example.com',
+        password: 'Secret123!',
+      })
       .expect(400);
   });
 
@@ -377,6 +415,63 @@ describe('AuthController (e2e)', () => {
     expect(response.body.user.username).toBe('email_user');
   });
 
+  it('trusts the registration browser after verified email registration', async () => {
+    securityConfigurationState = {
+      ...securityConfigurationState,
+      registrationEmailVerificationEnabled: true,
+    };
+
+    await request(app.getHttpServer())
+      .post('/auth/register')
+      .set('User-Agent', 'Registration Chrome')
+      .send({
+        username: 'trusted_registration',
+        nickname: '注册设备',
+        email: 'trusted-registration@example.com',
+        password: 'Secret123!',
+        verificationCode: '123456',
+      })
+      .expect(200);
+
+    expect(accountSecurityState.trustCurrentDevice).toHaveBeenCalledTimes(1);
+    expect(accountSecurityState.recordRegistrationLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires email verification before an untrusted device receives tokens', async () => {
+    await register('device_login', 'device-login@example.com').expect(200);
+    securityConfigurationState = {
+      ...securityConfigurationState,
+      untrustedDeviceEmailVerificationEnabled: true,
+    };
+    accountSecurityState.isTrustedDevice.mockResolvedValue(false);
+
+    const challenged = await request(app.getHttpServer())
+      .post('/auth/login')
+      .set('User-Agent', 'Untrusted Safari')
+      .send({ account: 'device_login', password: 'Secret123!' })
+      .expect(200);
+
+    expect(challenged.body).toMatchObject({
+      deviceVerificationRequired: true,
+      emailHint: 'te****@example.com',
+    });
+    expect(challenged.body.accessToken).toBeUndefined();
+    const cookie = (challenged.headers['set-cookie'] as unknown as string[] | undefined)?.[0]?.split(';')[0];
+    expect(cookie).toContain('hlovet_trusted_device=');
+
+    const verified = await request(app.getHttpServer())
+      .post('/auth/login/device-verification')
+      .set('Cookie', cookie!)
+      .send({
+        challengeToken: challenged.body.challengeToken,
+        code: '123456',
+      })
+      .expect(200);
+
+    expect(verified.body.accessToken).toEqual(expect.any(String));
+    expect(accountSecurityState.recordVerifiedDeviceLogin).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects wrong passwords and blocks after five failures', async () => {
     await register('locked_user', 'locked@example.com').expect(200);
 
@@ -401,9 +496,10 @@ describe('AuthController (e2e)', () => {
     const registered = await register('refresh_user', 'refresh@example.com').expect(200);
     const firstRefreshToken = registered.body.refreshToken as string;
     const firstTokenId = firstRefreshToken.split('.')[0];
-    const storedRecord = JSON.parse(
-      redisState.store.get(`refresh_token:${firstTokenId}`) ?? '{}',
-    ) as Record<string, unknown>;
+    const storedRecord = JSON.parse(redisState.store.get(`refresh_token:${firstTokenId}`) ?? '{}') as Record<
+      string,
+      unknown
+    >;
     delete storedRecord.ip;
     delete storedRecord.userAgent;
     redisState.store.set(`refresh_token:${firstTokenId}`, JSON.stringify(storedRecord));
@@ -449,9 +545,10 @@ describe('AuthController (e2e)', () => {
       .send({ account: 'sessions_user', password: 'Secret123!' })
       .expect(200);
     const currentTokenId = readJwtPayload(loggedIn.body.accessToken as string).sid as string;
-    const currentRecord = JSON.parse(
-      redisState.store.get(`refresh_token:${currentTokenId}`) ?? '{}',
-    ) as Record<string, unknown>;
+    const currentRecord = JSON.parse(redisState.store.get(`refresh_token:${currentTokenId}`) ?? '{}') as Record<
+      string,
+      unknown
+    >;
     delete currentRecord.ip;
     delete currentRecord.userAgent;
     redisState.store.set(`refresh_token:${currentTokenId}`, JSON.stringify(currentRecord));
@@ -490,14 +587,31 @@ describe('AuthController (e2e)', () => {
       .expect(200);
 
     expect(revoked.body).toEqual({ revokedSessions: 1 });
-    await request(app.getHttpServer())
-      .post('/auth/refresh')
-      .send({ refreshToken: otherRefreshToken })
-      .expect(401);
+    await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: otherRefreshToken }).expect(401);
     await request(app.getHttpServer())
       .post('/auth/refresh')
       .send({ refreshToken: current.body.refreshToken as string })
       .expect(200);
+  });
+
+  it('revokes one selected login session and invalidates its access token', async () => {
+    const first = await register('revoke_one', 'revoke-one@example.com').expect(200);
+    const second = await request(app.getHttpServer())
+      .post('/auth/login')
+      .set('User-Agent', 'Second trusted device')
+      .send({ account: 'revoke_one', password: 'Secret123!' })
+      .expect(200);
+    const firstSessionId = readJwtPayload(first.body.accessToken as string).sid as string;
+
+    await request(app.getHttpServer())
+      .delete(`/auth/sessions/${firstSessionId}`)
+      .set('Authorization', `Bearer ${second.body.accessToken as string}`)
+      .expect(200, { success: true, current: false });
+
+    await request(app.getHttpServer())
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${first.body.accessToken as string}`)
+      .expect(401);
   });
 
   it('revokes all login sessions for the current account', async () => {
@@ -538,10 +652,7 @@ describe('AuthController (e2e)', () => {
       .expect(200);
 
     expect(sessions.body.sessions).toHaveLength(10);
-    await request(app.getHttpServer())
-      .post('/auth/refresh')
-      .send({ refreshToken: issuedRefreshTokens[0] })
-      .expect(401);
+    await request(app.getHttpServer()).post('/auth/refresh').send({ refreshToken: issuedRefreshTokens[0] }).expect(401);
   });
 
   it('removes stale ids from the user session index', async () => {
@@ -557,9 +668,7 @@ describe('AuthController (e2e)', () => {
       .set('Authorization', `Bearer ${registered.body.accessToken as string}`)
       .expect(200);
 
-    expect(redisState.sets.get(`user_sessions:${user.id}`)).not.toContain(
-      'missing-token-id',
-    );
+    expect(redisState.sets.get(`user_sessions:${user.id}`)).not.toContain('missing-token-id');
   });
 
   it('returns /auth/me for a valid access token', async () => {
@@ -586,7 +695,11 @@ describe('AuthController (e2e)', () => {
     const response = await request(app.getHttpServer())
       .patch('/auth/me/profile')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ nickname: '一颗测试星', email: 'BIO-UPDATED@example.com', profileBio: '我就喜欢这个范。' })
+      .send({
+        nickname: '一颗测试星',
+        email: 'BIO-UPDATED@example.com',
+        profileBio: '我就喜欢这个范。',
+      })
       .expect(200);
 
     expect(response.body.nickname).toBe('一颗测试星');
@@ -633,7 +746,10 @@ describe('AuthController (e2e)', () => {
     await request(app.getHttpServer())
       .patch('/auth/me/password')
       .set('Authorization', authorization)
-      .send({ currentPassword: 'not-the-password', newPassword: 'NewSecret456!' })
+      .send({
+        currentPassword: 'not-the-password',
+        newPassword: 'NewSecret456!',
+      })
       .expect(400);
     await request(app.getHttpServer())
       .patch('/auth/me/password')
@@ -649,7 +765,11 @@ describe('AuthController (e2e)', () => {
     await request(app.getHttpServer())
       .patch('/auth/me/profile')
       .set('Authorization', `Bearer ${registered.body.accessToken as string}`)
-      .send({ nickname: '测试昵称', email: 'target@example.com', profileBio: '保持原样。' })
+      .send({
+        nickname: '测试昵称',
+        email: 'target@example.com',
+        profileBio: '保持原样。',
+      })
       .expect(409);
   });
 
@@ -660,7 +780,11 @@ describe('AuthController (e2e)', () => {
     await request(app.getHttpServer())
       .patch('/auth/me/profile')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ nickname: '超级管理员', email: 'nickname@example.com', profileBio: '保持原样。' })
+      .send({
+        nickname: '超级管理员',
+        email: 'nickname@example.com',
+        profileBio: '保持原样。',
+      })
       .expect(400);
   });
 
@@ -686,8 +810,5 @@ function readJwtPayload(token: string): Record<string, unknown> {
   if (!payload) {
     throw new Error('Expected a JWT payload.');
   }
-  return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Record<
-    string,
-    unknown
-  >;
+  return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Record<string, unknown>;
 }

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, HttpException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, HttpException, Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import {
   EmailVerificationPurpose,
@@ -19,6 +19,16 @@ import { MailService } from "./mail.service";
 import { SecurityConfigurationService } from "./security-configuration.service";
 import { TurnstileService } from "./turnstile.service";
 
+interface LoginRecordOptions {
+  type?: LoginSecurityEventType;
+  riskLevel?: LoginRiskLevel;
+  summary?: string;
+  isNewDevice?: boolean;
+  suppressSystemAlert?: boolean;
+  suppressEmailAlert?: boolean;
+  metadata?: Prisma.InputJsonObject;
+}
+
 @Injectable()
 export class AccountSecurityService {
   constructor(
@@ -36,7 +46,12 @@ export class AccountSecurityService {
     }
     await this.turnstile.verify(turnstileToken, context.ip, config.turnstileRegistrationEnabled);
     await this.assertCodeRateLimit(email, context.ip, "registration");
-    if (await this.prisma.user.findUnique({ where: { email }, select: { id: true } })) {
+    if (
+      await this.prisma.user.findUnique({
+        where: { email },
+        select: { id: true },
+      })
+    ) {
       throw new ConflictException("该邮箱已被使用。");
     }
     const code = this.createCode();
@@ -57,10 +72,16 @@ export class AccountSecurityService {
         subject: "HLOVET 注册验证码",
         text: `你的 HLOVET 注册验证码是 ${code}，10 分钟内有效。请勿将验证码告诉他人。`,
         html: `<p>你的 HLOVET 注册验证码是：</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>验证码 10 分钟内有效，请勿将验证码告诉他人。</p>`,
-        metadata: { verificationRequestId: request.id, purpose: "registration" },
+        metadata: {
+          verificationRequestId: request.id,
+          purpose: "registration",
+        },
       });
     } catch (error) {
-      await this.prisma.emailVerificationRequest.update({ where: { id: request.id }, data: { status: EmailVerificationStatus.expired } });
+      await this.prisma.emailVerificationRequest.update({
+        where: { id: request.id },
+        data: { status: EmailVerificationStatus.expired },
+      });
       throw error;
     }
     return { success: true as const, retryAfterSeconds: 60 };
@@ -72,7 +93,11 @@ export class AccountSecurityService {
     const request = await this.requireValidCode(email, EmailVerificationPurpose.registration, code);
     const consumed = await this.prisma.emailVerificationRequest.updateMany({
       where: { id: request.id, status: EmailVerificationStatus.pending },
-      data: { status: EmailVerificationStatus.consumed, verifiedAt: new Date(), consumedAt: new Date() },
+      data: {
+        status: EmailVerificationStatus.consumed,
+        verifiedAt: new Date(),
+        consumedAt: new Date(),
+      },
     });
     if (consumed.count !== 1) throw new BadRequestException("验证码已使用，请重新获取。");
   }
@@ -99,10 +124,16 @@ export class AccountSecurityService {
         text: `你的 HLOVET 邮箱验证码是 ${code}，10 分钟内有效。`,
         html: `<p>你的 HLOVET 邮箱验证码是：</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>验证码 10 分钟内有效。</p>`,
         userId: user.id,
-        metadata: { verificationRequestId: request.id, purpose: "account_email" },
+        metadata: {
+          verificationRequestId: request.id,
+          purpose: "account_email",
+        },
       });
     } catch (error) {
-      await this.prisma.emailVerificationRequest.update({ where: { id: request.id }, data: { status: EmailVerificationStatus.expired } });
+      await this.prisma.emailVerificationRequest.update({
+        where: { id: request.id },
+        data: { status: EmailVerificationStatus.expired },
+      });
       throw error;
     }
     return { success: true as const, retryAfterSeconds: 60 };
@@ -113,14 +144,168 @@ export class AccountSecurityService {
     await this.prisma.$transaction([
       this.prisma.emailVerificationRequest.update({
         where: { id: request.id },
-        data: { status: EmailVerificationStatus.consumed, verifiedAt: new Date(), consumedAt: new Date() },
+        data: {
+          status: EmailVerificationStatus.consumed,
+          verifiedAt: new Date(),
+          consumedAt: new Date(),
+        },
       }),
-      this.prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } }),
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerifiedAt: new Date() },
+      }),
       this.prisma.loginSecurityEvent.create({
         data: this.eventData(user.id, LoginSecurityEventType.email_verified, LoginRiskLevel.info, "账号邮箱验证完成", context),
       }),
     ]);
-    return { success: true as const, emailVerifiedAt: new Date().toISOString() };
+    return {
+      success: true as const,
+      emailVerifiedAt: new Date().toISOString(),
+    };
+  }
+
+  async requestDeviceLoginVerification(user: AuthenticatedUser, context: RefreshSessionContext) {
+    const fingerprint = this.requireTrustedDeviceFingerprint(context);
+    await this.assertCodeRateLimit(user.email, context.ip, "device-login");
+    await this.prisma.emailVerificationRequest.updateMany({
+      where: {
+        userId: user.id,
+        purpose: EmailVerificationPurpose.device_login,
+        status: EmailVerificationStatus.pending,
+        deviceFingerprint: fingerprint,
+      },
+      data: { status: EmailVerificationStatus.expired },
+    });
+
+    const code = this.createCode();
+    const challengeToken = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const request = await this.prisma.emailVerificationRequest.create({
+      data: {
+        userId: user.id,
+        purpose: EmailVerificationPurpose.device_login,
+        email: user.email,
+        codeHash: this.hashCode(user.email, code),
+        challengeTokenHash: this.hashToken(challengeToken),
+        deviceFingerprint: fingerprint,
+        ip: context.ip,
+        expiresAt,
+      },
+    });
+    try {
+      await this.sendDeviceLoginCode(user, request.id, code, context);
+    } catch (error) {
+      await this.prisma.emailVerificationRequest.update({
+        where: { id: request.id },
+        data: { status: EmailVerificationStatus.expired },
+      });
+      throw error;
+    }
+    return {
+      deviceVerificationRequired: true as const,
+      challengeToken,
+      emailHint: this.maskEmail(user.email),
+      expiresAt: expiresAt.toISOString(),
+      retryAfterSeconds: 60,
+    };
+  }
+
+  async resendDeviceLoginVerification(challengeToken: string, context: RefreshSessionContext) {
+    const request = await this.requireDeviceLoginChallenge(challengeToken, context);
+    await this.assertCodeRateLimit(request.email, context.ip, "device-login");
+    const code = this.createCode();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await this.prisma.emailVerificationRequest.update({
+      where: { id: request.id },
+      data: {
+        codeHash: this.hashCode(request.email, code),
+        attempts: 0,
+        expiresAt,
+      },
+    });
+    try {
+      await this.sendDeviceLoginCode(request.user, request.id, code, context);
+    } catch (error) {
+      await this.prisma.emailVerificationRequest.update({
+        where: { id: request.id },
+        data: { status: EmailVerificationStatus.expired },
+      });
+      throw error;
+    }
+    return {
+      success: true as const,
+      challengeToken,
+      emailHint: this.maskEmail(request.email),
+      expiresAt: expiresAt.toISOString(),
+      retryAfterSeconds: 60,
+    };
+  }
+
+  async consumeDeviceLoginVerification(challengeToken: string, code: string, context: RefreshSessionContext): Promise<{ userId: number }> {
+    const request = await this.requireDeviceLoginChallenge(challengeToken, context);
+    if (request.attempts >= 5) {
+      await this.prisma.emailVerificationRequest.update({
+        where: { id: request.id },
+        data: { status: EmailVerificationStatus.expired },
+      });
+      throw new BadRequestException("验证码尝试次数过多，请重新登录。");
+    }
+
+    const expected = Buffer.from(request.codeHash, "hex");
+    const actual = Buffer.from(this.hashCode(request.email, code), "hex");
+    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+      await this.prisma.emailVerificationRequest.update({
+        where: { id: request.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw new BadRequestException("验证码不正确。");
+    }
+
+    const trustedAt = new Date();
+    await this.prisma.$transaction(async (transaction) => {
+      const consumed = await transaction.emailVerificationRequest.updateMany({
+        where: { id: request.id, status: EmailVerificationStatus.pending },
+        data: {
+          status: EmailVerificationStatus.consumed,
+          verifiedAt: trustedAt,
+          consumedAt: trustedAt,
+        },
+      });
+      if (consumed.count !== 1) {
+        throw new BadRequestException("验证码已使用，请重新登录。");
+      }
+      await transaction.knownLoginDevice.upsert({
+        where: {
+          userId_fingerprint: {
+            userId: request.userId!,
+            fingerprint: request.deviceFingerprint!,
+          },
+        },
+        create: {
+          userId: request.userId!,
+          fingerprint: request.deviceFingerprint!,
+          label: this.deviceLabel(context.userAgent),
+          userAgent: context.userAgent.slice(0, 500),
+          firstIp: context.ip,
+          lastIp: context.ip,
+          trustedAt,
+        },
+        update: {
+          label: this.deviceLabel(context.userAgent),
+          userAgent: context.userAgent.slice(0, 500),
+          lastIp: context.ip,
+          lastSeenAt: trustedAt,
+          trustedAt,
+        },
+      });
+      if (!request.user.emailVerifiedAt) {
+        await transaction.user.update({
+          where: { id: request.userId! },
+          data: { emailVerifiedAt: trustedAt },
+        });
+      }
+    });
+    return { userId: request.userId! };
   }
 
   async requestPasswordReset(email: string, turnstileToken: string | undefined, context: RefreshSessionContext) {
@@ -130,7 +315,13 @@ export class AccountSecurityService {
     await this.assertRecoveryRateLimit(email, context.ip);
     const user = await this.prisma.user.findUnique({
       where: { email },
-      select: { id: true, email: true, nickname: true, status: true, emailVerifiedAt: true },
+      select: {
+        id: true,
+        email: true,
+        nickname: true,
+        status: true,
+        emailVerifiedAt: true,
+      },
     });
     if (!user || user.status !== "active" || !user.emailVerifiedAt) return { success: true as const };
     await this.prisma.passwordResetRequest.updateMany({
@@ -167,7 +358,10 @@ export class AccountSecurityService {
     });
     if (!request || request.status !== PasswordResetStatus.pending || request.expiresAt.getTime() <= Date.now()) {
       if (request?.status === PasswordResetStatus.pending) {
-        await this.prisma.passwordResetRequest.update({ where: { id: request.id }, data: { status: PasswordResetStatus.expired } });
+        await this.prisma.passwordResetRequest.update({
+          where: { id: request.id },
+          data: { status: PasswordResetStatus.expired },
+        });
       }
       throw new BadRequestException("重置链接无效或已过期。");
     }
@@ -179,17 +373,32 @@ export class AccountSecurityService {
     return { userId: request.userId };
   }
 
-  async getMySecurity(userId: number) {
+  async getMySecurity(userId: number, context: RefreshSessionContext) {
+    const currentFingerprint = context.trustedDeviceToken ? this.hashToken(context.trustedDeviceToken) : null;
     const [user, preferences, events, devices] = await Promise.all([
-      this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { emailVerifiedAt: true } }),
+      this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { emailVerifiedAt: true },
+      }),
       this.ensurePreferences(userId),
-      this.prisma.loginSecurityEvent.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 30 }),
-      this.prisma.knownLoginDevice.findMany({ where: { userId }, orderBy: { lastSeenAt: "desc" }, take: 20 }),
+      this.prisma.loginSecurityEvent.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+      }),
+      this.prisma.knownLoginDevice.findMany({
+        where: { userId, trustedAt: { not: null } },
+        orderBy: { lastSeenAt: "desc" },
+        take: 20,
+      }),
     ]);
     return {
       emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
       preferences: this.preferenceResponse(preferences),
-      events: events.map((event) => ({ ...event, createdAt: event.createdAt.toISOString() })),
+      events: events.map((event) => ({
+        ...event,
+        createdAt: event.createdAt.toISOString(),
+      })),
       trustedDevices: devices.map((device) => ({
         id: device.id,
         label: device.label,
@@ -197,7 +406,63 @@ export class AccountSecurityService {
         lastIp: device.lastIp,
         firstSeenAt: device.firstSeenAt.toISOString(),
         lastSeenAt: device.lastSeenAt.toISOString(),
+        trustedAt: device.trustedAt?.toISOString() ?? null,
+        current: device.fingerprint === currentFingerprint,
       })),
+    };
+  }
+
+  async isTrustedDevice(userId: number, context: RefreshSessionContext): Promise<boolean> {
+    if (!context.trustedDeviceToken) return false;
+    return Boolean(
+      await this.prisma.knownLoginDevice.findFirst({
+        where: {
+          userId,
+          fingerprint: this.hashToken(context.trustedDeviceToken),
+          trustedAt: { not: null },
+        },
+        select: { id: true },
+      }),
+    );
+  }
+
+  async trustCurrentDevice(userId: number, context: RefreshSessionContext): Promise<void> {
+    const fingerprint = this.requireTrustedDeviceFingerprint(context);
+    const trustedAt = new Date();
+    await this.prisma.knownLoginDevice.upsert({
+      where: { userId_fingerprint: { userId, fingerprint } },
+      create: {
+        userId,
+        fingerprint,
+        label: this.deviceLabel(context.userAgent),
+        userAgent: context.userAgent.slice(0, 500),
+        firstIp: context.ip,
+        lastIp: context.ip,
+        trustedAt,
+      },
+      update: {
+        label: this.deviceLabel(context.userAgent),
+        userAgent: context.userAgent.slice(0, 500),
+        lastIp: context.ip,
+        lastSeenAt: trustedAt,
+        trustedAt,
+      },
+    });
+  }
+
+  async cancelTrustedDevice(userId: number, deviceId: number, context: RefreshSessionContext): Promise<{ success: true; current: boolean }> {
+    const device = await this.prisma.knownLoginDevice.findFirst({
+      where: { id: deviceId, userId, trustedAt: { not: null } },
+      select: { id: true, fingerprint: true },
+    });
+    if (!device) throw new NotFoundException("信任设备不存在。");
+    await this.prisma.knownLoginDevice.update({
+      where: { id: device.id },
+      data: { trustedAt: null },
+    });
+    return {
+      success: true,
+      current: context.trustedDeviceToken ? device.fingerprint === this.hashToken(context.trustedDeviceToken) : false,
     };
   }
 
@@ -210,52 +475,85 @@ export class AccountSecurityService {
     return this.preferenceResponse(preferences);
   }
 
-  async recordLogin(user: AuthenticatedUser, context: RefreshSessionContext): Promise<void> {
+  async recordLogin(user: AuthenticatedUser, context: RefreshSessionContext, options: LoginRecordOptions = {}): Promise<void> {
     const fingerprint = this.deviceFingerprint(context);
     const deviceLabel = this.deviceLabel(context.userAgent);
     const [knownDevice, knownIp, recentLogins, preferences] = await Promise.all([
-      this.prisma.knownLoginDevice.findUnique({ where: { userId_fingerprint: { userId: user.id, fingerprint } } }),
-      this.prisma.knownLoginDevice.count({ where: { userId: user.id, OR: [{ firstIp: context.ip }, { lastIp: context.ip }] } }),
+      this.prisma.knownLoginDevice.findUnique({
+        where: { userId_fingerprint: { userId: user.id, fingerprint } },
+      }),
+      this.prisma.knownLoginDevice.count({
+        where: {
+          userId: user.id,
+          OR: [{ firstIp: context.ip }, { lastIp: context.ip }],
+        },
+      }),
       this.prisma.loginSecurityEvent.count({
         where: {
           userId: user.id,
-          type: { in: [
-            LoginSecurityEventType.login_success,
-            LoginSecurityEventType.new_device,
-            LoginSecurityEventType.new_ip,
-            LoginSecurityEventType.unusual_frequency,
-          ] },
+          type: {
+            in: [
+              LoginSecurityEventType.login_success,
+              LoginSecurityEventType.new_device,
+              LoginSecurityEventType.new_ip,
+              LoginSecurityEventType.unusual_frequency,
+            ],
+          },
           createdAt: { gte: new Date(Date.now() - 10 * 60 * 1000) },
         },
       }),
       this.ensurePreferences(user.id),
     ]);
-    const isNewDevice = !knownDevice;
+    const isNewDevice = options.isNewDevice ?? !knownDevice;
     const isNewIp = knownIp === 0;
     const unusualFrequency = recentLogins >= 5;
-    const type = unusualFrequency
+    const detectedType = unusualFrequency
       ? LoginSecurityEventType.unusual_frequency
       : isNewDevice
         ? LoginSecurityEventType.new_device
         : isNewIp
           ? LoginSecurityEventType.new_ip
           : LoginSecurityEventType.login_success;
-    const riskLevel = unusualFrequency ? LoginRiskLevel.high : isNewDevice ? LoginRiskLevel.medium : isNewIp ? LoginRiskLevel.low : LoginRiskLevel.info;
-    const summary = unusualFrequency ? "短时间内出现多次登录" : isNewDevice ? "新设备登录" : isNewIp ? "陌生 IP 登录" : "账号登录成功";
+    const type = options.type ?? detectedType;
+    const riskLevel =
+      options.riskLevel ?? (unusualFrequency ? LoginRiskLevel.high : isNewDevice ? LoginRiskLevel.medium : isNewIp ? LoginRiskLevel.low : LoginRiskLevel.info);
+    const summary = options.summary ?? (unusualFrequency ? "短时间内出现多次登录" : isNewDevice ? "新设备登录" : isNewIp ? "陌生 IP 登录" : "账号登录成功");
     await this.prisma.$transaction([
       this.prisma.knownLoginDevice.upsert({
         where: { userId_fingerprint: { userId: user.id, fingerprint } },
-        create: { userId: user.id, fingerprint, label: deviceLabel, userAgent: context.userAgent.slice(0, 500), firstIp: context.ip, lastIp: context.ip },
-        update: { label: deviceLabel, userAgent: context.userAgent.slice(0, 500), lastIp: context.ip, lastSeenAt: new Date() },
+        create: {
+          userId: user.id,
+          fingerprint,
+          label: deviceLabel,
+          userAgent: context.userAgent.slice(0, 500),
+          firstIp: context.ip,
+          lastIp: context.ip,
+        },
+        update: {
+          label: deviceLabel,
+          userAgent: context.userAgent.slice(0, 500),
+          lastIp: context.ip,
+          lastSeenAt: new Date(),
+        },
       }),
       this.prisma.loginSecurityEvent.create({
         data: {
           ...this.eventData(user.id, type, riskLevel, summary, context),
-          metadata: { isNewDevice, isNewIp, recentLoginCount: recentLogins + 1 },
+          metadata: {
+            isNewDevice,
+            isNewIp,
+            recentLoginCount: recentLogins + 1,
+            ...options.metadata,
+          },
         },
       }),
     ]);
-    if (type !== LoginSecurityEventType.login_success && preferences.loginAlertsEnabled && (!isNewDevice || preferences.newDeviceAlertsEnabled)) {
+    if (
+      !options.suppressSystemAlert &&
+      type !== LoginSecurityEventType.login_success &&
+      preferences.loginAlertsEnabled &&
+      (!isNewDevice || preferences.newDeviceAlertsEnabled)
+    ) {
       await this.prisma.userNotification.create({
         data: {
           userId: user.id,
@@ -267,16 +565,45 @@ export class AccountSecurityService {
         },
       });
     }
-    if (type !== LoginSecurityEventType.login_success && preferences.emailAlertsEnabled && (!isNewDevice || preferences.newDeviceAlertsEnabled)) {
-      void this.mail.send({
-        type: MailJobType.login_risk,
-        recipient: user.email,
-        subject: `HLOVET 安全提醒：${summary}`,
-        text: `${summary}\n设备：${deviceLabel}\nIP：${context.ip}\n时间：${this.formatDateTime(new Date())}\n如非本人操作，请立即修改密码并退出其他设备。`,
-        userId: user.id,
-        metadata: { eventType: type, ip: context.ip },
-      }).catch(() => undefined);
+    if (
+      !options.suppressEmailAlert &&
+      type !== LoginSecurityEventType.login_success &&
+      preferences.emailAlertsEnabled &&
+      (!isNewDevice || preferences.newDeviceAlertsEnabled)
+    ) {
+      void this.mail
+        .send({
+          type: MailJobType.login_risk,
+          recipient: user.email,
+          subject: `HLOVET 安全提醒：${summary}`,
+          text: `${summary}\n设备：${deviceLabel}\nIP：${context.ip}\n时间：${this.formatDateTime(new Date())}\n如非本人操作，请立即修改密码并退出其他设备。`,
+          userId: user.id,
+          metadata: { eventType: type, ip: context.ip },
+        })
+        .catch(() => undefined);
     }
+  }
+
+  async recordRegistrationLogin(user: AuthenticatedUser, context: RefreshSessionContext): Promise<void> {
+    await this.recordLogin(user, context, {
+      type: LoginSecurityEventType.login_success,
+      riskLevel: LoginRiskLevel.info,
+      summary: "注册成功并登录",
+      suppressSystemAlert: true,
+      suppressEmailAlert: true,
+      metadata: { source: "registration" },
+    });
+  }
+
+  async recordVerifiedDeviceLogin(user: AuthenticatedUser, context: RefreshSessionContext): Promise<void> {
+    await this.recordLogin(user, context, {
+      type: LoginSecurityEventType.new_device,
+      riskLevel: LoginRiskLevel.medium,
+      summary: "新设备通过邮箱验证并登录",
+      isNewDevice: true,
+      suppressEmailAlert: true,
+      metadata: { emailVerifiedDevice: true },
+    });
   }
 
   async recordBlockedLogin(userId: number, context: RefreshSessionContext): Promise<void> {
@@ -287,7 +614,13 @@ export class AccountSecurityService {
 
   async recordPasswordEvent(userId: number, type: LoginSecurityEventType, context: RefreshSessionContext): Promise<void> {
     await this.prisma.loginSecurityEvent.create({
-      data: this.eventData(userId, type, LoginRiskLevel.medium, type === LoginSecurityEventType.password_reset ? "通过邮箱重置密码" : "账号密码已修改", context),
+      data: this.eventData(
+        userId,
+        type,
+        LoginRiskLevel.medium,
+        type === LoginSecurityEventType.password_reset ? "通过邮箱重置密码" : "账号密码已修改",
+        context,
+      ),
     });
   }
 
@@ -297,7 +630,11 @@ export class AccountSecurityService {
     if (query.tab === "verification") {
       const where: Prisma.EmailVerificationRequestWhereInput = {
         ...(query.status ? { status: query.status as EmailVerificationStatus } : {}),
-        ...(search ? { OR: [{ email: { contains: search } }, { ip: { contains: search } }] } : {}),
+        ...(search
+          ? {
+              OR: [{ email: { contains: search } }, { ip: { contains: search } }],
+            }
+          : {}),
       };
       const [total, items] = await Promise.all([
         this.prisma.emailVerificationRequest.count({ where }),
@@ -327,42 +664,156 @@ export class AccountSecurityService {
     if (query.tab === "risk") {
       const where: Prisma.LoginSecurityEventWhereInput = {
         ...(query.status ? { riskLevel: query.status as LoginRiskLevel } : {}),
-        ...(search ? { OR: [{ summary: { contains: search } }, { ip: { contains: search } }, { deviceLabel: { contains: search } }, { user: { is: { OR: [{ username: { contains: search } }, { nickname: { contains: search } }] } } }] } : {}),
+        ...(search
+          ? {
+              OR: [
+                { summary: { contains: search } },
+                { ip: { contains: search } },
+                { deviceLabel: { contains: search } },
+                {
+                  user: {
+                    is: {
+                      OR: [{ username: { contains: search } }, { nickname: { contains: search } }],
+                    },
+                  },
+                },
+              ],
+            }
+          : {}),
       };
       const [total, items] = await Promise.all([
         this.prisma.loginSecurityEvent.count({ where }),
-        this.prisma.loginSecurityEvent.findMany({ where, include: { user: { select: { username: true, nickname: true } } }, orderBy: { createdAt: "desc" }, skip, take: query.pageSize }),
+        this.prisma.loginSecurityEvent.findMany({
+          where,
+          include: { user: { select: { username: true, nickname: true } } },
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: query.pageSize,
+        }),
       ]);
       return this.page(items, total, query.page, query.pageSize);
     }
     const where: Prisma.MailJobWhereInput = {
       ...(query.status ? { status: query.status as never } : {}),
-      ...(search ? { OR: [{ recipient: { contains: search } }, { subject: { contains: search } }, { lastError: { contains: search } }] } : {}),
+      ...(search
+        ? {
+            OR: [{ recipient: { contains: search } }, { subject: { contains: search } }, { lastError: { contains: search } }],
+          }
+        : {}),
     };
     const [total, items] = await Promise.all([
       this.prisma.mailJob.count({ where }),
-      this.prisma.mailJob.findMany({ where, orderBy: { createdAt: "desc" }, skip, take: query.pageSize }),
+      this.prisma.mailJob.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: query.pageSize,
+      }),
     ]);
     return this.page(items, total, query.page, query.pageSize);
   }
 
+  private async sendDeviceLoginCode(
+    user: { id: number; email: string; nickname: string },
+    verificationRequestId: number,
+    code: string,
+    context: RefreshSessionContext,
+  ): Promise<void> {
+    const deviceLabel = this.deviceLabel(context.userAgent);
+    await this.mail.send({
+      type: MailJobType.device_login_verification,
+      recipient: user.email,
+      subject: "HLOVET 新设备登录验证码",
+      text: `检测到 ${deviceLabel} 正在登录你的 HLOVET 账号。验证码是 ${code}，10 分钟内有效。若非本人操作，请立即修改密码。`,
+      html: `<p>${this.escapeHtml(user.nickname)}，你好：</p><p>检测到 <strong>${this.escapeHtml(deviceLabel)}</strong> 正在登录你的 HLOVET 账号。</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>验证码 10 分钟内有效。若非本人操作，请立即修改密码。</p>`,
+      userId: user.id,
+      metadata: {
+        verificationRequestId,
+        purpose: "device_login",
+        deviceLabel,
+        ip: context.ip,
+      },
+    });
+  }
+
+  private async requireDeviceLoginChallenge(challengeToken: string, context: RefreshSessionContext) {
+    const request = await this.prisma.emailVerificationRequest.findUnique({
+      where: { challengeTokenHash: this.hashToken(challengeToken) },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            nickname: true,
+            emailVerifiedAt: true,
+            status: true,
+          },
+        },
+      },
+    });
+    if (
+      !request ||
+      !request.user ||
+      !request.userId ||
+      !request.deviceFingerprint ||
+      request.purpose !== EmailVerificationPurpose.device_login ||
+      request.status !== EmailVerificationStatus.pending
+    ) {
+      throw new BadRequestException("设备验证已失效，请重新登录。");
+    }
+    if (request.expiresAt.getTime() <= Date.now()) {
+      await this.prisma.emailVerificationRequest.update({
+        where: { id: request.id },
+        data: { status: EmailVerificationStatus.expired },
+      });
+      throw new BadRequestException("设备验证码已过期，请重新登录。");
+    }
+    if (request.user.status !== "active") {
+      throw new BadRequestException("账号当前不可登录。");
+    }
+    if (request.deviceFingerprint !== this.requireTrustedDeviceFingerprint(context)) {
+      throw new BadRequestException("设备验证信息不匹配，请重新登录。");
+    }
+    return {
+      ...request,
+      user: request.user,
+      userId: request.userId,
+      deviceFingerprint: request.deviceFingerprint,
+    };
+  }
+
   private async requireValidCode(email: string, purpose: EmailVerificationPurpose, code: string, userId?: number) {
     const request = await this.prisma.emailVerificationRequest.findFirst({
-      where: { email, purpose, status: EmailVerificationStatus.pending, ...(userId ? { userId } : {}) },
+      where: {
+        email,
+        purpose,
+        status: EmailVerificationStatus.pending,
+        ...(userId ? { userId } : {}),
+      },
       orderBy: { createdAt: "desc" },
     });
     if (!request || request.expiresAt.getTime() <= Date.now()) {
-      if (request) await this.prisma.emailVerificationRequest.update({ where: { id: request.id }, data: { status: EmailVerificationStatus.expired } });
+      if (request)
+        await this.prisma.emailVerificationRequest.update({
+          where: { id: request.id },
+          data: { status: EmailVerificationStatus.expired },
+        });
       throw new BadRequestException("验证码无效或已过期。");
     }
     if (request.attempts >= 5) {
-      await this.prisma.emailVerificationRequest.update({ where: { id: request.id }, data: { status: EmailVerificationStatus.expired } });
+      await this.prisma.emailVerificationRequest.update({
+        where: { id: request.id },
+        data: { status: EmailVerificationStatus.expired },
+      });
       throw new BadRequestException("验证码尝试次数过多，请重新获取。");
     }
     const expected = Buffer.from(request.codeHash, "hex");
     const actual = Buffer.from(this.hashCode(email, code), "hex");
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
-      await this.prisma.emailVerificationRequest.update({ where: { id: request.id }, data: { attempts: { increment: 1 } } });
+      await this.prisma.emailVerificationRequest.update({
+        where: { id: request.id },
+        data: { attempts: { increment: 1 } },
+      });
       throw new BadRequestException("验证码不正确。");
     }
     return request;
@@ -392,7 +843,11 @@ export class AccountSecurityService {
   }
 
   private async ensurePreferences(userId: number) {
-    return this.prisma.userSecurityPreference.upsert({ where: { userId }, create: { userId }, update: {} });
+    return this.prisma.userSecurityPreference.upsert({
+      where: { userId },
+      create: { userId },
+      update: {},
+    });
   }
 
   private preferenceResponse(preferences: { loginAlertsEnabled: boolean; emailAlertsEnabled: boolean; newDeviceAlertsEnabled: boolean }) {
@@ -417,13 +872,47 @@ export class AccountSecurityService {
   }
 
   private deviceFingerprint(context: RefreshSessionContext): string {
-    return createHash("sha256").update(context.deviceId?.trim() || context.userAgent || "unknown").digest("hex");
+    return createHash("sha256")
+      .update(context.trustedDeviceToken?.trim() || context.deviceId?.trim() || context.userAgent || "unknown")
+      .digest("hex");
+  }
+
+  private requireTrustedDeviceFingerprint(context: RefreshSessionContext): string {
+    if (!context.trustedDeviceToken) {
+      throw new BadRequestException("浏览器未保存设备凭据，请允许 Cookie 后重试。");
+    }
+    return this.hashToken(context.trustedDeviceToken);
   }
 
   private deviceLabel(userAgent: string): string {
-    const browser = /Edg\//.test(userAgent) ? "Edge" : /Chrome\//.test(userAgent) ? "Chrome" : /Firefox\//.test(userAgent) ? "Firefox" : /Safari\//.test(userAgent) ? "Safari" : "未知浏览器";
-    const system = /Android/.test(userAgent) ? "Android" : /iPhone|iPad/.test(userAgent) ? "iOS" : /Windows/.test(userAgent) ? "Windows" : /Mac OS X/.test(userAgent) ? "macOS" : /Linux/.test(userAgent) ? "Linux" : "未知系统";
-    return `${browser} · ${system}`;
+    const browser = /Edg\//.test(userAgent)
+      ? "Edge"
+      : /Chrome\//.test(userAgent)
+        ? "Chrome"
+        : /Firefox\//.test(userAgent)
+          ? "Firefox"
+          : /Safari\//.test(userAgent)
+            ? "Safari"
+            : "未知浏览器";
+    const system = /Android/.test(userAgent)
+      ? "Android"
+      : /iPhone|iPad/.test(userAgent)
+        ? "iOS"
+        : /Windows/.test(userAgent)
+          ? "Windows"
+          : /Mac OS X/.test(userAgent)
+            ? "macOS"
+            : /Linux/.test(userAgent)
+              ? "Linux"
+              : "未知系统";
+    return `${system} · ${browser}`;
+  }
+
+  private maskEmail(email: string): string {
+    const [localPart, domain] = email.split("@");
+    if (!domain) return email;
+    const visible = localPart.slice(0, Math.min(2, localPart.length));
+    return `${visible}${"*".repeat(Math.max(2, Math.min(6, localPart.length - visible.length)))}@${domain}`;
   }
 
   private createCode(): string {
@@ -431,7 +920,9 @@ export class AccountSecurityService {
   }
 
   private hashCode(email: string, code: string): string {
-    return createHmac("sha256", process.env.REFRESH_TOKEN_SECRET ?? "dev-security-code-secret").update(`${email}:${code}`).digest("hex");
+    return createHmac("sha256", process.env.REFRESH_TOKEN_SECRET ?? "dev-security-code-secret")
+      .update(`${email}:${code}`)
+      .digest("hex");
   }
 
   private hashToken(token: string): string {
@@ -439,14 +930,39 @@ export class AccountSecurityService {
   }
 
   private formatDateTime(value: Date): string {
-    return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(value);
+    return new Intl.DateTimeFormat("zh-CN", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(value);
   }
 
   private escapeHtml(value: string): string {
-    return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character] ?? character));
+    return value.replace(
+      /[&<>"']/g,
+      (character) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[character] ?? character,
+    );
   }
 
   private page<T>(items: T[], total: number, page: number, pageSize: number) {
-    return { items, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    };
   }
 }

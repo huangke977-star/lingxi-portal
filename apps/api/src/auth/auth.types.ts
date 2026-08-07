@@ -42,6 +42,7 @@ export interface RefreshSessionContext {
   ip: string;
   userAgent: string;
   deviceId?: string;
+  trustedDeviceToken?: string;
 }
 
 export interface AuthSessionSummary {
@@ -52,6 +53,16 @@ export interface AuthSessionSummary {
   userAgent: string;
   current: boolean;
 }
+
+export interface DeviceLoginVerificationRequired {
+  deviceVerificationRequired: true;
+  challengeToken: string;
+  emailHint: string;
+  expiresAt: string;
+  retryAfterSeconds: number;
+}
+
+export type LoginResponse = AuthResponse | DeviceLoginVerificationRequired;
 
 export interface AccessTokenPayload {
   sub: number;

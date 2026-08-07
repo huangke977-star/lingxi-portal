@@ -10,6 +10,7 @@ The current capability includes:
 - Email-based password recovery with single-use reset tokens
 - Cloudflare Turnstile verification
 - Login throttling plus new-device, unfamiliar-IP, and unusual-frequency detection
+- Email verification for untrusted devices, browser-installation trust management, and active-session sign-out
 - In-app and email security alerts with user preferences
 - Paginated administration queries for mail jobs, verification requests, and risk events
 - Encrypted SMTP and Turnstile credentials
@@ -30,15 +31,15 @@ SMS codes, third-party login, two-factor authentication, and mandatory re-verifi
 
 ### MySQL Data
 
-| Table | Purpose | Important behavior |
-| --- | --- | --- |
-| `security_configurations` | Singleton SMTP, mail-feature, and Turnstile configuration | The SMTP password and Turnstile secret are ciphertext only; the site key is public |
-| `user_security_preferences` | Per-user security-alert preferences | Login, email, and new-device alerts default to enabled |
-| `known_login_devices` | Known device fingerprints, labels, and first/last IP addresses | The fingerprint prefers the Web-persisted `X-Device-ID` and falls back to a User-Agent hash |
-| `login_security_events` | Login, risk, password, and email-verification events | Stores risk level, IP, User-Agent, device label, and limited metadata |
-| `email_verification_requests` | Registration and account-email code requests | Stores an HMAC hash, never the plaintext code |
-| `password_reset_requests` | Single-use password-reset requests | Stores a SHA-256 token hash, never the plaintext token from the URL |
-| `mail_jobs` | Delivery state and failure reason | Stores recipient, subject, type, state, attempts, and errors, but not the message body |
+| Table                         | Purpose                                                                          | Important behavior                                                                                                                                        |
+| ----------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `security_configurations`     | Singleton SMTP, mail-feature, and Turnstile configuration                        | The SMTP password and Turnstile secret are ciphertext only; the site key is public                                                                        |
+| `user_security_preferences`   | Per-user security-alert preferences                                              | Login, email, and new-device alerts default to enabled                                                                                                    |
+| `known_login_devices`         | Known browser/PWA installations, labels, first/last IP addresses, and trust time | Trusted identity stores only the SHA-256 hash of a random server-issued credential; cancelling trust clears the trust time while preserving audit history |
+| `login_security_events`       | Login, risk, password, and email-verification events                             | Stores risk level, IP, User-Agent, device label, and limited metadata                                                                                     |
+| `email_verification_requests` | Registration, account-email, and new-device login code requests                  | Codes are HMAC-hashed; device challenges store only a SHA-256 random-token hash bound to a device fingerprint                                             |
+| `password_reset_requests`     | Single-use password-reset requests                                               | Stores a SHA-256 token hash, never the plaintext token from the URL                                                                                       |
+| `mail_jobs`                   | Delivery state and failure reason                                                | Stores recipient, subject, type, state, attempts, and errors, but not the message body                                                                    |
 
 The migration marks users that existed before deployment as email-verified using their original account creation time. This prevents historical accounts from unexpectedly losing recovery eligibility. A new user is verified during registration only when registration email verification is enabled and a valid code is consumed. Changing an account email clears its verification state and requires verification again.
 
@@ -46,17 +47,17 @@ The current code does not automatically purge security events, known devices, ve
 
 ### Redis Data
 
-| Key pattern | Purpose | TTL / limit |
-| --- | --- | --- |
-| `security:code:email:<purpose>:<email>` | Verification sends for one email | 1 per 60 seconds |
-| `security:code:ip:<purpose>:<ip>` | Verification sends for one IP | 10 per hour |
-| `security:recovery:email:<email>` | Recovery requests for one email | 3 per hour |
-| `security:recovery:ip:<ip>` | Recovery requests for one IP | 10 per hour |
-| `login_fail:<account>:<ip>` | Failed-login counter | Temporarily blocked after 5 attempts in 15 minutes |
-| `refresh_token:<token-id>` | Refresh-token session record | Matches the refresh-token lifetime |
-| `user_sessions:<user-id>` | Per-user session index | Matches the refresh-token lifetime |
+| Key pattern                             | Purpose                          | TTL / limit                                        |
+| --------------------------------------- | -------------------------------- | -------------------------------------------------- |
+| `security:code:email:<purpose>:<email>` | Verification sends for one email | 1 per 60 seconds                                   |
+| `security:code:ip:<purpose>:<ip>`       | Verification sends for one IP    | 10 per hour                                        |
+| `security:recovery:email:<email>`       | Recovery requests for one email  | 3 per hour                                         |
+| `security:recovery:ip:<ip>`             | Recovery requests for one IP     | 10 per hour                                        |
+| `login_fail:<account>:<ip>`             | Failed-login counter             | Temporarily blocked after 5 attempts in 15 minutes |
+| `refresh_token:<token-id>`              | Refresh-token session record     | Matches the refresh-token lifetime                 |
+| `user_sessions:<user-id>`               | Per-user session index           | Matches the refresh-token lifetime                 |
 
-Rate-limit keys are temporary state. Flushing Redis also removes refresh sessions and rate counters, so a Redis flush is not a routine maintenance operation.
+Rate-limit keys are temporary state. Flushing Redis also removes refresh sessions and rate counters, so a Redis flush is not a routine maintenance operation. Protected HTTP requests verify that the session ID in the access token still exists. Signing out one device invalidates its access token immediately and disconnects its chat WebSocket within about 15 seconds.
 
 ## Endpoints And Access
 
@@ -65,28 +66,32 @@ Rate-limit keys are temporary state. Flushing Redis also removes refresh session
 - `GET /auth/security-policy`: returns public feature flags, the Turnstile site key, and the login challenge threshold.
 - `POST /auth/registration-code`: sends a registration code.
 - `POST /auth/register`: registers an account and consumes a code or verifies Turnstile when required.
-- `POST /auth/login`: signs in and requires Turnstile after the failure threshold.
+- `POST /auth/login`: verifies the password and required Turnstile challenge; when untrusted-device verification is enabled, an untrusted browser receives a device challenge instead of tokens.
+- `POST /auth/login/device-verification`: consumes a six-digit email code bound to the current browser credential, establishes trust, and completes sign-in.
+- `POST /auth/login/device-verification/resend`: resends a code for a still-valid device challenge that belongs to the current browser.
 - `POST /auth/password-recovery/request`: requests a recovery email.
 - `POST /auth/password-recovery/reset`: sets a new password using a single-use token.
 
 ### Authenticated User Endpoints
 
-- `GET /auth/me/security`: returns email status, preferences, the latest 30 security events, and the latest 20 known devices.
+- `GET /auth/me/security`: returns email status, preferences, the latest 30 security events, and the latest 20 trusted devices with the current browser marked.
 - `PATCH /auth/me/security/preferences`: updates login, email, and new-device alert switches.
 - `POST /auth/me/email-verification/send`: sends a verification code to the current email.
 - `POST /auth/me/email-verification/confirm`: confirms the current account email.
 - `PATCH /auth/me/password`: verifies the current password, changes it, and revokes refresh sessions other than the current session.
+- `DELETE /auth/me/security/trusted-devices/:deviceId`: cancels trust for one browser/PWA installation; the current session remains active, while the next sign-in requires email verification.
+- `DELETE /auth/sessions/:sessionId`: signs out one active session for the current account, including either the current device or another device.
 
 The Web app provides `/register`, `/login`, `/forgot-password`, the account-security area in Profile, and the `/admin/security` administration page. Administrators and the super administrator can open Security Management from the avatar menu. Backend authorization never depends on hiding a frontend link.
 
 ### Administration Permissions
 
-| Endpoint | Administrator | Super administrator |
-| --- | --- | --- |
-| `GET /security-admin/config` | Read redacted configuration | Read redacted configuration |
-| `GET /security-admin/overview` | Query records | Query records |
-| `PATCH /security-admin/config` | Denied | Update configuration |
-| `POST /security-admin/smtp/test` | Denied | Run connection test |
+| Endpoint                         | Administrator               | Super administrator         |
+| -------------------------------- | --------------------------- | --------------------------- |
+| `GET /security-admin/config`     | Read redacted configuration | Read redacted configuration |
+| `GET /security-admin/overview`   | Query records               | Query records               |
+| `PATCH /security-admin/config`   | Denied                      | Update configuration        |
+| `POST /security-admin/smtp/test` | Denied                      | Run connection test         |
 
 An administrator is determined by role level `>= 90`. A super administrator must also have `isSuperAdmin=true`. Configuration reads return flags such as `smtpPasswordConfigured` and `turnstileSecretConfigured`, never either secret in plaintext.
 
@@ -112,8 +117,11 @@ Port `465` commonly uses implicit TLS. Port `587` commonly uses STARTTLS with `s
 3. Have the super administrator run the SMTP connection test. The current Web page enables the test action only after the saved SMTP configuration is enabled.
 4. If the test fails, disable SMTP again, correct the fields, and repeat the save and test sequence.
 5. Enable registration verification and password recovery separately, completing a real delivery test after each change.
+6. Enable untrusted-device email verification last, while keeping one signed-in super-administrator session as a recovery path.
 
 An update may omit the password to preserve its current ciphertext, or explicitly clear the stored password. When SMTP, registration verification, or password recovery is enabled, host, username, password, and sender address must all be present or the API rejects the update.
+
+Untrusted-device email verification also requires complete, enabled SMTP configuration. Its switch defaults to off and must not be enabled before real mail delivery has passed.
 
 This example shows field shape only. Repository placeholders are not production credentials:
 
@@ -170,6 +178,19 @@ A missing or failed token returns HTTP `428`. An unreachable or timed-out Cloudf
 
 Verification for an already registered account uses the separate `account_email` purpose and cannot consume a registration code.
 
+### Trusted Devices And Active Sessions
+
+1. During successful registration or the post-password device-challenge flow, API issues a one-year `HttpOnly`, `SameSite=Lax` device cookie. Production also adds `Secure`.
+2. MySQL stores only the SHA-256 hash of that random value, never the replayable cookie plaintext.
+3. When untrusted-device verification is enabled, successful password and required Turnstile checks still do not issue tokens. The user must enter the six-digit code sent to the account email.
+4. A device challenge lasts ten minutes, permits at most five wrong attempts, and is bound to the browser credential that requested it. Another browser cannot consume it.
+5. Registration completed with a registration email code trusts that browser immediately and records `Registration completed and signed in` without a misleading new-device risk alert.
+6. Passing a new-device code trusts that browser and records `New device verified by email and signed in`. The code email is already a security alert, so no duplicate login-risk email is sent.
+7. Cancelling trust affects the next sign-in and does not terminate the current session. Signing out a login device is separate: it removes the Redis session and immediately blocks that access token from protected APIs.
+8. The login-device list comes only from active refresh sessions still present in Redis; expired and signed-out historical sessions are not shown.
+
+A Web app or ordinary PWA cannot read disk serial numbers, motherboard identifiers, IMEI, or similar physical-hardware IDs. The system therefore cannot use a physical machine as a reliable unique identity. The current trust boundary is one browser profile or PWA installation. Clearing site cookies, using private browsing, switching browsers, or reinstalling the app creates a new device instance. IP, User-Agent, and browser labels can change and are used only for display and risk analysis, not as trusted identity.
+
 ### Password Recovery
 
 1. Only active accounts with verified email addresses receive recovery mail.
@@ -185,18 +206,18 @@ Recovery also increments the account security version. Access tokens carry the v
 
 Classification precedence is unusual frequency, new device, unfamiliar IP, then ordinary login. One login creates one primary event type.
 
-| Type | Risk level | Current definition |
-| --- | --- | --- |
-| `login_success` | `info` | Known device, known IP, and no unusual frequency |
-| `new_ip` | `low` | The IP does not appear as the first or last IP of any known device for the user |
-| `new_device` | `medium` | The device fingerprint is new; a first login is usually also a new IP but is classified as a new device |
-| `unusual_frequency` | `high` | Another login occurs after at least five login-related security events for the user in the preceding 10 minutes |
-| `login_blocked` | `high` | The same account and IP reaches five failed logins within 15 minutes |
-| `password_changed` | `medium` | The user changes the password after proving the old password |
-| `password_reset` | `medium` | The user resets the password using an email token |
-| `email_verified` | `info` | Account email verification completes |
+| Type                | Risk level | Current definition                                                                                              |
+| ------------------- | ---------- | --------------------------------------------------------------------------------------------------------------- |
+| `login_success`     | `info`     | Known device, known IP, and no unusual frequency                                                                |
+| `new_ip`            | `low`      | The IP does not appear as the first or last IP of any known device for the user                                 |
+| `new_device`        | `medium`   | The device fingerprint is new; a first login is usually also a new IP but is classified as a new device         |
+| `unusual_frequency` | `high`     | Another login occurs after at least five login-related security events for the user in the preceding 10 minutes |
+| `login_blocked`     | `high`     | The same account and IP reaches five failed logins within 15 minutes                                            |
+| `password_changed`  | `medium`   | The user changes the password after proving the old password                                                    |
+| `password_reset`    | `medium`   | The user resets the password using an email token                                                               |
+| `email_verified`    | `info`     | Account email verification completes                                                                            |
 
-A device fingerprint is a SHA-256 hash of a stable device ID or the User-Agent. It is a risk signal, not proof of device identity. The IP is the first value of `X-Forwarded-For` supplied by a trusted reverse proxy; that proxy must replace any client-forged header.
+A trusted-device fingerprint is the SHA-256 hash of a random server-issued browser credential. Legacy `X-Device-ID` or User-Agent hashes remain compatible with historical risk records but do not grant trust and cannot prove physical-hardware identity. The IP is the first value of `X-Forwarded-For` supplied by a trusted reverse proxy; that proxy must replace any client-forged header.
 
 New-device, unfamiliar-IP, and unusual-frequency events create in-app system notifications when user preferences allow. Email alerts are dispatched asynchronously and delivery failures are caught, so SMTP failure does not roll back an otherwise successful login. The failed mail job remains available for administration review.
 
@@ -214,11 +235,11 @@ Preferences affect delivery only. They do not disable event recording, device hi
 
 `GET /security-admin/overview` accepts `page`, `pageSize`, `search`, and `status`. The default page size is 10 and the maximum is 100.
 
-| `tab` | Records | Search fields | Status filter |
-| --- | --- | --- | --- |
-| `mail` | Mail jobs | Recipient, subject, last error | `pending`, `sending`, `sent`, `failed` |
-| `verification` | Email verification requests | Email, IP | `pending`, `verified`, `consumed`, `expired` |
-| `risk` | Login security events | Summary, IP, device, username, nickname | `info`, `low`, `medium`, `high` |
+| `tab`          | Records                     | Search fields                           | Status filter                                |
+| -------------- | --------------------------- | --------------------------------------- | -------------------------------------------- |
+| `mail`         | Mail jobs                   | Recipient, subject, last error          | `pending`, `sending`, `sent`, `failed`       |
+| `verification` | Email verification requests | Email, IP                               | `pending`, `verified`, `consumed`, `expired` |
+| `risk`         | Login security events       | Summary, IP, device, username, nickname | `info`, `low`, `medium`, `high`              |
 
 Results are ordered by creation time descending. The current administration overview does not include password-reset requests and never returns plaintext reset tokens. Verification persistence contains an irreversible `codeHash`; the administration UI and logs must not present or export it as if it were a usable code.
 
@@ -253,17 +274,19 @@ Losing the key makes stored SMTP/Turnstile credentials and remote backups encryp
 
 ## Behavior Without External Credentials
 
-| Condition | Current behavior |
-| --- | --- |
-| SMTP is missing or disabled | Registration follows the normal site-open policy without email verification by default; recovery remains disabled; an account-verification send fails and creates a failed mail job |
-| SMTP fails while sending a login-risk alert | The login is not rolled back; the in-app alert and risk event remain, and the mail job is marked failed |
-| Turnstile is unconfigured or all three switches are off | `verify` returns immediately, so existing registration, login, and recovery behavior does not depend on Cloudflare |
-| Turnstile is enabled but its browser script cannot load | The Web app cannot obtain a token, so the protected operation cannot complete |
-| Turnstile is enabled but `siteverify` is unreachable | The protected operation returns `503`; operations outside that switch continue |
-| `BACKUP_ENCRYPTION_KEY` is absent | Non-sensitive configuration can be read and features can remain disabled; new SMTP/Turnstile secrets cannot be saved and dependent features cannot be enabled |
-| `BACKUP_ENCRYPTION_KEY` does not match existing ciphertext | Credential decryption fails, breaking SMTP test/send and Turnstile verification; restore the original key instead of overwriting ciphertext |
+| Condition                                                  | Current behavior                                                                                                                                                                    |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SMTP is missing or disabled                                | Registration follows the normal site-open policy without email verification by default; recovery remains disabled; an account-verification send fails and creates a failed mail job |
+| Untrusted-device email verification is off                 | Trust records remain manageable, but login keeps the existing password/Turnstile flow without an email step                                                                         |
+| Untrusted-device email verification is on while SMTP fails | Untrusted devices cannot complete sign-in; disable this switch immediately, while trusted devices continue through the existing flow                                                |
+| SMTP fails while sending a login-risk alert                | The login is not rolled back; the in-app alert and risk event remain, and the mail job is marked failed                                                                             |
+| Turnstile is unconfigured or all three switches are off    | `verify` returns immediately, so existing registration, login, and recovery behavior does not depend on Cloudflare                                                                  |
+| Turnstile is enabled but its browser script cannot load    | The Web app cannot obtain a token, so the protected operation cannot complete                                                                                                       |
+| Turnstile is enabled but `siteverify` is unreachable       | The protected operation returns `503`; operations outside that switch continue                                                                                                      |
+| `BACKUP_ENCRYPTION_KEY` is absent                          | Non-sensitive configuration can be read and features can remain disabled; new SMTP/Turnstile secrets cannot be saved and dependent features cannot be enabled                       |
+| `BACKUP_ENCRYPTION_KEY` does not match existing ciphertext | Credential decryption fails, breaking SMTP test/send and Turnstile verification; restore the original key instead of overwriting ciphertext                                         |
 
-SMTP, registration verification, password recovery, and all three Turnstile switches default to disabled. Applying the migration alone therefore does not make existing registration or login depend on an external provider.
+SMTP, registration verification, password recovery, untrusted-device email verification, and all three Turnstile switches default to disabled. Applying the migration alone therefore does not make existing registration or login depend on an external provider. Historical device rows are not automatically trusted.
 
 ## Release Procedure
 
@@ -275,8 +298,9 @@ SMTP, registration verification, password recovery, and all three Turnstile swit
 6. Run `api-bootstrap` for the additive migration, then recreate API and Web. Do not run `docker compose down -v`.
 7. Verify the home page, health endpoint, existing login and registration, Redis sessions, and administration permissions.
 8. Configure and enable SMTP, complete the connection test, enable recovery first, and then enable registration email verification if required.
-9. Configure Turnstile and enable registration/recovery before enabling login protection.
-10. Observe mail failures, HTTP `428`/`429`/`503`, login-risk events, and container resources for at least one complete business cycle.
+9. Keep one super-administrator browser signed in, then enable untrusted-device email verification. Test first verification and repeat sign-in with a normal account in another browser.
+10. Configure Turnstile and enable registration/recovery before enabling login protection.
+11. Observe mail failures, HTTP `401`/`428`/`429`/`503`, login-risk events, Redis sessions, and container resources for at least one complete business cycle.
 
 The recommended production Compose sequence is below. Use image tags that have already passed CI:
 
@@ -290,11 +314,11 @@ docker compose -f docker-compose.prod.yml ps
 ## Rollback Procedure
 
 1. If mail or Turnstile causes the incident, first have the super administrator disable the affected feature switch. This is the fastest data-preserving rollback.
-2. For SMTP incidents, disable registration verification and password recovery before disabling SMTP so registration never requires an undeliverable code.
+2. For SMTP incidents, disable untrusted-device verification first, then registration verification and password recovery, and finally SMTP, so sign-in and registration never require an undeliverable code.
 3. For Turnstile incidents, disable registration, login, and recovery protection separately. The saved site key and encrypted secret do not need to be deleted.
 4. For code incidents, roll API and Web back to the previous verified image pair. The P2 migration only adds tables and nullable fields; preserve them during emergency rollback instead of running a destructive reverse migration.
 5. If decryption fails, restore the original `BACKUP_ENCRYPTION_KEY` and recreate only API. Do not overwrite or clear existing ciphertext with a new key.
-6. After rollback, verify existing login, registration, refresh rotation, administration permissions, and the health endpoint.
+6. After rollback, verify existing login, registration, refresh rotation, active sessions, administration permissions, and the health endpoint. Preserve the added columns and enum values when rolling code back; do not run a destructive reverse migration.
 
 ## Verification
 
@@ -316,9 +340,13 @@ docker compose -f docker-compose.prod.yml ps
 6. Request recovery for unknown, disabled, and unverified emails. Confirm the same non-enumerating response and no actual delivery.
 7. Enable Turnstile for registration or recovery. Confirm missing tokens return `428`, valid challenges continue, and an unavailable Cloudflare service returns `503`.
 8. Repeatedly enter the wrong login password. Confirm Turnstile appears at the configured threshold and the fifth failure creates a 15-minute restriction and `login_blocked` event.
-9. Clear the browser's site device identifier or use another browser and confirm `new_device`. Sign in through a new IP and confirm the corresponding risk record.
-10. Verify email status, preference switches, security events, and known devices in Profile. Disable new-device alerts, create another new-device event, and confirm the event remains while its alert is suppressed.
-11. Test administration as both an administrator and the super administrator. Both can query mail, verification, and risk records; only the super administrator can update configuration and test SMTP.
-12. Temporarily use an invalid SMTP host to force a send failure. Confirm the mail job records the error and a failed login-risk email does not fail the login itself.
-13. Inspect API responses, container logs, browser network data, and Git history. Confirm no SMTP password, Turnstile secret, verification code, reset token, or `BACKUP_ENCRYPTION_KEY` appears in plaintext.
-14. Restore correct settings after production validation and apply the audit-retention policy before deleting test accounts or test mail records.
+9. Enable untrusted-device email verification and sign in to a normal account from a new browser. Confirm that password verification leads only to the six-digit code step and no token has been issued. Consuming that challenge from another browser must fail.
+10. Enter the correct code and confirm sign-in succeeds, the browser appears under Trusted devices, and it is marked Current device. Sign out and sign in again from that browser; no email code should be required.
+11. Cancel trust for the current browser and confirm the session remains usable. After sign-out, the next sign-in must require email verification again. Clearing cookies, switching browsers, and using a separate PWA installation must also create a new device instance.
+12. Create two active sessions for one account and sign out both another device and the current device from Profile. The revoked device's HTTP requests must return `401` immediately, and its chat connection must disconnect within about 15 seconds.
+13. Confirm Login devices lists only active Redis sessions, has no excessive gap below its heading, and has no horizontal overflow on desktop or a 390px mobile viewport.
+14. Verify email status, preference switches, and security events in Profile. Disable new-device alerts, create another new-device event, and confirm the event remains while its alert is suppressed.
+15. Test administration as both an administrator and the super administrator. Both can query mail, verification, and risk records; only the super administrator can update configuration and test SMTP.
+16. Temporarily use an invalid SMTP host to force a send failure. Confirm the mail job records the error, an ordinary login-risk email failure does not fail login, and the untrusted-device gate can be rolled back by disabling its switch.
+17. Inspect API responses, container logs, browser network data, and Git history. Confirm no SMTP password, Turnstile secret, device cookie, verification code, challenge token, reset token, or `BACKUP_ENCRYPTION_KEY` appears in plaintext.
+18. Restore correct settings after production validation and apply the audit-retention policy before deleting test accounts or test mail records.

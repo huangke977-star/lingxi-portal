@@ -21,6 +21,7 @@ import { PushService } from "../push/push.service";
 
 interface ChatSocketData {
   userId?: number;
+  sessionId?: string;
   messageTimestamps?: number[];
   forwardTimestamps?: number[];
   callTimestamps?: number[];
@@ -102,6 +103,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   private readonly activeCallByUser = new Map<number, number>();
   private readonly terminatingCalls = new Set<number>();
   private presenceTimer: NodeJS.Timeout | null = null;
+  private sessionValidationTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -115,12 +117,16 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   afterInit(): void {
     this.presenceTimer = setInterval(() => void this.refreshPresence(), 60_000);
     this.presenceTimer.unref();
+    this.sessionValidationTimer = setInterval(() => void this.disconnectRevokedSessions(), 15_000);
+    this.sessionValidationTimer.unref();
   }
 
   async handleConnection(client: Socket): Promise<void> {
     try {
       if (!this.isAllowedOrigin(client.handshake.headers.origin)) {
-        client.emit("chat:error", { message: "当前页面来源不允许建立聊天连接。" });
+        client.emit("chat:error", {
+          message: "当前页面来源不允许建立聊天连接。",
+        });
         client.disconnect(true);
         return;
       }
@@ -128,6 +134,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       const payload = await this.jwtService.verifyAsync<AccessTokenPayload & { exp?: number }>(token, {
         secret: process.env.JWT_ACCESS_SECRET ?? "dev-access-token-secret",
       });
+      if (!payload.sid || !(await this.isSessionActive(payload.sub, payload.sid))) {
+        throw new Error("聊天会话已经失效。");
+      }
       const user = await this.usersService.findActiveById(payload.sub);
       const existingSockets = this.socketsByUser.get(user.id) ?? new Set<string>();
       if (existingSockets.size >= 3) {
@@ -138,6 +147,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       existingSockets.add(client.id);
       this.socketsByUser.set(user.id, existingSockets);
       (client.data as ChatSocketData).userId = user.id;
+      (client.data as ChatSocketData).sessionId = payload.sid;
       (client.data as ChatSocketData).messageTimestamps = [];
       (client.data as ChatSocketData).forwardTimestamps = [];
       (client.data as ChatSocketData).callTimestamps = [];
@@ -163,22 +173,16 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       this.socketsByUser.delete(userId);
       await this.redis.del(this.presenceKey(userId)).catch(() => undefined);
     }
-    const activeCall = Array.from(this.runtimeCalls.values()).find((call) =>
-      call.callerSocketId === client.id || call.calleeSocketId === client.id,
-    );
+    const activeCall = Array.from(this.runtimeCalls.values()).find((call) => call.callerSocketId === client.id || call.calleeSocketId === client.id);
     if (activeCall) {
-      const status = activeCall.status === CallStatus.ringing
-        ? activeCall.callerSocketId === client.id ? CallStatus.cancelled : CallStatus.missed
-        : CallStatus.failed;
+      const status =
+        activeCall.status === CallStatus.ringing ? (activeCall.callerSocketId === client.id ? CallStatus.cancelled : CallStatus.missed) : CallStatus.failed;
       await this.terminateRuntimeCall(activeCall.id, status, userId, "通话页面已断开").catch(() => undefined);
     }
   }
 
   @SubscribeMessage("chat:send")
-  async sendMessage(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: SendMessagePayload,
-  ) {
+  async sendMessage(@ConnectedSocket() client: Socket, @MessageBody() payload: SendMessagePayload) {
     try {
       const userId = this.requireUserId(client);
       this.assertMessageRate(client);
@@ -200,10 +204,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   @SubscribeMessage("chat:read")
-  async readConversation(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: ReadConversationPayload,
-  ) {
+  async readConversation(@ConnectedSocket() client: Socket, @MessageBody() payload: ReadConversationPayload) {
     try {
       const userId = this.requireUserId(client);
       const conversationId = this.requirePositiveInteger(payload.conversationId, "会话编号无效。");
@@ -217,15 +218,15 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       }
       return { ok: true, count: result.count, readAt: result.readAt };
     } catch (error) {
-      return { ok: false, error: this.errorMessage(error, "已读状态更新失败。") };
+      return {
+        ok: false,
+        error: this.errorMessage(error, "已读状态更新失败。"),
+      };
     }
   }
 
   @SubscribeMessage("chat:messages:forward")
-  async forwardMessages(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: ForwardMessagesPayload,
-  ) {
+  async forwardMessages(@ConnectedSocket() client: Socket, @MessageBody() payload: ForwardMessagesPayload) {
     try {
       const userId = this.requireUserId(client);
       this.assertForwardRate(client);
@@ -248,10 +249,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   @SubscribeMessage("chat:conversation:clear")
-  async clearConversation(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: ReadConversationPayload,
-  ) {
+  async clearConversation(@ConnectedSocket() client: Socket, @MessageBody() payload: ReadConversationPayload) {
     try {
       const userId = this.requireUserId(client);
       const conversationId = this.requirePositiveInteger(payload.conversationId, "会话编号无效。");
@@ -264,10 +262,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   @SubscribeMessage("chat:conversation:delete")
-  async deleteConversation(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: ReadConversationPayload,
-  ) {
+  async deleteConversation(@ConnectedSocket() client: Socket, @MessageBody() payload: ReadConversationPayload) {
     try {
       const userId = this.requireUserId(client);
       const conversationId = this.requirePositiveInteger(payload.conversationId, "会话编号无效。");
@@ -280,10 +275,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   @SubscribeMessage("chat:messages:delete-self")
-  async deleteMessagesForSelf(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: MessageMutationPayload,
-  ) {
+  async deleteMessagesForSelf(@ConnectedSocket() client: Socket, @MessageBody() payload: MessageMutationPayload) {
     try {
       const userId = this.requireUserId(client);
       const conversationId = this.requirePositiveInteger(payload.conversationId, "会话编号无效。");
@@ -297,10 +289,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   @SubscribeMessage("chat:messages:delete-everyone")
-  async deleteMessagesForEveryone(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: MessageMutationPayload,
-  ) {
+  async deleteMessagesForEveryone(@ConnectedSocket() client: Socket, @MessageBody() payload: MessageMutationPayload) {
     try {
       const userId = this.requireUserId(client);
       const conversationId = this.requirePositiveInteger(payload.conversationId, "会话编号无效。");
@@ -314,15 +303,15 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       }
       return { ok: true, ...result };
     } catch (error) {
-      return { ok: false, error: this.errorMessage(error, "双向删除消息失败。") };
+      return {
+        ok: false,
+        error: this.errorMessage(error, "双向删除消息失败。"),
+      };
     }
   }
 
   @SubscribeMessage("chat:message:recall")
-  async recallMessage(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: RecallMessagePayload,
-  ) {
+  async recallMessage(@ConnectedSocket() client: Socket, @MessageBody() payload: RecallMessagePayload) {
     try {
       const userId = this.requireUserId(client);
       const currentUser = await this.usersService.findActiveById(userId);
@@ -343,10 +332,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   @SubscribeMessage("chat:authenticate")
-  async reauthenticate(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: ReauthenticatePayload,
-  ) {
+  async reauthenticate(@ConnectedSocket() client: Socket, @MessageBody() payload: ReauthenticatePayload) {
     try {
       const currentUserId = this.requireUserId(client);
       const token = typeof payload.token === "string" ? payload.token : "";
@@ -354,20 +340,24 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         secret: process.env.JWT_ACCESS_SECRET ?? "dev-access-token-secret",
       });
       if (decoded.sub !== currentUserId || !decoded.exp) throw new Error("聊天连接重新认证失败。");
+      if (!decoded.sid || !(await this.isSessionActive(decoded.sub, decoded.sid))) {
+        throw new Error("聊天会话已经失效。");
+      }
       await this.usersService.findActiveById(decoded.sub);
+      (client.data as ChatSocketData).sessionId = decoded.sid;
       this.scheduleReauthentication(client, decoded.exp);
       return { ok: true };
     } catch (error) {
       client.disconnect(true);
-      return { ok: false, error: this.errorMessage(error, "聊天连接重新认证失败。") };
+      return {
+        ok: false,
+        error: this.errorMessage(error, "聊天连接重新认证失败。"),
+      };
     }
   }
 
   @SubscribeMessage("call:start")
-  async startCall(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: StartCallPayload,
-  ) {
+  async startCall(@ConnectedSocket() client: Socket, @MessageBody() payload: StartCallPayload) {
     try {
       const userId = this.requireUserId(client);
       this.assertCallRate(client);
@@ -384,7 +374,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         return { ok: false, error: "对方当前不在线。", call: response };
       }
       const timer = this.createCallTimer(call.id, CallStatus.missed, null, 45_000, "等待接听超时");
-      const runtime: RuntimeCall = { ...call, callerSocketId: client.id, timer };
+      const runtime: RuntimeCall = {
+        ...call,
+        callerSocketId: client.id,
+        timer,
+      };
       this.runtimeCalls.set(call.id, runtime);
       this.activeCallByUser.set(call.callerId, call.id);
       this.activeCallByUser.set(call.calleeId, call.id);
@@ -400,10 +394,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   @SubscribeMessage("call:respond")
-  async respondCall(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: RespondCallPayload,
-  ) {
+  async respondCall(@ConnectedSocket() client: Socket, @MessageBody() payload: RespondCallPayload) {
     try {
       const userId = this.requireUserId(client);
       const callId = this.requirePositiveInteger(payload.callId, "通话编号无效。");
@@ -436,10 +427,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   @SubscribeMessage("call:signal")
-  signalCall(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: SignalCallPayload,
-  ) {
+  signalCall(@ConnectedSocket() client: Socket, @MessageBody() payload: SignalCallPayload) {
     try {
       const userId = this.requireUserId(client);
       const callId = this.requirePositiveInteger(payload.callId, "通话编号无效。");
@@ -452,15 +440,15 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       this.server.to(targetSocketId).emit("call:signal", { callId, fromUserId: userId, signal });
       return { ok: true };
     } catch (error) {
-      return { ok: false, error: this.errorMessage(error, "通话信令发送失败。") };
+      return {
+        ok: false,
+        error: this.errorMessage(error, "通话信令发送失败。"),
+      };
     }
   }
 
   @SubscribeMessage("call:connected")
-  async callConnected(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: CallIdPayload,
-  ) {
+  async callConnected(@ConnectedSocket() client: Socket, @MessageBody() payload: CallIdPayload) {
     try {
       const userId = this.requireUserId(client);
       const callId = this.requirePositiveInteger(payload.callId, "通话编号无效。");
@@ -477,23 +465,28 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       if (runtime.calleeSocketId) this.server.to(runtime.calleeSocketId).emit("call:active", calleeView);
       return { ok: true };
     } catch (error) {
-      return { ok: false, error: this.errorMessage(error, "通话连接状态更新失败。") };
+      return {
+        ok: false,
+        error: this.errorMessage(error, "通话连接状态更新失败。"),
+      };
     }
   }
 
   @SubscribeMessage("call:end")
-  async endCall(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() payload: EndCallPayload,
-  ) {
+  async endCall(@ConnectedSocket() client: Socket, @MessageBody() payload: EndCallPayload) {
     try {
       const userId = this.requireUserId(client);
       const callId = this.requirePositiveInteger(payload.callId, "通话编号无效。");
       const runtime = this.requireRuntimeCall(callId);
       this.callTargetSocket(runtime, userId, client.id, true);
-      const status = runtime.status === CallStatus.ringing
-        ? userId === runtime.callerId ? CallStatus.cancelled : CallStatus.declined
-        : payload.reason === "failed" ? CallStatus.failed : CallStatus.completed;
+      const status =
+        runtime.status === CallStatus.ringing
+          ? userId === runtime.callerId
+            ? CallStatus.cancelled
+            : CallStatus.declined
+          : payload.reason === "failed"
+            ? CallStatus.failed
+            : CallStatus.completed;
       await this.terminateRuntimeCall(callId, status, userId, status === CallStatus.failed ? "媒体连接失败" : undefined);
       return { ok: true };
     } catch (error) {
@@ -503,15 +496,39 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
   onModuleDestroy(): void {
     if (this.presenceTimer) clearInterval(this.presenceTimer);
+    if (this.sessionValidationTimer) clearInterval(this.sessionValidationTimer);
     for (const call of this.runtimeCalls.values()) clearTimeout(call.timer);
   }
 
-  private async refreshPresence(): Promise<void> {
-    await Promise.all(
-      Array.from(this.socketsByUser.keys()).map((userId) =>
-        this.redis.set(this.presenceKey(userId), "online", 90).catch(() => undefined),
-      ),
+  private async disconnectRevokedSessions(): Promise<void> {
+    const sockets = Array.from(this.socketsByUser.values()).flatMap((ids) =>
+      Array.from(ids)
+        .map((id) => this.server.sockets.sockets.get(id))
+        .filter((socket): socket is Socket => Boolean(socket)),
     );
+    await Promise.all(
+      sockets.map(async (socket) => {
+        const data = socket.data as ChatSocketData;
+        if (!data.userId || !data.sessionId || !(await this.isSessionActive(data.userId, data.sessionId))) {
+          socket.emit("chat:error", { message: "当前登录设备已经退出。" });
+          socket.disconnect(true);
+        }
+      }),
+    );
+  }
+
+  private async isSessionActive(userId: number, sessionId: string): Promise<boolean> {
+    const value = await this.redis.get(`refresh_token:${sessionId}`);
+    if (!value) return false;
+    try {
+      return (JSON.parse(value) as { userId?: number }).userId === userId;
+    } catch {
+      return false;
+    }
+  }
+
+  private async refreshPresence(): Promise<void> {
+    await Promise.all(Array.from(this.socketsByUser.keys()).map((userId) => this.redis.set(this.presenceKey(userId), "online", 90).catch(() => undefined)));
   }
 
   private scheduleReauthentication(client: Socket, expiresAtSeconds: number): void {
@@ -519,30 +536,24 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (data.authTimer) clearTimeout(data.authTimer);
     if (data.reauthGraceTimer) clearTimeout(data.reauthGraceTimer);
     data.reauthGraceTimer = undefined;
-    data.authTimer = setTimeout(() => {
-      client.emit("chat:reauthenticate");
-      data.reauthGraceTimer = setTimeout(() => client.disconnect(true), 30_000);
-      data.reauthGraceTimer.unref();
-    }, Math.max(1000, expiresAtSeconds * 1000 - Date.now() - 30_000));
+    data.authTimer = setTimeout(
+      () => {
+        client.emit("chat:reauthenticate");
+        data.reauthGraceTimer = setTimeout(() => client.disconnect(true), 30_000);
+        data.reauthGraceTimer.unref();
+      },
+      Math.max(1000, expiresAtSeconds * 1000 - Date.now() - 30_000),
+    );
     data.authTimer.unref();
   }
 
-  private async finishDetachedCall(
-    call: CallDescriptor,
-    status: CallStatus,
-    endedById: number | null,
-  ) {
+  private async finishDetachedCall(call: CallDescriptor, status: CallStatus, endedById: number | null) {
     const result = await this.callsService.finishCall(call.id, status, endedById);
     if (result.messageId) await this.broadcastCallMessage(result.messageId, call.callerId, call.calleeId);
     return this.callsService.getCallResponse(call.id, call.callerId);
   }
 
-  private async terminateRuntimeCall(
-    callId: number,
-    status: CallStatus,
-    endedById: number | null,
-    failureReason?: string,
-  ): Promise<void> {
+  private async terminateRuntimeCall(callId: number, status: CallStatus, endedById: number | null, failureReason?: string): Promise<void> {
     if (this.terminatingCalls.has(callId)) return;
     const runtime = this.runtimeCalls.get(callId);
     if (!runtime) return;
@@ -571,13 +582,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     this.server.to(this.userRoom(calleeId)).emit("chat:message", message);
   }
 
-  private createCallTimer(
-    callId: number,
-    status: CallStatus,
-    endedById: number | null,
-    timeout: number,
-    reason: string,
-  ): NodeJS.Timeout {
+  private createCallTimer(callId: number, status: CallStatus, endedById: number | null, timeout: number, reason: string): NodeJS.Timeout {
     const timer = setTimeout(() => {
       void this.terminateRuntimeCall(callId, status, endedById, reason);
     }, timeout);
@@ -585,12 +590,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     return timer;
   }
 
-  private callTargetSocket(
-    call: RuntimeCall,
-    userId: number,
-    socketId: string,
-    allowRingingCallee = false,
-  ): string {
+  private callTargetSocket(call: RuntimeCall, userId: number, socketId: string, allowRingingCallee = false): string {
     if (userId === call.callerId && socketId === call.callerSocketId) {
       if (!call.calleeSocketId && !allowRingingCallee) throw new Error("对方尚未接听。");
       return call.calleeSocketId ?? "";

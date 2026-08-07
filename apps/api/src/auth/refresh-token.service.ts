@@ -1,12 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { RedisService } from '../redis/redis.service';
 import { UsersService } from '../users/users.service';
-import {
-  AuthenticatedUser,
-  AuthSessionSummary,
-  RefreshSessionContext,
-} from './auth.types';
+import { AuthenticatedUser, AuthSessionSummary, RefreshSessionContext } from './auth.types';
 
 interface StoredRefreshToken {
   userId: number;
@@ -15,6 +11,7 @@ interface StoredRefreshToken {
   expiresAt: string;
   ip?: string;
   userAgent?: string;
+  deviceFingerprint?: string;
 }
 
 interface ParsedRefreshToken {
@@ -45,13 +42,22 @@ export class RefreshTokenService {
       expiresAt: expiresAt.toISOString(),
       ip: context.ip,
       userAgent: context.userAgent,
+      deviceFingerprint: this.deviceFingerprint(context),
     };
 
     await this.redis.set(this.tokenKey(tokenId), JSON.stringify(record), this.refreshTtlSeconds());
     const sessionsKey = this.userSessionsKey(userId);
     await this.redis.sadd(sessionsKey, tokenId);
     await this.redis.expire(sessionsKey, this.refreshTtlSeconds());
-    await this.cleanAndLimitSessions(userId, tokenId);
+    const sessions = await this.cleanAndLimitSessions(userId, tokenId);
+    const duplicateDeviceSessions = record.deviceFingerprint
+      ? sessions
+          .filter(
+            (session) => session.tokenId !== tokenId && session.record.deviceFingerprint === record.deviceFingerprint,
+          )
+          .map((session) => session.tokenId)
+      : [];
+    await this.revokeTokenIds(userId, duplicateDeviceSessions);
 
     return { refreshToken, tokenId, expiresAt };
   }
@@ -79,11 +85,7 @@ export class RefreshTokenService {
 
     const user = await this.usersService.findActiveById(record.userId);
     await this.revoke(refreshToken);
-    const next = await this.issue(
-      record.userId,
-      this.mergeSessionContext(record, context),
-      record.issuedAt,
-    );
+    const next = await this.issue(record.userId, this.mergeSessionContext(record, context), record.issuedAt);
 
     return { ...next, user };
   }
@@ -121,26 +123,33 @@ export class RefreshTokenService {
     }));
   }
 
-  async revokeOtherSessions(
-    userId: number,
-    currentTokenId: string | null,
-  ): Promise<number> {
+  async revokeOtherSessions(userId: number, currentTokenId: string | null): Promise<number> {
     const current = await this.requireUserSession(userId, currentTokenId);
     await this.repairCurrentSessionIndex(userId, current.tokenId);
     const sessions = await this.cleanAndLimitSessions(userId, current.tokenId);
-    const revokeIds = sessions
-      .map((session) => session.tokenId)
-      .filter((tokenId) => tokenId !== current.tokenId);
+    const revokeIds = sessions.map((session) => session.tokenId).filter((tokenId) => tokenId !== current.tokenId);
     return this.revokeTokenIds(userId, revokeIds);
   }
 
   async revokeAllSessions(userId: number): Promise<number> {
     const tokenIds = await this.redis.smembers(this.userSessionsKey(userId));
-    const revoked = await this.redis.delMany(
-      tokenIds.map((tokenId) => this.tokenKey(tokenId)),
-    );
+    const revoked = await this.redis.delMany(tokenIds.map((tokenId) => this.tokenKey(tokenId)));
     await this.redis.del(this.userSessionsKey(userId));
     return revoked;
+  }
+
+  async revokeSession(
+    userId: number,
+    currentTokenId: string | null,
+    targetTokenId: string,
+  ): Promise<{ success: true; current: boolean }> {
+    await this.requireUserSession(userId, currentTokenId);
+    const target = await this.loadRecord(targetTokenId);
+    if (!target || target.userId !== userId) {
+      throw new NotFoundException('登录设备不存在或已经退出。');
+    }
+    await this.revokeTokenIds(userId, [targetTokenId]);
+    return { success: true, current: targetTokenId === currentTokenId };
   }
 
   private parseToken(refreshToken: string): ParsedRefreshToken | null {
@@ -168,10 +177,7 @@ export class RefreshTokenService {
     }
   }
 
-  private async requireRecord(
-    parsed: ParsedRefreshToken,
-    refreshToken: string,
-  ): Promise<StoredRefreshToken> {
+  private async requireRecord(parsed: ParsedRefreshToken, refreshToken: string): Promise<StoredRefreshToken> {
     const record = await this.loadRecord(parsed.tokenId);
     if (!record || !this.tokenMatches(refreshToken, record.tokenHash)) {
       throw new UnauthorizedException('Invalid refresh token.');
@@ -193,10 +199,7 @@ export class RefreshTokenService {
     return { tokenId, record };
   }
 
-  private async repairCurrentSessionIndex(
-    userId: number,
-    tokenId: string,
-  ): Promise<void> {
+  private async repairCurrentSessionIndex(userId: number, tokenId: string): Promise<void> {
     const sessionsKey = this.userSessionsKey(userId);
     await this.redis.sadd(sessionsKey, tokenId);
     await this.redis.expire(sessionsKey, this.refreshTtlSeconds());
@@ -211,27 +214,14 @@ export class RefreshTokenService {
     if (merged.ip === record.ip && merged.userAgent === record.userAgent) {
       return;
     }
-    const ttlSeconds = Math.max(
-      1,
-      Math.ceil((Date.parse(record.expiresAt) - Date.now()) / 1000),
-    );
-    await this.redis.set(
-      this.tokenKey(tokenId),
-      JSON.stringify({ ...record, ...merged }),
-      ttlSeconds,
-    );
+    const ttlSeconds = Math.max(1, Math.ceil((Date.parse(record.expiresAt) - Date.now()) / 1000));
+    await this.redis.set(this.tokenKey(tokenId), JSON.stringify({ ...record, ...merged }), ttlSeconds);
   }
 
-  private mergeSessionContext(
-    record: StoredRefreshToken,
-    context: RefreshSessionContext,
-  ): RefreshSessionContext {
+  private mergeSessionContext(record: StoredRefreshToken, context: RefreshSessionContext): RefreshSessionContext {
     return {
-      ip: context.ip !== 'unknown' ? context.ip : record.ip ?? 'unknown',
-      userAgent:
-        context.userAgent !== 'unknown'
-          ? context.userAgent
-          : record.userAgent ?? 'unknown',
+      ip: context.ip !== 'unknown' ? context.ip : (record.ip ?? 'unknown'),
+      userAgent: context.userAgent !== 'unknown' ? context.userAgent : (record.userAgent ?? 'unknown'),
     };
   }
 
@@ -247,14 +237,11 @@ export class RefreshTokenService {
         record: await this.loadRecord(tokenId),
       })),
     );
-    const staleIds = loaded
-      .filter((session) => !session.record)
-      .map((session) => session.tokenId);
+    const staleIds = loaded.filter((session) => !session.record).map((session) => session.tokenId);
     await Promise.all(staleIds.map((tokenId) => this.redis.srem(sessionsKey, tokenId)));
 
     const active = loaded.filter(
-      (session): session is { tokenId: string; record: StoredRefreshToken } =>
-        session.record !== null,
+      (session): session is { tokenId: string; record: StoredRefreshToken } => session.record !== null,
     );
     active.sort((left, right) => {
       if (left.tokenId === currentTokenId) return -1;
@@ -263,9 +250,7 @@ export class RefreshTokenService {
     });
 
     const kept = active.slice(0, this.maxSessionsPerUser());
-    const excessIds = active
-      .slice(this.maxSessionsPerUser())
-      .map((session) => session.tokenId);
+    const excessIds = active.slice(this.maxSessionsPerUser()).map((session) => session.tokenId);
     await this.revokeTokenIds(userId, excessIds);
 
     if (kept.length === 0) {
@@ -281,17 +266,12 @@ export class RefreshTokenService {
       return 0;
     }
     const sessionsKey = this.userSessionsKey(userId);
-    const revoked = await this.redis.delMany(
-      tokenIds.map((tokenId) => this.tokenKey(tokenId)),
-    );
+    const revoked = await this.redis.delMany(tokenIds.map((tokenId) => this.tokenKey(tokenId)));
     await Promise.all(tokenIds.map((tokenId) => this.redis.srem(sessionsKey, tokenId)));
     return revoked;
   }
 
-  private async removeSessionIndexEntry(
-    userId: number,
-    tokenId: string,
-  ): Promise<void> {
+  private async removeSessionIndexEntry(userId: number, tokenId: string): Promise<void> {
     const sessionsKey = this.userSessionsKey(userId);
     await this.redis.srem(sessionsKey, tokenId);
     if ((await this.redis.scard(sessionsKey)) === 0) {
@@ -303,6 +283,11 @@ export class RefreshTokenService {
     return createHmac('sha256', process.env.REFRESH_TOKEN_SECRET ?? 'dev-refresh-token-secret')
       .update(refreshToken)
       .digest('hex');
+  }
+
+  private deviceFingerprint(context: RefreshSessionContext): string | undefined {
+    const source = context.trustedDeviceToken?.trim() || context.deviceId?.trim();
+    return source ? createHash('sha256').update(source).digest('hex') : undefined;
   }
 
   private tokenMatches(refreshToken: string, expectedHash: string): boolean {
@@ -331,8 +316,6 @@ export class RefreshTokenService {
 
   private maxSessionsPerUser(): number {
     const configured = Number(process.env.MAX_REFRESH_SESSIONS_PER_USER ?? 10);
-    return Number.isInteger(configured) && configured > 0
-      ? Math.min(configured, 100)
-      : 10;
+    return Number.isInteger(configured) && configured > 0 ? Math.min(configured, 100) : 10;
   }
 }

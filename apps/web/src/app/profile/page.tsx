@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Cropper, { type Area, type CropperProps } from "react-easy-crop";
-import { KeyRound, MonitorSmartphone, X } from "lucide-react";
+import { KeyRound, LogOut, MonitorSmartphone, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
 import { AccountSecurityPanel } from "@/components/account-security-panel";
 import { PasswordInput } from "@/components/password-input";
@@ -24,6 +24,7 @@ import {
   resolveApiUrl,
   revokeAllSessions,
   revokeOtherSessions,
+  revokeSession,
   updateMyAppearance,
   updateMyProfile,
   uploadMyAvatar,
@@ -35,10 +36,7 @@ import {
   readAccessToken,
 } from "@/lib/auth-storage";
 import { getAccountMotto } from "@/lib/account-mottos";
-import {
-  getAvatarFallbackText,
-  getUserDisplayName,
-} from "@/lib/user-display";
+import { getAvatarFallbackText, getUserDisplayName } from "@/lib/user-display";
 import {
   defaultThemePreference,
   normalizeThemePreference,
@@ -114,7 +112,8 @@ export default function ProfilePage() {
   const levelPopoverRef = useRef<HTMLDivElement | null>(null);
   const levelPopoverCloseTimerRef = useRef<number | null>(null);
   const [levelPopoverStyle, setLevelPopoverStyle] = useState<CSSProperties>({});
-  const [levelPopoverPlacement, setLevelPopoverPlacement] = useState<LevelPopoverPlacement>("right");
+  const [levelPopoverPlacement, setLevelPopoverPlacement] =
+    useState<LevelPopoverPlacement>("right");
   const [avatarCropSource, setAvatarCropSource] = useState<string | null>(null);
   const [avatarCropFileName, setAvatarCropFileName] = useState("avatar");
   const [avatarCrop, setAvatarCrop] = useState({ x: 0, y: 0 });
@@ -127,7 +126,7 @@ export default function ProfilePage() {
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isSessionsOpen, setIsSessionsOpen] = useState(false);
   const [sessionAction, setSessionAction] = useState<
-    "others" | "all" | null
+    "others" | "all" | `session:${string}` | null
   >(null);
   const [now, setNow] = useState(() => Date.now());
   const [preference, setPreference] = useState<ThemePreference>(() =>
@@ -662,6 +661,43 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleRevokeSession(session: AuthSession) {
+    const token = readAccessToken();
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    const prompt = session.current
+      ? "确定退出当前设备吗？"
+      : `确定退出 ${formatSessionDevice(session.userAgent)} 吗？`;
+    if (!window.confirm(prompt)) return;
+
+    setSessionAction(`session:${session.id}`);
+    setError("");
+    setNotice("");
+    try {
+      const result = await revokeSession(token, session.id);
+      if (result.current) {
+        clearAuthTokens();
+        router.replace("/");
+        return;
+      }
+      await loadAccountSessions(readAccessToken());
+      setNotice("设备已退出。");
+    } catch (sessionError) {
+      if (isAuthExpiredError(sessionError)) {
+        clearAuthTokens();
+        router.replace("/");
+        return;
+      }
+      setError(
+        sessionError instanceof Error ? sessionError.message : "退出设备失败。",
+      );
+    } finally {
+      setSessionAction(null);
+    }
+  }
+
   function handleSessionPanelToggle() {
     const willOpen = !isSessionsOpen;
     setIsSessionsOpen(willOpen);
@@ -688,9 +724,9 @@ export default function ProfilePage() {
       ? "资料保存中"
       : sessionAction
         ? "会话处理中"
-      : isChangingPassword
-        ? "密码保存中"
-        : notice;
+        : isChangingPassword
+          ? "密码保存中"
+          : notice;
 
   const previewStyle = {
     "--theme-preview-accent": customAccent,
@@ -742,7 +778,10 @@ export default function ProfilePage() {
                 />
                 <span className="profile-avatar">
                   {avatarUrl ? (
-                    <img alt={`${getUserDisplayName(user)} 的头像`} src={avatarUrl} />
+                    <img
+                      alt={`${getUserDisplayName(user)} 的头像`}
+                      src={avatarUrl}
+                    />
                   ) : (
                     avatarInitial
                   )}
@@ -751,7 +790,9 @@ export default function ProfilePage() {
 
               <div className="account-profile-copy">
                 <div className="account-identity-copy">
-                  <strong title={getUserDisplayName(user)}>{getUserDisplayName(user)}</strong>
+                  <strong title={getUserDisplayName(user)}>
+                    {getUserDisplayName(user)}
+                  </strong>
                   <p title={`@${user.username}`}>@{user.username}</p>
                 </div>
               </div>
@@ -809,7 +850,9 @@ export default function ProfilePage() {
               <button
                 aria-controls="account-sessions-panel"
                 aria-expanded={isSessionsOpen}
-                aria-label={isSessionsOpen ? "收起登录设备列表" : "展开登录设备列表"}
+                aria-label={
+                  isSessionsOpen ? "收起登录设备列表" : "展开登录设备列表"
+                }
                 className={`session-panel-toggle ${isSessionsOpen ? "active" : ""}`}
                 onClick={handleSessionPanelToggle}
                 title={isSessionsOpen ? "收起登录设备" : "查看登录设备"}
@@ -842,14 +885,17 @@ export default function ProfilePage() {
                     aria-describedby="nickname-hint"
                     autoComplete="nickname"
                     onChange={(event) =>
-                      setNicknameDraft(limitCharacterCount(event.target.value, 24))
+                      setNicknameDraft(
+                        limitCharacterCount(event.target.value, 24),
+                      )
                     }
                     placeholder="输入昵称"
                     required
                     value={nicknameDraft}
                   />
                   <small id="nickname-hint">
-                    {Array.from(nicknameDraft.trim()).length}/24 · 用户名 @{user.username} 不会改变
+                    {Array.from(nicknameDraft.trim()).length}/24 · 用户名 @
+                    {user.username} 不会改变
                   </small>
                 </label>
                 <label className="profile-field">
@@ -899,7 +945,8 @@ export default function ProfilePage() {
                     className="text-action"
                     disabled={
                       sessionAction !== null ||
-                      sessions.filter((session) => !session.current).length === 0
+                      sessions.filter((session) => !session.current).length ===
+                        0
                     }
                     onClick={() => void handleRevokeOtherSessions()}
                     type="button"
@@ -924,8 +971,12 @@ export default function ProfilePage() {
                   sessions.map((session) => (
                     <div className="account-session-row" key={session.id}>
                       <div>
-                        <strong>{formatSessionDevice(session.userAgent)}</strong>
-                        <span>{session.ip === "unknown" ? "IP 未记录" : session.ip}</span>
+                        <strong>
+                          {formatSessionDevice(session.userAgent)}
+                        </strong>
+                        <span>
+                          {session.ip === "unknown" ? "IP 未记录" : session.ip}
+                        </span>
                       </div>
                       <div>
                         <span>登录时间</span>
@@ -938,6 +989,16 @@ export default function ProfilePage() {
                       <em className={session.current ? "current" : ""}>
                         {session.current ? "当前设备" : "其他设备"}
                       </em>
+                      <button
+                        aria-label={`退出 ${formatSessionDevice(session.userAgent)}`}
+                        className="account-session-revoke"
+                        disabled={sessionAction !== null}
+                        onClick={() => void handleRevokeSession(session)}
+                        title="退出设备"
+                        type="button"
+                      >
+                        <LogOut aria-hidden="true" size={17} />
+                      </button>
                     </div>
                   ))
                 ) : (
@@ -1133,10 +1194,7 @@ export default function ProfilePage() {
                 {levelRoadmap.map((role) => {
                   const isCurrent = user.role.code === role.code;
                   return (
-                    <div
-                      className={isCurrent ? "current" : ""}
-                      key={role.code}
-                    >
+                    <div className={isCurrent ? "current" : ""} key={role.code}>
                       <span className="level-icon" data-role={role.code}>
                         <RoleSymbol code={role.code} />
                       </span>
@@ -1197,7 +1255,9 @@ export default function ProfilePage() {
                       autoComplete="current-password"
                       autoFocus
                       disabled={isChangingPassword}
-                      onChange={(event) => setCurrentPassword(event.target.value)}
+                      onChange={(event) =>
+                        setCurrentPassword(event.target.value)
+                      }
                       required
                       value={currentPassword}
                     />
@@ -1364,14 +1424,18 @@ export default function ProfilePage() {
   );
 }
 
-function calculateLevelPopoverPosition(trigger: HTMLElement, measuredHeight = 520): LevelPopoverPosition {
+function calculateLevelPopoverPosition(
+  trigger: HTMLElement,
+  measuredHeight = 520,
+): LevelPopoverPosition {
   const viewportPadding = 12;
   const gap = 8;
   const triggerRect = trigger.getBoundingClientRect();
   const width = Math.min(340, window.innerWidth - viewportPadding * 2);
   const triggerCenterX = triggerRect.left + triggerRect.width / 2;
   const triggerCenterY = triggerRect.top + triggerRect.height / 2;
-  const hasSpaceOnRight = triggerRect.right + gap + width <= window.innerWidth - viewportPadding;
+  const hasSpaceOnRight =
+    triggerRect.right + gap + width <= window.innerWidth - viewportPadding;
   const hasSpaceOnLeft = triggerRect.left - gap - width >= viewportPadding;
   let placement: LevelPopoverPlacement;
   let left: number;

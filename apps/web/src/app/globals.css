@@ -1777,6 +1777,7 @@ a.entry-item:hover {
 
 .account-sessions-panel {
   grid-column: 1 / -1;
+  gap: 16px;
   animation: session-panel-reveal 180ms ease-out;
 }
 
@@ -1811,7 +1812,7 @@ a.entry-item:hover {
 
 .account-session-list {
   display: grid;
-  margin-top: 14px;
+  margin-top: 0;
   border-top: 1px solid var(--control-line);
 }
 
@@ -1820,7 +1821,7 @@ a.entry-item:hover {
   grid-template-columns: minmax(180px, 1.25fr) minmax(150px, 0.9fr) minmax(
       150px,
       0.9fr
-    ) auto;
+    ) auto auto;
   align-items: center;
   gap: 18px;
   border-bottom: 1px solid var(--control-line);
@@ -1867,6 +1868,34 @@ a.entry-item:hover {
 .account-session-row em.current {
   background: var(--success-soft);
   color: var(--success);
+}
+
+.account-session-revoke,
+.trusted-device-remove {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.account-session-revoke:hover,
+.trusted-device-remove:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
+
+.account-session-revoke:disabled,
+.trusted-device-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .account-session-state {
@@ -5153,6 +5182,17 @@ a.entry-item:hover {
   white-space: nowrap;
 }
 
+.auth-code-actions {
+  display: flex;
+  min-height: 24px;
+  justify-content: flex-end;
+}
+
+.auth-code-actions .text-action {
+  min-height: 24px;
+  font-size: 0.8rem;
+}
+
 .auth-turnstile-field {
   display: grid;
   min-width: 0;
@@ -5506,6 +5546,18 @@ a.entry-item:hover {
   gap: 4px;
 }
 
+.trusted-device-row em {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 650;
+  padding: 5px 7px;
+  white-space: nowrap;
+}
+
 .security-risk-dot {
   width: 7px;
   height: 7px;
@@ -5673,7 +5725,7 @@ a.entry-item:hover {
 
 .security-policy-toggles {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 

@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../../users/users.service';
+import { RedisService } from '../../redis/redis.service';
 import { AccessTokenPayload, AuthenticatedUser } from '../auth.types';
 
 @Injectable()
@@ -8,6 +9,7 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
     private readonly usersService: UsersService,
+    private readonly redis: RedisService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -35,8 +37,22 @@ export class JwtAuthGuard implements CanActivate {
     if ((payload.av ?? 0) !== (request.user.authVersion ?? 0)) {
       throw new UnauthorizedException('Access token has been revoked.');
     }
+    if (payload.sid) {
+      const session = await this.redis.get(`refresh_token:${payload.sid}`);
+      if (!session || !this.sessionBelongsToUser(session, payload.sub)) {
+        throw new UnauthorizedException('Access token has been revoked.');
+      }
+    }
     request.sessionId = payload.sid ?? null;
     return true;
+  }
+
+  private sessionBelongsToUser(session: string, userId: number): boolean {
+    try {
+      return (JSON.parse(session) as { userId?: number }).userId === userId;
+    } catch {
+      return false;
+    }
   }
 
   private extractBearerToken(authorization?: string): string | null {
