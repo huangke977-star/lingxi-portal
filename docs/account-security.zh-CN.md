@@ -268,7 +268,7 @@ Turnstile 不要求站点流量必须经过 Cloudflare 代理，但浏览器需�
 ## 上线步骤
 
 1. 备份 MySQL，并确认备份可以读取；不要只依赖待上线的加密备份功能。
-2. 确认生产 `.env` 中已有稳定的 `BACKUP_ENCRYPTION_KEY`、`JWT_ACCESS_SECRET` 和 `REFRESH_TOKEN_SECRET`，且真实值不在 Git 中。
+2. 确认生产 `.env` 中已有稳定的 `BACKUP_ENCRYPTION_KEY`、`JWT_ACCESS_SECRET` 和 `REFRESH_TOKEN_SECRET`，且真实值不在 Git 中；同时设置 `WEB_ORIGIN=https://5200918.xyz`，不得包含仅供宿主机或 Docker 内部使用的 `:3000` 端口。
 3. 先保持所有新增邮件和 Turnstile 开关关闭。
 4. 在构建环境完成 Prisma 生成、API 测试、前后端 Lint 和生产构建。
 5. 在小型 VPS 上拉取 GHCR 预构建镜像，不在服务器本机构建镜像。
@@ -312,7 +312,7 @@ docker compose -f docker-compose.prod.yml ps
 2. 保存 SMTP 配置并执行连接测试，再发送一封真实注册验证码邮件，确认邮件任务状态为 `sent`。
 3. 对同一邮箱在 60 秒内再次申请验证码，确认返回 `429`；使用错误验证码 5 次后确认必须重新获取。
 4. 启用注册邮箱验证，确认没有验证码不能注册、有效验证码只能消费一次、成功注册后邮箱为已验证。
-5. 使用已验证账号申请找回，确认链接 30 分钟有效；用新密码重置后，旧 Access Token 和 Refresh Token 全部失效。
+5. 使用已验证账号申请找回，确认邮件链接以 `https://5200918.xyz/forgot-password` 开头、不包含 `:3000`，并且 30 分钟有效；用新密码重置后，旧 Access Token 和 Refresh Token 全部失效。
 6. 对不存在、停用和未验证邮箱申请找回，确认页面得到相同的非枚举提示，且不会实际发送邮件。
 7. 启用 Turnstile 注册或找回保护，确认无 Token 返回 `428`，有效挑战可继续，Cloudflare 不可达时返回 `503`。
 8. 连续输错登录密码，确认达到挑战阈值后出现 Turnstile，达到 5 次后触发 15 分钟限制并记录 `login_blocked`。

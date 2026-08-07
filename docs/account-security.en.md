@@ -268,7 +268,7 @@ SMTP, registration verification, password recovery, and all three Turnstile swit
 ## Release Procedure
 
 1. Back up MySQL and confirm the backup is readable. Do not depend only on the encryption capability being released.
-2. Confirm production `.env` contains stable `BACKUP_ENCRYPTION_KEY`, `JWT_ACCESS_SECRET`, and `REFRESH_TOKEN_SECRET` values and that none appears in Git.
+2. Confirm production `.env` contains stable `BACKUP_ENCRYPTION_KEY`, `JWT_ACCESS_SECRET`, and `REFRESH_TOKEN_SECRET` values and that none appears in Git. Also set `WEB_ORIGIN=https://5200918.xyz`; it must not include the internal-only `:3000` host or Docker port.
 3. Keep every new mail and Turnstile switch disabled initially.
 4. Run Prisma generation, API tests, frontend/backend lint, and production builds in the build environment.
 5. Pull prebuilt GHCR images on the resource-constrained VPS; do not build images on the server.
@@ -312,7 +312,7 @@ docker compose -f docker-compose.prod.yml ps
 2. Save SMTP configuration, test the connection, and send a real registration code. Confirm the mail job reaches `sent`.
 3. Request another code for the same email within 60 seconds and confirm HTTP `429`. Enter an incorrect code five times and confirm that a new code is required.
 4. Enable registration email verification. Confirm that registration requires a code, one code is consumed only once, and the new account is email-verified.
-5. Request recovery for a verified account and confirm the link is valid for 30 minutes. Reset the password and confirm all old access and refresh tokens are rejected.
+5. Request recovery for a verified account and confirm the email link starts with `https://5200918.xyz/forgot-password`, does not contain `:3000`, and remains valid for 30 minutes. Reset the password and confirm all old access and refresh tokens are rejected.
 6. Request recovery for unknown, disabled, and unverified emails. Confirm the same non-enumerating response and no actual delivery.
 7. Enable Turnstile for registration or recovery. Confirm missing tokens return `428`, valid challenges continue, and an unavailable Cloudflare service returns `503`.
 8. Repeatedly enter the wrong login password. Confirm Turnstile appears at the configured threshold and the fifth failure creates a 15-minute restriction and `login_blocked` event.
