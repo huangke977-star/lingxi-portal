@@ -2,8 +2,8 @@
 
 - Document status: Active
 - Created: 2026-08-04
-- Last updated: 2026-08-07
-- Current phase: Phase 3 locally complete, pending production deployment and verification
+- Last updated: 2026-08-10
+- Current phase: Phase 4 ready to start (Phase 1 remote restore drill remains blocked)
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -35,7 +35,7 @@ Status definitions:
 | --- | --- | --- | --- |
 | Phase 1 | Reliability Foundation | Media backup, missing-file repair, lightweight monitoring | Blocked (remote restore drill only) |
 | Phase 2 | Account Security | Password recovery, email verification, Turnstile, login-risk alerts | Completed |
-| Phase 3 | Content Capability | Autosave, version history, preview, unified search | In progress (locally complete; production verification pending) |
+| Phase 3 | Content Capability | Autosave, version history, preview, unified search | Completed |
 | Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | Not started |
 | Phase 5 | Social Capability | Group chat, group files, moderation, temporary conversations | Not started |
 | Phase 6 | Operations Console | Operational analytics, announcements, scheduling, read statistics | Not started |
@@ -148,25 +148,26 @@ Goal: reduce editing-loss risk and provide unified search across articles, users
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P3-01 | Add debounced editor autosave and visible save state | In progress (locally complete) |
-| P3-02 | Keep a local fallback draft when server autosave fails | In progress (locally complete) |
-| P3-03 | Add article snapshots, version lists, and version metadata | In progress (locally complete) |
-| P3-04 | Restore a historical version by creating a new version | In progress (locally complete) |
-| P3-05 | Add pre-publication preview matching the reading page | In progress (locally complete) |
-| P3-06 | Add a unified search index and normalized search fields | In progress (locally complete) |
-| P3-07 | Search and group articles, users, navigation entries, and tools | In progress (locally complete) |
-| P3-08 | Match nicknames, usernames, titles, tags, categories, and pinyin fields | In progress (locally complete) |
-| P3-09 | Add search history, trending searches, and history cleanup | In progress (locally complete) |
-| P3-10 | Add ranking, permission filtering, pagination, and performance tests | In progress (locally complete) |
-| P3-11 | Complete bilingual docs, mobile adaptation, and production verification | In progress (production verification pending) |
+| P3-01 | Add debounced editor autosave and visible save state | Completed |
+| P3-02 | Keep a local fallback draft when server autosave fails | Completed |
+| P3-03 | Add article snapshots, version lists, and version metadata | Completed |
+| P3-04 | Restore a historical version by creating a new version | Completed |
+| P3-05 | Add pre-publication preview matching the reading page | Completed |
+| P3-06 | Add a unified search index and normalized search fields | Completed |
+| P3-07 | Search and group articles, users, navigation entries, and tools | Completed |
+| P3-08 | Match nicknames, usernames, titles, tags, categories, and pinyin fields | Completed |
+| P3-09 | Add search history, trending searches, and history cleanup | Completed |
+| P3-10 | Add ranking, permission filtering, pagination, and performance tests | Completed |
+| P3-11 | Complete bilingual docs, mobile adaptation, and production verification | Completed |
 
 ### Current Acceptance Results
 
-- Autosave, local recovery, immutable snapshots, version restoration, and publication preview are locally implemented.
-- Unified search reuses the existing four result groups and authorization rules while adding normalized fields, full pinyin and initials, history, trending terms, and sorting.
-- The migration is additive and introduces no Elasticsearch cluster or other persistent service. Legacy records are backfilled in batches of 100 at API startup.
-- Bilingual implementation and acceptance documentation is available in `docs/content-reliability-and-search.zh-CN.md` and `docs/content-reliability-and-search.en.md`.
-- The phase has not been pushed or deployed. Full automated-test results, desktop/390px checks, and production verification will be recorded after local acceptance and deployment.
+- Autosave, local recovery, immutable snapshots, version restoration, publication preview, and unified search are complete, with bilingual documentation in `docs/content-reliability-and-search.zh-CN.md` and `docs/content-reliability-and-search.en.md`.
+- Unified search reuses the existing four result groups and authorization rules while supporting normalized fields, full pinyin and initials, history, trending terms, sorting, pagination, and permission filtering.
+- Additive migration `20260807173000_add_content_reliability_and_search` is applied in production, bringing the Prisma migration count to 30. All 83 search-index records were backfilled, with no missing user, article, or portal indexes.
+- All 29 API suites with 186 tests, API/Web builds and lint, Prisma validation, and `git diff --check` passed. Web retains only 10 unrelated pre-existing warnings.
+- Commit `47c7ae3` was pushed and GitHub Actions run `31165692942` succeeded. Production recreated only API/Web on 2026-08-07 without restarting MySQL, Redis, Caddy, or TURN. Home, search, health, and related external checks returned `200`; desktop and 390px mobile had no horizontal overflow and the browser console had no errors.
+- Production acceptance for autosave, draft recovery, version history, publication preview, pinyin search, and permission filtering completed on 2026-08-10, closing Phase 3.
 
 ### Acceptance
 
@@ -303,8 +304,8 @@ A phase can be marked `Completed` only when all conditions are met:
 | Phase | Completed | Commit | Deployment | Notes |
 | --- | --- | --- | --- | --- |
 | Phase 1 | - | `90e43d3`, `290aa5c`, `fe6c619`, `0569d1a` | P1-01 through P1-11 deployed (2026-08-05) | P1-12 is blocked only on the OSS/R2 production restore drill; scan #5 found 20 healthy files, 3 historical missing article files, and no orphan files |
-| Phase 2 | - | `a22a04f`, `8e97c4c`, `c139889` | P2-01 through P2-11 deployed (2026-08-07) | P2-11's default-disabled untrusted-device email gate still needs controlled live acceptance; all other production checks passed |
-| Phase 3 | - | - | Local implementation and acceptance complete; commit and deployment pending | P3-01 through P3-10 are locally complete; P3-11 awaits production verification |
+| Phase 2 | 2026-08-07 | `a22a04f`, `8e97c4c`, `c139889` | P2-01 through P2-11 deployed (2026-08-07) | Live-device acceptance passed for untrusted-device email verification, trust removal, and per-session sign-out |
+| Phase 3 | 2026-08-10 | `47c7ae3` | Deployed 2026-08-07; Actions `31165692942` succeeded | P3-01 through P3-11 passed automated checks and production acceptance |
 | Phase 4 | - | - | - | Not started |
 | Phase 5 | - | - | - | Not started |
 | Phase 6 | - | - | - | Not started |
