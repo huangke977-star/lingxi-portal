@@ -19,6 +19,12 @@ export interface ArticleRole {
   level: number;
 }
 
+export interface ArticleGrouping {
+  id: number;
+  label: string;
+  href: string;
+}
+
 export interface Article {
   id: number;
   title: string;
@@ -42,6 +48,8 @@ export interface Article {
   author: ArticleAuthor;
   recentCommenters: ArticleAuthor[];
   allowedRoles: ArticleRole[];
+  collections: ArticleGrouping[];
+  topics: ArticleGrouping[];
   images: string[];
   liked: boolean;
   favorited: boolean;

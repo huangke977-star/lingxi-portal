@@ -12,8 +12,10 @@ import {
   ArticleCommentReportStatus,
   ArticleCommentStatus,
   ArticleStatus,
+  ArticleTopicStatus,
   ArticleVersionSource,
   ArticleVisibility,
+  PortalVisibility,
   Prisma,
   UserNotificationChannel,
   UserNotificationType,
@@ -151,6 +153,29 @@ const articleInclude = {
   },
   likes: { select: { userId: true } },
   favorites: { select: { userId: true } },
+  collectionItems: {
+    orderBy: { collection: { sortOrder: "asc" as const } },
+    select: {
+      collection: {
+        select: { id: true, ownerId: true, name: true, visibility: true },
+      },
+    },
+  },
+  topicItems: {
+    orderBy: { topic: { sortOrder: "asc" as const } },
+    select: {
+      topic: {
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          visibility: true,
+          status: true,
+          allowedRoles: { select: { role: { select: { code: true } } } },
+        },
+      },
+    },
+  },
   comments: {
     where: { status: ArticleCommentStatus.active },
     orderBy: [{ createdAt: "desc" as const }, { id: "desc" as const }],
@@ -317,7 +342,7 @@ export class ArticlesService {
       select: { createdAt: true, article: { include: articleInclude } },
     });
     return {
-      items: records.map(({ article }) => this.toResponse(article, user.id, {
+      items: records.map(({ article }) => this.toResponse(article, user, {
         readLater: true,
         readingProgress: null,
         lastReadAt: null,
@@ -347,7 +372,7 @@ export class ArticlesService {
       },
     });
     return {
-      items: records.map(({ article, progress, lastReadAt }) => this.toResponse(article, user.id, {
+      items: records.map(({ article, progress, lastReadAt }) => this.toResponse(article, user, {
         readLater: false,
         readingProgress: progress,
         lastReadAt,
@@ -384,7 +409,7 @@ export class ArticlesService {
   async getMineById(id: number, user: AuthenticatedUser): Promise<ArticleResponse> {
     const article = await this.getArticleOrThrow(id);
     this.assertCanEdit(article, user);
-    return this.toResponse(article, user.id);
+    return this.toResponse(article, user);
   }
 
   listAdmin(query: ListArticlesQueryDto): Promise<ArticleListResponse> {
@@ -496,7 +521,7 @@ export class ArticlesService {
       if (status === ArticleStatus.published) await this.notifySubscribersOfPublication(transaction, created);
       return created;
     });
-    return this.toResponse(article, user.id);
+    return this.toResponse(article, user);
   }
 
   async createAutosave(user: AuthenticatedUser, dto: AutosaveArticleDto): Promise<ArticleResponse> {
@@ -528,7 +553,7 @@ export class ArticlesService {
       await this.createVersionSnapshot(transaction, created, user.id, ArticleVersionSource.autosave);
       return created;
     });
-    return this.toResponse(article, user.id);
+    return this.toResponse(article, user);
   }
 
   async autosave(
@@ -569,7 +594,7 @@ export class ArticlesService {
       await this.createVersionSnapshot(transaction, updated, user.id, ArticleVersionSource.autosave);
       return updated;
     });
-    return this.toResponse(article, user.id);
+    return this.toResponse(article, user);
   }
 
   async listVersions(id: number, user: AuthenticatedUser): Promise<{ items: ArticleVersionSummaryResponse[] }> {
@@ -642,7 +667,7 @@ export class ArticlesService {
       await this.createVersionSnapshot(transaction, updated, user.id, ArticleVersionSource.restore);
       return updated;
     });
-    return this.toResponse(article, user.id);
+    return this.toResponse(article, user);
   }
 
   async update(id: number, user: AuthenticatedUser, dto: UpdateArticleDto): Promise<ArticleResponse> {
@@ -687,7 +712,7 @@ export class ArticlesService {
       if (isFirstPublication) await this.notifySubscribersOfPublication(transaction, updated);
       return updated;
     });
-    return this.toResponse(article, user.id);
+    return this.toResponse(article, user);
   }
 
   async publish(id: number, user: AuthenticatedUser): Promise<ArticleResponse> {
@@ -710,7 +735,7 @@ export class ArticlesService {
       if (isFirstPublication) await this.notifySubscribersOfPublication(transaction, updated);
       return updated;
     });
-    return this.toResponse(article, user.id);
+    return this.toResponse(article, user);
   }
 
   async unpublish(id: number, user: AuthenticatedUser): Promise<ArticleResponse> {
@@ -724,7 +749,7 @@ export class ArticlesService {
       data: { status: ArticleStatus.unpublished },
       include: articleInclude,
     });
-    return this.toResponse(article, user.id);
+    return this.toResponse(article, user);
   }
 
   async delete(id: number, user: AuthenticatedUser): Promise<{ success: true }> {
@@ -750,7 +775,7 @@ export class ArticlesService {
       },
       include: articleInclude,
     });
-    return this.toResponse(article, user.id);
+    return this.toResponse(article, user);
   }
 
   async permanentlyDelete(id: number, user: AuthenticatedUser): Promise<{ success: true }> {
@@ -1119,7 +1144,7 @@ export class ArticlesService {
       if (isFirstPublication) await this.notifySubscribersOfPublication(transaction, updated);
       return updated;
     });
-    return this.toResponse(article, actor.id);
+    return this.toResponse(article, actor);
   }
 
   async listAdminComments(articleId: number | undefined): Promise<ArticleCommentsResponse> {
@@ -1312,7 +1337,7 @@ export class ArticlesService {
       include: articleInclude,
     });
     return {
-      items: items.map((article) => this.toResponse(article, user?.id)),
+      items: items.map((article) => this.toResponse(article, user)),
       total,
       page,
       pageSize: query.pageSize,
@@ -1328,7 +1353,7 @@ export class ArticlesService {
       where, orderBy: this.orderBy(query, false), skip: (page - 1) * query.pageSize,
       take: query.pageSize, include: articleInclude,
     });
-    return { items: items.map((article) => this.toResponse(article, user.id)), total, page, pageSize: query.pageSize, totalPages };
+    return { items: items.map((article) => this.toResponse(article, user)), total, page, pageSize: query.pageSize, totalPages };
   }
 
   private async listInteractedArticles(
@@ -1359,7 +1384,7 @@ export class ArticlesService {
           select: { article: { include: articleInclude } },
         })).map(({ article }) => article);
     return {
-      items: articles.map((article) => this.toResponse(article, user.id)),
+      items: articles.map((article) => this.toResponse(article, user)),
       total,
       page,
       pageSize: query.pageSize,
@@ -1461,7 +1486,7 @@ export class ArticlesService {
     return {
       items: pageIds.flatMap((id) => {
         const article = recordsById.get(id);
-        return article ? [this.toResponse(article, user?.id)] : [];
+        return article ? [this.toResponse(article, user)] : [];
       }),
       total,
       page,
@@ -1641,7 +1666,7 @@ export class ArticlesService {
       this.getArticleOrThrow(article.id),
       user ? this.getReaderState(article.id, user.id) : Promise.resolve(undefined),
     ]);
-    return this.toResponse(refreshed, user?.id, readerState);
+    return this.toResponse(refreshed, user, readerState);
   }
 
   private async getArticleBySlug(slug: string): Promise<ArticleRecord> {
@@ -1720,6 +1745,7 @@ export class ArticlesService {
     const roleCodes = article.allowedRoles.map(({ role }) => role.code);
     const subscriptions = await transaction.userSubscription.findMany({ where: {
       authorId: article.authorId,
+      notifyNewArticles: true,
       subscriber: {
         status: "active",
         ...(article.visibility === ArticleVisibility.role_restricted ? { role: { code: { in: roleCodes } } } : {}),
@@ -1957,7 +1983,7 @@ export class ArticlesService {
 
   private toResponse(
     article: ArticleRecord,
-    viewerId?: number,
+    viewer?: AuthenticatedUser | null,
     readerState?: ArticleReaderState,
   ): ArticleResponse {
     const recentCommenters: ArticleAuthorResponse[] = [];
@@ -1991,9 +2017,35 @@ export class ArticlesService {
       author: this.toAuthor(article.author),
       recentCommenters,
       allowedRoles: article.allowedRoles.map(({ role }) => role),
+      collections: (article.collectionItems ?? [])
+        .filter(({ collection }) => (
+          collection.visibility === ArticleVisibility.public ||
+          viewer?.isSuperAdmin ||
+          (viewer && collection.visibility === ArticleVisibility.authenticated) ||
+          viewer?.id === collection.ownerId
+        ))
+        .map(({ collection }) => ({
+          id: collection.id,
+          label: collection.name,
+          href: `/collections/${collection.id}`,
+        })),
+      topics: (article.topicItems ?? [])
+        .filter(({ topic }) => {
+          if (viewer?.isSuperAdmin) return true;
+          if (topic.status !== ArticleTopicStatus.active) return false;
+          if (topic.visibility === PortalVisibility.public) return true;
+          if (!viewer) return false;
+          if (topic.visibility === PortalVisibility.authenticated) return true;
+          return topic.allowedRoles.some(({ role }) => role.code === viewer.role.code);
+        })
+        .map(({ topic }) => ({
+          id: topic.id,
+          label: topic.title,
+          href: `/topics/${topic.slug}`,
+        })),
       images: article.images.map((image) => `/articles/images/${image.storedName}`),
-      liked: viewerId !== undefined && article.likes.some((like) => like.userId === viewerId),
-      favorited: viewerId !== undefined && article.favorites.some((favorite) => favorite.userId === viewerId),
+      liked: Boolean(viewer && article.likes.some((like) => like.userId === viewer.id)),
+      favorited: Boolean(viewer && article.favorites.some((favorite) => favorite.userId === viewer.id)),
       readLater: readerState?.readLater ?? false,
       readingProgress: readerState?.readingProgress ?? null,
       lastReadAt: readerState?.lastReadAt?.toISOString() ?? null,

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Cropper, { type Area, type CropperProps } from "react-easy-crop";
-import { KeyRound, LogOut, MonitorSmartphone, X } from "lucide-react";
+import { BookOpen, Eye, EyeOff, KeyRound, LogOut, MonitorSmartphone, Pin, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
 import { AccountSecurityPanel } from "@/components/account-security-panel";
 import { PasswordInput } from "@/components/password-input";
@@ -37,6 +37,14 @@ import {
 } from "@/lib/auth-storage";
 import { getAccountMotto } from "@/lib/account-mottos";
 import { getAvatarFallbackText, getUserDisplayName } from "@/lib/user-display";
+import { listMyArticles, type Article } from "@/lib/article-api";
+import {
+  getProfileSettings,
+  listMyCollections,
+  type ArticleCollection,
+  type ProfileSettings,
+  updateProfileSettings,
+} from "@/lib/discovery-api";
 import {
   defaultThemePreference,
   normalizeThemePreference,
@@ -93,6 +101,16 @@ const levelRoadmap = [
   { code: "mahayana", name: "大乘", level: 80, status: "未开放" },
 ];
 
+const defaultProfileSettings: ProfileSettings = {
+  showBio: true,
+  showJoinedAt: true,
+  showStats: true,
+  showFollowingCount: true,
+  showPinnedContent: true,
+  pinnedArticleId: null,
+  pinnedCollectionId: null,
+};
+
 export default function ProfilePage() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -122,6 +140,10 @@ export default function ProfilePage() {
   const [nicknameDraft, setNicknameDraft] = useState("");
   const [emailDraft, setEmailDraft] = useState("");
   const [profileBioDraft, setProfileBioDraft] = useState("");
+  const [profileSettings, setProfileSettings] = useState<ProfileSettings>(defaultProfileSettings);
+  const [profileArticles, setProfileArticles] = useState<Article[]>([]);
+  const [profileCollections, setProfileCollections] = useState<ArticleCollection[]>([]);
+  const [isSavingProfileSettings, setIsSavingProfileSettings] = useState(false);
   const [sessions, setSessions] = useState<AuthSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isSessionsOpen, setIsSessionsOpen] = useState(false);
@@ -179,6 +201,17 @@ export default function ProfilePage() {
         setPreference(accountPreference);
         writeThemePreference(accountPreference);
         void loadAccountSessions(readAccessToken());
+        void Promise.all([
+          getProfileSettings(token),
+          listMyArticles(token, { page: 1, pageSize: 50, status: "published", sort: "latest" }),
+          listMyCollections(token),
+        ]).then(([settings, articleResult, collectionResult]) => {
+          setProfileSettings(settings);
+          setProfileArticles(articleResult.items);
+          setProfileCollections(collectionResult.items);
+        }).catch((profileSettingsError) => {
+          setError(profileSettingsError instanceof Error ? profileSettingsError.message : "主页展示设置加载失败。");
+        });
       })
       .catch((loadError) => {
         if (isAuthExpiredError(loadError)) {
@@ -516,6 +549,24 @@ export default function ProfilePage() {
       );
     } finally {
       setIsSavingProfile(false);
+    }
+  }
+
+  async function commitProfileSettings(patch: Partial<ProfileSettings>) {
+    const token = readAccessToken();
+    if (!token || isSavingProfileSettings) return;
+    const previous = profileSettings;
+    setProfileSettings((current) => ({ ...current, ...patch }));
+    setIsSavingProfileSettings(true);
+    try {
+      const updated = await updateProfileSettings(token, patch);
+      setProfileSettings(updated);
+      setNotice("主页展示设置已更新。");
+    } catch (saveError) {
+      setProfileSettings(previous);
+      setError(saveError instanceof Error ? saveError.message : "主页展示设置保存失败。");
+    } finally {
+      setIsSavingProfileSettings(false);
     }
   }
 
@@ -1009,6 +1060,35 @@ export default function ProfilePage() {
           ) : null}
 
           <AccountSecurityPanel email={user.email} />
+
+          <section className="profile-panel profile-display-panel">
+            <div className="panel-heading profile-display-heading">
+              <span className="section-label">Public profile</span>
+              <strong>主页展示</strong>
+              <span>{isSavingProfileSettings ? "正在同步" : "账号级保存"}</span>
+            </div>
+            <div className="profile-display-layout">
+              <div className="profile-visibility-list">
+                {([
+                  ["showBio", "个人介绍"],
+                  ["showJoinedAt", "加入时间"],
+                  ["showStats", "内容与访问统计"],
+                  ["showFollowingCount", "已订阅数量"],
+                  ["showPinnedContent", "代表内容"],
+                ] as Array<[keyof Pick<ProfileSettings, "showBio" | "showJoinedAt" | "showStats" | "showFollowingCount" | "showPinnedContent">, string]>).map(([key, label]) => (
+                  <label key={key}>
+                    <span>{profileSettings[key] ? <Eye aria-hidden="true" size={16} /> : <EyeOff aria-hidden="true" size={16} />}{label}</span>
+                    <input checked={profileSettings[key]} disabled={isSavingProfileSettings} onChange={(event) => void commitProfileSettings({ [key]: event.target.checked })} type="checkbox" />
+                    <i />
+                  </label>
+                ))}
+              </div>
+              <div className="profile-pin-controls">
+                <label><span><Pin aria-hidden="true" size={16} />代表文章</span><select disabled={!profileSettings.showPinnedContent || isSavingProfileSettings} onChange={(event) => void commitProfileSettings({ pinnedArticleId: Number(event.target.value) || null })} value={profileSettings.pinnedArticleId ?? 0}><option value={0}>暂不设置</option>{profileArticles.map((article) => <option key={article.id} value={article.id}>{article.title}</option>)}</select></label>
+                <label><span><BookOpen aria-hidden="true" size={16} />代表合集</span><select disabled={!profileSettings.showPinnedContent || isSavingProfileSettings} onChange={(event) => void commitProfileSettings({ pinnedCollectionId: Number(event.target.value) || null })} value={profileSettings.pinnedCollectionId ?? 0}><option value={0}>暂不设置</option>{profileCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select></label>
+              </div>
+            </div>
+          </section>
 
           <section className="profile-panel theme-panel">
             <div className="panel-heading">

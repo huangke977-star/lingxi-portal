@@ -19,6 +19,12 @@ export interface ArticleRoleResponse {
   level: number;
 }
 
+export interface ArticleGroupingResponse {
+  id: number;
+  label: string;
+  href: string;
+}
+
 export interface ArticleResponse {
   id: number;
   title: string;
@@ -42,6 +48,8 @@ export interface ArticleResponse {
   author: ArticleAuthorResponse;
   recentCommenters: ArticleAuthorResponse[];
   allowedRoles: ArticleRoleResponse[];
+  collections: ArticleGroupingResponse[];
+  topics: ArticleGroupingResponse[];
   images: string[];
   liked: boolean;
   favorited: boolean;

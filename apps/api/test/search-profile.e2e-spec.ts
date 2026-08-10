@@ -152,4 +152,63 @@ describe("global search and public profiles", () => {
     prisma.user.findUnique.mockResolvedValueOnce({ ...activeUser, status: "disabled" });
     await expect(service.getProfileByUsername("writer", null)).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it("suppresses private profile fields without calculating hidden statistics", async () => {
+    const privateUser = {
+      id: 9,
+      username: "private-writer",
+      nickname: "低调作者",
+      avatarStoredName: null,
+      profileBio: "不公开的介绍",
+      isSuperAdmin: false,
+      createdAt: new Date("2026-08-01T00:00:00.000Z"),
+      status: "active",
+      role: { code: "foundation", name: "筑基", level: 20 },
+      profileSettings: {
+        showBio: false,
+        showJoinedAt: false,
+        showStats: false,
+        showFollowingCount: false,
+        showPinnedContent: false,
+      },
+    };
+    const prisma = {
+      user: { findUnique: jest.fn(async () => privateUser) },
+      userSubscription: {
+        findUnique: jest.fn(async () => null),
+        count: jest.fn(async () => 99),
+      },
+      article: {
+        aggregate: jest.fn(async () => ({
+          _count: { _all: 99 },
+          _sum: { likeCount: 99, viewCount: 99 },
+        })),
+      },
+      friendship: { findUnique: jest.fn(async () => null) },
+    };
+    const service = new SocialService(
+      prisma as unknown as PrismaService,
+      {} as ChatAttachmentsService,
+      {} as SiteSettingsService,
+    );
+
+    await expect(service.getProfileByUsername(privateUser.username, null)).resolves.toMatchObject({
+      profileBio: null,
+      createdAt: null,
+      subscriberCount: null,
+      followingCount: null,
+      publicArticleCount: null,
+      receivedLikeCount: null,
+      publicViewCount: null,
+      visibleFields: {
+        bio: false,
+        joinedAt: false,
+        stats: false,
+        followingCount: false,
+        pinnedContent: false,
+      },
+    });
+    expect(prisma.userSubscription.count).not.toHaveBeenCalled();
+    expect(prisma.article.aggregate).not.toHaveBeenCalled();
+  });
 });

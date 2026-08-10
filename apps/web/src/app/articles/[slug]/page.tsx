@@ -445,6 +445,7 @@ export default function ArticleDetailPage() {
               <div><dt>更新时间</dt><dd>{formatArticleDate(article.updatedAt)}</dd></div>
             </dl>
             {article.tags.length ? <div className="article-tag-list">{article.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div> : null}
+            {article.collections.length || article.topics.length ? <div className="article-group-list">{article.collections.map((collection) => <Link className="article-group-chip collection" href={collection.href} key={`collection-${collection.id}`}>{collection.label}</Link>)}{article.topics.map((topic) => <Link className="article-group-chip topic" href={topic.href} key={`topic-${topic.id}`}>{topic.label}</Link>)}</div> : null}
           </aside>
           <main className="article-reading-main" ref={readingContentRef}><ArticleBody content={article.content} /></main>
         </div>

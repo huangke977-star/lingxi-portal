@@ -1,0 +1,914 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  ArticleStatus,
+  ArticleTopicStatus,
+  ArticleVisibility,
+  PortalVisibility,
+  Prisma,
+  UserStatus,
+} from "../generated/prisma/client";
+import { AuthenticatedUser } from "../auth/auth.types";
+import { PrismaService } from "../prisma/prisma.service";
+import {
+  CreateArticleCollectionDto,
+  CreateArticleTopicDto,
+  ListDiscoveryQueryDto,
+  ListSubscriptionFeedQueryDto,
+  ReorderContentItemsDto,
+  UpdateArticleCollectionDto,
+  UpdateArticleTopicDto,
+  UpdateProfileSettingsDto,
+} from "./dto/discovery.dto";
+import {
+  ArticleCollectionResponse,
+  ArticleTopicResponse,
+  DiscoveryArticleResponse,
+  DiscoveryAuthorResponse,
+  ProfileSettingsResponse,
+  ProfileShowcaseResponse,
+  SubscriptionFeedResponse,
+} from "./discovery.types";
+
+const discoveryArticleInclude = {
+  author: {
+    select: {
+      id: true,
+      nickname: true,
+      username: true,
+      avatarStoredName: true,
+      isSuperAdmin: true,
+      role: { select: { code: true, name: true, level: true } },
+    },
+  },
+  allowedRoles: { select: { role: { select: { code: true } } } },
+  collectionItems: {
+    select: {
+      collection: {
+        select: { id: true, ownerId: true, name: true, visibility: true },
+      },
+    },
+  },
+  topicItems: {
+    select: {
+      topic: {
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          visibility: true,
+          status: true,
+          allowedRoles: { select: { role: { select: { code: true } } } },
+        },
+      },
+    },
+  },
+} satisfies Prisma.ArticleInclude;
+
+type DiscoveryArticleRecord = Prisma.ArticleGetPayload<{
+  include: typeof discoveryArticleInclude;
+}>;
+
+const articleCollectionInclude = {
+  owner: {
+    select: {
+      id: true,
+      nickname: true,
+      username: true,
+      avatarStoredName: true,
+      isSuperAdmin: true,
+      role: { select: { code: true, name: true, level: true } },
+    },
+  },
+  items: {
+    orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
+    include: { article: { include: discoveryArticleInclude } },
+  },
+} satisfies Prisma.ArticleCollectionInclude;
+
+type ArticleCollectionRecord = Prisma.ArticleCollectionGetPayload<{
+  include: typeof articleCollectionInclude;
+}>;
+
+const articleTopicInclude = {
+  allowedRoles: {
+    orderBy: { role: { level: "asc" as const } },
+    select: { role: { select: { code: true } } },
+  },
+  items: {
+    orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
+    include: { article: { include: discoveryArticleInclude } },
+  },
+} satisfies Prisma.ArticleTopicInclude;
+
+type ArticleTopicRecord = Prisma.ArticleTopicGetPayload<{
+  include: typeof articleTopicInclude;
+}>;
+
+@Injectable()
+export class DiscoveryService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  /** Subscription feed counts only currently readable published articles from active subscriptions. */
+  async listSubscriptionFeed(
+    user: AuthenticatedUser,
+    query: ListSubscriptionFeedQueryDto,
+  ): Promise<SubscriptionFeedResponse> {
+    const where = this.subscriptionArticleWhere(user);
+    const unreadWhere: Prisma.ArticleWhereInput = {
+      AND: [where, { subscriptionFeedReads: { none: { userId: user.id } } }],
+    };
+    const [total, unread] = await Promise.all([
+      this.prisma.article.count({ where }),
+      this.prisma.article.count({ where: unreadWhere }),
+    ]);
+    const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+    const page = Math.min(query.page, totalPages);
+    const skip = (page - 1) * query.pageSize;
+    const include = {
+      ...discoveryArticleInclude,
+      subscriptionFeedReads: {
+        where: { userId: user.id },
+        select: { readAt: true },
+      },
+    } satisfies Prisma.ArticleInclude;
+
+    let records: Array<DiscoveryArticleRecord & { subscriptionFeedReads: Array<{ readAt: Date }> }>;
+    if (query.sort === "unread") {
+      const unreadTake = Math.max(0, Math.min(query.pageSize, unread - skip));
+      const unreadSkip = Math.min(skip, unread);
+      const unreadRecords = unreadTake
+        ? await this.prisma.article.findMany({
+            where: unreadWhere,
+            orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+            skip: unreadSkip,
+            take: unreadTake,
+            include,
+          })
+        : [];
+      const remaining = query.pageSize - unreadRecords.length;
+      const readSkip = Math.max(0, skip - unread);
+      const readRecords = remaining
+        ? await this.prisma.article.findMany({
+            where: {
+              AND: [where, { subscriptionFeedReads: { some: { userId: user.id } } }],
+            },
+            orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+            skip: readSkip,
+            take: remaining,
+            include,
+          })
+        : [];
+      records = [...unreadRecords, ...readRecords];
+    } else {
+      records = await this.prisma.article.findMany({
+        where,
+        orderBy: query.sort === "popular"
+          ? [
+              { commentCount: "desc" },
+              { favoriteCount: "desc" },
+              { likeCount: "desc" },
+              { viewCount: "desc" },
+              { publishedAt: "desc" },
+              { id: "desc" },
+            ]
+          : [{ publishedAt: "desc" }, { id: "desc" }],
+        skip,
+        take: query.pageSize,
+        include,
+      });
+    }
+
+    return {
+      items: records.map((article) => ({
+        article: this.toArticle(article, user),
+        readAt: article.subscriptionFeedReads[0]?.readAt.toISOString() ?? null,
+      })),
+      total,
+      unread,
+      page,
+      pageSize: query.pageSize,
+      totalPages,
+    };
+  }
+
+  async markSubscriptionFeedRead(user: AuthenticatedUser, articleId: number) {
+    const article = await this.prisma.article.findFirst({
+      where: { AND: [this.subscriptionArticleWhere(user), { id: articleId }] },
+      select: { id: true },
+    });
+    if (!article) throw new NotFoundException("订阅动态不存在或当前不可见。");
+    const record = await this.prisma.subscriptionFeedRead.upsert({
+      where: { userId_articleId: { userId: user.id, articleId } },
+      create: { userId: user.id, articleId },
+      update: { readAt: new Date() },
+    });
+    return { articleId, readAt: record.readAt.toISOString() };
+  }
+
+  async markAllSubscriptionFeedRead(user: AuthenticatedUser) {
+    const articles = await this.prisma.article.findMany({
+      where: this.subscriptionArticleWhere(user),
+      select: { id: true },
+    });
+    if (articles.length) {
+      await this.prisma.subscriptionFeedRead.createMany({
+        data: articles.map(({ id }) => ({ userId: user.id, articleId: id })),
+        skipDuplicates: true,
+      });
+    }
+    return { count: articles.length, readAt: new Date().toISOString() };
+  }
+
+  async listSubscriptionSettings(user: AuthenticatedUser) {
+    const items = await this.prisma.userSubscription.findMany({
+      where: { subscriberId: user.id },
+      orderBy: [{ createdAt: "desc" }],
+      select: {
+        authorId: true,
+        notifyNewArticles: true,
+        createdAt: true,
+        author: { select: discoveryArticleInclude.author.select },
+      },
+    });
+    return {
+      items: items.map((item) => ({
+        author: this.toAuthor(item.author),
+        notifyNewArticles: item.notifyNewArticles,
+        subscribedAt: item.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  async updateSubscriptionSetting(
+    user: AuthenticatedUser,
+    authorId: number,
+    notifyNewArticles: boolean,
+  ) {
+    const existing = await this.prisma.userSubscription.findUnique({
+      where: { subscriberId_authorId: { subscriberId: user.id, authorId } },
+      select: { authorId: true },
+    });
+    if (!existing) throw new NotFoundException("尚未订阅该作者。");
+    await this.prisma.userSubscription.update({
+      where: { subscriberId_authorId: { subscriberId: user.id, authorId } },
+      data: { notifyNewArticles },
+    });
+    return { authorId, notifyNewArticles };
+  }
+
+  async listMyCollections(user: AuthenticatedUser) {
+    const records = await this.prisma.articleCollection.findMany({
+      where: { ownerId: user.id },
+      orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }, { id: "desc" }],
+      include: articleCollectionInclude,
+    });
+    return { items: records.map((record) => this.toCollection(record, user, true)) };
+  }
+
+  async createCollection(user: AuthenticatedUser, dto: CreateArticleCollectionDto) {
+    const name = dto.name.trim();
+    if (!name) throw new BadRequestException("合集名称不能为空。");
+    const record = await this.prisma.articleCollection.create({
+      data: {
+        ownerId: user.id,
+        name,
+        description: dto.description?.trim() ?? "",
+        visibility: this.collectionVisibility(dto.visibility),
+      },
+      include: articleCollectionInclude,
+    });
+    return this.toCollection(record, user, true);
+  }
+
+  async updateCollection(
+    user: AuthenticatedUser,
+    id: number,
+    dto: UpdateArticleCollectionDto,
+  ) {
+    await this.assertCollectionOwner(id, user.id);
+    const name = dto.name?.trim();
+    if (dto.name !== undefined && !name) throw new BadRequestException("合集名称不能为空。");
+    const record = await this.prisma.articleCollection.update({
+      where: { id },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
+        ...(dto.visibility !== undefined ? { visibility: this.collectionVisibility(dto.visibility) } : {}),
+        ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+      },
+      include: articleCollectionInclude,
+    });
+    return this.toCollection(record, user, true);
+  }
+
+  async deleteCollection(user: AuthenticatedUser, id: number) {
+    await this.assertCollectionOwner(id, user.id);
+    await this.prisma.articleCollection.delete({ where: { id } });
+    return { success: true };
+  }
+
+  async addCollectionArticle(user: AuthenticatedUser, id: number, articleId: number) {
+    await this.assertCollectionOwner(id, user.id);
+    const article = await this.prisma.article.findFirst({
+      where: { id: articleId, authorId: user.id, status: { not: ArticleStatus.deleted } },
+      select: { id: true },
+    });
+    if (!article) throw new BadRequestException("合集只能收录你自己的有效文章。");
+    const count = await this.prisma.articleCollectionItem.count({ where: { collectionId: id } });
+    await this.prisma.articleCollectionItem.upsert({
+      where: { collectionId_articleId: { collectionId: id, articleId } },
+      create: { collectionId: id, articleId, sortOrder: count },
+      update: {},
+    });
+    return this.getOwnedCollection(user, id);
+  }
+
+  async removeCollectionArticle(user: AuthenticatedUser, id: number, articleId: number) {
+    await this.assertCollectionOwner(id, user.id);
+    await this.prisma.articleCollectionItem.deleteMany({ where: { collectionId: id, articleId } });
+    return this.getOwnedCollection(user, id);
+  }
+
+  async reorderCollectionArticles(
+    user: AuthenticatedUser,
+    id: number,
+    dto: ReorderContentItemsDto,
+  ) {
+    await this.assertCollectionOwner(id, user.id);
+    await this.assertExactItemSet("collection", id, dto.ids);
+    await this.prisma.$transaction(
+      dto.ids.map((articleId, sortOrder) => this.prisma.articleCollectionItem.update({
+        where: { collectionId_articleId: { collectionId: id, articleId } },
+        data: { sortOrder },
+      })),
+    );
+    return this.getOwnedCollection(user, id);
+  }
+
+  async getCollection(id: number, viewer: AuthenticatedUser | null) {
+    const record = await this.prisma.articleCollection.findFirst({
+      where: { id, ...this.collectionVisibleWhere(viewer) },
+      include: articleCollectionInclude,
+    });
+    if (!record) throw new NotFoundException("合集不存在或当前不可见。");
+    return this.toCollection(record, viewer, record.ownerId === viewer?.id);
+  }
+
+  async listTopics(query: ListDiscoveryQueryDto, viewer: AuthenticatedUser | null) {
+    const where = this.topicVisibleWhere(viewer);
+    const total = await this.prisma.articleTopic.count({ where });
+    const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+    const page = Math.min(query.page, totalPages);
+    const records = await this.prisma.articleTopic.findMany({
+      where,
+      orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }, { id: "desc" }],
+      skip: (page - 1) * query.pageSize,
+      take: query.pageSize,
+      include: articleTopicInclude,
+    });
+    return {
+      items: records.map((record) => this.toTopic(record, viewer, false)),
+      total,
+      page,
+      pageSize: query.pageSize,
+      totalPages,
+    };
+  }
+
+  async getTopic(slug: string, viewer: AuthenticatedUser | null) {
+    const record = await this.prisma.articleTopic.findFirst({
+      where: { slug: slug.trim(), ...this.topicVisibleWhere(viewer) },
+      include: articleTopicInclude,
+    });
+    if (!record) throw new NotFoundException("专题不存在或当前不可见。");
+    return this.toTopic(record, viewer, false);
+  }
+
+  async listAdminTopics(user: AuthenticatedUser) {
+    this.assertCanManage(user);
+    const records = await this.prisma.articleTopic.findMany({
+      orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }, { id: "desc" }],
+      include: articleTopicInclude,
+    });
+    return { items: records.map((record) => this.toTopic(record, user, true)) };
+  }
+
+  async createTopic(user: AuthenticatedUser, dto: CreateArticleTopicDto) {
+    this.assertCanManage(user);
+    const title = dto.title.trim();
+    if (!title) throw new BadRequestException("专题名称不能为空。");
+    const visibility = this.topicVisibility(dto.visibility);
+    const roleIds = await this.resolveTopicRoleIds(visibility, dto.roleCodes ?? []);
+    const record = await this.prisma.articleTopic.create({
+      data: {
+        title,
+        slug: await this.uniqueTopicSlug(dto.slug || title),
+        description: dto.description?.trim() ?? "",
+        coverPath: dto.coverPath?.trim() || null,
+        visibility,
+        status: dto.status === "disabled" ? ArticleTopicStatus.disabled : ArticleTopicStatus.active,
+        sortOrder: dto.sortOrder ?? 0,
+        createdById: user.id,
+        updatedById: user.id,
+        allowedRoles: { create: roleIds.map((roleId) => ({ roleId })) },
+      },
+      include: articleTopicInclude,
+    });
+    return this.toTopic(record, user, true);
+  }
+
+  async updateTopic(user: AuthenticatedUser, id: number, dto: UpdateArticleTopicDto) {
+    this.assertCanManage(user);
+    const existing = await this.prisma.articleTopic.findUnique({
+      where: { id },
+      select: { id: true, title: true, visibility: true, allowedRoles: { select: { role: { select: { code: true } } } } },
+    });
+    if (!existing) throw new NotFoundException("专题不存在。");
+    const visibility = dto.visibility ? this.topicVisibility(dto.visibility) : existing.visibility;
+    const roleIds = await this.resolveTopicRoleIds(
+      visibility,
+      dto.roleCodes ?? existing.allowedRoles.map(({ role }) => role.code),
+    );
+    const title = dto.title?.trim();
+    if (dto.title !== undefined && !title) throw new BadRequestException("专题名称不能为空。");
+    const record = await this.prisma.$transaction(async (transaction) => {
+      await transaction.articleTopicAllowedRole.deleteMany({ where: { topicId: id } });
+      return transaction.articleTopic.update({
+        where: { id },
+        data: {
+          ...(title !== undefined ? { title } : {}),
+          ...(dto.slug !== undefined ? { slug: await this.uniqueTopicSlug(dto.slug || title || existing.title, id) } : {}),
+          ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
+          ...(dto.coverPath !== undefined ? { coverPath: dto.coverPath.trim() || null } : {}),
+          visibility,
+          ...(dto.status !== undefined ? { status: dto.status as ArticleTopicStatus } : {}),
+          ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+          updatedById: user.id,
+          allowedRoles: { create: roleIds.map((roleId) => ({ roleId })) },
+        },
+        include: articleTopicInclude,
+      });
+    });
+    return this.toTopic(record, user, true);
+  }
+
+  async deleteTopic(user: AuthenticatedUser, id: number) {
+    this.assertCanManage(user);
+    await this.prisma.articleTopic.delete({ where: { id } }).catch(() => {
+      throw new NotFoundException("专题不存在。");
+    });
+    return { success: true };
+  }
+
+  async addTopicArticle(user: AuthenticatedUser, id: number, articleId: number) {
+    this.assertCanManage(user);
+    await this.assertTopic(id);
+    const article = await this.prisma.article.findFirst({
+      where: { id: articleId, status: { not: ArticleStatus.deleted } },
+      select: { id: true },
+    });
+    if (!article) throw new BadRequestException("文章不存在或已删除。");
+    const count = await this.prisma.articleTopicItem.count({ where: { topicId: id } });
+    await this.prisma.articleTopicItem.upsert({
+      where: { topicId_articleId: { topicId: id, articleId } },
+      create: { topicId: id, articleId, sortOrder: count },
+      update: {},
+    });
+    return this.getAdminTopic(user, id);
+  }
+
+  async removeTopicArticle(user: AuthenticatedUser, id: number, articleId: number) {
+    this.assertCanManage(user);
+    await this.assertTopic(id);
+    await this.prisma.articleTopicItem.deleteMany({ where: { topicId: id, articleId } });
+    return this.getAdminTopic(user, id);
+  }
+
+  async reorderTopicArticles(user: AuthenticatedUser, id: number, dto: ReorderContentItemsDto) {
+    this.assertCanManage(user);
+    await this.assertTopic(id);
+    await this.assertExactItemSet("topic", id, dto.ids);
+    await this.prisma.$transaction(
+      dto.ids.map((articleId, sortOrder) => this.prisma.articleTopicItem.update({
+        where: { topicId_articleId: { topicId: id, articleId } },
+        data: { sortOrder },
+      })),
+    );
+    return this.getAdminTopic(user, id);
+  }
+
+  async getProfileSettings(user: AuthenticatedUser): Promise<ProfileSettingsResponse> {
+    const settings = await this.prisma.userProfileSettings.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id },
+      update: {},
+    });
+    return this.toProfileSettings(settings);
+  }
+
+  async updateProfileSettings(user: AuthenticatedUser, dto: UpdateProfileSettingsDto) {
+    const pinnedArticleId = dto.pinnedArticleId === undefined ? undefined : dto.pinnedArticleId || null;
+    const pinnedCollectionId = dto.pinnedCollectionId === undefined ? undefined : dto.pinnedCollectionId || null;
+    if (pinnedArticleId) {
+      const article = await this.prisma.article.findFirst({
+        where: { id: pinnedArticleId, authorId: user.id, status: ArticleStatus.published },
+        select: { id: true },
+      });
+      if (!article) throw new BadRequestException("代表文章必须是你已发布的文章。");
+    }
+    if (pinnedCollectionId) {
+      const collection = await this.prisma.articleCollection.findFirst({
+        where: { id: pinnedCollectionId, ownerId: user.id },
+        select: { id: true },
+      });
+      if (!collection) throw new BadRequestException("代表合集必须属于当前账号。");
+    }
+    const settings = await this.prisma.userProfileSettings.upsert({
+      where: { userId: user.id },
+      create: {
+        userId: user.id,
+        ...dto,
+        ...(pinnedArticleId !== undefined ? { pinnedArticleId } : {}),
+        ...(pinnedCollectionId !== undefined ? { pinnedCollectionId } : {}),
+      },
+      update: {
+        ...dto,
+        ...(pinnedArticleId !== undefined ? { pinnedArticleId } : {}),
+        ...(pinnedCollectionId !== undefined ? { pinnedCollectionId } : {}),
+      },
+    });
+    return this.toProfileSettings(settings);
+  }
+
+  /** Profile visits are daily-deduplicated hashes; raw IP addresses and user agents are never stored. */
+  async getProfileShowcase(
+    username: string,
+    viewer: AuthenticatedUser | null,
+    visitorKey: string,
+  ): Promise<ProfileShowcaseResponse> {
+    const target = await this.prisma.user.findUnique({
+      where: { username: username.trim() },
+      select: { id: true, status: true, profileSettings: true },
+    });
+    if (!target || target.status !== UserStatus.active) throw new NotFoundException("用户不存在或已停用。");
+    if (target.id !== viewer?.id) {
+      await this.prisma.profileVisit.upsert({
+        where: {
+          profileUserId_visitorKey_visitedOn: {
+            profileUserId: target.id,
+            visitorKey,
+            visitedOn: new Date().toISOString().slice(0, 10),
+          },
+        },
+        create: {
+          profileUserId: target.id,
+          visitorKey,
+          visitedOn: new Date().toISOString().slice(0, 10),
+        },
+        update: {},
+      });
+    }
+    const settings = target.profileSettings ?? this.defaultProfileSettings(target.id);
+    const collections = await this.prisma.articleCollection.findMany({
+      where: { ownerId: target.id, ...this.collectionVisibleWhere(viewer) },
+      orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
+      take: 12,
+      include: articleCollectionInclude,
+    });
+    const [visitCount, pinnedArticle, pinnedCollection] = await Promise.all([
+      settings.showStats
+        ? this.prisma.profileVisit.count({ where: { profileUserId: target.id } })
+        : Promise.resolve(null),
+      settings.showPinnedContent && settings.pinnedArticleId
+        ? this.prisma.article.findFirst({
+            where: { id: settings.pinnedArticleId, ...this.articleVisibleWhere(viewer) },
+            include: discoveryArticleInclude,
+          })
+        : Promise.resolve(null),
+      settings.showPinnedContent && settings.pinnedCollectionId
+        ? this.prisma.articleCollection.findFirst({
+            where: { id: settings.pinnedCollectionId, ...this.collectionVisibleWhere(viewer) },
+            include: articleCollectionInclude,
+          })
+        : Promise.resolve(null),
+    ]);
+    return {
+      settings: this.toProfileSettings(settings),
+      visitCount,
+      pinnedArticle: pinnedArticle ? this.toArticle(pinnedArticle, viewer) : null,
+      pinnedCollection: pinnedCollection ? this.toCollection(pinnedCollection, viewer, false) : null,
+      collections: collections.map((record) => this.toCollection(record, viewer, false)),
+    };
+  }
+
+  createVisitorKey(userAgent: string, ip: string, viewerId?: number): string {
+    const source = viewerId ? `user:${viewerId}` : `guest:${ip}:${userAgent}`;
+    return createHash("sha256").update(source).digest("hex");
+  }
+
+  private subscriptionArticleWhere(user: AuthenticatedUser): Prisma.ArticleWhereInput {
+    return {
+      AND: [
+        this.articleVisibleWhere(user),
+        { author: { is: { subscriptionsReceived: { some: { subscriberId: user.id } } } } },
+      ],
+    };
+  }
+
+  private articleVisibleWhere(user: AuthenticatedUser | null): Prisma.ArticleWhereInput {
+    const base: Prisma.ArticleWhereInput = { status: ArticleStatus.published };
+    if (!user) return { ...base, visibility: ArticleVisibility.public };
+    if (user.isSuperAdmin) return base;
+    return {
+      ...base,
+      OR: [
+        { visibility: ArticleVisibility.public },
+        { visibility: ArticleVisibility.authenticated },
+        { visibility: ArticleVisibility.private, authorId: user.id },
+        {
+          visibility: ArticleVisibility.role_restricted,
+          allowedRoles: { some: { role: { code: user.role.code } } },
+        },
+      ],
+    };
+  }
+
+  private collectionVisibleWhere(user: AuthenticatedUser | null): Prisma.ArticleCollectionWhereInput {
+    if (!user) return { visibility: ArticleVisibility.public };
+    if (user.isSuperAdmin) return {};
+    return {
+      OR: [
+        { visibility: ArticleVisibility.public },
+        { visibility: ArticleVisibility.authenticated },
+        { visibility: ArticleVisibility.private, ownerId: user.id },
+      ],
+    };
+  }
+
+  private topicVisibleWhere(user: AuthenticatedUser | null): Prisma.ArticleTopicWhereInput {
+    const base = { status: ArticleTopicStatus.active };
+    if (!user) return { ...base, visibility: PortalVisibility.public };
+    if (user.isSuperAdmin) return base;
+    return {
+      ...base,
+      OR: [
+        { visibility: PortalVisibility.public },
+        { visibility: PortalVisibility.authenticated },
+        {
+          visibility: PortalVisibility.role_restricted,
+          allowedRoles: { some: { role: { code: user.role.code } } },
+        },
+      ],
+    };
+  }
+
+  private canReadArticle(article: DiscoveryArticleRecord, user: AuthenticatedUser | null): boolean {
+    if (article.status !== ArticleStatus.published) return Boolean(user && (user.isSuperAdmin || article.authorId === user.id));
+    if (article.visibility === ArticleVisibility.public || user?.isSuperAdmin) return true;
+    if (!user) return false;
+    if (article.visibility === ArticleVisibility.authenticated) return true;
+    if (article.visibility === ArticleVisibility.private) return article.authorId === user.id;
+    return article.allowedRoles.some(({ role }) => role.code === user.role.code);
+  }
+
+  private canSeeCollectionLink(
+    collection: DiscoveryArticleRecord["collectionItems"][number]["collection"],
+    user: AuthenticatedUser | null,
+  ): boolean {
+    if (collection.visibility === ArticleVisibility.public || user?.isSuperAdmin) return true;
+    if (!user) return false;
+    return collection.visibility === ArticleVisibility.authenticated || collection.ownerId === user.id;
+  }
+
+  private canSeeTopicLink(
+    topic: DiscoveryArticleRecord["topicItems"][number]["topic"],
+    user: AuthenticatedUser | null,
+  ): boolean {
+    if (topic.status !== ArticleTopicStatus.active && !this.canManage(user)) return false;
+    if (topic.visibility === PortalVisibility.public || user?.isSuperAdmin) return true;
+    if (!user) return false;
+    if (topic.visibility === PortalVisibility.authenticated) return true;
+    return topic.allowedRoles.some(({ role }) => role.code === user.role.code);
+  }
+
+  private toArticle(article: DiscoveryArticleRecord, viewer: AuthenticatedUser | null): DiscoveryArticleResponse {
+    return {
+      id: article.id,
+      title: article.title,
+      slug: article.slug,
+      category: article.category,
+      tags: article.tags.split(",").filter(Boolean),
+      titleColor: article.titleColor,
+      coverPath: article.coverPath,
+      viewCount: article.viewCount,
+      likeCount: article.likeCount,
+      favoriteCount: article.favoriteCount,
+      commentCount: article.commentCount,
+      publishedAt: article.publishedAt?.toISOString() ?? null,
+      author: this.toAuthor(article.author),
+      collections: article.collectionItems
+        .filter(({ collection }) => this.canSeeCollectionLink(collection, viewer))
+        .map(({ collection }) => ({ id: collection.id, label: collection.name, href: `/collections/${collection.id}` })),
+      topics: article.topicItems
+        .filter(({ topic }) => this.canSeeTopicLink(topic, viewer))
+        .map(({ topic }) => ({ id: topic.id, label: topic.title, href: `/topics/${topic.slug}` })),
+    };
+  }
+
+  private toCollection(
+    collection: ArticleCollectionRecord,
+    viewer: AuthenticatedUser | null,
+    ownerView: boolean,
+  ): ArticleCollectionResponse {
+    const articles = collection.items
+      .map(({ article }) => article)
+      .filter((article) => ownerView || this.canReadArticle(article, viewer))
+      .map((article) => this.toArticle(article, viewer));
+    return {
+      id: collection.id,
+      name: collection.name,
+      description: collection.description,
+      visibility: collection.visibility as ArticleCollectionResponse["visibility"],
+      sortOrder: collection.sortOrder,
+      owner: this.toAuthor(collection.owner),
+      articles,
+      articleCount: articles.length,
+      createdAt: collection.createdAt.toISOString(),
+      updatedAt: collection.updatedAt.toISOString(),
+    };
+  }
+
+  private toTopic(
+    topic: ArticleTopicRecord,
+    viewer: AuthenticatedUser | null,
+    managerView: boolean,
+  ): ArticleTopicResponse {
+    const articles = topic.items
+      .map(({ article }) => article)
+      .filter((article) => managerView || this.canReadArticle(article, viewer))
+      .map((article) => this.toArticle(article, viewer));
+    return {
+      id: topic.id,
+      title: topic.title,
+      slug: topic.slug,
+      description: topic.description,
+      coverPath: topic.coverPath,
+      visibility: topic.visibility,
+      status: topic.status,
+      sortOrder: topic.sortOrder,
+      roleCodes: topic.allowedRoles.map(({ role }) => role.code),
+      articles,
+      articleCount: articles.length,
+      createdAt: topic.createdAt.toISOString(),
+      updatedAt: topic.updatedAt.toISOString(),
+    };
+  }
+
+  private toAuthor(author: {
+    id: number;
+    nickname: string;
+    username: string;
+    avatarStoredName: string | null;
+    isSuperAdmin: boolean;
+    role: { code: string; name: string; level: number };
+  }): DiscoveryAuthorResponse {
+    return {
+      id: author.id,
+      nickname: author.nickname || author.username,
+      username: author.username,
+      avatarUrl: author.avatarStoredName ? `/auth/avatars/${author.avatarStoredName}` : null,
+      isSuperAdmin: author.isSuperAdmin,
+      role: {
+        ...author.role,
+        name: author.isSuperAdmin ? "超级管理员" : author.role.name,
+      },
+    };
+  }
+
+  private toProfileSettings(settings: {
+    showBio: boolean;
+    showJoinedAt: boolean;
+    showStats: boolean;
+    showFollowingCount: boolean;
+    showPinnedContent: boolean;
+    pinnedArticleId: number | null;
+    pinnedCollectionId: number | null;
+  }): ProfileSettingsResponse {
+    return {
+      showBio: settings.showBio,
+      showJoinedAt: settings.showJoinedAt,
+      showStats: settings.showStats,
+      showFollowingCount: settings.showFollowingCount,
+      showPinnedContent: settings.showPinnedContent,
+      pinnedArticleId: settings.pinnedArticleId,
+      pinnedCollectionId: settings.pinnedCollectionId,
+    };
+  }
+
+  private defaultProfileSettings(userId: number) {
+    return {
+      userId,
+      showBio: true,
+      showJoinedAt: true,
+      showStats: true,
+      showFollowingCount: true,
+      showPinnedContent: true,
+      pinnedArticleId: null,
+      pinnedCollectionId: null,
+      updatedAt: new Date(0),
+    };
+  }
+
+  private async getOwnedCollection(user: AuthenticatedUser, id: number) {
+    const record = await this.prisma.articleCollection.findFirst({
+      where: { id, ownerId: user.id },
+      include: articleCollectionInclude,
+    });
+    if (!record) throw new NotFoundException("合集不存在。");
+    return this.toCollection(record, user, true);
+  }
+
+  private async getAdminTopic(user: AuthenticatedUser, id: number) {
+    const record = await this.prisma.articleTopic.findUnique({
+      where: { id },
+      include: articleTopicInclude,
+    });
+    if (!record) throw new NotFoundException("专题不存在。");
+    return this.toTopic(record, user, true);
+  }
+
+  private async assertCollectionOwner(id: number, ownerId: number) {
+    const collection = await this.prisma.articleCollection.findFirst({
+      where: { id, ownerId },
+      select: { id: true },
+    });
+    if (!collection) throw new NotFoundException("合集不存在或不属于当前账号。");
+  }
+
+  private async assertTopic(id: number) {
+    const topic = await this.prisma.articleTopic.findUnique({ where: { id }, select: { id: true } });
+    if (!topic) throw new NotFoundException("专题不存在。");
+  }
+
+  private async assertExactItemSet(kind: "collection" | "topic", id: number, ids: number[]) {
+    const records = kind === "collection"
+      ? await this.prisma.articleCollectionItem.findMany({ where: { collectionId: id }, select: { articleId: true } })
+      : await this.prisma.articleTopicItem.findMany({ where: { topicId: id }, select: { articleId: true } });
+    const current = records.map(({ articleId }) => articleId).sort((a, b) => a - b);
+    const requested = [...ids].sort((a, b) => a - b);
+    if (current.length !== requested.length || current.some((value, index) => value !== requested[index])) {
+      throw new BadRequestException("排序列表必须包含当前全部文章且不能重复。");
+    }
+  }
+
+  private collectionVisibility(value?: "public" | "authenticated" | "private"): ArticleVisibility {
+    if (value === "authenticated") return ArticleVisibility.authenticated;
+    if (value === "private") return ArticleVisibility.private;
+    return ArticleVisibility.public;
+  }
+
+  private topicVisibility(value?: "public" | "authenticated" | "role_restricted"): PortalVisibility {
+    if (value === "authenticated") return PortalVisibility.authenticated;
+    if (value === "role_restricted") return PortalVisibility.role_restricted;
+    return PortalVisibility.public;
+  }
+
+  private async resolveTopicRoleIds(visibility: PortalVisibility, roleCodes: string[]): Promise<number[]> {
+    if (visibility !== PortalVisibility.role_restricted) return [];
+    const codes = [...new Set(roleCodes.map((code) => code.trim()).filter(Boolean))];
+    if (!codes.length) throw new BadRequestException("指定角色专题至少选择一个角色。");
+    const roles = await this.prisma.role.findMany({ where: { code: { in: codes } }, select: { id: true, code: true } });
+    if (roles.length !== codes.length) throw new BadRequestException("包含不存在的角色代码。");
+    return roles.map(({ id }) => id);
+  }
+
+  private async uniqueTopicSlug(value: string, excludeId?: number): Promise<string> {
+    const base = value.trim().toLowerCase()
+      .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 100) || `topic-${randomUUID().slice(0, 8)}`;
+    let slug = base;
+    let attempt = 1;
+    while (await this.prisma.articleTopic.findFirst({
+      where: { slug, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      select: { id: true },
+    })) {
+      slug = `${base.slice(0, 108)}-${attempt++}`;
+    }
+    return slug;
+  }
+
+  private canManage(user: AuthenticatedUser | null): boolean {
+    return Boolean(user && (user.isSuperAdmin || user.role.level >= 90));
+  }
+
+  private assertCanManage(user: AuthenticatedUser): void {
+    if (!this.canManage(user)) throw new ForbiddenException("需要管理员权限。");
+  }
+}

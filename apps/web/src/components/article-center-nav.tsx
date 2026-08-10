@@ -11,10 +11,13 @@ import {
 import type { AuthUser } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
 
-export type ArticleCenterSection = "discover" | "mine" | "reading" | "manage";
+export type ArticleCenterSection = "discover" | "subscriptions" | "collections" | "topics" | "mine" | "reading" | "manage";
 
-const sections: Array<{ id: Exclude<ArticleCenterSection, "manage">; href: string; label: string; protected?: boolean; count?: "discover" | "mine" }> = [
+const sections: Array<{ id: Exclude<ArticleCenterSection, "manage">; href: string; label: string; protected?: boolean; count?: "discover" | "subscriptions" | "mine" }> = [
   { id: "discover", href: "/articles", label: "发现", count: "discover" },
+  { id: "subscriptions", href: "/articles/subscriptions", label: "订阅", protected: true, count: "subscriptions" },
+  { id: "collections", href: "/articles/collections", label: "合集", protected: true },
+  { id: "topics", href: "/topics", label: "专题" },
   { id: "mine", href: "/articles/mine", label: "我的创作", protected: true, count: "mine" },
   { id: "reading", href: "/articles/reading", label: "我的阅读", protected: true },
 ];

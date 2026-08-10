@@ -23,14 +23,23 @@ export interface FriendshipResponse {
   updatedAt: string;
 }
 
-export interface PublicProfileResponse extends SocialUserResponse {
+export interface PublicProfileResponse extends Omit<SocialUserResponse, "profileBio" | "createdAt"> {
+  profileBio: string | null;
+  createdAt: string | null;
   isSelf: boolean;
   subscribed: boolean;
-  subscriberCount: number;
-  followingCount: number;
-  publicArticleCount: number;
-  receivedLikeCount: number;
-  publicViewCount: number;
+  subscriberCount: number | null;
+  followingCount: number | null;
+  publicArticleCount: number | null;
+  receivedLikeCount: number | null;
+  publicViewCount: number | null;
+  visibleFields: {
+    bio: boolean;
+    joinedAt: boolean;
+    stats: boolean;
+    followingCount: boolean;
+    pinnedContent: boolean;
+  };
   relationship: Omit<FriendshipResponse, "user" | "createdAt" | "updatedAt"> | null;
 }
 

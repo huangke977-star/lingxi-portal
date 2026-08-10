@@ -3,11 +3,13 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { Check, Clock3, Eye, FileText, Heart, MessageCircle, Rss, UserPlus, UsersRound, X } from "lucide-react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleCard } from "@/components/article-ui";
+import { DiscoveryArticleRow } from "@/components/discovery-ui";
 import { RoleSymbol } from "@/components/role-symbol";
 import { ArticleList, listPublicArticles, listVisibleArticles } from "@/lib/article-api";
 import { resolveApiUrl } from "@/lib/auth-api";
@@ -23,6 +25,7 @@ import {
 } from "@/lib/social-api";
 import { notifySocialStateChange, openChatDock } from "@/lib/social-events";
 import { getAvatarFallbackText } from "@/lib/user-display";
+import { getProfileShowcase, type ProfileShowcase } from "@/lib/discovery-api";
 
 const emptyArticles: ArticleList = { items: [], total: 0, page: 1, pageSize: 12, totalPages: 1 };
 
@@ -32,6 +35,7 @@ export default function UserProfilePage() {
   const username = decodeURIComponent(params.username);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [articles, setArticles] = useState<ArticleList>(emptyArticles);
+  const [showcase, setShowcase] = useState<ProfileShowcase | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isActing, setIsActing] = useState(false);
@@ -44,15 +48,17 @@ export default function UserProfilePage() {
       const token = readAccessToken();
       setIsLoading(true);
       try {
-        const [nextProfile, nextArticles] = await Promise.all([
+        const [nextProfile, nextArticles, nextShowcase] = await Promise.all([
           getProfileByUsername(username, token),
           token
             ? listVisibleArticles(token, { page: 1, pageSize: 12, authorUsername: username })
             : listPublicArticles({ page: 1, pageSize: 12, authorUsername: username }),
+          getProfileShowcase(username, token),
         ]);
         if (!active) return;
         setProfile(nextProfile);
         setArticles(nextArticles);
+        setShowcase(nextShowcase);
       } catch (loadError) {
         if (active) setError(loadError instanceof Error ? loadError.message : "用户主页加载失败。");
       } finally {
@@ -165,11 +171,11 @@ export default function UserProfilePage() {
       <div className="public-user-overview">
         <div className="public-user-copy">
           <div className="public-user-name"><span><h1>{profile.nickname}</h1><small>@{profile.username}</small></span><span className="public-user-role"><RoleSymbol code={roleCode} />{profile.isSuperAdmin ? "超级管理员" : profile.role.name}</span></div>
-          <p className="public-user-bio" title={profile.profileBio}>{profile.profileBio}</p>
-          <div className="public-user-facts"><span><Clock3 aria-hidden="true" size={15} />{formatJoinedAt(profile.createdAt)} 加入</span><span>{articles.total} 篇当前可见内容</span></div>
+          {profile.profileBio ? <p className="public-user-bio" title={profile.profileBio}>{profile.profileBio}</p> : null}
+          <div className="public-user-facts">{profile.createdAt ? <span><Clock3 aria-hidden="true" size={15} />{formatJoinedAt(profile.createdAt)} 加入</span> : null}<span>{articles.total} 篇当前可见内容</span></div>
         </div>
         <div className="public-user-side">
-          <div className="public-user-stats"><span><FileText aria-hidden="true" size={16} /><small>公开文章</small><strong>{profile.publicArticleCount}</strong></span><span><Heart aria-hidden="true" size={16} /><small>累计获赞</small><strong>{profile.receivedLikeCount}</strong></span><span><Eye aria-hidden="true" size={16} /><small>公开阅读</small><strong>{profile.publicViewCount}</strong></span><span><UsersRound aria-hidden="true" size={16} /><small>订阅者</small><strong>{profile.subscriberCount}</strong></span><span><Rss aria-hidden="true" size={16} /><small>已订阅</small><strong>{profile.followingCount}</strong></span></div>
+          {profile.visibleFields.stats || profile.visibleFields.followingCount ? <div className="public-user-stats">{profile.publicArticleCount !== null ? <span><FileText aria-hidden="true" size={16} /><small>公开文章</small><strong>{profile.publicArticleCount}</strong></span> : null}{profile.receivedLikeCount !== null ? <span><Heart aria-hidden="true" size={16} /><small>累计获赞</small><strong>{profile.receivedLikeCount}</strong></span> : null}{profile.publicViewCount !== null ? <span><Eye aria-hidden="true" size={16} /><small>公开阅读</small><strong>{profile.publicViewCount}</strong></span> : null}{profile.subscriberCount !== null ? <span><UsersRound aria-hidden="true" size={16} /><small>订阅者</small><strong>{profile.subscriberCount}</strong></span> : null}{profile.followingCount !== null ? <span><Rss aria-hidden="true" size={16} /><small>已订阅</small><strong>{profile.followingCount}</strong></span> : null}{showcase?.visitCount !== null && showcase?.visitCount !== undefined ? <span><Eye aria-hidden="true" size={16} /><small>主页访问</small><strong>{showcase.visitCount}</strong></span> : null}</div> : null}
           {!profile.isSelf ? <div className="public-user-actions">
             <button className={profile.subscribed ? "active" : ""} disabled={isActing} onClick={() => void toggleSubscription()} type="button"><Rss aria-hidden="true" size={16} />{profile.subscribed ? "已订阅" : "订阅"}</button>
             {!relationship ? <button disabled={isActing} onClick={() => void addFriend()} type="button"><UserPlus aria-hidden="true" size={16} />加好友</button> : null}
@@ -180,6 +186,10 @@ export default function UserProfilePage() {
         </div>
       </div>
     </section>
+
+    {showcase?.settings.showPinnedContent && (showcase.pinnedArticle || showcase.pinnedCollection) ? <section className="public-user-featured"><header><strong>代表内容</strong></header>{showcase.pinnedArticle ? <DiscoveryArticleRow article={showcase.pinnedArticle} /> : null}{showcase.pinnedCollection ? <Link className="profile-featured-collection" href={`/collections/${showcase.pinnedCollection.id}`}><span>代表合集</span><strong>{showcase.pinnedCollection.name}</strong><small>{showcase.pinnedCollection.articleCount} 篇文章</small></Link> : null}</section> : null}
+
+    {showcase?.collections.length ? <section className="public-user-collections"><header><strong>文章合集</strong><span>{showcase.collections.length}</span></header><div>{showcase.collections.map((collection) => <Link href={`/collections/${collection.id}`} key={collection.id}><strong>{collection.name}</strong><span>{collection.description || "暂无说明"}</span><small>{collection.articleCount} 篇文章</small></Link>)}</div></section> : null}
 
     <section className="public-user-articles">
       <header><strong>发布内容</strong><span>{articles.total}</span></header>

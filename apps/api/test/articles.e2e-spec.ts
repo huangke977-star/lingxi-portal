@@ -1,4 +1,10 @@
-import { ArticleCommentStatus, ArticleStatus, ArticleVisibility } from "../src/generated/prisma/client";
+import {
+  ArticleCommentStatus,
+  ArticleStatus,
+  ArticleTopicStatus,
+  ArticleVisibility,
+  PortalVisibility,
+} from "../src/generated/prisma/client";
 import { AuthenticatedUser } from "../src/auth/auth.types";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { RedisService } from "../src/redis/redis.service";
@@ -469,10 +475,55 @@ describe("ArticlesService article center extensions", () => {
     };
     const service = createService(prisma);
     await service.publish(12, user);
+    expect(transaction.userSubscription.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        authorId: user.id,
+        notifyNewArticles: true,
+      }),
+    }));
     expect(transaction.userNotification.createMany).toHaveBeenCalledWith({ data: expect.arrayContaining([
       expect.objectContaining({ userId: 21, type: "subscription_published", channel: "subscription" }),
       expect.objectContaining({ userId: 22, type: "subscription_published", channel: "subscription" }),
     ]) });
+  });
+
+  it("shows collection and topic metadata only when the current viewer may open it", async () => {
+    const associatedArticle = {
+      ...articleRecord(),
+      collectionItems: [
+        { collection: { id: 1, ownerId: 99, name: "公开合集", visibility: ArticleVisibility.public } },
+        { collection: { id: 2, ownerId: 99, name: "登录合集", visibility: ArticleVisibility.authenticated } },
+        { collection: { id: 3, ownerId: user.id, name: "我的私有合集", visibility: ArticleVisibility.private } },
+        { collection: { id: 4, ownerId: 99, name: "他人私有合集", visibility: ArticleVisibility.private } },
+      ],
+      topicItems: [
+        { topic: { id: 11, title: "公开专题", slug: "public", visibility: PortalVisibility.public, status: ArticleTopicStatus.active, allowedRoles: [] } },
+        { topic: { id: 12, title: "登录专题", slug: "signed-in", visibility: PortalVisibility.authenticated, status: ArticleTopicStatus.active, allowedRoles: [] } },
+        { topic: { id: 13, title: "当前角色专题", slug: "role", visibility: PortalVisibility.role_restricted, status: ArticleTopicStatus.active, allowedRoles: [{ role: { code: user.role.code } }] } },
+        { topic: { id: 14, title: "其他角色专题", slug: "other-role", visibility: PortalVisibility.role_restricted, status: ArticleTopicStatus.active, allowedRoles: [{ role: { code: "foundation_building" } }] } },
+        { topic: { id: 15, title: "停用专题", slug: "disabled", visibility: PortalVisibility.public, status: ArticleTopicStatus.disabled, allowedRoles: [] } },
+      ],
+    };
+    const prisma = {
+      article: {
+        count: jest.fn(async () => 1),
+        findMany: jest.fn(async () => [associatedArticle]),
+      },
+    };
+    const service = createService(prisma);
+    const query = Object.assign(new ListArticlesQueryDto(), { page: 1, pageSize: 12 });
+
+    const visible = await service.listVisible(query, user);
+    expect(visible.items[0]).toMatchObject({
+      collections: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      topics: [{ id: 11 }, { id: 12 }, { id: 13 }],
+    });
+
+    const anonymous = await service.listPublic(query);
+    expect(anonymous.items[0]).toMatchObject({
+      collections: [{ id: 1 }],
+      topics: [{ id: 11 }],
+    });
   });
 
   it("restores deleted articles as unpinned drafts", async () => {

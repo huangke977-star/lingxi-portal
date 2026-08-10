@@ -48,6 +48,15 @@ const socialUserSelect = {
   createdAt: true,
   status: true,
   role: { select: { code: true, name: true, level: true } },
+  profileSettings: {
+    select: {
+      showBio: true,
+      showJoinedAt: true,
+      showStats: true,
+      showFollowingCount: true,
+      showPinnedContent: true,
+    },
+  },
 } satisfies Prisma.UserSelect;
 
 type SocialUserRecord = Prisma.UserGetPayload<{ select: typeof socialUserSelect }>;
@@ -123,6 +132,18 @@ export class SocialService {
     if (!target || target.status !== "active") {
       throw new NotFoundException("用户不存在或当前不可查看。");
     }
+    const isSelf = viewer?.id === target.id;
+    const settings = target.profileSettings ?? {
+      showBio: true,
+      showJoinedAt: true,
+      showStats: true,
+      showFollowingCount: true,
+      showPinnedContent: true,
+    };
+    const showBio = isSelf || settings.showBio;
+    const showJoinedAt = isSelf || settings.showJoinedAt;
+    const showStats = isSelf || settings.showStats;
+    const showFollowingCount = isSelf || settings.showFollowingCount;
     const [relationship, subscription, subscriberCount, followingCount, publicArticleStats] = await Promise.all([
       !viewer || viewer.id === target.id ? Promise.resolve(null) : this.findFriendship(viewer.id, target.id),
       !viewer || viewer.id === target.id
@@ -131,27 +152,42 @@ export class SocialService {
             where: { subscriberId_authorId: { subscriberId: viewer.id, authorId: target.id } },
             select: { authorId: true },
           }),
-      this.prisma.userSubscription.count({ where: { authorId: target.id } }),
-      this.prisma.userSubscription.count({ where: { subscriberId: target.id } }),
-      this.prisma.article.aggregate({
-        where: {
-          authorId: target.id,
-          status: ArticleStatus.published,
-          visibility: ArticleVisibility.public,
-        },
-        _count: { _all: true },
-        _sum: { likeCount: true, viewCount: true },
-      }),
+      showStats
+        ? this.prisma.userSubscription.count({ where: { authorId: target.id } })
+        : Promise.resolve(null),
+      showFollowingCount
+        ? this.prisma.userSubscription.count({ where: { subscriberId: target.id } })
+        : Promise.resolve(null),
+      showStats
+        ? this.prisma.article.aggregate({
+            where: {
+              authorId: target.id,
+              status: ArticleStatus.published,
+              visibility: ArticleVisibility.public,
+            },
+            _count: { _all: true },
+            _sum: { likeCount: true, viewCount: true },
+          })
+        : Promise.resolve(null),
     ]);
     return {
       ...this.toSocialUser(target),
-      isSelf: viewer?.id === target.id,
+      profileBio: showBio ? target.profileBio : null,
+      createdAt: showJoinedAt ? target.createdAt.toISOString() : null,
+      isSelf,
       subscribed: Boolean(subscription),
-      subscriberCount,
-      followingCount,
-      publicArticleCount: publicArticleStats._count._all,
-      receivedLikeCount: publicArticleStats._sum.likeCount ?? 0,
-      publicViewCount: publicArticleStats._sum.viewCount ?? 0,
+      subscriberCount: showStats ? subscriberCount : null,
+      followingCount: showFollowingCount ? followingCount : null,
+      publicArticleCount: showStats ? publicArticleStats?._count._all ?? 0 : null,
+      receivedLikeCount: showStats ? publicArticleStats?._sum.likeCount ?? 0 : null,
+      publicViewCount: showStats ? publicArticleStats?._sum.viewCount ?? 0 : null,
+      visibleFields: {
+        bio: showBio,
+        joinedAt: showJoinedAt,
+        stats: showStats,
+        followingCount: showFollowingCount,
+        pinnedContent: isSelf || settings.showPinnedContent,
+      },
       relationship: viewer && relationship && (
         relationship.status === FriendshipStatus.pending ||
         relationship.status === FriendshipStatus.accepted ||

@@ -3,7 +3,7 @@
 - Document status: Active
 - Created: 2026-08-04
 - Last updated: 2026-08-10
-- Current phase: Phase 4 ready to start (Phase 1 remote restore drill remains blocked)
+- Current phase: Phase 4 implementation complete, pending commit, deployment, and production acceptance
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -33,10 +33,10 @@ Status definitions:
 
 | Phase | Name | Main scope | Status |
 | --- | --- | --- | --- |
-| Phase 1 | Reliability Foundation | Media backup, missing-file repair, lightweight monitoring | Blocked (remote restore drill only) |
+| Phase 1 | Reliability Foundation | Media backup, missing-file repair, lightweight monitoring | Completed (remote restore drill waived for now) |
 | Phase 2 | Account Security | Password recovery, email verification, Turnstile, login-risk alerts | Completed |
 | Phase 3 | Content Capability | Autosave, version history, preview, unified search | Completed |
-| Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | Not started |
+| Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | In progress (implementation complete, pending deployment acceptance) |
 | Phase 5 | Social Capability | Group chat, group files, moderation, temporary conversations | Not started |
 | Phase 6 | Operations Console | Operational analytics, announcements, scheduling, read statistics | Not started |
 
@@ -70,7 +70,7 @@ Goal: give database records and physical files a verifiable, backed-up, and reco
 | P1-09 | Add lightweight slow-request, recent-error, memory, and disk trends | Completed |
 | P1-10 | Show backup coverage, last success, and issue counts in System Overview | Completed |
 | P1-11 | Notify super administrators about backup failures, disk pressure, and missing-file changes | Completed |
-| P1-12 | Complete bilingual docs, automated tests, deployment, and a production restore drill | Blocked (OSS/R2 credentials missing) |
+| P1-12 | Complete bilingual docs, automated tests, deployment, and a production restore drill | Completed (remote drill waived for now) |
 
 ### Current Acceptance Results
 
@@ -78,7 +78,7 @@ Goal: give database records and physical files a verifiable, backed-up, and reco
 - All 26 API suites with 159 tests, frontend/backend lint and builds, Prisma generation/validation, and production Compose validation passed.
 - GitHub Actions runs `30986260663` and hotfix run `30987181919` succeeded. Production recreated only API/Web or API without unrelated MySQL, Redis, Caddy, or TURN restarts.
 - Production storage scan `#5` completed with 20 healthy files, 3 historical missing article files, and no orphan files. Desktop and 390px iPhone widths had no horizontal overflow.
-- OSS/R2 and remote credentials are not configured. A real remote upload and production restore drill cannot run yet, so the phase cannot be marked fully accepted.
+- OSS/R2 and remote credentials are not configured, so a real remote upload and production restore drill cannot run yet. On 2026-08-10, the user waived this verification until a remote service is available, so it no longer blocks later phases. The implementation and configuration UI remain available for a future live drill.
 
 ### Acceptance
 
@@ -191,16 +191,24 @@ Goal: turn subscriptions into a useful content feed and improve organization thr
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P4-01 | Add a subscription feed and unread counts | Not started |
-| P4-02 | Sort by latest, unread, and popularity | Not started |
-| P4-03 | Add per-item read, read-all, and author notification settings | Not started |
-| P4-04 | Add user-created article collections and ordering | Not started |
-| P4-05 | Add administrator topics with cover, description, ordering, and role visibility | Not started |
-| P4-06 | Show collections and topics on article cards and reading pages | Not started |
-| P4-07 | Let users pin representative articles and collections | Not started |
-| P4-08 | Let users control which profile fields are public | Not started |
-| P4-09 | Add privacy-conscious profile visit statistics | Not started |
-| P4-10 | Complete feed, collection, profile, permission, and mobile tests | Not started |
+| P4-01 | Add a subscription feed and unread counts | Implemented (pending deployment acceptance) |
+| P4-02 | Sort by latest, unread, and popularity | Implemented (pending deployment acceptance) |
+| P4-03 | Add per-item read, read-all, and author notification settings | Implemented (pending deployment acceptance) |
+| P4-04 | Add user-created article collections and ordering | Implemented (pending deployment acceptance) |
+| P4-05 | Add administrator topics with cover, description, ordering, and role visibility | Implemented (pending deployment acceptance) |
+| P4-06 | Show collections and topics on article cards and reading pages | Implemented (pending deployment acceptance) |
+| P4-07 | Let users pin representative articles and collections | Implemented (pending deployment acceptance) |
+| P4-08 | Let users control which profile fields are public | Implemented (pending deployment acceptance) |
+| P4-09 | Add privacy-conscious profile visit statistics | Implemented (pending deployment acceptance) |
+| P4-10 | Complete feed, collection, profile, permission, and mobile tests | Implemented (pending deployment acceptance) |
+
+### Current Acceptance Results
+
+- Local implementation, additive migration, desktop and mobile UI, permission controls, and bilingual documentation are complete for P4-01 through P4-10.
+- The subscription feed supports latest, unread, and popularity ordering, item/read-all actions, and per-author notification preferences. Collections support CRUD and article ordering. Administrator topics support status, cover, ordering, and role visibility.
+- Article cards and reading pages expose collection and topic metadata only to authorized viewers. Profiles support representative articles, representative collections, and field-level visibility. Visit analytics use SHA-256 digests with daily deduplication and do not store raw IP addresses or User-Agent strings.
+- Production has the additive migration `20260810100000_add_discovery_profiles`. All 30 API suites with 194 tests passed, along with API build/lint, Web build/lint, and Prisma validation. Web lint retains only 10 unrelated pre-existing warnings.
+- Playwright covered topics, subscription feeds, notification preferences, collections, topic management, profile visibility, and public profile showcases at 1440x900 and 390x844 without horizontal overflow. Code commit, push, deployment, and production-page acceptance remain pending for this batch.
 
 ### Acceptance
 
@@ -303,10 +311,10 @@ A phase can be marked `Completed` only when all conditions are met:
 
 | Phase | Completed | Commit | Deployment | Notes |
 | --- | --- | --- | --- | --- |
-| Phase 1 | - | `90e43d3`, `290aa5c`, `fe6c619`, `0569d1a` | P1-01 through P1-11 deployed (2026-08-05) | P1-12 is blocked only on the OSS/R2 production restore drill; scan #5 found 20 healthy files, 3 historical missing article files, and no orphan files |
+| Phase 1 | 2026-08-10 | `90e43d3`, `290aa5c`, `fe6c619`, `0569d1a` | P1-01 through P1-11 deployed (2026-08-05) | Remote restore support is complete; the user waived the live OSS/R2 drill until a remote service is available, so it no longer blocks later phases |
 | Phase 2 | 2026-08-07 | `a22a04f`, `8e97c4c`, `c139889` | P2-01 through P2-11 deployed (2026-08-07) | Live-device acceptance passed for untrusted-device email verification, trust removal, and per-session sign-out |
 | Phase 3 | 2026-08-10 | `47c7ae3` | Deployed 2026-08-07; Actions `31165692942` succeeded | P3-01 through P3-11 passed automated checks and production acceptance |
-| Phase 4 | - | - | - | Not started |
+| Phase 4 | - | - | Pending commit and deployment | P4-01 through P4-10 implementation and local acceptance are complete; production migration is applied, pending code release and production UI acceptance |
 | Phase 5 | - | - | - | Not started |
 | Phase 6 | - | - | - | Not started |
 

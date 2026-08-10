@@ -21,14 +21,17 @@ export interface Friendship {
   updatedAt: string;
 }
 
-export interface PublicProfile extends SocialUser {
+export interface PublicProfile extends Omit<SocialUser, "profileBio" | "createdAt"> {
+  profileBio: string | null;
+  createdAt: string | null;
   isSelf: boolean;
   subscribed: boolean;
-  subscriberCount: number;
-  followingCount: number;
-  publicArticleCount: number;
-  receivedLikeCount: number;
-  publicViewCount: number;
+  subscriberCount: number | null;
+  followingCount: number | null;
+  publicArticleCount: number | null;
+  receivedLikeCount: number | null;
+  publicViewCount: number | null;
+  visibleFields: { bio: boolean; joinedAt: boolean; stats: boolean; followingCount: boolean; pinnedContent: boolean };
   relationship: Pick<Friendship, "id" | "status" | "direction" | "note"> | null;
 }
 

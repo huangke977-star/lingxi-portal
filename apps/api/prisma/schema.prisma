@@ -62,6 +62,11 @@ enum ArticleTaxonomyKind {
   tag
 }
 
+enum ArticleTopicStatus {
+  active
+  disabled
+}
+
 enum ArticleCommentStatus {
   active
   blocked
@@ -259,16 +264,17 @@ enum CallStatus {
 }
 
 model Role {
-  id                  Int                  @id @default(autoincrement())
-  code                String               @unique @db.VarChar(64)
-  name                String               @db.VarChar(64)
-  level               Int                  @unique
-  sortOrder           Int                  @default(0)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  id                  Int                       @id @default(autoincrement())
+  code                String                    @unique @db.VarChar(64)
+  name                String                    @db.VarChar(64)
+  level               Int                       @unique
+  sortOrder           Int                       @default(0)
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
   users               User[]
   portalEntryRoles    PortalEntryRole[]
   articleAllowedRoles ArticleAllowedRole[]
+  articleTopicRoles   ArticleTopicAllowedRole[]
 
   @@map("roles")
 }
@@ -339,6 +345,12 @@ model User {
   notificationChannelStates UserNotificationChannelState[]
   subscriptionsGiven        UserSubscription[]             @relation("UserSubscriptionSubscriber")
   subscriptionsReceived     UserSubscription[]             @relation("UserSubscriptionAuthor")
+  subscriptionFeedReads     SubscriptionFeedRead[]
+  articleCollections        ArticleCollection[]
+  articleTopicsCreated      ArticleTopic[]                 @relation("ArticleTopicCreatedBy")
+  articleTopicsUpdated      ArticleTopic[]                 @relation("ArticleTopicUpdatedBy")
+  profileSettings           UserProfileSettings?
+  profileVisits             ProfileVisit[]                 @relation("ProfileVisitTarget")
   auditLogs                 AuditLog[]                     @relation("AuditLogActor")
   pushSubscriptions         PushSubscription[]
   securityPreference        UserSecurityPreference?
@@ -776,41 +788,45 @@ model PortalEntryRole {
 }
 
 model Article {
-  id             Int                     @id @default(autoincrement())
-  authorId       Int                     @map("author_id")
-  author         User                    @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  title          String                  @db.VarChar(120)
-  slug           String                  @unique @db.VarChar(180)
-  summary        String                  @default("") @db.VarChar(300)
-  content        String                  @db.LongText
-  coverPath      String?                 @map("cover_path") @db.VarChar(512)
-  category       String                  @default("") @db.VarChar(80)
-  tags           String                  @default("") @db.VarChar(500)
-  titleColor     String                  @default("") @map("title_color") @db.VarChar(7)
-  visibility     ArticleVisibility       @default(public)
-  status         ArticleStatus           @default(draft)
-  isPinned       Boolean                 @default(false) @map("is_pinned")
-  pinOrder       Int                     @default(0) @map("pin_order")
-  publishedAt    DateTime?               @map("published_at")
-  blockedReason  String?                 @map("blocked_reason") @db.VarChar(255)
-  viewCount      Int                     @default(0) @map("view_count")
-  likeCount      Int                     @default(0) @map("like_count")
-  favoriteCount  Int                     @default(0) @map("favorite_count")
-  commentCount   Int                     @default(0) @map("comment_count")
-  searchText     String                  @default("") @map("search_text") @db.VarChar(4096)
-  searchPinyin   String                  @default("") @map("search_pinyin") @db.VarChar(4096)
-  allowedRoles   ArticleAllowedRole[]
-  images         ArticleImage[]
-  comments       ArticleComment[]
-  likes          ArticleLike[]
-  favorites      ArticleFavorite[]
-  views          ArticleView[]
-  readLater      ArticleReadLater[]
-  readingHistory ArticleReadingHistory[]
-  notifications  UserNotification[]
-  versions       ArticleVersion[]
-  createdAt      DateTime                @default(now()) @map("created_at")
-  updatedAt      DateTime                @updatedAt @map("updated_at")
+  id                    Int                     @id @default(autoincrement())
+  authorId              Int                     @map("author_id")
+  author                User                    @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  title                 String                  @db.VarChar(120)
+  slug                  String                  @unique @db.VarChar(180)
+  summary               String                  @default("") @db.VarChar(300)
+  content               String                  @db.LongText
+  coverPath             String?                 @map("cover_path") @db.VarChar(512)
+  category              String                  @default("") @db.VarChar(80)
+  tags                  String                  @default("") @db.VarChar(500)
+  titleColor            String                  @default("") @map("title_color") @db.VarChar(7)
+  visibility            ArticleVisibility       @default(public)
+  status                ArticleStatus           @default(draft)
+  isPinned              Boolean                 @default(false) @map("is_pinned")
+  pinOrder              Int                     @default(0) @map("pin_order")
+  publishedAt           DateTime?               @map("published_at")
+  blockedReason         String?                 @map("blocked_reason") @db.VarChar(255)
+  viewCount             Int                     @default(0) @map("view_count")
+  likeCount             Int                     @default(0) @map("like_count")
+  favoriteCount         Int                     @default(0) @map("favorite_count")
+  commentCount          Int                     @default(0) @map("comment_count")
+  searchText            String                  @default("") @map("search_text") @db.VarChar(4096)
+  searchPinyin          String                  @default("") @map("search_pinyin") @db.VarChar(4096)
+  allowedRoles          ArticleAllowedRole[]
+  images                ArticleImage[]
+  comments              ArticleComment[]
+  likes                 ArticleLike[]
+  favorites             ArticleFavorite[]
+  views                 ArticleView[]
+  readLater             ArticleReadLater[]
+  readingHistory        ArticleReadingHistory[]
+  notifications         UserNotification[]
+  versions              ArticleVersion[]
+  collectionItems       ArticleCollectionItem[]
+  topicItems            ArticleTopicItem[]
+  subscriptionFeedReads SubscriptionFeedRead[]
+  profilePins           UserProfileSettings[]   @relation("PinnedProfileArticle")
+  createdAt             DateTime                @default(now()) @map("created_at")
+  updatedAt             DateTime                @updatedAt @map("updated_at")
 
   @@index([authorId, status, updatedAt])
   @@index([status, visibility, isPinned, pinOrder])
@@ -820,25 +836,25 @@ model Article {
 }
 
 model ArticleVersion {
-  id             Int                  @id @default(autoincrement())
-  articleId      Int                  @map("article_id")
-  article        Article              @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  editorId       Int?                 @map("editor_id")
-  editor         User?                @relation("ArticleVersionEditor", fields: [editorId], references: [id], onDelete: SetNull)
-  versionNumber  Int                  @map("version_number")
-  source         ArticleVersionSource
-  title          String               @db.VarChar(120)
-  summary        String               @default("") @db.VarChar(300)
-  content        String               @db.LongText
-  category       String               @default("") @db.VarChar(80)
-  tags           String               @default("") @db.VarChar(500)
-  titleColor     String               @default("") @map("title_color") @db.VarChar(7)
-  visibility     ArticleVisibility
-  status         ArticleStatus
-  roleCodes      String               @default("") @map("role_codes") @db.VarChar(500)
-  contentHash    String               @map("content_hash") @db.Char(64)
-  changedFields  Json?                @map("changed_fields")
-  createdAt      DateTime             @default(now()) @map("created_at")
+  id            Int                  @id @default(autoincrement())
+  articleId     Int                  @map("article_id")
+  article       Article              @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  editorId      Int?                 @map("editor_id")
+  editor        User?                @relation("ArticleVersionEditor", fields: [editorId], references: [id], onDelete: SetNull)
+  versionNumber Int                  @map("version_number")
+  source        ArticleVersionSource
+  title         String               @db.VarChar(120)
+  summary       String               @default("") @db.VarChar(300)
+  content       String               @db.LongText
+  category      String               @default("") @db.VarChar(80)
+  tags          String               @default("") @db.VarChar(500)
+  titleColor    String               @default("") @map("title_color") @db.VarChar(7)
+  visibility    ArticleVisibility
+  status        ArticleStatus
+  roleCodes     String               @default("") @map("role_codes") @db.VarChar(500)
+  contentHash   String               @map("content_hash") @db.Char(64)
+  changedFields Json?                @map("changed_fields")
+  createdAt     DateTime             @default(now()) @map("created_at")
 
   @@unique([articleId, versionNumber])
   @@index([articleId, createdAt])
@@ -1030,16 +1046,144 @@ model ArticleReadingHistory {
 }
 
 model UserSubscription {
-  subscriberId Int      @map("subscriber_id")
-  subscriber   User     @relation("UserSubscriptionSubscriber", fields: [subscriberId], references: [id], onDelete: Cascade)
-  authorId     Int      @map("author_id")
-  author       User     @relation("UserSubscriptionAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  createdAt    DateTime @default(now()) @map("created_at")
+  subscriberId      Int      @map("subscriber_id")
+  subscriber        User     @relation("UserSubscriptionSubscriber", fields: [subscriberId], references: [id], onDelete: Cascade)
+  authorId          Int      @map("author_id")
+  author            User     @relation("UserSubscriptionAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  notifyNewArticles Boolean  @default(true) @map("notify_new_articles")
+  createdAt         DateTime @default(now()) @map("created_at")
 
   @@id([subscriberId, authorId])
   @@index([authorId, createdAt])
   @@index([createdAt])
   @@map("user_subscriptions")
+}
+
+model SubscriptionFeedRead {
+  userId    Int      @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  articleId Int      @map("article_id")
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  readAt    DateTime @default(now()) @map("read_at")
+
+  @@id([userId, articleId])
+  @@index([articleId])
+  @@index([userId, readAt])
+  @@map("subscription_feed_reads")
+}
+
+model ArticleCollection {
+  id          Int                     @id @default(autoincrement())
+  ownerId     Int                     @map("owner_id")
+  owner       User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name        String                  @db.VarChar(80)
+  description String                  @default("") @db.VarChar(300)
+  visibility  ArticleVisibility       @default(public)
+  sortOrder   Int                     @default(0) @map("sort_order")
+  items       ArticleCollectionItem[]
+  profilePins UserProfileSettings[]   @relation("PinnedProfileCollection")
+  createdAt   DateTime                @default(now()) @map("created_at")
+  updatedAt   DateTime                @updatedAt @map("updated_at")
+
+  @@index([ownerId, sortOrder, updatedAt])
+  @@index([visibility, updatedAt])
+  @@map("article_collections")
+}
+
+model ArticleCollectionItem {
+  collectionId Int               @map("collection_id")
+  collection   ArticleCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  articleId    Int               @map("article_id")
+  article      Article           @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  sortOrder    Int               @default(0) @map("sort_order")
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  @@id([collectionId, articleId])
+  @@index([collectionId, sortOrder])
+  @@index([articleId])
+  @@map("article_collection_items")
+}
+
+model ArticleTopic {
+  id           Int                       @id @default(autoincrement())
+  title        String                    @db.VarChar(80)
+  slug         String                    @unique @db.VarChar(120)
+  description  String                    @default("") @db.VarChar(500)
+  coverPath    String?                   @map("cover_path") @db.VarChar(512)
+  visibility   PortalVisibility          @default(public)
+  status       ArticleTopicStatus        @default(active)
+  sortOrder    Int                       @default(0) @map("sort_order")
+  createdById  Int                       @map("created_by_id")
+  createdBy    User                      @relation("ArticleTopicCreatedBy", fields: [createdById], references: [id])
+  updatedById  Int                       @map("updated_by_id")
+  updatedBy    User                      @relation("ArticleTopicUpdatedBy", fields: [updatedById], references: [id])
+  allowedRoles ArticleTopicAllowedRole[]
+  items        ArticleTopicItem[]
+  createdAt    DateTime                  @default(now()) @map("created_at")
+  updatedAt    DateTime                  @updatedAt @map("updated_at")
+
+  @@index([status, sortOrder, updatedAt])
+  @@index([visibility])
+  @@index([createdById])
+  @@index([updatedById])
+  @@map("article_topics")
+}
+
+model ArticleTopicAllowedRole {
+  topicId Int          @map("topic_id")
+  topic   ArticleTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  roleId  Int          @map("role_id")
+  role    Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, roleId])
+  @@index([roleId])
+  @@map("article_topic_allowed_roles")
+}
+
+model ArticleTopicItem {
+  topicId   Int          @map("topic_id")
+  topic     ArticleTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  articleId Int          @map("article_id")
+  article   Article      @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  sortOrder Int          @default(0) @map("sort_order")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  @@id([topicId, articleId])
+  @@index([topicId, sortOrder])
+  @@index([articleId])
+  @@map("article_topic_items")
+}
+
+model UserProfileSettings {
+  userId             Int                @id @map("user_id")
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  showBio            Boolean            @default(true) @map("show_bio")
+  showJoinedAt       Boolean            @default(true) @map("show_joined_at")
+  showStats          Boolean            @default(true) @map("show_stats")
+  showFollowingCount Boolean            @default(true) @map("show_following_count")
+  showPinnedContent  Boolean            @default(true) @map("show_pinned_content")
+  pinnedArticleId    Int?               @map("pinned_article_id")
+  pinnedArticle      Article?           @relation("PinnedProfileArticle", fields: [pinnedArticleId], references: [id], onDelete: SetNull)
+  pinnedCollectionId Int?               @map("pinned_collection_id")
+  pinnedCollection   ArticleCollection? @relation("PinnedProfileCollection", fields: [pinnedCollectionId], references: [id], onDelete: SetNull)
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  @@index([pinnedArticleId])
+  @@index([pinnedCollectionId])
+  @@map("user_profile_settings")
+}
+
+model ProfileVisit {
+  id            Int      @id @default(autoincrement())
+  profileUserId Int      @map("profile_user_id")
+  profileUser   User     @relation("ProfileVisitTarget", fields: [profileUserId], references: [id], onDelete: Cascade)
+  visitorKey    String   @map("visitor_key") @db.Char(64)
+  visitedOn     String   @map("visited_on") @db.VarChar(10)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([profileUserId, visitorKey, visitedOn])
+  @@index([profileUserId, createdAt])
+  @@map("profile_visits")
 }
 
 model Friendship {
@@ -1230,26 +1374,26 @@ model UserNotificationChannelState {
 }
 
 model SecurityConfiguration {
-  id                                   Int      @id @default(1)
-  smtpEnabled                          Boolean  @default(false) @map("smtp_enabled")
-  smtpHost                             String?  @map("smtp_host") @db.VarChar(255)
-  smtpPort                             Int      @default(587) @map("smtp_port")
-  smtpSecure                           Boolean  @default(false) @map("smtp_secure")
-  smtpUsername                         String?  @map("smtp_username") @db.VarChar(255)
-  smtpPasswordEncrypted                String?  @map("smtp_password_encrypted") @db.Text
-  smtpFromName                         String   @default("HLOVET") @map("smtp_from_name") @db.VarChar(120)
-  smtpFromEmail                        String?  @map("smtp_from_email") @db.VarChar(191)
-  registrationEmailVerificationEnabled Boolean  @default(false) @map("registration_email_verification_enabled")
-  passwordRecoveryEnabled              Boolean  @default(false) @map("password_recovery_enabled")
-  untrustedDeviceEmailVerificationEnabled Boolean @default(false) @map("untrusted_device_email_verification_enabled")
-  turnstileSiteKey                     String?  @map("turnstile_site_key") @db.VarChar(255)
-  turnstileSecretEncrypted             String?  @map("turnstile_secret_encrypted") @db.Text
-  turnstileRegistrationEnabled         Boolean  @default(false) @map("turnstile_registration_enabled")
-  turnstileLoginEnabled                Boolean  @default(false) @map("turnstile_login_enabled")
-  turnstileRecoveryEnabled             Boolean  @default(false) @map("turnstile_recovery_enabled")
-  loginFailureTurnstileThreshold       Int      @default(3) @map("login_failure_turnstile_threshold")
-  createdAt                            DateTime @default(now()) @map("created_at")
-  updatedAt                            DateTime @updatedAt @map("updated_at")
+  id                                      Int      @id @default(1)
+  smtpEnabled                             Boolean  @default(false) @map("smtp_enabled")
+  smtpHost                                String?  @map("smtp_host") @db.VarChar(255)
+  smtpPort                                Int      @default(587) @map("smtp_port")
+  smtpSecure                              Boolean  @default(false) @map("smtp_secure")
+  smtpUsername                            String?  @map("smtp_username") @db.VarChar(255)
+  smtpPasswordEncrypted                   String?  @map("smtp_password_encrypted") @db.Text
+  smtpFromName                            String   @default("HLOVET") @map("smtp_from_name") @db.VarChar(120)
+  smtpFromEmail                           String?  @map("smtp_from_email") @db.VarChar(191)
+  registrationEmailVerificationEnabled    Boolean  @default(false) @map("registration_email_verification_enabled")
+  passwordRecoveryEnabled                 Boolean  @default(false) @map("password_recovery_enabled")
+  untrustedDeviceEmailVerificationEnabled Boolean  @default(false) @map("untrusted_device_email_verification_enabled")
+  turnstileSiteKey                        String?  @map("turnstile_site_key") @db.VarChar(255)
+  turnstileSecretEncrypted                String?  @map("turnstile_secret_encrypted") @db.Text
+  turnstileRegistrationEnabled            Boolean  @default(false) @map("turnstile_registration_enabled")
+  turnstileLoginEnabled                   Boolean  @default(false) @map("turnstile_login_enabled")
+  turnstileRecoveryEnabled                Boolean  @default(false) @map("turnstile_recovery_enabled")
+  loginFailureTurnstileThreshold          Int      @default(3) @map("login_failure_turnstile_threshold")
+  createdAt                               DateTime @default(now()) @map("created_at")
+  updatedAt                               DateTime @updatedAt @map("updated_at")
 
   @@map("security_configurations")
 }
@@ -1267,16 +1411,16 @@ model UserSecurityPreference {
 }
 
 model KnownLoginDevice {
-  id          Int      @id @default(autoincrement())
-  userId      Int      @map("user_id")
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fingerprint String   @db.Char(64)
-  label       String   @db.VarChar(160)
-  userAgent   String   @map("user_agent") @db.VarChar(500)
-  firstIp     String   @map("first_ip") @db.VarChar(80)
-  lastIp      String   @map("last_ip") @db.VarChar(80)
-  firstSeenAt DateTime @default(now()) @map("first_seen_at")
-  lastSeenAt  DateTime @default(now()) @map("last_seen_at")
+  id          Int       @id @default(autoincrement())
+  userId      Int       @map("user_id")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fingerprint String    @db.Char(64)
+  label       String    @db.VarChar(160)
+  userAgent   String    @map("user_agent") @db.VarChar(500)
+  firstIp     String    @map("first_ip") @db.VarChar(80)
+  lastIp      String    @map("last_ip") @db.VarChar(80)
+  firstSeenAt DateTime  @default(now()) @map("first_seen_at")
+  lastSeenAt  DateTime  @default(now()) @map("last_seen_at")
   trustedAt   DateTime? @map("trusted_at")
 
   @@unique([userId, fingerprint])
@@ -1305,22 +1449,22 @@ model LoginSecurityEvent {
 }
 
 model EmailVerificationRequest {
-  id         Int                      @id @default(autoincrement())
-  userId     Int?                     @map("user_id")
-  user       User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  purpose    EmailVerificationPurpose
-  email      String                   @db.VarChar(191)
-  codeHash   String                   @map("code_hash") @db.Char(64)
-  challengeTokenHash String?          @unique @map("challenge_token_hash") @db.Char(64)
-  deviceFingerprint String?           @map("device_fingerprint") @db.Char(64)
-  status     EmailVerificationStatus  @default(pending)
-  attempts   Int                      @default(0)
-  ip         String                   @db.VarChar(80)
-  expiresAt  DateTime                 @map("expires_at")
-  verifiedAt DateTime?                @map("verified_at")
-  consumedAt DateTime?                @map("consumed_at")
-  createdAt  DateTime                 @default(now()) @map("created_at")
-  updatedAt  DateTime                 @updatedAt @map("updated_at")
+  id                 Int                      @id @default(autoincrement())
+  userId             Int?                     @map("user_id")
+  user               User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose            EmailVerificationPurpose
+  email              String                   @db.VarChar(191)
+  codeHash           String                   @map("code_hash") @db.Char(64)
+  challengeTokenHash String?                  @unique @map("challenge_token_hash") @db.Char(64)
+  deviceFingerprint  String?                  @map("device_fingerprint") @db.Char(64)
+  status             EmailVerificationStatus  @default(pending)
+  attempts           Int                      @default(0)
+  ip                 String                   @db.VarChar(80)
+  expiresAt          DateTime                 @map("expires_at")
+  verifiedAt         DateTime?                @map("verified_at")
+  consumedAt         DateTime?                @map("consumed_at")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
 
   @@index([email, purpose, status, createdAt])
   @@index([userId, createdAt])

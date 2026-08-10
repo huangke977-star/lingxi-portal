@@ -188,9 +188,9 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
             </div>
             <span className="public-profile-role" title={roleName}><RoleSymbol code={roleCode} />{roleName}</span>
           </div>
-          <p>{displayProfile.profileBio}</p>
+          {displayProfile.profileBio ? <p>{displayProfile.profileBio}</p> : null}
           {displayProfile.createdAt ? <span className="public-profile-since"><Clock3 aria-hidden="true" size={14} />加入于 {new Date(displayProfile.createdAt).toLocaleDateString("zh-CN")}</span> : null}
-          {profile ? <span className="public-profile-since">{profile.subscriberCount} 人订阅</span> : null}
+          {profile?.subscriberCount !== null && profile?.subscriberCount !== undefined ? <span className="public-profile-since">{profile.subscriberCount} 人订阅</span> : null}
           {isLoading ? <span className="public-profile-state">正在读取公开资料。</span> : null}
           {error ? <span className="public-profile-error">{error}</span> : null}
           <div className="public-profile-actions">

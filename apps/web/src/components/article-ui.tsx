@@ -63,6 +63,12 @@ export function ArticleTaxonomy({ article, limit = 3 }: { article: Article; limi
       <span className="article-category">{article.category || "随笔"}</span>
       {visibleTags.map((tag) => <span className="article-tag-chip" key={tag}>#{tag}</span>)}
       {hiddenCount ? <span className="article-tag-more">+{hiddenCount}</span> : null}
+      {(article.collections ?? []).slice(0, 2).map((collection) => (
+        <Link className="article-group-chip collection" href={collection.href} key={`collection-${collection.id}`} onClick={(event) => event.stopPropagation()}>{collection.label}</Link>
+      ))}
+      {(article.topics ?? []).slice(0, 2).map((topic) => (
+        <Link className="article-group-chip topic" href={topic.href} key={`topic-${topic.id}`} onClick={(event) => event.stopPropagation()}>{topic.label}</Link>
+      ))}
     </span>
   );
 }
