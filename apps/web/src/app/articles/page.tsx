@@ -10,13 +10,12 @@ import { AppToast } from "@/components/app-toast";
 import {
   ArticleList,
   listPublicArticles,
-  listSubscribedArticles,
   listVisibleArticles,
 } from "@/lib/article-api";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 
-type DiscoverFeed = "recommended" | "latest" | "popular" | "subscriptions";
+type DiscoverFeed = "recommended" | "latest" | "popular";
 type DiscoverOrder = "default" | "latest" | "popular" | "views" | "likes" | "favorites" | "comments";
 
 const emptyList: ArticleList = { items: [], total: 0, page: 1, pageSize: 12, totalPages: 1 };
@@ -87,10 +86,6 @@ function ArticlesContent() {
           clearAuthTokens();
           setUser(null);
           setIsLoggedIn(false);
-          if (feed === "subscriptions") {
-            setList(emptyList);
-            return;
-          }
           const result = await listPublicArticles({
             page: 1,
             pageSize: 12,
@@ -110,7 +105,6 @@ function ArticlesContent() {
   const loadMore = useCallback(() => {
     if (isLoading || isLoadingMore || list.page >= list.totalPages) return;
     const token = readAccessToken();
-    if (feed === "subscriptions" && !token) return;
     setIsLoadingMore(true);
     articleRequest(feed, token, {
       page: list.page + 1,
@@ -123,7 +117,6 @@ function ArticlesContent() {
       .finally(() => setIsLoadingMore(false));
   }, [feed, isLoading, isLoadingMore, list.page, list.totalPages, order, querySearch]);
 
-  const needsLogin = feed === "subscriptions" && !isLoggedIn;
   return (
     <section className="page-shell articles-page">
       <ArticleCenterNav active="discover" isLoggedIn={isLoggedIn} user={user} />
@@ -132,7 +125,6 @@ function ArticlesContent() {
           ["recommended", "推荐"],
           ["latest", "最新"],
           ["popular", "热门"],
-          ["subscriptions", "订阅"],
         ] as const).map(([value, label]) => (
           <button aria-selected={feed === value} className={feed === value ? "active" : undefined} key={value} onClick={() => replaceQuery({ feed: value, order: "default" })} role="tab" type="button">{label}</button>
         ))}
@@ -145,30 +137,28 @@ function ArticlesContent() {
         </label>
         <label className="article-order-select"><SlidersHorizontal aria-hidden="true" size={16} /><span>排序</span><select aria-label="文章排序" onChange={(event) => replaceQuery({ order: event.target.value as DiscoverOrder })} value={order}><option value="default">默认</option><option value="latest">最新发布</option><option value="popular">综合热度</option><option value="views">浏览最多</option><option value="likes">点赞最多</option><option value="favorites">收藏最多</option><option value="comments">评论最多</option></select></label>
       </div>
-      {needsLogin ? <div className="article-empty-state"><strong>登录后查看订阅内容</strong><span>你订阅作者发布的新文章会集中显示在这里。</span><button className="text-action" onClick={() => router.push(`/login?from=${encodeURIComponent("/articles?feed=subscriptions")}`)} type="button">去登录</button></div>
-        : isLoading ? <div className="article-empty-state">正在读取文章。</div>
-          : list.items.length ? <div className="article-feed-list">{list.items.map((article) => <ArticleCard article={article} key={article.id} />)}</div>
-            : <div className="article-empty-state"><strong>还没有找到文章</strong><span>{querySearch ? "换一个关键词试试。" : feed === "subscriptions" ? "订阅作者后，新内容会显示在这里。" : "这里还没有发布内容。"}</span></div>}
-      {!needsLogin && list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
+      {isLoading ? <div className="article-empty-state">正在读取文章。</div>
+        : list.items.length ? <div className="article-feed-list">{list.items.map((article) => <ArticleCard article={article} key={article.id} />)}</div>
+          : <div className="article-empty-state"><strong>还没有找到文章</strong><span>{querySearch ? "换一个关键词试试。" : "这里还没有发布内容。"}</span></div>}
+      {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );
 }
 
 function articleRequest(feed: DiscoverFeed, token: string | null, query: { page: number; pageSize: number; search: string; sort: string }): Promise<ArticleList> {
-  if (feed === "subscriptions") return token ? listSubscribedArticles(token, query) : Promise.resolve(emptyList);
   return token ? listVisibleArticles(token, query) : listPublicArticles(query);
 }
 
 function resolveSort(feed: DiscoverFeed, order: DiscoverOrder): string {
   if (order !== "default") return order;
-  if (feed === "latest" || feed === "subscriptions") return "latest";
+  if (feed === "latest") return "latest";
   if (feed === "popular") return "popular";
   return "recommended";
 }
 
 function normalizeFeed(value: string | null): DiscoverFeed {
-  return value === "latest" || value === "popular" || value === "subscriptions" ? value : "recommended";
+  return value === "latest" || value === "popular" ? value : "recommended";
 }
 
 function normalizeOrder(value: string | null): DiscoverOrder {

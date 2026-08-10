@@ -6605,7 +6605,7 @@ a.entry-item:hover {
 
 .public-user-stats {
   display: grid;
-  grid-template-columns: repeat(5, minmax(86px, 1fr));
+  grid-template-columns: repeat(6, minmax(76px, 1fr));
   gap: 6px;
 }
 
@@ -6675,7 +6675,7 @@ a.entry-item:hover {
   .analytics-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .analytics-charts { grid-template-columns: 1fr; }
   .public-user-overview { grid-template-columns: 1fr; }
-  .public-user-stats { grid-template-columns: repeat(3, minmax(90px, 1fr)); }
+  .public-user-stats { grid-template-columns: repeat(6, minmax(76px, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -14217,14 +14217,16 @@ html:has(.article-comment-form) {
 .glass-multi-select-trigger small { color: var(--muted); font-size: 0.68rem; }
 .glass-multi-select-trigger svg { color: var(--muted-strong); transition: transform 150ms ease; }
 .glass-multi-select-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
-.glass-multi-select-menu { position: absolute; z-index: 40; top: calc(100% + 5px); right: 0; left: 0; display: grid; overflow: hidden; border: 1px solid color-mix(in srgb, var(--control-line) 76%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--shadow-hover); backdrop-filter: blur(20px) saturate(125%); }
-.glass-multi-select-menu > label { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px; border-bottom: 1px solid var(--control-line); color: var(--muted); padding: 8px 10px; }
+.glass-multi-select-menu { position: absolute; z-index: 40; top: calc(100% + 5px); right: 0; left: 0; display: grid; overflow: hidden; border: 1px solid color-mix(in srgb, var(--control-line) 82%, transparent); border-radius: 7px; background: var(--popover-surface); box-shadow: var(--shadow-strong); backdrop-filter: blur(12px) saturate(112%); }
+body:has(.glass-multi-select-menu) .route-back-row,
+body:has(.glass-multi-select-menu) .global-back-to-top { visibility: hidden; opacity: 0; }
+.glass-multi-select-menu > label { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px; border-bottom: 1px solid var(--control-line); background: color-mix(in srgb, var(--popover-surface) 86%, var(--accent-soft)); color: var(--muted-strong); padding: 9px 10px; }
 .glass-multi-select-menu input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--foreground); font: inherit; }
 .glass-multi-select-options { display: grid; max-height: 300px; overflow-y: auto; overscroll-behavior: contain; }
-.glass-multi-select-options > button { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--control-line) 70%, transparent); background: transparent; color: var(--foreground); text-align: left; padding: 9px 10px; cursor: pointer; }
+.glass-multi-select-options > button { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--control-line) 82%, transparent); background: color-mix(in srgb, var(--popover-surface) 96%, transparent); color: var(--foreground); text-align: left; padding: 9px 10px; cursor: pointer; }
 .glass-multi-select-options > button:last-of-type { border-bottom: 0; }
 .glass-multi-select-options > button:hover,
-.glass-multi-select-options > button.active { background: color-mix(in srgb, var(--accent-soft) 66%, transparent); }
+.glass-multi-select-options > button.active { background: color-mix(in srgb, var(--accent-soft) 62%, var(--popover-surface)); }
 .glass-multi-select-options > button.active > svg { color: var(--accent-strong); }
 .glass-multi-select-options > button > span { display: grid; min-width: 0; gap: 2px; }
 .glass-multi-select-options strong { overflow: hidden; font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
