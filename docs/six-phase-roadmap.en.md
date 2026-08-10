@@ -211,7 +211,7 @@ Goal: turn subscriptions into a useful content feed and improve organization thr
 - Playwright covered topics, subscription feeds, notification preferences, collections, topic management, profile visibility, and public profile showcases at 1440x900 and 390x844 without horizontal overflow.
 - Commit `ad2fd38` was pushed and GitHub Actions run `31351553373` built both API and Web images successfully. On 2026-08-10, production ran `api-bootstrap`, confirmed 31 migrations with none pending, and recreated only API/Web. MySQL, Redis, Caddy, and TURN were not restarted.
 - API/Web restart counts remained zero and startup logs contained no errors. The home page, health endpoint, subscription feed, collections, topics, topic management, and public topics API all returned `200`, completing Phase 4.
-- A 2026-08-10 local follow-up adds permission-filtered collection discovery, shared immediate multi-select and drag ordering for collections/topics, managed local topic-cover uploads with physical cleanup, and full-card mobile topic navigation. It awaits user acceptance before deployment.
+- A 2026-08-10 follow-up deployed permission-filtered collection discovery, shared immediate multi-select and drag ordering for collections/topics, managed local topic-cover uploads with physical cleanup, and full-card mobile topic navigation. GitHub Actions run `31358640865` succeeded for commit `f3d9010`; production applied migration 32, recreated only API/Web, and passed public-page, health, container-state, and startup-log checks.
 
 ### Acceptance
 
@@ -317,7 +317,7 @@ A phase can be marked `Completed` only when all conditions are met:
 | Phase 1 | 2026-08-10 | `90e43d3`, `290aa5c`, `fe6c619`, `0569d1a` | P1-01 through P1-11 deployed (2026-08-05) | Remote restore support is complete; the user waived the live OSS/R2 drill until a remote service is available, so it no longer blocks later phases |
 | Phase 2 | 2026-08-07 | `a22a04f`, `8e97c4c`, `c139889` | P2-01 through P2-11 deployed (2026-08-07) | Live-device acceptance passed for untrusted-device email verification, trust removal, and per-session sign-out |
 | Phase 3 | 2026-08-10 | `47c7ae3` | Deployed 2026-08-07; Actions `31165692942` succeeded | P3-01 through P3-11 passed automated checks and production acceptance |
-| Phase 4 | 2026-08-10 | `ad2fd38` | Deployed 2026-08-10; Actions `31351553373` succeeded | P4-01 through P4-10 passed automated, desktop/mobile, and production health acceptance |
+| Phase 4 | 2026-08-10 | `ad2fd38`, `f3d9010` | Deployed 2026-08-10; Actions `31351553373`, `31358640865` succeeded | P4-01 through P4-10 and the collection/topic interaction refinement passed automated, desktop/mobile, and production health acceptance |
 | Phase 5 | - | - | - | Not started |
 | Phase 6 | - | - | - | Not started |
 

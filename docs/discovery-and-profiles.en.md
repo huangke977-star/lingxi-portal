@@ -2,7 +2,7 @@
 
 - Roadmap phase: P4 Discovery And Profiles
 - Document date: 2026-08-10
-- Current status: The primary P4 release is deployed. This collection/topic interaction refinement is locally complete and awaits user acceptance before commit and deployment.
+- Current status: The primary P4 release and this collection/topic interaction refinement are deployed.
 - Chinese version: `docs/discovery-and-profiles.zh-CN.md`
 
 ## 1. Entry Points
@@ -104,7 +104,7 @@ Migrations: `20260810100000_add_discovery_profiles` and `20260810120000_add_topi
 
 They add per-author notification preferences, feed reads, collections, topics, role mappings, ordered article relations, profile settings, representative content, privacy-conscious visit records, and managed topic-cover file metadata.
 
-Both migrations are additive and remove or rename no existing fields. The original P4 migration is deployed; the new topic-cover metadata migration will run with this refinement after local acceptance.
+Both migrations are additive and remove or rename no existing fields. Both P4 migrations are deployed, bringing production to 32 Prisma migrations.
 
 ## 9. Verification
 
@@ -114,5 +114,7 @@ Both migrations are additive and remove or rename no existing fields. The origin
 - Web lint has no errors and retains 10 pre-existing warnings unrelated to P4.
 - Playwright covered full-card mobile topic navigation, collection browsing and selection, topic management, and checkbox states. Existing P4 acceptance covers the feed, profile settings, and public profiles.
 - No horizontal overflow was found at 1440px desktop or 390px mobile widths.
+- Commit `f3d9010` was pushed, and GitHub Actions run `31358640865` built both API and Web images successfully.
+- Production applied `20260810120000_add_topic_cover_metadata` and recreated only API/Web; MySQL, Redis, Caddy, and TURN were not restarted. Public pages and the health endpoint returned `200`, and API/Web startup logs contained no errors.
 
-Production acceptance must still verify real-account publication delivery, cross-device read state, role-topic visibility, and hidden profile fields after deployment.
+Real-account acceptance must still verify publication delivery, cross-device read state, role-topic visibility, and hidden profile fields.
