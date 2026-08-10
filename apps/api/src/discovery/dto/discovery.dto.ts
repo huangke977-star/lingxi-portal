@@ -34,6 +34,13 @@ export class ListSubscriptionFeedQueryDto extends ListDiscoveryQueryDto {
   sort: "latest" | "unread" | "popular" = "latest";
 }
 
+export class ListCollectionsQueryDto extends ListDiscoveryQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q = "";
+}
+
 export class CreateArticleCollectionDto {
   @IsString()
   @MaxLength(80)

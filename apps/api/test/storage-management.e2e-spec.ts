@@ -174,6 +174,38 @@ describe("storage management scanning (e2e)", () => {
     );
   });
 
+  it("treats managed topic covers as referenced article media", async () => {
+    const storedName = "topic-00000000-0000-4000-8000-000000000001.webp";
+    await mkdir(join(process.env.ARTICLE_UPLOAD_DIR!, "topic-covers"), { recursive: true });
+    await writeFile(
+      join(process.env.ARTICLE_UPLOAD_DIR!, "topic-covers", storedName),
+      Buffer.from("topic-cover"),
+    );
+    prisma.articleTopic.findMany.mockResolvedValueOnce([{
+      id: 7,
+      title: "夏日专题",
+      coverOriginalName: "summer.webp",
+      coverStoredName: storedName,
+      coverMimeType: "image/webp",
+      coverSizeBytes: 11,
+      updatedBy: { username: "admin" },
+    }]);
+
+    const scan = await service.startScan(1);
+    const completed = await waitForScan(service, scan.id);
+
+    expect(completed.status).toBe(StorageScanStatus.completed);
+    expect(completed.summary?.categories.find((item) => item.key === "articles"))
+      .toMatchObject({ healthyCount: 1 });
+    expect(prisma.mediaBackupFile.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        category: "articles",
+        storedName: `topic-covers/${storedName}`,
+        sourceType: "topic_cover",
+      }),
+    }));
+  });
+
   it("invalidates the previous hash when a cataloged file changes", async () => {
     const firstScan = await service.startScan(1);
     await waitForScan(service, firstScan.id);
@@ -390,6 +422,12 @@ function prismaMock() {
         { id: 2, originalName: "mismatch.png", storedName: "mismatch.png", mimeType: "image/png", sizeBytes: 100, article: { title: "Mismatch image", slug: "mismatch-image", author: { username: "author" } } },
       ]),
       findUnique: jest.fn(async ({ where }: { where: { storedName: string } }) => where.storedName === "mismatch.png" || where.storedName === "missing.png" ? { id: 1 } : null),
+    },
+    articleTopic: {
+      findMany: jest.fn(
+        async (): Promise<Array<Record<string, unknown>>> => [],
+      ),
+      findUnique: jest.fn(async () => null),
     },
     chatAttachment: {
       findMany: jest.fn(

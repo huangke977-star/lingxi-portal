@@ -39,6 +39,7 @@ import {
   Undo2,
   UserMinus,
   UserPlus,
+  UserRound,
   Video,
   X,
 } from "lucide-react";
@@ -1937,6 +1938,7 @@ export function ChatDock() {
                   }}
                   onToggleMute={(muted) => void toggleConversationMute(entry.conversation, muted)}
                   onOpen={() => { setSelectedId(entry.conversation.id); setIsMobileConversationOpen(true); }}
+                  onViewProfile={() => { setOpenFriendActionId(0); router.push(`/users/${encodeURIComponent(entry.conversation.user.username)}`); }}
                   onToggleMenu={(friendshipId) => setOpenFriendActionId((current) => current === friendshipId ? 0 : friendshipId)}
                   preview={getConversationPreview(entry.conversation)}
                   muted={entry.conversation.muted}
@@ -1964,6 +1966,7 @@ export function ChatDock() {
                     menuOpen={openFriendActionId === friendship.id}
                     onAction={(target, action) => { setPendingFriendAction({ friendship: target, action }); setOpenFriendActionId(0); }}
                     onOpen={() => void openFriendChat(friendship)}
+                    onViewProfile={() => { setOpenFriendActionId(0); router.push(`/users/${encodeURIComponent(friendship.user.username)}`); }}
                     onToggleMenu={(friendshipId) => setOpenFriendActionId((current) => current === friendshipId ? 0 : friendshipId)}
                     preview="开始聊天"
                     muted={false}
@@ -2134,7 +2137,7 @@ export function ChatDock() {
   );
 }
 
-function ChatSidebarContactRow({ active, friendship, menuOpen, muted, preview, unreadCount, user, onAction, onConversationAction, onOpen, onToggleMenu, onToggleMute }: {
+function ChatSidebarContactRow({ active, friendship, menuOpen, muted, preview, unreadCount, user, onAction, onConversationAction, onOpen, onToggleMenu, onToggleMute, onViewProfile }: {
   active: boolean;
   friendship: Friendship | null;
   menuOpen: boolean;
@@ -2147,6 +2150,7 @@ function ChatSidebarContactRow({ active, friendship, menuOpen, muted, preview, u
   onToggleMute?: (muted: boolean) => void;
   onOpen: () => void;
   onToggleMenu: (friendshipId: number) => void;
+  onViewProfile: () => void;
 }) {
   return <div className={`chat-sidebar-contact-row${active ? " active" : ""}`}>
     <button className="chat-sidebar-primary-row" onClick={onOpen} type="button">
@@ -2158,6 +2162,7 @@ function ChatSidebarContactRow({ active, friendship, menuOpen, muted, preview, u
       <button aria-expanded={menuOpen} aria-label={`${user.nickname} 的聊天管理`} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(friendship?.id ?? -user.id); }} title="聊天管理" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
       {menuOpen ? <div className="chat-friend-action-menu">
         {friendship ? <>
+          <button onClick={onViewProfile} type="button"><UserRound aria-hidden="true" size={15} />查看主页</button>
           <button onClick={() => onAction(friendship, "remove")} type="button"><UserMinus aria-hidden="true" size={15} />删除好友</button>
           <button onClick={() => onAction(friendship, "block")} type="button"><Ban aria-hidden="true" size={15} />拉黑好友</button>
         </> : null}

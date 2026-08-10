@@ -3,23 +3,30 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseIntPipe,
   Patch,
   Post,
   Query,
   Req,
+  StreamableFile,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { Request } from "express";
+import { createReadStream } from "node:fs";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UserManagementGuard } from "../auth/guards/user-management.guard";
-import { DiscoveryService } from "./discovery.service";
+import { DiscoveryService, TOPIC_COVER_MAX_FILE_SIZE_BYTES } from "./discovery.service";
 import {
   CreateArticleCollectionDto,
   CreateArticleTopicDto,
+  ListCollectionsQueryDto,
   ListDiscoveryQueryDto,
   ListSubscriptionFeedQueryDto,
   ReorderContentItemsDto,
@@ -28,6 +35,7 @@ import {
   UpdateAuthorSubscriptionDto,
   UpdateProfileSettingsDto,
 } from "./dto/discovery.dto";
+import type { UploadedTopicCover } from "./discovery.types";
 
 @Controller("discovery")
 export class DiscoveryController {
@@ -77,6 +85,20 @@ export class DiscoveryController {
   @UseGuards(JwtAuthGuard)
   listMyCollections(@CurrentUser() user: AuthenticatedUser) {
     return this.discoveryService.listMyCollections(user);
+  }
+
+  @Get("collections")
+  listPublicCollections(@Query() query: ListCollectionsQueryDto) {
+    return this.discoveryService.listCollections(query, null);
+  }
+
+  @Get("collections/visible")
+  @UseGuards(JwtAuthGuard)
+  listVisibleCollections(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListCollectionsQueryDto,
+  ) {
+    return this.discoveryService.listCollections(query, user);
   }
 
   @Post("collections")
@@ -156,6 +178,16 @@ export class DiscoveryController {
     return this.discoveryService.listTopics(query, null);
   }
 
+  @Get("topics/covers/:storedName")
+  @Header("Cache-Control", "public, max-age=31536000, immutable")
+  async getTopicCover(@Param("storedName") storedName: string): Promise<StreamableFile> {
+    const file = await this.discoveryService.getTopicCover(storedName);
+    return new StreamableFile(createReadStream(file.filePath), {
+      length: file.sizeBytes,
+      type: file.mimeType,
+    });
+  }
+
   @Get("topics/visible")
   @UseGuards(JwtAuthGuard)
   listVisibleTopics(
@@ -186,6 +218,17 @@ export class DiscoveryController {
   @UseGuards(JwtAuthGuard, UserManagementGuard)
   createTopic(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateArticleTopicDto) {
     return this.discoveryService.createTopic(user, dto);
+  }
+
+  @Post("admin/topics/:id/cover")
+  @UseGuards(JwtAuthGuard, UserManagementGuard)
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: TOPIC_COVER_MAX_FILE_SIZE_BYTES } }))
+  uploadTopicCover(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @UploadedFile() file: UploadedTopicCover | undefined,
+  ) {
+    return this.discoveryService.uploadTopicCover(user, id, file);
   }
 
   @Patch("admin/topics/:id")

@@ -5,6 +5,9 @@ import {
   PortalVisibility,
 } from "../src/generated/prisma/client";
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { AuthenticatedUser } from "../src/auth/auth.types";
 import { DiscoveryService } from "../src/discovery/discovery.service";
 import { PrismaService } from "../src/prisma/prisma.service";
@@ -145,6 +148,111 @@ describe("DiscoveryService", () => {
 
     await expect(service.reorderCollectionArticles(user, 31, { ids: [1] }))
       .rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("searches only collections visible to the current viewer", async () => {
+    const prisma = {
+      articleCollection: {
+        count: jest.fn(async () => 1),
+        findMany: jest.fn(async () => [collection()]),
+      },
+    };
+
+    const result = await createService(prisma).listCollections({
+      q: "服务器",
+      page: 1,
+      pageSize: 12,
+    }, user);
+
+    expect(result.total).toBe(1);
+    expect(prisma.articleCollection.count).toHaveBeenCalledWith({
+      where: {
+        AND: [
+          expect.objectContaining({
+            OR: expect.arrayContaining([
+              { visibility: ArticleVisibility.public },
+              { visibility: ArticleVisibility.authenticated },
+              { visibility: ArticleVisibility.private, ownerId: user.id },
+            ]),
+          }),
+          expect.objectContaining({
+            OR: expect.arrayContaining([
+              { name: { contains: "服务器" } },
+              { description: { contains: "服务器" } },
+            ]),
+          }),
+        ],
+      },
+    });
+  });
+
+  it("rejects a topic cover when its extension and bytes do not describe a supported image", async () => {
+    const admin = { ...user, isSuperAdmin: true };
+    const prisma = {
+      articleTopic: {
+        findUnique: jest.fn(async () => ({ id: 9, coverStoredName: null })),
+      },
+    };
+
+    await expect(createService(prisma).uploadTopicCover(admin, 9, {
+      buffer: Buffer.from("not-an-image"),
+      mimetype: "image/png",
+      originalname: "cover.png",
+      size: 12,
+    })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("writes a managed topic cover and physically removes the previous file", async () => {
+    const uploadRoot = await mkdtemp(join(tmpdir(), "hlovet-topic-cover-"));
+    const previousUploadRoot = process.env.ARTICLE_UPLOAD_DIR;
+    process.env.ARTICLE_UPLOAD_DIR = uploadRoot;
+    const coverDirectory = join(uploadRoot, "topic-covers");
+    const previousStoredName = "topic-00000000-0000-4000-8000-000000000001.webp";
+    await mkdir(coverDirectory, { recursive: true });
+    await writeFile(join(coverDirectory, previousStoredName), Buffer.from("old-cover"));
+    const admin = { ...user, isSuperAdmin: true };
+    let updatedData: Record<string, unknown> = {};
+    const prisma = {
+      articleTopic: {
+        findUnique: jest.fn(async (args: { include?: unknown }) => args.include ? {
+          id: 9,
+          title: "封面测试",
+          slug: "cover-test",
+          description: "",
+          coverPath: updatedData.coverPath,
+          visibility: PortalVisibility.public,
+          status: ArticleTopicStatus.active,
+          sortOrder: 0,
+          allowedRoles: [],
+          items: [],
+          createdAt: new Date("2026-08-10T00:00:00.000Z"),
+          updatedAt: new Date("2026-08-10T00:00:00.000Z"),
+        } : { id: 9, coverStoredName: previousStoredName }),
+        update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          updatedData = data;
+          return {};
+        }),
+      },
+    };
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+    try {
+      const result = await createService(prisma).uploadTopicCover(admin, 9, {
+        buffer: png,
+        mimetype: "image/png",
+        originalname: "new-cover.png",
+        size: png.length,
+      });
+
+      const storedName = String(updatedData.coverStoredName);
+      expect(result.coverPath).toBe(`/discovery/topics/covers/${storedName}`);
+      expect((await stat(join(coverDirectory, storedName))).size).toBe(png.length);
+      await expect(stat(join(coverDirectory, previousStoredName))).rejects.toThrow();
+    } finally {
+      if (previousUploadRoot === undefined) delete process.env.ARTICLE_UPLOAD_DIR;
+      else process.env.ARTICLE_UPLOAD_DIR = previousUploadRoot;
+      await rm(uploadRoot, { recursive: true, force: true });
+    }
   });
 
   it("persists per-user feed reads so the state is shared by every device", async () => {

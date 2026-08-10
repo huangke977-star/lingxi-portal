@@ -115,6 +115,10 @@ export function listMyCollections(accessToken: string) {
   return requestJson<{ items: ArticleCollection[] }>("/discovery/collections/mine", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
+export function listVisibleCollections(accessToken: string, input: { q?: string; page?: number; pageSize?: number } = {}) {
+  return requestJson<{ items: ArticleCollection[]; total: number; page: number; pageSize: number; totalPages: number }>(`/discovery/collections/visible${pageQuery(input)}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
 export function createCollection(accessToken: string, input: { name: string; description?: string; visibility?: ArticleCollection["visibility"] }) {
   return requestJson<ArticleCollection>("/discovery/collections", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(input) });
 }
@@ -166,6 +170,12 @@ export function updateTopic(accessToken: string, id: number, input: Partial<Omit
 
 export function deleteTopic(accessToken: string, id: number) {
   return requestJson<{ success: true }>(`/discovery/admin/topics/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function uploadTopicCover(accessToken: string, id: number, file: File) {
+  const body = new FormData();
+  body.set("file", file);
+  return requestJson<ArticleTopic>(`/discovery/admin/topics/${id}/cover`, { method: "POST", headers: authHeaders(accessToken), body });
 }
 
 export function addTopicArticle(accessToken: string, id: number, articleId: number) {

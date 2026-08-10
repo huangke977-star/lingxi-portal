@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
+import { access, mkdir, unlink, writeFile } from "node:fs/promises";
+import { basename, extname, join, resolve } from "node:path";
 import {
   ArticleStatus,
   ArticleTopicStatus,
@@ -18,6 +20,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import {
   CreateArticleCollectionDto,
   CreateArticleTopicDto,
+  ListCollectionsQueryDto,
   ListDiscoveryQueryDto,
   ListSubscriptionFeedQueryDto,
   ReorderContentItemsDto,
@@ -33,7 +36,45 @@ import {
   ProfileSettingsResponse,
   ProfileShowcaseResponse,
   SubscriptionFeedResponse,
+  UploadedTopicCover,
 } from "./discovery.types";
+
+export const TOPIC_COVER_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const TOPIC_COVER_PUBLIC_PREFIX = "/discovery/topics/covers/";
+
+interface SupportedTopicCoverFormat {
+  extension: string;
+  extensions: string[];
+  mimeType: string;
+  matches: (buffer: Buffer) => boolean;
+}
+
+const TOPIC_COVER_FORMATS: SupportedTopicCoverFormat[] = [
+  {
+    extension: ".jpg",
+    extensions: [".jpg", ".jpeg"],
+    mimeType: "image/jpeg",
+    matches: (buffer) => buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff,
+  },
+  {
+    extension: ".png",
+    extensions: [".png"],
+    mimeType: "image/png",
+    matches: (buffer) => buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  },
+  {
+    extension: ".webp",
+    extensions: [".webp"],
+    mimeType: "image/webp",
+    matches: (buffer) => buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP",
+  },
+  {
+    extension: ".avif",
+    extensions: [".avif"],
+    mimeType: "image/avif",
+    matches: (buffer) => buffer.length >= 12 && buffer.subarray(4, 12).toString("ascii").includes("ftypavif"),
+  },
+];
 
 const discoveryArticleInclude = {
   author: {
@@ -112,6 +153,11 @@ type ArticleTopicRecord = Prisma.ArticleTopicGetPayload<{
 
 @Injectable()
 export class DiscoveryService {
+  private readonly topicCoverDirectory = resolve(
+    process.env.ARTICLE_UPLOAD_DIR ?? join(process.cwd(), "uploads", "articles"),
+    "topic-covers",
+  );
+
   constructor(private readonly prisma: PrismaService) {}
 
   /** Subscription feed counts only currently readable published articles from active subscriptions. */
@@ -360,6 +406,40 @@ export class DiscoveryService {
     return this.toCollection(record, viewer, record.ownerId === viewer?.id);
   }
 
+  async listCollections(query: ListCollectionsQueryDto, viewer: AuthenticatedUser | null) {
+    const keyword = query.q.trim();
+    const where: Prisma.ArticleCollectionWhereInput = {
+      AND: [
+        this.collectionVisibleWhere(viewer),
+        ...(keyword ? [{
+          OR: [
+            { name: { contains: keyword } },
+            { description: { contains: keyword } },
+            { owner: { is: { nickname: { contains: keyword } } } },
+            { owner: { is: { username: { contains: keyword } } } },
+          ],
+        }] : []),
+      ],
+    };
+    const total = await this.prisma.articleCollection.count({ where });
+    const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+    const page = Math.min(query.page, totalPages);
+    const records = await this.prisma.articleCollection.findMany({
+      where,
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      skip: (page - 1) * query.pageSize,
+      take: query.pageSize,
+      include: articleCollectionInclude,
+    });
+    return {
+      items: records.map((record) => this.toCollection(record, viewer, record.ownerId === viewer?.id)),
+      total,
+      page,
+      pageSize: query.pageSize,
+      totalPages,
+    };
+  }
+
   async listTopics(query: ListDiscoveryQueryDto, viewer: AuthenticatedUser | null) {
     const where = this.topicVisibleWhere(viewer);
     const total = await this.prisma.articleTopic.count({ where });
@@ -399,6 +479,63 @@ export class DiscoveryService {
     return { items: records.map((record) => this.toTopic(record, user, true)) };
   }
 
+  async uploadTopicCover(
+    user: AuthenticatedUser,
+    id: number,
+    file: UploadedTopicCover | undefined,
+  ) {
+    this.assertCanManage(user);
+    if (!file) throw new BadRequestException("请选择要上传的专题封面。");
+    if (file.size > TOPIC_COVER_MAX_FILE_SIZE_BYTES) {
+      throw new BadRequestException("专题封面不能超过 10 MB。");
+    }
+    const topic = await this.prisma.articleTopic.findUnique({
+      where: { id },
+      select: { id: true, coverStoredName: true },
+    });
+    if (!topic) throw new NotFoundException("专题不存在。");
+    const format = this.validateTopicCover(file);
+    const storedName = `topic-${randomUUID()}${format.extension}`;
+    const filePath = this.resolveTopicCoverPath(storedName);
+    await mkdir(this.topicCoverDirectory, { recursive: true });
+    try {
+      await writeFile(filePath, file.buffer, { flag: "wx" });
+      await this.prisma.articleTopic.update({
+        where: { id },
+        data: {
+          coverPath: `${TOPIC_COVER_PUBLIC_PREFIX}${storedName}`,
+          coverOriginalName: basename(file.originalname).slice(0, 255),
+          coverStoredName: storedName,
+          coverMimeType: format.mimeType,
+          coverSizeBytes: file.size,
+          updatedById: user.id,
+        },
+      });
+    } catch (error) {
+      await unlink(filePath).catch(() => undefined);
+      throw error;
+    }
+    await this.deleteManagedTopicCover(topic.coverStoredName);
+    return this.getAdminTopic(user, id);
+  }
+
+  async getTopicCover(storedName: string): Promise<{ filePath: string; mimeType: string; sizeBytes: number }> {
+    const filePath = this.resolveTopicCoverPath(storedName);
+    const topic = await this.prisma.articleTopic.findUnique({
+      where: { coverStoredName: storedName },
+      select: { coverMimeType: true, coverSizeBytes: true },
+    });
+    if (!topic?.coverMimeType || topic.coverSizeBytes === null) {
+      throw new NotFoundException("专题封面不存在。");
+    }
+    try {
+      await access(filePath);
+    } catch {
+      throw new NotFoundException("专题封面文件不存在。");
+    }
+    return { filePath, mimeType: topic.coverMimeType, sizeBytes: topic.coverSizeBytes };
+  }
+
   async createTopic(user: AuthenticatedUser, dto: CreateArticleTopicDto) {
     this.assertCanManage(user);
     const title = dto.title.trim();
@@ -427,7 +564,14 @@ export class DiscoveryService {
     this.assertCanManage(user);
     const existing = await this.prisma.articleTopic.findUnique({
       where: { id },
-      select: { id: true, title: true, visibility: true, allowedRoles: { select: { role: { select: { code: true } } } } },
+      select: {
+        id: true,
+        title: true,
+        visibility: true,
+        coverPath: true,
+        coverStoredName: true,
+        allowedRoles: { select: { role: { select: { code: true } } } },
+      },
     });
     if (!existing) throw new NotFoundException("专题不存在。");
     const visibility = dto.visibility ? this.topicVisibility(dto.visibility) : existing.visibility;
@@ -437,6 +581,10 @@ export class DiscoveryService {
     );
     const title = dto.title?.trim();
     if (dto.title !== undefined && !title) throw new BadRequestException("专题名称不能为空。");
+    const nextCoverPath = dto.coverPath === undefined ? undefined : dto.coverPath.trim() || null;
+    const replacesManagedCover = Boolean(
+      existing.coverStoredName && nextCoverPath !== undefined && nextCoverPath !== existing.coverPath,
+    );
     const record = await this.prisma.$transaction(async (transaction) => {
       await transaction.articleTopicAllowedRole.deleteMany({ where: { topicId: id } });
       return transaction.articleTopic.update({
@@ -445,7 +593,13 @@ export class DiscoveryService {
           ...(title !== undefined ? { title } : {}),
           ...(dto.slug !== undefined ? { slug: await this.uniqueTopicSlug(dto.slug || title || existing.title, id) } : {}),
           ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
-          ...(dto.coverPath !== undefined ? { coverPath: dto.coverPath.trim() || null } : {}),
+          ...(nextCoverPath !== undefined ? { coverPath: nextCoverPath } : {}),
+          ...(replacesManagedCover ? {
+            coverOriginalName: null,
+            coverStoredName: null,
+            coverMimeType: null,
+            coverSizeBytes: null,
+          } : {}),
           visibility,
           ...(dto.status !== undefined ? { status: dto.status as ArticleTopicStatus } : {}),
           ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
@@ -455,14 +609,16 @@ export class DiscoveryService {
         include: articleTopicInclude,
       });
     });
+    if (replacesManagedCover) await this.deleteManagedTopicCover(existing.coverStoredName);
     return this.toTopic(record, user, true);
   }
 
   async deleteTopic(user: AuthenticatedUser, id: number) {
     this.assertCanManage(user);
-    await this.prisma.articleTopic.delete({ where: { id } }).catch(() => {
-      throw new NotFoundException("专题不存在。");
-    });
+    const topic = await this.prisma.articleTopic.findUnique({ where: { id }, select: { coverStoredName: true } });
+    if (!topic) throw new NotFoundException("专题不存在。");
+    await this.prisma.articleTopic.delete({ where: { id } });
+    await this.deleteManagedTopicCover(topic.coverStoredName);
     return { success: true };
   }
 
@@ -865,6 +1021,31 @@ export class DiscoveryService {
     if (current.length !== requested.length || current.some((value, index) => value !== requested[index])) {
       throw new BadRequestException("排序列表必须包含当前全部文章且不能重复。");
     }
+  }
+
+  private validateTopicCover(file: UploadedTopicCover): SupportedTopicCoverFormat {
+    const mimeType = file.mimetype.toLowerCase();
+    const extension = extname(file.originalname).toLowerCase();
+    const format = TOPIC_COVER_FORMATS.find((candidate) => candidate.matches(file.buffer));
+    if (!format || mimeType !== format.mimeType || !format.extensions.includes(extension)) {
+      throw new BadRequestException("专题封面只支持有效的 JPEG、PNG、WebP 或 AVIF 图片。");
+    }
+    return format;
+  }
+
+  private resolveTopicCoverPath(storedName: string): string {
+    if (!/^topic-[0-9a-f-]{36}\.(?:jpg|png|webp|avif)$/i.test(storedName) || basename(storedName) !== storedName) {
+      throw new NotFoundException("专题封面不存在。");
+    }
+    const filePath = resolve(this.topicCoverDirectory, storedName);
+    const prefix = `${this.topicCoverDirectory}${process.platform === "win32" ? "\\" : "/"}`;
+    if (!filePath.startsWith(prefix)) throw new NotFoundException("专题封面不存在。");
+    return filePath;
+  }
+
+  private async deleteManagedTopicCover(storedName: string | null): Promise<void> {
+    if (!storedName) return;
+    await unlink(this.resolveTopicCoverPath(storedName)).catch(() => undefined);
   }
 
   private collectionVisibility(value?: "public" | "authenticated" | "private"): ArticleVisibility {

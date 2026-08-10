@@ -809,6 +809,30 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
       uploadedBy: item.article.author.username,
     })));
 
+    const topicCovers = await this.prisma.articleTopic.findMany({
+      where: { coverStoredName: { not: null } },
+      select: {
+        id: true,
+        title: true,
+        coverOriginalName: true,
+        coverStoredName: true,
+        coverMimeType: true,
+        coverSizeBytes: true,
+        updatedBy: { select: { username: true } },
+      },
+    });
+    references.push(...topicCovers.flatMap((item) => item.coverStoredName ? [{
+      category: "articles" as const,
+      storedName: `topic-covers/${item.coverStoredName}`,
+      mimeType: item.coverMimeType,
+      sizeBytes: item.coverSizeBytes,
+      sourceType: "topic_cover",
+      sourceId: String(item.id),
+      sourceLabel: `${item.title} · ${item.coverOriginalName ?? item.coverStoredName}`,
+      sourceUrl: "/admin/topics",
+      uploadedBy: item.updatedBy?.username ?? null,
+    }] : []));
+
     const attachments = await this.prisma.chatAttachment.findMany({
       where: { messageId: { not: null } },
       select: {
@@ -989,6 +1013,12 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
       case "avatars":
         return Boolean(await this.prisma.user.findUnique({ where: { avatarStoredName: storedName }, select: { id: true } }));
       case "articles":
+        if (storedName.startsWith("topic-covers/")) {
+          return Boolean(await this.prisma.articleTopic.findUnique({
+            where: { coverStoredName: basename(storedName) },
+            select: { id: true },
+          }));
+        }
         return Boolean(await this.prisma.articleImage.findUnique({ where: { storedName }, select: { id: true } }));
       case "chat":
         return Boolean(await this.prisma.chatAttachment.findUnique({ where: { storedName }, select: { id: true } }));

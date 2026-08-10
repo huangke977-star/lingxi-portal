@@ -211,6 +211,7 @@ Goal: turn subscriptions into a useful content feed and improve organization thr
 - Playwright covered topics, subscription feeds, notification preferences, collections, topic management, profile visibility, and public profile showcases at 1440x900 and 390x844 without horizontal overflow.
 - Commit `ad2fd38` was pushed and GitHub Actions run `31351553373` built both API and Web images successfully. On 2026-08-10, production ran `api-bootstrap`, confirmed 31 migrations with none pending, and recreated only API/Web. MySQL, Redis, Caddy, and TURN were not restarted.
 - API/Web restart counts remained zero and startup logs contained no errors. The home page, health endpoint, subscription feed, collections, topics, topic management, and public topics API all returned `200`, completing Phase 4.
+- A 2026-08-10 local follow-up adds permission-filtered collection discovery, shared immediate multi-select and drag ordering for collections/topics, managed local topic-cover uploads with physical cleanup, and full-card mobile topic navigation. It awaits user acceptance before deployment.
 
 ### Acceptance
 

@@ -7,6 +7,13 @@ export interface DiscoveryAuthorResponse {
   role: { code: string; name: string; level: number };
 }
 
+export interface UploadedTopicCover {
+  buffer: Buffer;
+  mimetype: string;
+  originalname: string;
+  size: number;
+}
+
 export interface DiscoveryTaxonomyLink {
   id: number;
   label: string;
