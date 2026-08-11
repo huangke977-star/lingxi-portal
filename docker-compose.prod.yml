@@ -153,6 +153,8 @@ services:
       AVATAR_UPLOAD_DIR: /app/uploads/avatars
       ARTICLE_UPLOAD_DIR: /app/uploads/articles
       CHAT_UPLOAD_DIR: /app/uploads/chat
+      GROUP_AVATAR_UPLOAD_DIR: /app/uploads/avatars/groups
+      CHAT_GROUP_MEMBER_LIMIT: ${CHAT_GROUP_MEMBER_LIMIT:-100}
       BACKUP_DIR: /app/backups
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
     ports:

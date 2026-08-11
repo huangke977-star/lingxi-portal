@@ -96,6 +96,7 @@ export class AuditInterceptor implements NestInterceptor {
     if (path.startsWith("/users")) return this.entry(method, path, "business", "user", "用户账号管理");
     if (path.startsWith("/portal/admin")) return this.entry(method, path, "business", "portal_content", "门户内容管理");
     if (path.startsWith("/articles/admin")) return this.entry(method, path, "business", "article_content", "文章与评论管理");
+    if (path.startsWith("/social/group-reports")) return this.entry(method, path, "business", "group_report", "群聊举报管理");
     if (path.startsWith("/admin/cache")) return this.entry(method, path, "security", "redis_cache", "Redis 缓存管理");
     if (path.startsWith("/site-settings")) return this.entry(method, path, "security", "site_setting", "站点设置管理");
     if (path.startsWith("/security-admin")) return this.entry(method, path, "security", "account_security", "账号安全管理");

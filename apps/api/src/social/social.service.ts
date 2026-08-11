@@ -7,7 +7,11 @@ import {
 import {
   ArticleStatus,
   ArticleVisibility,
+  ChatGroupMemberRole,
+  ChatGroupMemberStatus,
+  ChatGroupStatus,
   ChatMessageType,
+  ConversationKind,
   FriendshipStatus,
   Prisma,
   UserNotificationChannel,
@@ -26,6 +30,7 @@ import {
 } from "./dto/social.dto";
 import {
   ChatMessageResponse,
+  ChatGroupSummaryResponse,
   ConversationResponse,
   FriendshipResponse,
   PublicProfileResponse,
@@ -60,6 +65,27 @@ const socialUserSelect = {
 } satisfies Prisma.UserSelect;
 
 type SocialUserRecord = Prisma.UserGetPayload<{ select: typeof socialUserSelect }>;
+
+const conversationGroupInclude = {
+  owner: { select: socialUserSelect },
+  members: {
+    include: { user: { select: socialUserSelect } },
+    orderBy: [{ joinedAt: "asc" as const }, { userId: "asc" as const }],
+  },
+  joinRequests: {
+    where: { status: "pending" as const },
+    select: { id: true },
+  },
+} satisfies Prisma.ChatGroupInclude;
+
+type ConversationGroupRecord = Prisma.ChatGroupGetPayload<{ include: typeof conversationGroupInclude }>;
+
+interface ConversationMembership {
+  kind: ConversationKind;
+  participantIds: number[];
+  friendship: { userOneId: number; userTwoId: number } | null;
+  group: { id: number; role: ChatGroupMemberRole; mutedUntil: Date | null } | null;
+}
 
 const friendshipInclude = {
   userOne: { select: socialUserSelect },
@@ -589,23 +615,35 @@ export class SocialService {
   async listConversations(user: AuthenticatedUser): Promise<{ items: ConversationResponse[] }> {
     const conversations = await this.prisma.conversation.findMany({
       where: {
-        friendship: {
-          status: FriendshipStatus.accepted,
-          OR: [{ userOneId: user.id }, { userTwoId: user.id }],
-        },
+        OR: [
+          {
+            friendship: {
+              status: FriendshipStatus.accepted,
+              OR: [{ userOneId: user.id }, { userTwoId: user.id }],
+            },
+          },
+          {
+            group: {
+              status: ChatGroupStatus.active,
+              OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+              members: { some: { userId: user.id, status: ChatGroupMemberStatus.active } },
+            },
+          },
+        ],
         participantStates: { none: { userId: user.id, hidden: true } },
       },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       include: {
         friendship: { include: friendshipInclude },
+        group: { include: conversationGroupInclude },
         participantStates: { where: { userId: user.id }, take: 1 },
       },
     });
     return {
       items: await Promise.all(conversations.map(async (conversation) => {
-        const counterpart = this.counterpart(conversation.friendship, user.id);
         const clearedBeforeMessageId = conversation.participantStates[0]?.clearedBeforeMessageId ?? null;
         const visibleWhere = this.visibleMessageWhere(user.id, conversation.id, clearedBeforeMessageId);
+        const lastReadMessageId = conversation.participantStates[0]?.lastReadMessageId ?? null;
         const [lastMessage, unreadCount] = await Promise.all([
           this.prisma.chatMessage.findFirst({
             where: visibleWhere,
@@ -613,12 +651,32 @@ export class SocialService {
             include: messageInclude,
           }),
           this.prisma.chatMessage.count({
-            where: { ...visibleWhere, senderId: { not: user.id }, readAt: null },
+            where: conversation.group
+              ? {
+                  AND: [visibleWhere, { senderId: { not: user.id } }, ...(lastReadMessageId ? [{ id: { gt: lastReadMessageId } }] : [])],
+                }
+              : { ...visibleWhere, senderId: { not: user.id }, readAt: null },
           }),
         ]);
+        if (conversation.friendship) {
+          const counterpart = this.counterpart(conversation.friendship, user.id);
+          return {
+            id: conversation.id,
+            kind: ConversationKind.direct,
+            user: this.toSocialUser(counterpart),
+            group: null,
+            lastMessage: lastMessage ? this.toMessage(lastMessage) : null,
+            unreadCount,
+            muted: conversation.participantStates[0]?.muted ?? false,
+            updatedAt: conversation.updatedAt.toISOString(),
+          };
+        }
+        if (!conversation.group) throw new NotFoundException("会话关联数据不存在。");
         return {
           id: conversation.id,
-          user: this.toSocialUser(counterpart),
+          kind: conversation.kind,
+          user: this.toSocialUser(conversation.group.owner),
+          group: this.toGroupSummary(conversation.group, user.id),
           lastMessage: lastMessage ? this.toMessage(lastMessage) : null,
           unreadCount,
           muted: conversation.participantStates[0]?.muted ?? false,
@@ -671,7 +729,10 @@ export class SocialService {
     if (Array.from(body).length > 2000) {
       throw new BadRequestException("单条消息不能超过 2000 个字符。");
     }
-    const friendship = await this.assertConversationMember(conversationId, userId);
+    const membership = await this.assertConversationMember(conversationId, userId);
+    if (membership.group?.mutedUntil && membership.group.mutedUntil > new Date()) {
+      throw new ForbiddenException(`你已被禁言至 ${membership.group.mutedUntil.toLocaleString("zh-CN", { hour12: false })}。`);
+    }
     const message = await this.prisma.$transaction(async (transaction) => {
       const created = await transaction.chatMessage.create({
         data: {
@@ -692,10 +753,7 @@ export class SocialService {
         created.id,
       );
       await transaction.conversationParticipantState.createMany({
-        data: [
-          { conversationId, userId: friendship.userOneId },
-          { conversationId, userId: friendship.userTwoId },
-        ],
+        data: membership.participantIds.map((participantId) => ({ conversationId, userId: participantId })),
         skipDuplicates: true,
       });
       await transaction.conversationParticipantState.updateMany({
@@ -718,7 +776,10 @@ export class SocialService {
     if (messageIds.length > 20) throw new BadRequestException("单次最多转发 20 条消息。");
     if (sourceConversationId === targetConversationId) throw new BadRequestException("请选择其他好友进行转发。");
     await this.assertConversationMember(sourceConversationId, userId);
-    const targetFriendship = await this.assertConversationMember(targetConversationId, userId);
+    const targetMembership = await this.assertConversationMember(targetConversationId, userId);
+    if (targetMembership.group?.mutedUntil && targetMembership.group.mutedUntil > new Date()) {
+      throw new ForbiddenException("你当前在目标群聊中被禁言。");
+    }
     const sourceState = await this.prisma.conversationParticipantState.findUnique({
       where: { conversationId_userId: { conversationId: sourceConversationId, userId } },
       select: { clearedBeforeMessageId: true },
@@ -773,10 +834,10 @@ export class SocialService {
           }));
         }
         await transaction.conversationParticipantState.createMany({
-          data: [
-            { conversationId: targetConversationId, userId: targetFriendship.userOneId },
-            { conversationId: targetConversationId, userId: targetFriendship.userTwoId },
-          ],
+          data: targetMembership.participantIds.map((participantId) => ({
+            conversationId: targetConversationId,
+            userId: participantId,
+          })),
           skipDuplicates: true,
         });
         await transaction.conversationParticipantState.updateMany({
@@ -788,7 +849,7 @@ export class SocialService {
       });
       return {
         messages: forwarded.map((message) => this.toMessage(message)),
-        participantIds: [targetFriendship.userOneId, targetFriendship.userTwoId],
+        participantIds: targetMembership.participantIds,
       };
     } catch (error) {
       await this.chatAttachmentsService.deleteStoredFiles(copiedStoredNames).catch(() => undefined);
@@ -800,16 +861,38 @@ export class SocialService {
     userId: number,
     conversationId: number,
   ): Promise<{ count: number; readAt: string; participantIds: number[] }> {
-    const friendship = await this.assertConversationMember(conversationId, userId);
+    const membership = await this.assertConversationMember(conversationId, userId);
     const readAt = new Date();
-    const result = await this.prisma.chatMessage.updateMany({
-      where: { conversationId, senderId: { not: userId }, readAt: null },
-      data: { readAt },
+    const state = await this.prisma.conversationParticipantState.findUnique({
+      where: { conversationId_userId: { conversationId, userId } },
+      select: { lastReadMessageId: true },
+    });
+    const latest = await this.prisma.chatMessage.findFirst({
+      where: { conversationId },
+      orderBy: { id: "desc" },
+      select: { id: true },
+    });
+    const count = membership.group
+      ? await this.prisma.chatMessage.count({
+          where: {
+            conversationId,
+            senderId: { not: userId },
+            ...(state?.lastReadMessageId ? { id: { gt: state.lastReadMessageId } } : {}),
+          },
+        })
+      : (await this.prisma.chatMessage.updateMany({
+          where: { conversationId, senderId: { not: userId }, readAt: null },
+          data: { readAt },
+        })).count;
+    await this.prisma.conversationParticipantState.upsert({
+      where: { conversationId_userId: { conversationId, userId } },
+      create: { conversationId, userId, lastReadMessageId: latest?.id ?? null },
+      update: { lastReadMessageId: latest?.id ?? null },
     });
     return {
-      count: result.count,
+      count,
       readAt: readAt.toISOString(),
-      participantIds: [friendship.userOneId, friendship.userTwoId],
+      participantIds: membership.participantIds,
     };
   }
 
@@ -831,7 +914,7 @@ export class SocialService {
     userId: number,
     conversationId: number,
   ): Promise<{ conversationId: number; participantIds: number[] }> {
-    const friendship = await this.assertConversationMember(conversationId, userId);
+    const membership = await this.assertConversationMember(conversationId, userId);
     const latestMessage = await this.prisma.chatMessage.findFirst({
       where: { conversationId },
       orderBy: [{ id: "desc" }],
@@ -859,7 +942,7 @@ export class SocialService {
     ]);
     return {
       conversationId,
-      participantIds: [friendship.userOneId, friendship.userTwoId],
+      participantIds: membership.participantIds,
     };
   }
 
@@ -867,7 +950,7 @@ export class SocialService {
     userId: number,
     conversationId: number,
   ): Promise<{ conversationId: number; participantIds: number[] }> {
-    const friendship = await this.assertConversationMember(conversationId, userId);
+    const membership = await this.assertConversationMember(conversationId, userId);
     const latestMessage = await this.prisma.chatMessage.findFirst({
       where: { conversationId },
       orderBy: [{ id: "desc" }],
@@ -895,7 +978,7 @@ export class SocialService {
     ]);
     return {
       conversationId,
-      participantIds: [friendship.userOneId, friendship.userTwoId],
+      participantIds: membership.participantIds,
     };
   }
 
@@ -933,7 +1016,7 @@ export class SocialService {
     conversationId: number,
     rawMessageIds: number[],
   ): Promise<{ conversationId: number; messageIds: number[]; participantIds: number[] }> {
-    const friendship = await this.assertConversationMember(conversationId, userId);
+    const membership = await this.assertConversationMember(conversationId, userId);
     const messageIds = this.normalizeMessageIds(rawMessageIds);
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
@@ -943,11 +1026,19 @@ export class SocialService {
       where: { conversationId, id: { in: messageIds } },
       select: {
         id: true,
+        senderId: true,
         attachments: { select: { storedName: true } },
       },
     });
     if (messages.length !== messageIds.length) {
       throw new NotFoundException("部分消息不存在或不属于当前会话。");
+    }
+    if (
+      membership.group &&
+      membership.group.role === ChatGroupMemberRole.member &&
+      messages.some((message) => message.senderId !== userId)
+    ) {
+      throw new ForbiddenException("普通群成员只能双向删除自己发送的消息。");
     }
     await this.prisma.$transaction(async (transaction) => {
       await transaction.chatMessage.deleteMany({
@@ -969,7 +1060,7 @@ export class SocialService {
     return {
       conversationId,
       messageIds,
-      participantIds: [friendship.userOneId, friendship.userTwoId],
+      participantIds: membership.participantIds,
     };
   }
 
@@ -989,11 +1080,12 @@ export class SocialService {
         conversation: {
           select: {
             friendship: { select: { userOneId: true, userTwoId: true, status: true } },
+            group: { select: { id: true } },
           },
         },
       },
     });
-    if (!message || message.conversation.friendship.status !== FriendshipStatus.accepted) {
+    if (!message) {
       throw new NotFoundException("消息不存在或当前不可撤回。");
     }
     if (message.senderId !== user.id || message.type === ChatMessageType.system) {
@@ -1002,6 +1094,7 @@ export class SocialService {
     if (Date.now() - message.createdAt.getTime() > MESSAGE_RECALL_WINDOW_MS) {
       throw new BadRequestException("消息发送超过 2 分钟，不能撤回。");
     }
+    const membership = await this.assertConversationMember(message.conversationId, user.id);
     const replacement = await this.prisma.$transaction(async (transaction) => {
       await transaction.chatMessage.delete({ where: { id: message.id } });
       const created = await transaction.chatMessage.create({
@@ -1026,22 +1119,54 @@ export class SocialService {
       conversationId: message.conversationId,
       messageId: message.id,
       replacement: this.toMessage(replacement),
-      participantIds: [
-        message.conversation.friendship.userOneId,
-        message.conversation.friendship.userTwoId,
-      ],
+      participantIds: membership.participantIds,
     };
   }
 
   async getConversationParticipantIds(conversationId: number): Promise<number[]> {
+    return (await this.getConversationDelivery(conversationId)).participantIds;
+  }
+
+  async getConversationDelivery(conversationId: number): Promise<{ kind: ConversationKind; participantIds: number[] }> {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
-      select: { friendship: { select: { userOneId: true, userTwoId: true, status: true } } },
+      select: {
+        kind: true,
+        friendship: { select: { userOneId: true, userTwoId: true, status: true } },
+        group: {
+          select: {
+            status: true,
+            expiresAt: true,
+            members: { where: { status: ChatGroupMemberStatus.active }, select: { userId: true } },
+          },
+        },
+      },
     });
-    if (!conversation || conversation.friendship.status !== FriendshipStatus.accepted) {
+    if (!conversation) {
       throw new NotFoundException("会话不存在或当前不可使用。");
     }
-    return [conversation.friendship.userOneId, conversation.friendship.userTwoId];
+    if (conversation.friendship?.status === FriendshipStatus.accepted) {
+      return { kind: ConversationKind.direct, participantIds: [conversation.friendship.userOneId, conversation.friendship.userTwoId] };
+    }
+    if (
+      conversation.group?.status === ChatGroupStatus.active &&
+      (!conversation.group.expiresAt || conversation.group.expiresAt > new Date())
+    ) {
+      return { kind: conversation.kind, participantIds: conversation.group.members.map((member) => member.userId) };
+    }
+    throw new NotFoundException("会话不存在或当前不可使用。");
+  }
+
+  async listActiveGroupConversationIds(userId: number): Promise<number[]> {
+    const groups = await this.prisma.chatGroup.findMany({
+      where: {
+        status: ChatGroupStatus.active,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        members: { some: { userId, status: ChatGroupMemberStatus.active } },
+      },
+      select: { conversationId: true },
+    });
+    return groups.map((group) => group.conversationId);
   }
 
   async getMessageForBroadcast(messageId: number): Promise<ChatMessageResponse> {
@@ -1054,28 +1179,50 @@ export class SocialService {
   }
 
   async getSummary(user: AuthenticatedUser): Promise<SocialSummaryResponse> {
-    const friendshipWhere: Prisma.FriendshipWhereInput = {
-      status: FriendshipStatus.accepted,
-      OR: [{ userOneId: user.id }, { userTwoId: user.id }],
-    };
     const pushDisabledChannels = await this.listPushDisabledNotificationChannels(user.id);
     const [unreadMessages, pendingFriendRequests, unreadNotifications] = await Promise.all([
-      this.prisma.chatMessage.count({
-        where: {
-          senderId: { not: user.id },
-          readAt: null,
-          deletions: { none: { userId: user.id } },
-          conversation: {
-            friendship: friendshipWhere,
-            participantStates: {
-              none: {
-                userId: user.id,
-                OR: [{ hidden: true }, { muted: true }],
+      (async () => {
+        const [directUnread, groupStates] = await Promise.all([
+          this.prisma.chatMessage.count({
+            where: {
+              senderId: { not: user.id },
+              readAt: null,
+              deletions: { none: { userId: user.id } },
+              conversation: {
+                friendship: {
+                  status: FriendshipStatus.accepted,
+                  OR: [{ userOneId: user.id }, { userTwoId: user.id }],
+                },
+                participantStates: { none: { userId: user.id, OR: [{ hidden: true }, { muted: true }] } },
               },
             },
+          }),
+          this.prisma.conversationParticipantState.findMany({
+            where: {
+              userId: user.id,
+              hidden: false,
+              muted: false,
+              conversation: {
+                group: {
+                  status: ChatGroupStatus.active,
+                  OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+                  members: { some: { userId: user.id, status: ChatGroupMemberStatus.active } },
+                },
+              },
+            },
+            select: { conversationId: true, lastReadMessageId: true, clearedBeforeMessageId: true },
+          }),
+        ]);
+        const groupUnread = await Promise.all(groupStates.map((state) => this.prisma.chatMessage.count({
+          where: {
+            conversationId: state.conversationId,
+            senderId: { not: user.id },
+            deletions: { none: { userId: user.id } },
+            id: { gt: Math.max(state.lastReadMessageId ?? 0, state.clearedBeforeMessageId ?? 0) },
           },
-        },
-      }),
+        })));
+        return directUnread + groupUnread.reduce((total, count) => total + count, 0);
+      })(),
       this.prisma.friendship.count({
         where: {
           status: FriendshipStatus.pending,
@@ -1307,13 +1454,14 @@ export class SocialService {
       where: { id: conversationId },
       include: {
         friendship: { include: friendshipInclude },
+        group: { include: conversationGroupInclude },
         participantStates: { where: { userId }, take: 1 },
       },
     });
-    if (!conversation || conversation.friendship.status !== FriendshipStatus.accepted) {
+    if (!conversation) {
       throw new NotFoundException("会话不存在。");
     }
-    const counterpart = this.counterpart(conversation.friendship, userId);
+    await this.assertConversationMember(conversationId, userId);
     const participantState = conversation.participantStates[0];
     const clearedBeforeMessageId = participantState?.clearedBeforeMessageId ?? null;
     const visibleWhere = this.visibleMessageWhere(userId, conversationId, clearedBeforeMessageId);
@@ -1324,12 +1472,36 @@ export class SocialService {
         include: messageInclude,
       }),
       this.prisma.chatMessage.count({
-        where: { ...visibleWhere, senderId: { not: userId }, readAt: null },
+        where: conversation.group
+          ? {
+              AND: [
+                visibleWhere,
+                { senderId: { not: userId } },
+                ...(participantState?.lastReadMessageId ? [{ id: { gt: participantState.lastReadMessageId } }] : []),
+              ],
+            }
+          : { ...visibleWhere, senderId: { not: userId }, readAt: null },
       }),
     ]);
+    if (conversation.friendship) {
+      const counterpart = this.counterpart(conversation.friendship, userId);
+      return {
+        id: conversation.id,
+        kind: ConversationKind.direct,
+        user: this.toSocialUser(counterpart),
+        group: null,
+        lastMessage: lastMessage ? this.toMessage(lastMessage) : null,
+        unreadCount,
+        muted: participantState?.muted ?? false,
+        updatedAt: conversation.updatedAt.toISOString(),
+      };
+    }
+    if (!conversation.group) throw new NotFoundException("会话关联数据不存在。");
     return {
       id: conversation.id,
-      user: this.toSocialUser(counterpart),
+      kind: conversation.kind,
+      user: this.toSocialUser(conversation.group.owner),
+      group: this.toGroupSummary(conversation.group, userId),
       lastMessage: lastMessage ? this.toMessage(lastMessage) : null,
       unreadCount,
       muted: participantState?.muted ?? false,
@@ -1337,19 +1509,54 @@ export class SocialService {
     };
   }
 
-  private async assertConversationMember(conversationId: number, userId: number) {
+  private async assertConversationMember(conversationId: number, userId: number): Promise<ConversationMembership> {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
-      select: { friendship: { select: { userOneId: true, userTwoId: true, status: true } } },
+      select: {
+        kind: true,
+        friendship: { select: { userOneId: true, userTwoId: true, status: true } },
+        group: {
+          select: {
+            id: true,
+            status: true,
+            expiresAt: true,
+            members: {
+              where: { status: ChatGroupMemberStatus.active },
+              select: { userId: true, role: true, mutedUntil: true },
+            },
+          },
+        },
+      },
     });
+    if (!conversation) throw new ForbiddenException("没有访问这个会话的权限。");
     if (
-      !conversation ||
-      conversation.friendship.status !== FriendshipStatus.accepted ||
-      ![conversation.friendship.userOneId, conversation.friendship.userTwoId].includes(userId)
+      conversation.friendship?.status === FriendshipStatus.accepted &&
+      [conversation.friendship.userOneId, conversation.friendship.userTwoId].includes(userId)
     ) {
-      throw new ForbiddenException("没有访问这个会话的权限。");
+      return {
+        kind: ConversationKind.direct,
+        participantIds: [conversation.friendship.userOneId, conversation.friendship.userTwoId],
+        friendship: {
+          userOneId: conversation.friendship.userOneId,
+          userTwoId: conversation.friendship.userTwoId,
+        },
+        group: null,
+      };
     }
-    return conversation.friendship;
+    const groupMember = conversation.group?.members.find((member) => member.userId === userId);
+    if (
+      conversation.group?.status === ChatGroupStatus.active &&
+      (!conversation.group.expiresAt || conversation.group.expiresAt > new Date()) &&
+      groupMember
+    ) {
+      return {
+        kind: conversation.kind,
+        participantIds: conversation.group.members.map((member) => member.userId),
+        friendship: null,
+        group: { id: conversation.group.id, role: groupMember.role, mutedUntil: groupMember.mutedUntil },
+      };
+    }
+    throw new ForbiddenException("没有访问这个会话的权限。");
   }
 
   private async findFriendship(userId: number, targetId: number): Promise<FriendshipRecord | null> {
@@ -1430,6 +1637,28 @@ export class SocialService {
         level: user.role.level,
       },
       createdAt: user.createdAt.toISOString(),
+    };
+  }
+
+  private toGroupSummary(group: ConversationGroupRecord, userId: number): ChatGroupSummaryResponse {
+    const member = group.members.find((item) => item.userId === userId && item.status === ChatGroupMemberStatus.active) ?? null;
+    return {
+      id: group.id,
+      conversationId: group.conversationId,
+      name: group.name,
+      avatarUrl: group.avatarStoredName ? `/social/groups/avatars/${group.avatarStoredName}` : group.avatarUrl,
+      announcement: group.announcement,
+      joinMode: group.joinMode,
+      memberLimit: group.memberLimit,
+      memberCount: group.members.filter((item) => item.status === ChatGroupMemberStatus.active).length,
+      temporary: group.temporary,
+      expiresAt: group.expiresAt?.toISOString() ?? null,
+      status: group.status,
+      currentMemberRole: member?.role ?? null,
+      currentAlias: member?.alias ?? null,
+      canManage: Boolean(member && member.role !== ChatGroupMemberRole.member),
+      createdAt: group.createdAt.toISOString(),
+      updatedAt: group.updatedAt.toISOString(),
     };
   }
 

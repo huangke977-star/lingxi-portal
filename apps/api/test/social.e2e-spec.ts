@@ -688,6 +688,7 @@ describe("SocialService", () => {
     const notificationCount = jest.fn(async () => 4);
     const service = createService({
       chatMessage: { count: messageCount },
+      conversationParticipantState: { findMany: jest.fn(async () => []) },
       friendship: { count: friendshipCount },
       userNotification: { count: notificationCount },
       userNotificationChannelState: { findMany: jest.fn(async () => []) },

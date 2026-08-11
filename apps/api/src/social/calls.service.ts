@@ -79,6 +79,7 @@ export class CallsService implements OnModuleInit {
     });
     if (
       !conversation ||
+      !conversation.friendship ||
       conversation.friendship.status !== FriendshipStatus.accepted ||
       ![conversation.friendship.userOneId, conversation.friendship.userTwoId].includes(userId)
     ) {

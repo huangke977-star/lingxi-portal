@@ -9,6 +9,8 @@ import { access, copyFile, mkdir, open, rename, unlink } from "node:fs/promises"
 import { extname, resolve } from "node:path";
 import {
   ChatAttachmentKind,
+  ChatGroupMemberStatus,
+  ChatGroupStatus,
   FriendshipStatus,
   Prisma,
 } from "../generated/prisma/client";
@@ -162,6 +164,13 @@ export class ChatAttachmentsService {
         conversation: {
           select: {
             friendship: { select: { userOneId: true, userTwoId: true, status: true } },
+            group: {
+              select: {
+                status: true,
+                expiresAt: true,
+                members: { where: { userId }, select: { status: true } },
+              },
+            },
           },
         },
       },
@@ -169,11 +178,19 @@ export class ChatAttachmentsService {
     if (!attachment) {
       throw new NotFoundException("附件不存在。");
     }
-    const friendship = attachment.conversation.friendship;
-    if (
-      friendship.status !== FriendshipStatus.accepted ||
-      ![friendship.userOneId, friendship.userTwoId].includes(userId)
-    ) {
+    const { friendship, group } = attachment.conversation;
+    const directMember = Boolean(
+      friendship &&
+      friendship.status === FriendshipStatus.accepted &&
+      [friendship.userOneId, friendship.userTwoId].includes(userId),
+    );
+    const groupMember = Boolean(
+      group &&
+      group.status === ChatGroupStatus.active &&
+      (!group.expiresAt || group.expiresAt > new Date()) &&
+      group.members[0]?.status === ChatGroupMemberStatus.active,
+    );
+    if (!directMember && !groupMember) {
       throw new ForbiddenException("没有访问这个附件的权限。");
     }
     if (attachment.messageId === null && attachment.uploadedById !== userId) {
@@ -453,13 +470,30 @@ export class ChatAttachmentsService {
   private async assertConversationMember(conversationId: number, userId: number): Promise<void> {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
-      select: { friendship: { select: { userOneId: true, userTwoId: true, status: true } } },
+      select: {
+        friendship: { select: { userOneId: true, userTwoId: true, status: true } },
+        group: {
+          select: {
+            status: true,
+            expiresAt: true,
+            members: { where: { userId }, select: { status: true, mutedUntil: true } },
+          },
+        },
+      },
     });
-    if (
-      !conversation ||
-      conversation.friendship.status !== FriendshipStatus.accepted ||
-      ![conversation.friendship.userOneId, conversation.friendship.userTwoId].includes(userId)
-    ) {
+    const directMember = Boolean(
+      conversation?.friendship &&
+      conversation.friendship.status === FriendshipStatus.accepted &&
+      [conversation.friendship.userOneId, conversation.friendship.userTwoId].includes(userId),
+    );
+    const groupMember = Boolean(
+      conversation?.group &&
+      conversation.group.status === ChatGroupStatus.active &&
+      (!conversation.group.expiresAt || conversation.group.expiresAt > new Date()) &&
+      conversation.group.members[0]?.status === ChatGroupMemberStatus.active &&
+      (!conversation.group.members[0]?.mutedUntil || conversation.group.members[0].mutedUntil <= new Date()),
+    );
+    if (!conversation || (!directMember && !groupMember)) {
       throw new ForbiddenException("没有访问这个会话的权限。");
     }
   }

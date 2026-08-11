@@ -153,6 +153,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       (client.data as ChatSocketData).callTimestamps = [];
       if (payload.exp) this.scheduleReauthentication(client, payload.exp);
       await client.join(this.userRoom(user.id));
+      const groupConversationIds = await this.socialService.listActiveGroupConversationIds(user.id);
+      await Promise.all(groupConversationIds.map((conversationId) => client.join(this.groupRoom(conversationId))));
       await this.redis.set(this.presenceKey(user.id), "online", 90);
       client.emit("chat:ready", { userId: user.id });
     } catch {
@@ -190,9 +192,18 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       const body = typeof payload.body === "string" ? payload.body : "";
       const attachmentIds = this.requireAttachmentIds(payload.attachmentIds);
       const message = await this.socialService.createMessage(userId, conversationId, body, attachmentIds);
-      const participantIds = await this.socialService.getConversationParticipantIds(conversationId);
-      for (const participantId of participantIds) {
-        this.server.to(this.userRoom(participantId)).emit("chat:message", message);
+      const delivery = await this.socialService.getConversationDelivery(conversationId);
+      if (delivery.kind === "direct") {
+        for (const participantId of delivery.participantIds) {
+          this.server.to(this.userRoom(participantId)).emit("chat:message", message);
+        }
+      } else {
+        for (const participantId of delivery.participantIds) {
+          this.server.in(this.userRoom(participantId)).socketsJoin(this.groupRoom(conversationId));
+        }
+        this.server.to(this.groupRoom(conversationId)).emit("chat:message", message);
+      }
+      for (const participantId of delivery.participantIds) {
         if (participantId !== userId) {
           void this.pushService.sendChatMessage(userId, participantId, message).catch(() => undefined);
         }
@@ -234,9 +245,19 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       const targetConversationId = this.requirePositiveInteger(payload.targetConversationId, "目标会话编号无效。");
       const messageIds = this.requireMessageIds(payload.messageIds);
       const result = await this.socialService.forwardMessages(userId, sourceConversationId, targetConversationId, messageIds);
+      const delivery = await this.socialService.getConversationDelivery(targetConversationId);
       for (const message of result.messages) {
+        if (delivery.kind === "direct") {
+          for (const participantId of result.participantIds) {
+            this.server.to(this.userRoom(participantId)).emit("chat:message", message);
+          }
+        } else {
+          for (const participantId of result.participantIds) {
+            this.server.in(this.userRoom(participantId)).socketsJoin(this.groupRoom(targetConversationId));
+          }
+          this.server.to(this.groupRoom(targetConversationId)).emit("chat:message", message);
+        }
         for (const participantId of result.participantIds) {
-          this.server.to(this.userRoom(participantId)).emit("chat:message", message);
           if (participantId !== userId) {
             void this.pushService.sendChatMessage(userId, participantId, message).catch(() => undefined);
           }
@@ -707,6 +728,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
   private userRoom(userId: number): string {
     return `user:${userId}`;
+  }
+
+  private groupRoom(conversationId: number): string {
+    return `group:${conversationId}`;
   }
 
   private presenceKey(userId: number): string {

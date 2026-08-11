@@ -7,6 +7,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUrl,
   Max,
   MaxLength,
   Min,
@@ -108,4 +109,155 @@ export class UpdateConversationSettingsDto {
 export class UpdateNotificationChannelSettingsDto {
   @IsBoolean()
   pushEnabled!: boolean;
+}
+
+export class CreateChatGroupDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(60)
+  name!: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(99)
+  @IsInt({ each: true })
+  memberIds?: number[];
+
+  @IsOptional()
+  @IsBoolean()
+  temporary = false;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  ttlDays = 7;
+
+  @IsOptional()
+  @IsIn(["approval", "invite_only"])
+  joinMode: "approval" | "invite_only" = "approval";
+}
+
+export class UpdateChatGroupDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(60)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  announcement?: string;
+
+  @IsOptional()
+  @IsIn(["approval", "invite_only"])
+  joinMode?: "approval" | "invite_only";
+
+  @IsOptional()
+  @IsUrl({ protocols: ["http", "https"], require_protocol: true })
+  @MaxLength(500)
+  avatarUrl?: string;
+}
+
+export class UpdateChatGroupAliasDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  alias?: string;
+}
+
+export class InviteChatGroupMembersDto {
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsInt({ each: true })
+  userIds!: number[];
+}
+
+export class RespondChatGroupInvitationDto {
+  @IsIn(["accepted", "declined"])
+  status!: "accepted" | "declined";
+}
+
+export class RequestChatGroupJoinDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  note?: string;
+}
+
+export class RespondChatGroupJoinRequestDto {
+  @IsIn(["approved", "rejected"])
+  status!: "approved" | "rejected";
+}
+
+export class UpdateChatGroupMemberDto {
+  @IsOptional()
+  @IsIn(["admin", "member"])
+  role?: "admin" | "member";
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(43200)
+  mutedMinutes?: number;
+}
+
+export class TransferChatGroupOwnerDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  userId!: number;
+}
+
+export class ReportChatGroupMessageDto {
+  @IsIn(["spam", "harassment", "illegal", "privacy", "misinformation", "other"])
+  reason!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  detail?: string;
+}
+
+export class HandleChatGroupReportDto {
+  @IsIn(["resolved", "rejected"])
+  status!: "resolved" | "rejected";
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  resolution?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  deleteMessage = false;
+}
+
+export class SearchChatGroupsQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  q = "";
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit = 20;
+}
+
+export class ListChatGroupReportsQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  groupId?: number;
+
+  @IsOptional()
+  @IsIn(["pending", "resolved", "rejected"])
+  status?: "pending" | "resolved" | "rejected";
 }

@@ -95,11 +95,79 @@ export interface ChatMessage {
 
 export interface Conversation {
   id: number;
+  kind: "direct" | "group" | "temporary";
   user: SocialUser;
+  group: ChatGroupSummary | null;
   lastMessage: ChatMessage | null;
   unreadCount: number;
   muted: boolean;
   updatedAt: string;
+}
+
+export interface ChatGroupSummary {
+  id: number;
+  conversationId: number;
+  name: string;
+  avatarUrl: string | null;
+  announcement: string;
+  joinMode: "approval" | "invite_only";
+  memberLimit: number;
+  memberCount: number;
+  temporary: boolean;
+  expiresAt: string | null;
+  status: "active" | "dissolved";
+  currentMemberRole: "owner" | "admin" | "member" | null;
+  currentAlias: string | null;
+  canManage: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatGroupMember {
+  user: SocialUser;
+  role: "owner" | "admin" | "member";
+  status: "active" | "left" | "removed" | "blocked";
+  alias: string | null;
+  mutedUntil: string | null;
+  joinedAt: string;
+  isSelf: boolean;
+}
+
+export interface ChatGroup extends ChatGroupSummary {
+  owner: SocialUser;
+  members: ChatGroupMember[];
+  pendingJoinRequestCount: number;
+}
+
+export interface ChatGroupInvitation {
+  id: number;
+  group: ChatGroupSummary;
+  inviter: SocialUser;
+  status: "pending" | "accepted" | "declined" | "cancelled" | "expired";
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface ChatGroupJoinRequest {
+  id: number;
+  groupId: number;
+  user: SocialUser;
+  note: string | null;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  createdAt: string;
+}
+
+export interface ChatGroupReport {
+  id: number;
+  group: { id: number; conversationId: number; name: string };
+  message: ChatMessage;
+  reporter: SocialUser;
+  reason: string;
+  detail: string | null;
+  status: "pending" | "resolved" | "rejected";
+  resolution: string | null;
+  handledAt: string | null;
+  createdAt: string;
 }
 
 export interface NotificationChannelState {
@@ -276,6 +344,111 @@ export function clearNotifications(accessToken: string, channel: NotificationCha
 
 export function listConversations(accessToken: string): Promise<{ items: Conversation[] }> {
   return requestJson("/social/conversations", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function listChatGroups(accessToken: string): Promise<{ items: ChatGroupSummary[]; memberLimit: number }> {
+  return requestJson("/social/groups", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function searchChatGroups(accessToken: string, query: string): Promise<{ items: ChatGroupSummary[] }> {
+  const params = new URLSearchParams({ q: query, limit: "20" });
+  return requestJson(`/social/groups/search?${params}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function getChatGroup(accessToken: string, groupId: number): Promise<ChatGroup> {
+  return requestJson(`/social/groups/${groupId}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function createChatGroup(
+  accessToken: string,
+  input: { name: string; memberIds?: number[]; temporary?: boolean; ttlDays?: number; joinMode?: "approval" | "invite_only" },
+): Promise<ChatGroup> {
+  return requestJson("/social/groups", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(input) });
+}
+
+export function updateChatGroup(
+  accessToken: string,
+  groupId: number,
+  input: { name?: string; announcement?: string; joinMode?: "approval" | "invite_only"; avatarUrl?: string },
+): Promise<ChatGroup> {
+  return requestJson(`/social/groups/${groupId}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(input) });
+}
+
+export function uploadChatGroupAvatar(accessToken: string, groupId: number, file: File): Promise<ChatGroup> {
+  const body = new FormData();
+  body.append("file", file);
+  return requestJson(`/social/groups/${groupId}/avatar`, { method: "POST", headers: authHeaders(accessToken), body });
+}
+
+export function updateChatGroupAlias(accessToken: string, groupId: number, alias: string): Promise<ChatGroup> {
+  return requestJson(`/social/groups/${groupId}/alias`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify({ alias }) });
+}
+
+export function inviteChatGroupMembers(accessToken: string, groupId: number, userIds: number[]): Promise<{ count: number }> {
+  return requestJson(`/social/groups/${groupId}/invitations`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ userIds }) });
+}
+
+export function listChatGroupInvitations(accessToken: string): Promise<{ items: ChatGroupInvitation[] }> {
+  return requestJson("/social/group-invitations", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function respondChatGroupInvitation(accessToken: string, invitationId: number, status: "accepted" | "declined"): Promise<{ group: ChatGroup | null }> {
+  return requestJson(`/social/group-invitations/${invitationId}/respond`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify({ status }) });
+}
+
+export function requestChatGroupJoin(accessToken: string, groupId: number, note = ""): Promise<{ status: "joined" | "pending"; id?: number }> {
+  return requestJson(`/social/groups/${groupId}/join-requests`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ note }) });
+}
+
+export function listChatGroupJoinRequests(accessToken: string, groupId: number): Promise<{ items: ChatGroupJoinRequest[] }> {
+  return requestJson(`/social/groups/${groupId}/join-requests`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function respondChatGroupJoinRequest(accessToken: string, groupId: number, requestId: number, status: "approved" | "rejected"): Promise<{ success: true }> {
+  return requestJson(`/social/groups/${groupId}/join-requests/${requestId}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify({ status }) });
+}
+
+export function updateChatGroupMember(accessToken: string, groupId: number, userId: number, input: { role?: "admin" | "member"; mutedMinutes?: number }): Promise<ChatGroup> {
+  return requestJson(`/social/groups/${groupId}/members/${userId}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(input) });
+}
+
+export function removeChatGroupMember(accessToken: string, groupId: number, userId: number): Promise<ChatGroup> {
+  return requestJson(`/social/groups/${groupId}/members/${userId}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function blockChatGroupMember(accessToken: string, groupId: number, userId: number): Promise<ChatGroup> {
+  return requestJson(`/social/groups/${groupId}/members/${userId}/block`, { method: "POST", headers: authHeaders(accessToken) });
+}
+
+export function unblockChatGroupMember(accessToken: string, groupId: number, userId: number): Promise<ChatGroup> {
+  return requestJson(`/social/groups/${groupId}/members/${userId}/block`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function transferChatGroupOwner(accessToken: string, groupId: number, userId: number): Promise<ChatGroup> {
+  return requestJson(`/social/groups/${groupId}/transfer`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ userId }) });
+}
+
+export function leaveChatGroup(accessToken: string, groupId: number): Promise<{ success: true }> {
+  return requestJson(`/social/groups/${groupId}/leave`, { method: "POST", headers: authHeaders(accessToken) });
+}
+
+export function dissolveChatGroup(accessToken: string, groupId: number): Promise<{ success: true }> {
+  return requestJson(`/social/groups/${groupId}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function reportChatGroupMessage(accessToken: string, groupId: number, messageId: number, input: { reason: string; detail?: string }): Promise<{ id: number; status: "pending" }> {
+  return requestJson(`/social/groups/${groupId}/messages/${messageId}/reports`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(input) });
+}
+
+export function listChatGroupReports(accessToken: string, groupId?: number, status?: ChatGroupReport["status"]): Promise<{ items: ChatGroupReport[] }> {
+  const params = new URLSearchParams();
+  if (groupId) params.set("groupId", String(groupId));
+  if (status) params.set("status", status);
+  return requestJson(`/social/group-reports?${params}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function handleChatGroupReport(accessToken: string, reportId: number, input: { status: "resolved" | "rejected"; resolution?: string; deleteMessage?: boolean }): Promise<{ success: true }> {
+  return requestJson(`/social/group-reports/${reportId}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(input) });
 }
 
 export function getOrCreateConversation(accessToken: string, userId: number): Promise<Conversation> {

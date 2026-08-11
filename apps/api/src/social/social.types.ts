@@ -67,11 +67,79 @@ export interface ChatMessageResponse {
 
 export interface ConversationResponse {
   id: number;
+  kind: "direct" | "group" | "temporary";
   user: SocialUserResponse;
+  group: ChatGroupSummaryResponse | null;
   lastMessage: ChatMessageResponse | null;
   unreadCount: number;
   muted: boolean;
   updatedAt: string;
+}
+
+export interface ChatGroupMemberResponse {
+  user: SocialUserResponse;
+  role: "owner" | "admin" | "member";
+  status: "active" | "left" | "removed" | "blocked";
+  alias: string | null;
+  mutedUntil: string | null;
+  joinedAt: string;
+  isSelf: boolean;
+}
+
+export interface ChatGroupSummaryResponse {
+  id: number;
+  conversationId: number;
+  name: string;
+  avatarUrl: string | null;
+  announcement: string;
+  joinMode: "approval" | "invite_only";
+  memberLimit: number;
+  memberCount: number;
+  temporary: boolean;
+  expiresAt: string | null;
+  status: "active" | "dissolved";
+  currentMemberRole: "owner" | "admin" | "member" | null;
+  currentAlias: string | null;
+  canManage: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatGroupResponse extends ChatGroupSummaryResponse {
+  owner: SocialUserResponse;
+  members: ChatGroupMemberResponse[];
+  pendingJoinRequestCount: number;
+}
+
+export interface ChatGroupInvitationResponse {
+  id: number;
+  group: ChatGroupSummaryResponse;
+  inviter: SocialUserResponse;
+  status: "pending" | "accepted" | "declined" | "cancelled" | "expired";
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface ChatGroupJoinRequestResponse {
+  id: number;
+  groupId: number;
+  user: SocialUserResponse;
+  note: string | null;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  createdAt: string;
+}
+
+export interface ChatGroupReportResponse {
+  id: number;
+  group: Pick<ChatGroupSummaryResponse, "id" | "conversationId" | "name">;
+  message: ChatMessageResponse;
+  reporter: SocialUserResponse;
+  reason: string;
+  detail: string | null;
+  status: "pending" | "resolved" | "rejected";
+  resolution: string | null;
+  handledAt: string | null;
+  createdAt: string;
 }
 
 export interface SocialSummaryResponse {

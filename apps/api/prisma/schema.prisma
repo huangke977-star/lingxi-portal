@@ -246,6 +246,56 @@ enum ChatAttachmentKind {
   video
 }
 
+enum ConversationKind {
+  direct
+  group
+  temporary
+}
+
+enum ChatGroupStatus {
+  active
+  dissolved
+}
+
+enum ChatGroupJoinMode {
+  approval
+  invite_only
+}
+
+enum ChatGroupMemberRole {
+  owner
+  admin
+  member
+}
+
+enum ChatGroupMemberStatus {
+  active
+  left
+  removed
+  blocked
+}
+
+enum ChatGroupInvitationStatus {
+  pending
+  accepted
+  declined
+  cancelled
+  expired
+}
+
+enum ChatGroupJoinRequestStatus {
+  pending
+  approved
+  rejected
+  cancelled
+}
+
+enum ChatGroupReportStatus {
+  pending
+  resolved
+  rejected
+}
+
 enum CallType {
   voice
   video
@@ -337,6 +387,16 @@ model User {
   conversationStates        ConversationParticipantState[]
   hiddenChatMessages        ChatMessageDeletion[]
   chatAttachments           ChatAttachment[]               @relation("ChatAttachmentUploader")
+  ownedChatGroups           ChatGroup[]                    @relation("ChatGroupOwner")
+  chatGroupMembers          ChatGroupMember[]
+  sentChatGroupInvitations  ChatGroupInvitation[]          @relation("ChatGroupInviter")
+  receivedChatGroupInvites  ChatGroupInvitation[]          @relation("ChatGroupInvitee")
+  chatGroupJoinRequests     ChatGroupJoinRequest[]
+  handledGroupJoinRequests  ChatGroupJoinRequest[]         @relation("ChatGroupJoinRequestHandler")
+  chatGroupReports          ChatGroupMessageReport[]       @relation("ChatGroupReporter")
+  handledChatGroupReports   ChatGroupMessageReport[]       @relation("ChatGroupReportHandler")
+  chatGroupActivity         ChatGroupActivityLog[]         @relation("ChatGroupActivityActor")
+  targetedChatGroupActivity ChatGroupActivityLog[]         @relation("ChatGroupActivityTarget")
   callsStarted              CallSession[]                  @relation("CallSessionCaller")
   callsReceived             CallSession[]                  @relation("CallSessionCallee")
   callsEnded                CallSession[]                  @relation("CallSessionEndedBy")
@@ -1219,8 +1279,10 @@ model Friendship {
 
 model Conversation {
   id                Int                            @id @default(autoincrement())
-  friendshipId      Int                            @unique @map("friendship_id")
-  friendship        Friendship                     @relation(fields: [friendshipId], references: [id], onDelete: Cascade)
+  kind              ConversationKind               @default(direct)
+  friendshipId      Int?                           @unique @map("friendship_id")
+  friendship        Friendship?                    @relation(fields: [friendshipId], references: [id], onDelete: Cascade)
+  group             ChatGroup?
   messages          ChatMessage[]
   attachments       ChatAttachment[]
   calls             CallSession[]
@@ -1233,19 +1295,20 @@ model Conversation {
 }
 
 model ChatMessage {
-  id             Int                   @id @default(autoincrement())
-  conversationId Int                   @map("conversation_id")
-  conversation   Conversation          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderId       Int                   @map("sender_id")
-  sender         User                  @relation("ChatMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
-  callSessionId  Int?                  @unique @map("call_session_id")
-  callSession    CallSession?          @relation(fields: [callSessionId], references: [id], onDelete: SetNull)
-  body           String                @db.Text
-  type           ChatMessageType       @default(text)
+  id             Int                      @id @default(autoincrement())
+  conversationId Int                      @map("conversation_id")
+  conversation   Conversation             @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       Int                      @map("sender_id")
+  sender         User                     @relation("ChatMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  callSessionId  Int?                     @unique @map("call_session_id")
+  callSession    CallSession?             @relation(fields: [callSessionId], references: [id], onDelete: SetNull)
+  body           String                   @db.Text
+  type           ChatMessageType          @default(text)
   attachments    ChatAttachment[]
   deletions      ChatMessageDeletion[]
-  readAt         DateTime?             @map("read_at")
-  createdAt      DateTime              @default(now()) @map("created_at")
+  groupReports   ChatGroupMessageReport[]
+  readAt         DateTime?                @map("read_at")
+  createdAt      DateTime                 @default(now()) @map("created_at")
 
   @@index([conversationId, id])
   @@index([senderId, createdAt])
@@ -1260,12 +1323,145 @@ model ConversationParticipantState {
   hidden                 Boolean      @default(false)
   muted                  Boolean      @default(false)
   clearedBeforeMessageId Int?         @map("cleared_before_message_id")
+  lastReadMessageId      Int?         @map("last_read_message_id")
   createdAt              DateTime     @default(now()) @map("created_at")
   updatedAt              DateTime     @updatedAt @map("updated_at")
 
   @@id([conversationId, userId])
   @@index([userId, hidden, updatedAt])
   @@map("conversation_participant_states")
+}
+
+model ChatGroup {
+  id                 Int                      @id @default(autoincrement())
+  conversationId     Int                      @unique @map("conversation_id")
+  conversation       Conversation             @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  ownerId            Int                      @map("owner_id")
+  owner              User                     @relation("ChatGroupOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  name               String                   @db.VarChar(60)
+  announcement       String                   @default("") @db.VarChar(1000)
+  avatarUrl          String?                  @map("avatar_url") @db.VarChar(500)
+  avatarOriginalName String?                  @map("avatar_original_name") @db.VarChar(255)
+  avatarStoredName   String?                  @unique @map("avatar_stored_name") @db.VarChar(255)
+  avatarMimeType     String?                  @map("avatar_mime_type") @db.VarChar(64)
+  avatarSizeBytes    Int?                     @map("avatar_size_bytes")
+  joinMode           ChatGroupJoinMode        @default(approval) @map("join_mode")
+  memberLimit        Int                      @default(100) @map("member_limit")
+  temporary          Boolean                  @default(false)
+  expiresAt          DateTime?                @map("expires_at")
+  status             ChatGroupStatus          @default(active)
+  dissolvedAt        DateTime?                @map("dissolved_at")
+  members            ChatGroupMember[]
+  invitations        ChatGroupInvitation[]
+  joinRequests       ChatGroupJoinRequest[]
+  reports            ChatGroupMessageReport[]
+  activityLogs       ChatGroupActivityLog[]
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+
+  @@index([ownerId, status])
+  @@index([status, expiresAt])
+  @@map("chat_groups")
+}
+
+model ChatGroupMember {
+  groupId    Int                   @map("group_id")
+  group      ChatGroup             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId     Int                   @map("user_id")
+  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       ChatGroupMemberRole   @default(member)
+  status     ChatGroupMemberStatus @default(active)
+  alias      String?               @db.VarChar(32)
+  mutedUntil DateTime?             @map("muted_until")
+  joinedAt   DateTime              @default(now()) @map("joined_at")
+  leftAt     DateTime?             @map("left_at")
+  createdAt  DateTime              @default(now()) @map("created_at")
+  updatedAt  DateTime              @updatedAt @map("updated_at")
+
+  @@id([groupId, userId])
+  @@index([userId, status, updatedAt])
+  @@index([groupId, role, status])
+  @@map("chat_group_members")
+}
+
+model ChatGroupInvitation {
+  id          Int                       @id @default(autoincrement())
+  groupId     Int                       @map("group_id")
+  group       ChatGroup                 @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  inviterId   Int                       @map("inviter_id")
+  inviter     User                      @relation("ChatGroupInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  inviteeId   Int                       @map("invitee_id")
+  invitee     User                      @relation("ChatGroupInvitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+  status      ChatGroupInvitationStatus @default(pending)
+  expiresAt   DateTime                  @map("expires_at")
+  respondedAt DateTime?                 @map("responded_at")
+  createdAt   DateTime                  @default(now()) @map("created_at")
+  updatedAt   DateTime                  @updatedAt @map("updated_at")
+
+  @@index([inviteeId, status, expiresAt])
+  @@index([groupId, status])
+  @@map("chat_group_invitations")
+}
+
+model ChatGroupJoinRequest {
+  id          Int                        @id @default(autoincrement())
+  groupId     Int                        @map("group_id")
+  group       ChatGroup                  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId      Int                        @map("user_id")
+  user        User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note        String?                    @db.VarChar(120)
+  status      ChatGroupJoinRequestStatus @default(pending)
+  handledById Int?                       @map("handled_by_id")
+  handledBy   User?                      @relation("ChatGroupJoinRequestHandler", fields: [handledById], references: [id], onDelete: SetNull)
+  respondedAt DateTime?                  @map("responded_at")
+  createdAt   DateTime                   @default(now()) @map("created_at")
+  updatedAt   DateTime                   @updatedAt @map("updated_at")
+
+  @@index([groupId, status, createdAt])
+  @@index([userId, status, createdAt])
+  @@map("chat_group_join_requests")
+}
+
+model ChatGroupMessageReport {
+  id          Int                   @id @default(autoincrement())
+  groupId     Int                   @map("group_id")
+  group       ChatGroup             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  messageId   Int                   @map("message_id")
+  message     ChatMessage           @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  reporterId  Int                   @map("reporter_id")
+  reporter    User                  @relation("ChatGroupReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reason      String                @db.VarChar(40)
+  detail      String?               @db.VarChar(300)
+  status      ChatGroupReportStatus @default(pending)
+  handledById Int?                  @map("handled_by_id")
+  handledBy   User?                 @relation("ChatGroupReportHandler", fields: [handledById], references: [id], onDelete: SetNull)
+  resolution  String?               @db.VarChar(300)
+  handledAt   DateTime?             @map("handled_at")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+
+  @@unique([messageId, reporterId])
+  @@index([status, createdAt])
+  @@index([groupId, status, createdAt])
+  @@map("chat_group_message_reports")
+}
+
+model ChatGroupActivityLog {
+  id           Int       @id @default(autoincrement())
+  groupId      Int       @map("group_id")
+  group        ChatGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  actorId      Int?      @map("actor_id")
+  actor        User?     @relation("ChatGroupActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+  targetUserId Int?      @map("target_user_id")
+  targetUser   User?     @relation("ChatGroupActivityTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+  action       String    @db.VarChar(60)
+  summary      String    @db.VarChar(255)
+  metadata     Json?
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([groupId, createdAt])
+  @@index([actorId, createdAt])
+  @@map("chat_group_activity_logs")
 }
 
 model ChatMessageDeletion {

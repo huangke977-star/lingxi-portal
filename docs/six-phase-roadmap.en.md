@@ -2,8 +2,8 @@
 
 - Document status: Active
 - Created: 2026-08-04
-- Last updated: 2026-08-10
-- Current phase: Phase 5 ready to start
+- Last updated: 2026-08-11
+- Current phase: Phase 6 ready to start
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -37,7 +37,7 @@ Status definitions:
 | Phase 2 | Account Security | Password recovery, email verification, Turnstile, login-risk alerts | Completed |
 | Phase 3 | Content Capability | Autosave, version history, preview, unified search | Completed |
 | Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | Completed |
-| Phase 5 | Social Capability | Group chat, group files, moderation, temporary conversations | Not started |
+| Phase 5 | Social Capability | Group chat, group files, moderation, temporary conversations | Completed |
 | Phase 6 | Operations Console | Operational analytics, announcements, scheduling, read statistics | Not started |
 
 ## 4. External Prerequisites
@@ -235,16 +235,26 @@ Goal: extend the current friend, direct-message, attachment, and real-time infra
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P5-01 | Add group, membership, role, and invitation data models | Not started |
-| P5-02 | Create groups, invite members, request access, leave groups | Not started |
-| P5-03 | Add owner, administrator, and member permission levels | Not started |
-| P5-04 | Add group announcements, names, avatars, and personal remarks | Not started |
-| P5-05 | Reuse attachment support for group images and files | Not started |
-| P5-06 | Add mute, removal, ownership transfer, dissolution, and blocking | Not started |
-| P5-07 | Add group-message reporting and administrative navigation | Not started |
-| P5-08 | Add temporary conversations, expiry, and cleanup | Not started |
-| P5-09 | Complete unread, mute, push, and multi-device synchronization | Not started |
-| P5-10 | Complete desktop, mobile, performance, and permission tests | Not started |
+| P5-01 | Add group, membership, role, and invitation data models | Completed |
+| P5-02 | Create groups, invite members, request access, leave groups | Completed |
+| P5-03 | Add owner, administrator, and member permission levels | Completed |
+| P5-04 | Add group announcements, names, avatars, and personal remarks | Completed |
+| P5-05 | Reuse attachment support for group images and files | Completed |
+| P5-06 | Add mute, removal, ownership transfer, dissolution, and blocking | Completed |
+| P5-07 | Add group-message reporting and administrative navigation | Completed |
+| P5-08 | Add temporary conversations, expiry, and cleanup | Completed |
+| P5-09 | Complete unread, mute, push, and multi-device synchronization | Completed |
+| P5-10 | Complete desktop, mobile, performance, and permission tests | Completed |
+
+### Current Acceptance Results
+
+- The additive data model, APIs, desktop and mobile group-chat UI, group-report administration, and production configuration are complete for P5-01 through P5-10. Existing direct-message data remains in `direct` conversations without migration or rebuilding.
+- Groups default to 100 members and can be configured through `CHAT_GROUP_MEMBER_LIMIT`. Temporary groups default to seven days, accept a one-to-thirty-day lifetime at creation, and are removed with their attachments and avatars by a controlled hourly cleanup job.
+- Group messages reuse the existing Socket.IO connection and attachment storage through conversation rooms, without one connection per group. Per-member unread cursors, mute preferences, browser push, and multi-device read state are persisted independently.
+- Owner, administrator, and member permissions cover profile changes, invitations, join requests, aliases, muting, removal, blocking, ownership transfer, leaving, dissolution, report handling, and activity history. Site administrators also receive a dedicated group-report console.
+- All 31 API suites with 202 tests passed, together with API/Web builds and lint, Prisma validation, production Compose validation, and `git diff --check`. Web lint retains only ten unrelated pre-existing warnings.
+- External Playwright covered group management, group reports, and My Articles at 1440px desktop and 390px mobile widths. Long titles, status labels, metadata, and action rows had no horizontal overflow.
+- Production applied additive migration `20260811110000_add_group_social_phase` and updated only API/Web plus the migration container, without restarting MySQL, Redis, Caddy, or TURN. Health, public pages, authorization boundaries, and container logs passed verification.
 
 ### Acceptance
 
