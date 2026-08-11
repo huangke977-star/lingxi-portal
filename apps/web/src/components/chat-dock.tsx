@@ -2508,7 +2508,7 @@ function ChatMessageItem({
     {selectionControl}
     <UserAvatar user={message.sender} />
     <div>
-      {message.attachments?.length ? <div className={`chat-message-attachments count-${Math.min(message.attachments.length, 4)}`}>{message.attachments.map((attachment) => attachment.kind === "image"
+      {message.attachments?.length ? <div className={`chat-message-attachments count-${Math.min(message.attachments.length, 4)}${message.attachments.length === 1 && message.attachments[0].kind === "audio" ? " audio-only" : ""}`}>{message.attachments.map((attachment) => attachment.kind === "image"
         ? <AuthenticatedImage attachment={attachment} key={attachment.id} onClick={() => onPreview(attachment)} />
         : attachment.kind === "audio" || attachment.kind === "video"
           ? <AuthenticatedMedia attachment={attachment} key={attachment.id} />

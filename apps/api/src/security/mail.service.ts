@@ -22,6 +22,8 @@ export class MailService {
   ) {}
 
   async send(input: MailInput): Promise<{ id: number; status: MailJobStatus }> {
+    const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled) throw new BadRequestException("邮件服务当前未启用。");
     const job = await this.prisma.mailJob.create({
       data: {
         userId: input.userId,
@@ -37,8 +39,6 @@ export class MailService {
         where: { id: job.id },
         data: { status: MailJobStatus.sending, attempts: { increment: 1 }, lastError: null },
       });
-      const config = await this.configuration.getConfiguration();
-      if (!config.smtpEnabled) throw new BadRequestException("SMTP 尚未启用。");
       await this.createTransport(config).sendMail({
         from: { name: config.smtpFromName, address: config.smtpFromEmail ?? config.smtpUsername ?? "" },
         to: input.recipient,
@@ -63,6 +63,7 @@ export class MailService {
 
   async testConnection(): Promise<{ success: true; message: string }> {
     const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled) throw new BadRequestException("请先启用邮件服务。");
     if (!config.smtpHost || !config.smtpUsername || !config.smtpPasswordEncrypted || !config.smtpFromEmail) {
       throw new BadRequestException("请先保存完整的 SMTP 配置。");
     }

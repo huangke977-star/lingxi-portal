@@ -21,15 +21,17 @@ export class SecurityConfigurationService {
 
   async getPublicPolicy() {
     const config = await this.getConfiguration();
+    const mailServiceEnabled = config.smtpEnabled;
     return {
-      registrationEmailVerificationEnabled: config.registrationEmailVerificationEnabled,
-      passwordRecoveryEnabled: config.passwordRecoveryEnabled,
-      untrustedDeviceEmailVerificationEnabled: config.untrustedDeviceEmailVerificationEnabled,
+      mailServiceEnabled,
+      registrationEmailVerificationEnabled: mailServiceEnabled && config.registrationEmailVerificationEnabled,
+      passwordRecoveryEnabled: mailServiceEnabled && config.passwordRecoveryEnabled,
+      untrustedDeviceEmailVerificationEnabled: mailServiceEnabled && config.untrustedDeviceEmailVerificationEnabled,
       turnstile: {
         siteKey: config.turnstileSiteKey ?? "",
         registrationEnabled: config.turnstileRegistrationEnabled,
         loginEnabled: config.turnstileLoginEnabled,
-        recoveryEnabled: config.turnstileRecoveryEnabled,
+        recoveryEnabled: mailServiceEnabled && config.passwordRecoveryEnabled && config.turnstileRecoveryEnabled,
         loginFailureThreshold: config.loginFailureTurnstileThreshold,
       },
     };
@@ -52,8 +54,9 @@ export class SecurityConfigurationService {
         ? this.crypto.encrypt(dto.turnstileSecret)
         : current.turnstileSecretEncrypted;
 
+    const smtpEnabled = dto.smtpEnabled ?? current.smtpEnabled;
     const next = {
-      smtpEnabled: dto.smtpEnabled ?? current.smtpEnabled,
+      smtpEnabled,
       smtpHost: this.optionalText(dto.smtpHost, current.smtpHost),
       smtpPort: dto.smtpPort ?? current.smtpPort,
       smtpSecure: dto.smtpSecure ?? current.smtpSecure,
@@ -61,14 +64,18 @@ export class SecurityConfigurationService {
       smtpPasswordEncrypted,
       smtpFromName: dto.smtpFromName?.trim() || current.smtpFromName,
       smtpFromEmail: this.optionalText(dto.smtpFromEmail, current.smtpFromEmail),
-      registrationEmailVerificationEnabled: dto.registrationEmailVerificationEnabled ?? current.registrationEmailVerificationEnabled,
-      passwordRecoveryEnabled: dto.passwordRecoveryEnabled ?? current.passwordRecoveryEnabled,
-      untrustedDeviceEmailVerificationEnabled: dto.untrustedDeviceEmailVerificationEnabled ?? current.untrustedDeviceEmailVerificationEnabled,
+      registrationEmailVerificationEnabled: smtpEnabled
+        ? (dto.registrationEmailVerificationEnabled ?? current.registrationEmailVerificationEnabled)
+        : false,
+      passwordRecoveryEnabled: smtpEnabled ? (dto.passwordRecoveryEnabled ?? current.passwordRecoveryEnabled) : false,
+      untrustedDeviceEmailVerificationEnabled: smtpEnabled
+        ? (dto.untrustedDeviceEmailVerificationEnabled ?? current.untrustedDeviceEmailVerificationEnabled)
+        : false,
       turnstileSiteKey: this.optionalText(dto.turnstileSiteKey, current.turnstileSiteKey),
       turnstileSecretEncrypted,
       turnstileRegistrationEnabled: dto.turnstileRegistrationEnabled ?? current.turnstileRegistrationEnabled,
       turnstileLoginEnabled: dto.turnstileLoginEnabled ?? current.turnstileLoginEnabled,
-      turnstileRecoveryEnabled: dto.turnstileRecoveryEnabled ?? current.turnstileRecoveryEnabled,
+      turnstileRecoveryEnabled: smtpEnabled ? (dto.turnstileRecoveryEnabled ?? current.turnstileRecoveryEnabled) : false,
       loginFailureTurnstileThreshold: dto.loginFailureTurnstileThreshold ?? current.loginFailureTurnstileThreshold,
     };
     this.validate(next);

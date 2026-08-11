@@ -1,6 +1,7 @@
 import { requestJson } from "./auth-api";
 
 export interface SecurityPolicy {
+  mailServiceEnabled: boolean;
   registrationEmailVerificationEnabled: boolean;
   passwordRecoveryEnabled: boolean;
   untrustedDeviceEmailVerificationEnabled: boolean;
@@ -44,6 +45,7 @@ export interface TrustedDevice {
 }
 
 export interface MySecurityOverview {
+  mailServiceEnabled: boolean;
   emailVerifiedAt: string | null;
   preferences: SecurityPreferences;
   events: SecurityEvent[];

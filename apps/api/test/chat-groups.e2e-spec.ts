@@ -110,6 +110,30 @@ function createService(prisma: object) {
   );
 }
 
+function createInviteFixture({ pending, unread }: { pending: boolean; unread: boolean }) {
+  const createInvitations = jest.fn(async () => ({ count: 1 }));
+  const createNotifications = jest.fn(async () => ({ count: 1 }));
+  const createActivity = jest.fn(async () => ({ id: 41 }));
+  const transaction = {
+    chatGroupInvitation: { createMany: createInvitations },
+    userNotification: { createMany: createNotifications },
+    chatGroupActivityLog: { create: createActivity },
+  };
+  const service = createService({
+    chatGroup: { findUnique: jest.fn(async () => groupRecord()) },
+    user: { findMany: jest.fn(async () => [{ id: 9 }]) },
+    chatGroupInvitation: {
+      findMany: jest.fn(async () => pending ? [{ inviteeId: 9 }] : []),
+    },
+    userNotification: {
+      findMany: jest.fn(async () => unread ? [{ userId: 9 }] : []),
+    },
+    chatGroupActivityLog: { create: createActivity },
+    $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
+  });
+  return { createActivity, createInvitations, createNotifications, service };
+}
+
 describe("ChatGroupsService", () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -134,6 +158,37 @@ describe("ChatGroupsService", () => {
     const service = createService({ chatGroup: { findUnique: jest.fn(async () => groupRecord("member")) } });
 
     await expect(service.update(owner, 11, { name: "新名称" })).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("creates an invitation and notification for a newly invited user", async () => {
+    const fixture = createInviteFixture({ pending: false, unread: false });
+
+    await expect(fixture.service.invite(owner, 11, { userIds: [9] })).resolves.toEqual({ count: 1 });
+    expect(fixture.createInvitations).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ groupId: 11, inviterId: owner.id, inviteeId: 9 })],
+    });
+    expect(fixture.createNotifications).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ userId: 9, title: "新的群聊邀请" })],
+    });
+  });
+
+  it("does not repeat an unread notification for an existing pending invitation", async () => {
+    const fixture = createInviteFixture({ pending: true, unread: true });
+
+    await expect(fixture.service.invite(owner, 11, { userIds: [9] })).resolves.toEqual({ count: 0 });
+    expect(fixture.createInvitations).not.toHaveBeenCalled();
+    expect(fixture.createNotifications).not.toHaveBeenCalled();
+    expect(fixture.createActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends a fresh notification when the pending invitation was already read", async () => {
+    const fixture = createInviteFixture({ pending: true, unread: false });
+
+    await expect(fixture.service.invite(owner, 11, { userIds: [9] })).resolves.toEqual({ count: 1 });
+    expect(fixture.createInvitations).not.toHaveBeenCalled();
+    expect(fixture.createNotifications).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ userId: 9, title: "新的群聊邀请" })],
+    });
   });
 
   it("creates one pending report for another member's message", async () => {

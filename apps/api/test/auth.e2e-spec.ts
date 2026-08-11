@@ -309,6 +309,7 @@ describe('AuthController (e2e)', () => {
       .useValue({
         getConfiguration: jest.fn(async () => securityConfigurationState),
         getPublicPolicy: jest.fn(async () => ({
+          mailServiceEnabled: false,
           registrationEmailVerificationEnabled: false,
           passwordRecoveryEnabled: false,
           untrustedDeviceEmailVerificationEnabled: false,
@@ -418,6 +419,7 @@ describe('AuthController (e2e)', () => {
   it('trusts the registration browser after verified email registration', async () => {
     securityConfigurationState = {
       ...securityConfigurationState,
+      smtpEnabled: true,
       registrationEmailVerificationEnabled: true,
     };
 
@@ -441,6 +443,7 @@ describe('AuthController (e2e)', () => {
     await register('device_login', 'device-login@example.com').expect(200);
     securityConfigurationState = {
       ...securityConfigurationState,
+      smtpEnabled: true,
       untrustedDeviceEmailVerificationEnabled: true,
     };
     accountSecurityState.isTrustedDevice.mockResolvedValue(false);

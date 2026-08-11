@@ -54,12 +54,14 @@ export class AuthService {
     const nickname = dto.nickname.trim();
     const email = dto.email.trim().toLowerCase();
     const securityConfiguration = await this.securityConfiguration.getConfiguration();
+    const registrationEmailVerificationEnabled =
+      securityConfiguration.smtpEnabled && securityConfiguration.registrationEmailVerificationEnabled;
 
     if ((await this.usersService.findForLogin(username)) || (await this.usersService.findForLogin(email))) {
       throw new ConflictException('Username or email already exists.');
     }
 
-    if (securityConfiguration.registrationEmailVerificationEnabled) {
+    if (registrationEmailVerificationEnabled) {
       if (!dto.verificationCode) throw new BadRequestException('请输入邮箱验证码。');
       await this.accountSecurity.consumeRegistrationCode(email, dto.verificationCode);
     } else {
@@ -73,10 +75,10 @@ export class AuthService {
       email,
       passwordHash,
       roleCode: registrationPolicy.defaultRoleCode,
-      emailVerifiedAt: securityConfiguration.registrationEmailVerificationEnabled ? new Date() : null,
+      emailVerifiedAt: registrationEmailVerificationEnabled ? new Date() : null,
     });
 
-    if (securityConfiguration.registrationEmailVerificationEnabled && context.trustedDeviceToken) {
+    if (registrationEmailVerificationEnabled && context.trustedDeviceToken) {
       await this.accountSecurity.trustCurrentDevice(user.id, context);
     }
     await this.accountSecurity.recordRegistrationLogin(user, context);
@@ -112,6 +114,7 @@ export class AuthService {
 
     await this.redis.del(failureKey);
     if (
+      securityConfiguration.smtpEnabled &&
       securityConfiguration.untrustedDeviceEmailVerificationEnabled &&
       !(await this.accountSecurity.isTrustedDevice(user.id, context))
     ) {
@@ -213,6 +216,9 @@ export class AuthService {
     context: RefreshSessionContext,
   ): Promise<{ success: true; revokedSessions: number }> {
     const securityConfiguration = await this.securityConfiguration.getConfiguration();
+    if (!securityConfiguration.smtpEnabled || !securityConfiguration.passwordRecoveryEnabled) {
+      throw new BadRequestException('密码找回当前未启用。');
+    }
     await this.turnstile.verify(dto.turnstileToken, context.ip, securityConfiguration.turnstileRecoveryEnabled);
     const request = await this.accountSecurity.consumePasswordResetToken(dto.token);
     await this.usersService.updateOwnPassword(request.userId, dto.newPassword, true);

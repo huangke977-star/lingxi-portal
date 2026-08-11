@@ -314,7 +314,7 @@ docker compose -f docker-compose.prod.yml ps
 ## Rollback Procedure
 
 1. If mail or Turnstile causes the incident, first have the super administrator disable the affected feature switch. This is the fastest data-preserving rollback.
-2. For SMTP incidents, disable untrusted-device verification first, then registration verification and password recovery, and finally SMTP, so sign-in and registration never require an undeliverable code.
+2. For SMTP incidents, disable the mail service. The system also disables registration verification, password recovery, untrusted-device email verification, and recovery Turnstile so sign-in and registration never require an undeliverable code.
 3. For Turnstile incidents, disable registration, login, and recovery protection separately. The saved site key and encrypted secret do not need to be deleted.
 4. For code incidents, roll API and Web back to the previous verified image pair. The P2 migration only adds tables and nullable fields; preserve them during emergency rollback instead of running a destructive reverse migration.
 5. If decryption fails, restore the original `BACKUP_ENCRYPTION_KEY` and recreate only API. Do not overwrite or clear existing ciphertext with a new key.

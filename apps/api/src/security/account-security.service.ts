@@ -41,7 +41,7 @@ export class AccountSecurityService {
 
   async requestRegistrationCode(email: string, turnstileToken: string | undefined, context: RefreshSessionContext) {
     const config = await this.configuration.getConfiguration();
-    if (!config.registrationEmailVerificationEnabled) {
+    if (!config.smtpEnabled || !config.registrationEmailVerificationEnabled) {
       throw new BadRequestException("注册邮箱验证当前未启用。");
     }
     await this.turnstile.verify(turnstileToken, context.ip, config.turnstileRegistrationEnabled);
@@ -89,7 +89,7 @@ export class AccountSecurityService {
 
   async consumeRegistrationCode(email: string, code: string): Promise<void> {
     const config = await this.configuration.getConfiguration();
-    if (!config.registrationEmailVerificationEnabled) return;
+    if (!config.smtpEnabled || !config.registrationEmailVerificationEnabled) return;
     const request = await this.requireValidCode(email, EmailVerificationPurpose.registration, code);
     const consumed = await this.prisma.emailVerificationRequest.updateMany({
       where: { id: request.id, status: EmailVerificationStatus.pending },
@@ -103,6 +103,8 @@ export class AccountSecurityService {
   }
 
   async sendAccountEmailCode(user: AuthenticatedUser, context: RefreshSessionContext) {
+    const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled) throw new BadRequestException("邮件服务当前未启用。");
     await this.assertCodeRateLimit(user.email, context.ip, "account");
     const code = this.createCode();
     await this.expirePendingCodes(user.email, EmailVerificationPurpose.account_email);
@@ -140,6 +142,8 @@ export class AccountSecurityService {
   }
 
   async confirmAccountEmail(user: AuthenticatedUser, dto: ConfirmEmailVerificationDto, context: RefreshSessionContext) {
+    const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled) throw new BadRequestException("邮件服务当前未启用。");
     const request = await this.requireValidCode(user.email, EmailVerificationPurpose.account_email, dto.code, user.id);
     await this.prisma.$transaction([
       this.prisma.emailVerificationRequest.update({
@@ -165,6 +169,10 @@ export class AccountSecurityService {
   }
 
   async requestDeviceLoginVerification(user: AuthenticatedUser, context: RefreshSessionContext) {
+    const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled || !config.untrustedDeviceEmailVerificationEnabled) {
+      throw new BadRequestException("非信任设备邮箱验证当前未启用。");
+    }
     const fingerprint = this.requireTrustedDeviceFingerprint(context);
     await this.assertCodeRateLimit(user.email, context.ip, "device-login");
     await this.prisma.emailVerificationRequest.updateMany({
@@ -211,6 +219,10 @@ export class AccountSecurityService {
   }
 
   async resendDeviceLoginVerification(challengeToken: string, context: RefreshSessionContext) {
+    const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled || !config.untrustedDeviceEmailVerificationEnabled) {
+      throw new BadRequestException("非信任设备邮箱验证当前未启用。");
+    }
     const request = await this.requireDeviceLoginChallenge(challengeToken, context);
     await this.assertCodeRateLimit(request.email, context.ip, "device-login");
     const code = this.createCode();
@@ -242,6 +254,10 @@ export class AccountSecurityService {
   }
 
   async consumeDeviceLoginVerification(challengeToken: string, code: string, context: RefreshSessionContext): Promise<{ userId: number }> {
+    const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled || !config.untrustedDeviceEmailVerificationEnabled) {
+      throw new BadRequestException("非信任设备邮箱验证当前未启用。");
+    }
     const request = await this.requireDeviceLoginChallenge(challengeToken, context);
     if (request.attempts >= 5) {
       await this.prisma.emailVerificationRequest.update({
@@ -310,7 +326,7 @@ export class AccountSecurityService {
 
   async requestPasswordReset(email: string, turnstileToken: string | undefined, context: RefreshSessionContext) {
     const config = await this.configuration.getConfiguration();
-    if (!config.passwordRecoveryEnabled) throw new BadRequestException("密码找回当前未启用。");
+    if (!config.smtpEnabled || !config.passwordRecoveryEnabled) throw new BadRequestException("密码找回当前未启用。");
     await this.turnstile.verify(turnstileToken, context.ip, config.turnstileRecoveryEnabled);
     await this.assertRecoveryRateLimit(email, context.ip);
     const user = await this.prisma.user.findUnique({
@@ -352,6 +368,10 @@ export class AccountSecurityService {
   }
 
   async consumePasswordResetToken(token: string): Promise<{ userId: number }> {
+    const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled || !config.passwordRecoveryEnabled) {
+      throw new BadRequestException("密码找回当前未启用。");
+    }
     const request = await this.prisma.passwordResetRequest.findUnique({
       where: { tokenHash: this.hashToken(token) },
       select: { id: true, userId: true, status: true, expiresAt: true },
@@ -375,7 +395,7 @@ export class AccountSecurityService {
 
   async getMySecurity(userId: number, context: RefreshSessionContext) {
     const currentFingerprint = context.trustedDeviceToken ? this.hashToken(context.trustedDeviceToken) : null;
-    const [user, preferences, events, devices] = await Promise.all([
+    const [user, preferences, events, devices, config] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
         select: { emailVerifiedAt: true },
@@ -391,10 +411,12 @@ export class AccountSecurityService {
         orderBy: { lastSeenAt: "desc" },
         take: 20,
       }),
+      this.configuration.getConfiguration(),
     ]);
     return {
+      mailServiceEnabled: config.smtpEnabled,
       emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
-      preferences: this.preferenceResponse(preferences),
+      preferences: this.preferenceResponse(preferences, config.smtpEnabled),
       events: events.map((event) => ({
         ...event,
         createdAt: event.createdAt.toISOString(),
@@ -467,12 +489,14 @@ export class AccountSecurityService {
   }
 
   async updatePreferences(userId: number, dto: UpdateSecurityPreferencesDto) {
+    const config = await this.configuration.getConfiguration();
+    const next = config.smtpEnabled ? dto : { ...dto, emailAlertsEnabled: false };
     const preferences = await this.prisma.userSecurityPreference.upsert({
       where: { userId },
-      create: { userId, ...dto },
-      update: dto,
+      create: { userId, ...next },
+      update: next,
     });
-    return this.preferenceResponse(preferences);
+    return this.preferenceResponse(preferences, config.smtpEnabled);
   }
 
   async recordLogin(user: AuthenticatedUser, context: RefreshSessionContext, options: LoginRecordOptions = {}): Promise<void> {
@@ -571,16 +595,19 @@ export class AccountSecurityService {
       preferences.emailAlertsEnabled &&
       (!isNewDevice || preferences.newDeviceAlertsEnabled)
     ) {
-      void this.mail
-        .send({
-          type: MailJobType.login_risk,
-          recipient: user.email,
-          subject: `HLOVET 安全提醒：${summary}`,
-          text: `${summary}\n设备：${deviceLabel}\nIP：${context.ip}\n时间：${this.formatDateTime(new Date())}\n如非本人操作，请立即修改密码并退出其他设备。`,
-          userId: user.id,
-          metadata: { eventType: type, ip: context.ip },
-        })
-        .catch(() => undefined);
+      const config = await this.configuration.getConfiguration();
+      if (config.smtpEnabled) {
+        void this.mail
+          .send({
+            type: MailJobType.login_risk,
+            recipient: user.email,
+            subject: `HLOVET 安全提醒：${summary}`,
+            text: `${summary}\n设备：${deviceLabel}\nIP：${context.ip}\n时间：${this.formatDateTime(new Date())}\n如非本人操作，请立即修改密码并退出其他设备。`,
+            userId: user.id,
+            metadata: { eventType: type, ip: context.ip },
+          })
+          .catch(() => undefined);
+      }
     }
   }
 
@@ -850,10 +877,13 @@ export class AccountSecurityService {
     });
   }
 
-  private preferenceResponse(preferences: { loginAlertsEnabled: boolean; emailAlertsEnabled: boolean; newDeviceAlertsEnabled: boolean }) {
+  private preferenceResponse(
+    preferences: { loginAlertsEnabled: boolean; emailAlertsEnabled: boolean; newDeviceAlertsEnabled: boolean },
+    mailServiceEnabled = true,
+  ) {
     return {
       loginAlertsEnabled: preferences.loginAlertsEnabled,
-      emailAlertsEnabled: preferences.emailAlertsEnabled,
+      emailAlertsEnabled: mailServiceEnabled && preferences.emailAlertsEnabled,
       newDeviceAlertsEnabled: preferences.newDeviceAlertsEnabled,
     };
   }

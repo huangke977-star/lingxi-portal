@@ -159,7 +159,11 @@ function createAccountSecurityHarness(options?: {
   };
   const sendMail = jest.fn(async () => undefined);
   const verifyTurnstile = jest.fn(async () => undefined);
-  const configuration = securityConfiguration(options?.configuration);
+  const configuration = securityConfiguration({
+    smtpEnabled: true,
+    untrustedDeviceEmailVerificationEnabled: true,
+    ...options?.configuration,
+  });
   const recoveryUser =
     options?.recoveryUser === undefined
       ? {
@@ -433,6 +437,49 @@ describe("P2 account security", () => {
       expect(update).not.toHaveBeenCalled();
     });
 
+    it("turns off every SMTP-backed feature when the mail service is disabled", async () => {
+      const crypto = new SecretCryptoService();
+      const stored = securityConfiguration({
+        smtpEnabled: true,
+        smtpHost: "smtp.example.com",
+        smtpUsername: "mailer",
+        smtpPasswordEncrypted: crypto.encrypt("smtp-secret"),
+        smtpFromEmail: "no-reply@example.com",
+        registrationEmailVerificationEnabled: true,
+        passwordRecoveryEnabled: true,
+        untrustedDeviceEmailVerificationEnabled: true,
+        turnstileRecoveryEnabled: true,
+      });
+      const update = jest.fn(async ({ data }: { data: Partial<SecurityConfiguration> }) => ({ ...stored, ...data }));
+      const prisma = {
+        securityConfiguration: {
+          upsert: jest.fn(async () => stored),
+          update,
+        },
+      } as unknown as PrismaService;
+      const service = new SecurityConfigurationService(prisma, crypto);
+
+      const response = await service.update({ smtpEnabled: false });
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: expect.objectContaining({
+          smtpEnabled: false,
+          registrationEmailVerificationEnabled: false,
+          passwordRecoveryEnabled: false,
+          untrustedDeviceEmailVerificationEnabled: false,
+          turnstileRecoveryEnabled: false,
+        }),
+      });
+      expect(response).toMatchObject({
+        smtpEnabled: false,
+        registrationEmailVerificationEnabled: false,
+        passwordRecoveryEnabled: false,
+        untrustedDeviceEmailVerificationEnabled: false,
+        turnstileRecoveryEnabled: false,
+      });
+    });
+
     it("rejects enabling Turnstile without both site and secret credentials", async () => {
       const stored = securityConfiguration();
       const update = jest.fn(async () => stored);
@@ -455,6 +502,31 @@ describe("P2 account security", () => {
   });
 
   describe("AccountSecurityService verification and recovery", () => {
+    it("blocks mail-backed flows while the mail service is disabled", async () => {
+      const harness = createAccountSecurityHarness({
+        configuration: {
+          smtpEnabled: false,
+          registrationEmailVerificationEnabled: true,
+          passwordRecoveryEnabled: true,
+          untrustedDeviceEmailVerificationEnabled: true,
+        },
+      });
+
+      await expect(
+        harness.service.requestRegistrationCode("new-user@example.com", undefined, sessionContext),
+      ).rejects.toThrow("注册邮箱验证当前未启用");
+      await expect(
+        harness.service.requestPasswordReset("security@example.com", undefined, sessionContext),
+      ).rejects.toThrow("密码找回当前未启用");
+      await expect(
+        harness.service.requestDeviceLoginVerification(authenticatedUser(), sessionContext),
+      ).rejects.toThrow("非信任设备邮箱验证当前未启用");
+      await expect(
+        harness.service.sendAccountEmailCode(authenticatedUser(), sessionContext),
+      ).rejects.toThrow("邮件服务当前未启用");
+      expect(harness.sendMail).not.toHaveBeenCalled();
+    });
+
     it("consumes a registration code exactly once", async () => {
       const harness = createAccountSecurityHarness({
         configuration: { registrationEmailVerificationEnabled: true },
@@ -627,6 +699,7 @@ describe("P2 account security", () => {
         {} as RedisService,
         {
           getConfiguration: jest.fn(async () => ({
+            smtpEnabled: true,
             turnstileRecoveryEnabled: false,
           })),
         } as unknown as SecurityConfigurationService,
@@ -709,6 +782,8 @@ describe("P2 account security", () => {
         accountSecurity as unknown as AccountSecurityService,
         {
           getConfiguration: jest.fn(async () => ({
+            smtpEnabled: true,
+            passwordRecoveryEnabled: true,
             turnstileRecoveryEnabled: false,
           })),
         } as unknown as SecurityConfigurationService,

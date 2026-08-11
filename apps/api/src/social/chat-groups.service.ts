@@ -328,27 +328,56 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     if (blocked) throw new ForbiddenException("邀请列表中包含已被群聊拉黑的成员。");
     const existingActive = new Set(group.members.filter((item) => item.status === ChatGroupMemberStatus.active).map((item) => item.userId));
     const inviteeIds = userIds.filter((id) => !existingActive.has(id));
+    const notificationBody = `${user.nickname || user.username} 邀请你加入群聊“${group.name}”。`;
+    const [pendingInvitations, unreadNotifications] = inviteeIds.length
+      ? await Promise.all([
+          this.prisma.chatGroupInvitation.findMany({
+            where: {
+              groupId,
+              inviteeId: { in: inviteeIds },
+              status: ChatGroupInvitationStatus.pending,
+              expiresAt: { gt: new Date() },
+            },
+            select: { inviteeId: true },
+          }),
+          this.prisma.userNotification.findMany({
+            where: {
+              userId: { in: inviteeIds },
+              actorId: user.id,
+              type: UserNotificationType.system,
+              title: "新的群聊邀请",
+              body: notificationBody,
+              readAt: null,
+            },
+            select: { userId: true },
+          }),
+        ])
+      : [[], []];
+    const pendingInviteeIds = new Set(pendingInvitations.map((item) => item.inviteeId));
+    const unreadNotificationUserIds = new Set(unreadNotifications.map((item) => item.userId));
+    const newInvitationUserIds = inviteeIds.filter((id) => !pendingInviteeIds.has(id));
+    const notificationUserIds = inviteeIds.filter(
+      (id) => !pendingInviteeIds.has(id) || !unreadNotificationUserIds.has(id),
+    );
     await this.prisma.$transaction(async (transaction) => {
-      await transaction.chatGroupInvitation.updateMany({
-        where: { groupId, inviteeId: { in: inviteeIds }, status: ChatGroupInvitationStatus.pending },
-        data: { status: ChatGroupInvitationStatus.cancelled, respondedAt: new Date() },
-      });
-      if (inviteeIds.length) {
+      if (newInvitationUserIds.length) {
         await transaction.chatGroupInvitation.createMany({
-          data: inviteeIds.map((inviteeId) => ({
+          data: newInvitationUserIds.map((inviteeId) => ({
             groupId,
             inviterId: user.id,
             inviteeId,
             expiresAt: new Date(Date.now() + GROUP_INVITATION_TTL_MS),
           })),
         });
+      }
+      if (notificationUserIds.length) {
         await transaction.userNotification.createMany({
-          data: inviteeIds.map((inviteeId) => ({
+          data: notificationUserIds.map((inviteeId) => ({
             userId: inviteeId,
             actorId: user.id,
             type: UserNotificationType.system,
             title: "新的群聊邀请",
-            body: `${user.nickname || user.username} 邀请你加入群聊“${group.name}”。`,
+            body: notificationBody,
             actionUrl: "/messages",
           })),
         });
@@ -357,7 +386,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
         data: { groupId, actorId: user.id, action: "members.invited", summary: `邀请 ${inviteeIds.length} 位成员` },
       });
     });
-    return { count: inviteeIds.length };
+    return { count: notificationUserIds.length };
   }
 
   async listInvitations(user: AuthenticatedUser): Promise<{ items: ChatGroupInvitationResponse[] }> {

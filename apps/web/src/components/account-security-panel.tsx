@@ -262,7 +262,11 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
             ) : (
               <MailWarning aria-hidden="true" size={15} />
             )}
-            {overview.emailVerifiedAt ? "邮箱已验证" : "邮箱待验证"}
+            {overview.emailVerifiedAt
+              ? "邮箱已验证"
+              : overview.mailServiceEnabled
+                ? "邮箱待验证"
+                : "邮件服务已停用"}
           </span>
         ) : null}
       </div>
@@ -276,12 +280,14 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
               <div>
                 <strong>{email}</strong>
                 <span>
-                  {overview.emailVerifiedAt
+                  {!overview.mailServiceEnabled
+                    ? "邮件服务已停用，邮箱验证和邮件提醒暂不可用"
+                    : overview.emailVerifiedAt
                     ? `验证于 ${formatDateTime(overview.emailVerifiedAt)}`
                     : "验证后可接收找回与风险邮件"}
                 </span>
               </div>
-              {!overview.emailVerifiedAt ? (
+              {overview.mailServiceEnabled && !overview.emailVerifiedAt ? (
                 <button
                   className="text-action primary"
                   disabled={isSendingVerification || retryAfter > 0}
@@ -297,7 +303,7 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
               ) : null}
             </div>
 
-            {isVerificationOpen && !overview.emailVerifiedAt ? (
+            {overview.mailServiceEnabled && isVerificationOpen && !overview.emailVerifiedAt ? (
               <div className="security-verification-row">
                 <input
                   aria-label="邮箱验证码"
@@ -324,11 +330,18 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
                 <label key={option.key}>
                   <span>
                     <strong>{option.label}</strong>
-                    <small>{option.description}</small>
+                    <small>
+                      {option.key === "emailAlertsEnabled" && !overview.mailServiceEnabled
+                        ? "邮件服务已停用"
+                        : option.description}
+                    </small>
                   </span>
                   <input
                     checked={overview.preferences[option.key]}
-                    disabled={savingPreference !== null}
+                    disabled={
+                      savingPreference !== null ||
+                      (option.key === "emailAlertsEnabled" && !overview.mailServiceEnabled)
+                    }
                     onChange={(event) =>
                       void handlePreferenceChange(
                         option.key,

@@ -186,6 +186,25 @@ export default function SecurityAdminPage() {
     setDraft((current) => (current ? { ...current, [key]: value } : current));
   }
 
+  function updateMailServiceEnabled(checked: boolean) {
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            smtpEnabled: checked,
+            ...(!checked
+              ? {
+                  registrationEmailVerificationEnabled: false,
+                  passwordRecoveryEnabled: false,
+                  untrustedDeviceEmailVerificationEnabled: false,
+                  turnstileRecoveryEnabled: false,
+                }
+              : {}),
+          }
+        : current,
+    );
+  }
+
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!accessToken || !draft || !canEdit) return;
@@ -303,7 +322,7 @@ export default function SecurityAdminPage() {
                 checked={draft.smtpEnabled}
                 disabled={!canEdit}
                 label="启用邮件服务"
-                onChange={(checked) => updateDraft("smtpEnabled", checked)}
+                onChange={updateMailServiceEnabled}
               />
             </div>
             <div className="security-form-grid">
@@ -391,7 +410,7 @@ export default function SecurityAdminPage() {
             <div className="security-policy-toggles">
               <ToggleField
                 checked={draft.registrationEmailVerificationEnabled}
-                disabled={!canEdit}
+                disabled={!canEdit || !draft.smtpEnabled}
                 label="注册邮箱验证"
                 onChange={(checked) =>
                   updateDraft("registrationEmailVerificationEnabled", checked)
@@ -399,7 +418,7 @@ export default function SecurityAdminPage() {
               />
               <ToggleField
                 checked={draft.passwordRecoveryEnabled}
-                disabled={!canEdit}
+                disabled={!canEdit || !draft.smtpEnabled}
                 label="密码找回"
                 onChange={(checked) =>
                   updateDraft("passwordRecoveryEnabled", checked)
@@ -407,7 +426,7 @@ export default function SecurityAdminPage() {
               />
               <ToggleField
                 checked={draft.untrustedDeviceEmailVerificationEnabled}
-                disabled={!canEdit}
+                disabled={!canEdit || !draft.smtpEnabled}
                 label="非信任设备邮箱验证"
                 onChange={(checked) =>
                   updateDraft(
@@ -477,7 +496,7 @@ export default function SecurityAdminPage() {
               />
               <ToggleField
                 checked={draft.turnstileRecoveryEnabled}
-                disabled={!canEdit}
+                disabled={!canEdit || !draft.smtpEnabled}
                 label="密码找回"
                 onChange={(checked) =>
                   updateDraft("turnstileRecoveryEnabled", checked)
