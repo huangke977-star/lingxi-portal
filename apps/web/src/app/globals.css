@@ -14659,9 +14659,23 @@ input[type="checkbox"]:disabled { opacity: 0.48; cursor: default; }
     padding-top: env(safe-area-inset-top);
   }
   .chat-group-manager-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .chat-group-manager-body > nav { display: flex; max-width: 100%; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--control-line); padding: 6px 8px; scrollbar-width: none; }
+  .chat-group-manager-body > nav {
+    display: grid;
+    max-width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3px;
+    overflow: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--control-line);
+    padding: 6px 8px;
+  }
   .chat-group-manager-body > nav::-webkit-scrollbar { display: none; }
-  .chat-group-manager-body > nav button { flex: 0 0 auto; grid-template-columns: 17px auto auto; padding: 0 9px; }
+  .chat-group-manager-body > nav button {
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: 17px minmax(0, 1fr) auto;
+    padding: 0 9px;
+  }
   .chat-group-manager-body > main { box-sizing: border-box; width: 100%; max-width: 100%; overscroll-behavior: contain; padding: 12px 12px calc(18px + env(safe-area-inset-bottom)); }
   .chat-group-detail-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .chat-group-form-split { grid-template-columns: minmax(0, 1fr) auto; }
