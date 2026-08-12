@@ -21,7 +21,6 @@ import {
   Image as ImageIcon,
   Laugh,
   LoaderCircle,
-  Mic,
   MessageCircle,
   MessageCircleMore,
   Minus,
@@ -234,7 +233,12 @@ export function ChatDock() {
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
   const discardVoiceRecordingRef = useRef(false);
+  const voiceSendOnStopRef = useRef(false);
+  const voiceConversationIdRef = useRef(0);
   const voiceTimerRef = useRef<number | null>(null);
+  const sendHoldTimerRef = useRef<number | null>(null);
+  const sendPointerHeldRef = useRef(false);
+  const suppressSendClickRef = useRef(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const messageScrollRestoreRef = useRef<{ height: number; top: number } | null>(null);
   const shouldScrollMessagesToBottomRef = useRef(false);
@@ -343,7 +347,7 @@ export function ChatDock() {
   );
   const channelNotifications = useMemo(
     () => ({
-      system: notifications.filter((item) => item.channel === "system" && item.type !== "friend_request_received"),
+      system: notifications.filter((item) => item.channel === "system"),
       subscription: notifications.filter((item) => item.channel === "subscription"),
       interaction: notifications.filter((item) => item.channel === "interaction"),
     }),
@@ -394,11 +398,12 @@ export function ChatDock() {
   const draft = selectedId ? drafts[selectedId] ?? "" : "";
   const pendingAttachments = selectedId ? pendingAttachmentsByConversation[selectedId] ?? [] : [];
   const unreadMessages = conversations.reduce((total, item) => total + (item.muted ? 0 : item.unreadCount), 0);
-  const unreadNotifications = notifications.filter((item) =>
-    item.type !== "friend_request_received" &&
-    !item.readAt &&
-    !pushDisabledChannels.has(item.channel),
-  ).length;
+  const unreadNotifications = notifications.filter((item) => !item.readAt && !pushDisabledChannels.has(item.channel)).length;
+  const loadedPendingFriendshipIds = useMemo(
+    () => new Set(notifications.filter((item) => item.type === "friend_request_received" && !item.readAt && item.friendshipId).map((item) => item.friendshipId)),
+    [notifications],
+  );
+  const unloadedPendingFriendRequests = friendships.incoming.filter((friendship) => !loadedPendingFriendshipIds.has(friendship.id)).length;
   const selectedUnreadNotifications = selectedNotifications.filter((item) => !item.readAt).length;
   const selectedMessagesForAction = messages.filter((message) => selectedMessageIds.has(message.id));
   const selectedMessagesCanForward = Boolean(selectedMessageIds.size) &&
@@ -411,7 +416,7 @@ export function ChatDock() {
       friendship.user.nickname.toLocaleLowerCase().includes(normalizedForwardTargetSearch) ||
       friendship.user.username.toLocaleLowerCase().includes(normalizedForwardTargetSearch)
     ));
-  const dockUnreadCount = unreadMessages + unreadNotifications + friendships.incoming.length;
+  const dockUnreadCount = unreadMessages + unreadNotifications + unloadedPendingFriendRequests;
   const primaryEntries = useMemo(() => [
     ...conversations.filter(matchesConversationSearch).map((conversation) => ({ kind: "conversation" as const, id: conversation.id, activityAt: conversation.lastMessage?.createdAt ?? conversation.updatedAt, conversation })),
     ...(!normalizedFriendSearch ? NOTIFICATION_CHANNELS.filter((config) => !hiddenNotificationChannels.includes(config.channel)).map((config) => ({ kind: "notification" as const, id: config.id, activityAt: channelNotifications[config.channel][0]?.updatedAt ?? channelNotifications[config.channel][0]?.createdAt ?? "", config })) : []),
@@ -913,6 +918,8 @@ export function ChatDock() {
 
   useEffect(() => () => {
     discardVoiceRecordingRef.current = true;
+    sendPointerHeldRef.current = false;
+    clearSendHoldTimer();
     if (voiceTimerRef.current !== null) window.clearInterval(voiceTimerRef.current);
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== "inactive") recorder.stop();
@@ -983,6 +990,7 @@ export function ChatDock() {
     const recorder = mediaRecorderRef.current;
     if (!recorder) return;
     discardVoiceRecordingRef.current = discard;
+    if (discard) voiceSendOnStopRef.current = false;
     if (recorder.state !== "inactive") recorder.stop();
     else {
       clearVoiceTimer();
@@ -993,7 +1001,7 @@ export function ChatDock() {
     }
   }
 
-  async function startVoiceRecording() {
+  async function startVoiceRecording(sendOnStop = false) {
     if (!selectedId || isVoiceRecording || chatCalls.state || chatCalls.isPreparing) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setError("当前浏览器不支持语音录制。");
@@ -1003,12 +1011,18 @@ export function ChatDock() {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
+      if (sendOnStop && !sendPointerHeldRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]
         .find((candidate) => MediaRecorder.isTypeSupported(candidate));
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       voiceStreamRef.current = stream;
       voiceChunksRef.current = [];
       discardVoiceRecordingRef.current = false;
+      voiceSendOnStopRef.current = sendOnStop;
+      voiceConversationIdRef.current = selectedId;
       mediaRecorderRef.current = recorder;
       recorder.ondataavailable = (event) => {
         if (event.data.size) voiceChunksRef.current.push(event.data);
@@ -1034,7 +1048,13 @@ export function ChatDock() {
           return;
         }
         const extension = blob.type.includes("mp4") ? "m4a" : "webm";
-        addFiles([new File([blob], `voice-${Date.now()}.${extension}`, { type: blob.type })]);
+        const voiceFile = new File([blob], `voice-${Date.now()}.${extension}`, { type: blob.type });
+        if (voiceSendOnStopRef.current) {
+          voiceSendOnStopRef.current = false;
+          void sendPayload(voiceConversationIdRef.current, "", [voiceFile]);
+        } else {
+          addFiles([voiceFile]);
+        }
       };
       recorder.start(1000);
       setIsVoiceRecording(true);
@@ -1124,34 +1144,34 @@ export function ChatDock() {
     addFiles(Array.from(event.dataTransfer.files));
   }
 
-  async function sendMessage(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const body = draft.trim();
+  async function sendPayload(conversationId: number, body: string, files: File[], clearComposer = false) {
     const socket = socketRef.current;
     const token = readAccessToken();
-    if ((!body && !pendingAttachments.length) || !selectedId || !token) return;
+    if ((!body && !files.length) || !conversationId || !token) return;
     if (!socket?.connected) {
       setError("聊天连接尚未建立，请稍后重试。");
       return;
     }
     setIsSending(true);
     try {
-      const attachments = pendingAttachments.length
-        ? await uploadChatAttachments(token, selectedId, pendingAttachments.map((item) => item.file))
+      const attachments = files.length
+        ? await uploadChatAttachments(token, conversationId, files)
         : [];
       const response = await socket.timeout(10000).emitWithAck("chat:send", {
-        conversationId: selectedId,
+        conversationId,
         body,
         attachmentIds: attachments.map((item) => item.id),
       }) as ChatAck;
       if (!response.ok) throw new Error(response.error || "消息发送失败。");
-      updateDraft("");
-      pendingAttachments.forEach((attachment) => {
-        if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
-      });
-      setPendingAttachments([]);
-      setIsEmojiOpen(false);
-      setIsMobileToolsOpen(false);
+      if (clearComposer) {
+        updateDraft("");
+        pendingAttachments.forEach((attachment) => {
+          if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+        });
+        setPendingAttachments([]);
+        setIsEmojiOpen(false);
+        setIsMobileToolsOpen(false);
+      }
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "消息发送失败，请重试。");
     } finally {
@@ -1174,31 +1194,6 @@ export function ChatDock() {
       setError(sendError instanceof Error ? sendError.message : "消息发送失败，请重试。");
     } finally {
       setIsSending(false);
-    }
-  }
-
-  async function handleFriendRequest(friendship: Friendship, status: "accepted" | "declined") {
-    const token = readAccessToken();
-    if (!token) return;
-    try {
-      await respondFriendRequest(token, friendship.id, status);
-      const [friendshipResult, notificationResult] = await Promise.all([
-        listFriendships(token),
-        listNotifications(token),
-      ]);
-      setFriendships(friendshipResult);
-      setNotifications(notificationResult.items);
-      setNotificationChannelStates(notificationResult.channelStates ?? []);
-      if (status === "accepted") {
-        const conversation = await getOrCreateConversation(token, friendship.user.id);
-        setConversations((current) => [conversation, ...current.filter((item) => item.id !== conversation.id)]);
-        setSelectedId(conversation.id);
-        setIsMobileConversationOpen(true);
-      }
-      setNotice(status === "accepted" ? "已成为好友。" : "已拒绝好友申请。");
-      notifySocialStateChange();
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "好友申请处理失败。");
     }
   }
 
@@ -1547,7 +1542,9 @@ export function ChatDock() {
       }
     }
     if (notification.type === "friend_request_received") {
-      setIsMobileConversationOpen(false);
+      setSelectedId(notificationConversationId("system"));
+      setSelectedSystemNotificationId(notification.id);
+      setIsMobileConversationOpen(true);
       return;
     }
     if (notification.context?.groupId) {
@@ -1818,19 +1815,21 @@ export function ChatDock() {
   ) {
     const token = readAccessToken();
     const context = notification.context;
-    if (!token || !context?.groupId) return;
+    if (!token || !context) return;
     setIsNotificationActionRunning(true);
     try {
-      if (context.kind === "group_invitation") {
+      if (context.kind === "friend_request" && notification.friendshipId) {
+        await respondFriendRequest(token, notification.friendshipId, action === "accept" ? "accepted" : "declined");
+      } else if (context.kind === "group_invitation" && context.groupId) {
         await respondChatGroupInvitationByGroup(token, context.groupId, action === "accept" ? "accepted" : "declined");
-      } else if (context.kind === "group_join_request" && context.joinRequestId) {
+      } else if (context.kind === "group_join_request" && context.groupId && context.joinRequestId) {
         await respondChatGroupJoinRequest(token, context.groupId, context.joinRequestId, action === "accept" ? "approved" : "rejected");
       } else if (context.kind === "group_report" && context.reportId) {
         await handleChatGroupReport(token, context.reportId, action === "resolve-report"
           ? { status: "resolved", deleteMessage: true, resolution: "群管理员已删除被举报消息" }
           : { status: "rejected", resolution: "未发现违规" });
       } else {
-        setGroupManagerInitialId(context.groupId);
+        setGroupManagerInitialId(context.groupId ?? null);
         setGroupManagerInitialView(context.kind === "group_join_request" ? "invites" : "mine");
         setIsGroupManagerOpen(true);
         return;
@@ -1845,6 +1844,41 @@ export function ChatDock() {
     } finally {
       setIsNotificationActionRunning(false);
     }
+  }
+
+  async function sendMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await sendPayload(selectedId, draft.trim(), pendingAttachments.map((item) => item.file), true);
+  }
+
+  function clearSendHoldTimer() {
+    if (sendHoldTimerRef.current !== null) window.clearTimeout(sendHoldTimerRef.current);
+    sendHoldTimerRef.current = null;
+  }
+
+  function handleSendPointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0 || isSending || chatCalls.state) return;
+    sendPointerHeldRef.current = true;
+    suppressSendClickRef.current = false;
+    clearSendHoldTimer();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    sendHoldTimerRef.current = window.setTimeout(() => {
+      sendHoldTimerRef.current = null;
+      suppressSendClickRef.current = true;
+      void startVoiceRecording(true);
+    }, 480);
+  }
+
+  function handleSendPointerUp() {
+    sendPointerHeldRef.current = false;
+    clearSendHoldTimer();
+    if (mediaRecorderRef.current?.state === "recording") cancelActiveVoiceRecording(false);
+  }
+
+  function handleSendPointerCancel() {
+    sendPointerHeldRef.current = false;
+    clearSendHoldTimer();
+    if (mediaRecorderRef.current) cancelActiveVoiceRecording(true);
   }
 
   async function submitGroupReport() {
@@ -2075,18 +2109,6 @@ export function ChatDock() {
                   user={entry.conversation.user}
                 />)}
 
-                {friendships.incoming.length ? <section className="chat-sidebar-section friend-request-list">
-                  <h2><UserPlus aria-hidden="true" size={14} />好友申请 <b>{friendships.incoming.length}</b></h2>
-                  {friendships.incoming.map((friendship) => (
-                    <div className="friend-request-card" key={friendship.id}>
-                      <UserAvatar user={friendship.user} />
-                      <span><strong>{friendship.user.nickname}</strong><small>@{friendship.user.username}</small></span>
-                      {friendship.note ? <p>{friendship.note}</p> : null}
-                      <div><button onClick={() => void handleFriendRequest(friendship, "accepted")} title="接受" type="button"><Check aria-hidden="true" size={15} />接受</button><button onClick={() => void handleFriendRequest(friendship, "declined")} title="拒绝" type="button"><X aria-hidden="true" size={15} />拒绝</button></div>
-                    </div>
-                  ))}
-                </section> : null}
-
                 {filteredFriendsWithoutConversation.map((friendship) => (
                   <ChatSidebarContactRow
                     active={false}
@@ -2104,18 +2126,13 @@ export function ChatDock() {
                   />
                 ))}
 
-                {friendships.outgoing.length ? <section className="chat-sidebar-section chat-pending-friends">
-                  <h2>等待确认</h2>
-                  {friendships.outgoing.map((friendship) => <div className="chat-pending-friend" key={friendship.id}><UserAvatar user={friendship.user} /><span><strong>{friendship.user.nickname}</strong><small>好友申请等待对方处理</small></span></div>)}
-                </section> : null}
-
                 {friendships.blocked.length ? <details className="chat-blocked-list">
                   <summary><Ban aria-hidden="true" size={14} />黑名单 <b>{friendships.blocked.length}</b></summary>
                   {friendships.blocked.map((friendship) => <div className="chat-blocked-row" key={friendship.id}><UserAvatar user={friendship.user} /><span><strong>{friendship.user.nickname}</strong><small>@{friendship.user.username}</small></span><button onClick={() => void handleUnblock(friendship)} title="解除拉黑" type="button"><ShieldOff aria-hidden="true" size={15} /></button></div>)}
                 </details> : null}
 
                 {!isLoading && normalizedFriendSearch && !primaryEntries.length && !filteredFriendsWithoutConversation.length ? <span className="chat-sidebar-empty">没有找到匹配的好友。</span> : null}
-                {!isLoading && !normalizedFriendSearch && !conversations.length && !friendships.incoming.length && !friendships.friends.length && !friendships.outgoing.length ? <span className="chat-sidebar-empty">还没有好友或会话。</span> : null}
+                {!isLoading && !normalizedFriendSearch && !primaryEntries.length && !friendships.friends.length ? <span className="chat-sidebar-empty">还没有好友或会话。</span> : null}
               </div>
             </div>
           </aside>
@@ -2130,6 +2147,9 @@ export function ChatDock() {
               onDeleteSelected={() => requestNotificationDeletion(Array.from(selectedNotificationIds))}
               onMarkSelectedRead={() => void markNotificationSelectionRead(Array.from(selectedNotificationIds))}
               onOpenArticle={(slug) => router.push(`/articles/${slug}`)}
+              onOpenGroup={(groupId) => { setGroupManagerInitialId(groupId); setGroupManagerInitialView("mine"); setIsGroupManagerOpen(true); }}
+              onOpenProfile={(username) => router.push(`/users/${encodeURIComponent(username)}`)}
+              onPreview={setPreviewAttachment}
               onGroupAction={(notification, action) => void handleGroupNotificationAction(notification, action)}
               onOpenActions={openNotificationActionsAtPointer}
               onSelect={handleNotification}
@@ -2181,10 +2201,20 @@ export function ChatDock() {
                     <button aria-label="更多聊天功能" className={`chat-mobile-more${isMobileToolsOpen ? " active" : ""}`} onClick={() => { setIsMobileToolsOpen((current) => !current); setIsEmojiOpen(false); }} title="更多" type="button"><Plus aria-hidden="true" size={19} /></button>
                     <button aria-label="添加表情" className={`chat-desktop-tool${isEmojiOpen ? " active" : ""}`} onClick={() => { setIsEmojiOpen((current) => !current); setIsMobileToolsOpen(false); }} title="表情" type="button"><Laugh aria-hidden="true" size={18} /></button>
                     <button aria-label="添加图片或文件" className="chat-desktop-tool" onClick={() => fileInputRef.current?.click()} title="添加图片或文件" type="button"><Paperclip aria-hidden="true" size={18} /></button>
-                    <button aria-label={isVoiceRecording ? "结束语音录制" : "录制语音消息"} className={`chat-voice-tool${isVoiceRecording ? " active recording" : ""}`} disabled={Boolean(chatCalls.state)} onClick={() => isVoiceRecording ? cancelActiveVoiceRecording(false) : void startVoiceRecording()} title={isVoiceRecording ? `结束录制 ${formatDuration(voiceRecordingSeconds)}` : "语音消息"} type="button">{isVoiceRecording ? <Square aria-hidden="true" size={15} /> : <Mic aria-hidden="true" size={18} />}</button>
                   </div>
                   <textarea aria-label={`给 ${selected.group?.name ?? selected.user.nickname} 发消息`} maxLength={2000} onChange={(event) => updateDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} onPaste={handlePaste} placeholder="输入消息" rows={2} value={draft} />
-                  <button aria-label="发送消息" disabled={isSending || isVoiceRecording || (!draft.trim() && !pendingAttachments.length)} title="发送消息" type="submit">{isSending ? <LoaderCircle aria-hidden="true" className="spin" size={18} /> : <Send aria-hidden="true" size={18} />}</button>
+                  <button
+                    aria-label={isVoiceRecording ? `松开发送语音，已录制 ${formatDuration(voiceRecordingSeconds)}` : "发送消息，长按录制语音"}
+                    className={isVoiceRecording ? "recording" : undefined}
+                    disabled={isSending || Boolean(chatCalls.state)}
+                    onClick={(event) => { if (suppressSendClickRef.current || (!draft.trim() && !pendingAttachments.length)) event.preventDefault(); suppressSendClickRef.current = false; }}
+                    onContextMenu={(event) => event.preventDefault()}
+                    onPointerCancel={handleSendPointerCancel}
+                    onPointerDown={handleSendPointerDown}
+                    onPointerUp={handleSendPointerUp}
+                    title={isVoiceRecording ? `松开发送 ${formatDuration(voiceRecordingSeconds)}` : "发送，长按录音"}
+                    type="submit"
+                  >{isSending ? <LoaderCircle aria-hidden="true" className="spin" size={18} /> : isVoiceRecording ? <Square aria-hidden="true" size={15} /> : <Send aria-hidden="true" size={18} />}</button>
                 </div>
                 {isMobileToolsOpen ? <div className="chat-mobile-tools-panel">
                   <button onClick={() => { setIsMobileToolsOpen(false); setIsEmojiOpen(true); }} type="button"><span><Laugh aria-hidden="true" size={22} /></span><small>表情</small></button>
@@ -2370,6 +2400,9 @@ function NotificationPanel({
   onMarkSelectedRead,
   onOpenActions,
   onOpenArticle,
+  onOpenGroup,
+  onOpenProfile,
+  onPreview,
   onGroupAction,
   onSelect,
   onToggleActions,
@@ -2388,6 +2421,9 @@ function NotificationPanel({
   onMarkSelectedRead: () => void;
   onOpenActions: (notificationId: number, event: ReactMouseEvent<HTMLElement>) => void;
   onOpenArticle: (slug: string) => void;
+  onOpenGroup: (groupId: number) => void;
+  onOpenProfile: (username: string) => void;
+  onPreview: (attachment: ChatAttachment) => void;
   onGroupAction: (notification: SocialNotification, action: "accept" | "reject" | "resolve-report" | "reject-report") => void;
   onSelect: (notification: SocialNotification) => Promise<void>;
   onToggleActions: (notificationId: number) => void;
@@ -2458,18 +2494,23 @@ function NotificationPanel({
           onPointerUp={handlePointerEnd}
         >
           {isSelectionMode ? <button aria-label={selected ? "取消选择通知" : "选择通知"} aria-pressed={selected} className="chat-notification-selector" onClick={() => onToggleSelection(notification.id)} type="button">{selected ? <Check aria-hidden="true" size={13} /> : null}</button> : null}
-          <button className="chat-system-notification-main" onClick={() => void onSelect(notification)} type="button">
-            <span className="chat-system-notification-icon"><NotificationChannelIcon channel={channel} size={17} /></span>
-            <span>
-              <strong>{notification.title}</strong>
-              <small>{notification.body}</small>
-              {notification.context?.commentBody ? <q>{notification.context.commentBody}</q> : null}
-              <time>{formatChatTime(notification.updatedAt || notification.createdAt)}</time>
-            </span>
-          </button>
+          <div className="chat-system-notification-card">
+            <NotificationIdentity notification={notification} onOpenGroup={onOpenGroup} onOpenProfile={onOpenProfile} />
+            <div className="chat-system-notification-main">
+              <button className="chat-system-notification-copy" onClick={() => void onSelect(notification)} type="button"><span>
+                <strong>{notification.title}</strong>
+                {notification.context?.group?.name ? <small className="chat-notification-group-name">{notification.context.group.name}</small> : null}
+                {notification.context?.kind !== "group_report" ? <small>{notification.context?.kind === "friend_request" && notification.context.requestNote ? notification.context.requestNote : notification.body}</small> : null}
+                {notification.context?.commentBody ? <q>{notification.context.commentBody}</q> : null}
+                {notification.context && !notification.context.actionable && notification.context.status ? <em>{notificationStatusLabel(notification.context.kind, notification.context.status)}</em> : null}
+                <time>{formatChatTime(notification.updatedAt || notification.createdAt)}</time>
+              </span></button>
+              {notification.context?.kind === "group_report" && notification.context.message ? <NotificationReportContent message={notification.context.message} onPreview={onPreview} /> : null}
+            </div>
+            {notification.context?.actionable && (notification.context.kind === "friend_request" || notification.context.kind === "group_invitation" || notification.context.kind === "group_join_request") ? <div className="chat-notification-inline-actions"><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "accept")} type="button"><Check aria-hidden="true" size={13} />同意</button><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "reject")} type="button"><X aria-hidden="true" size={13} />拒绝</button></div> : null}
+            {notification.context?.actionable && notification.context.kind === "group_report" ? <div className="chat-notification-inline-actions"><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "resolve-report")} type="button"><Check aria-hidden="true" size={13} />处理</button><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "reject-report")} type="button"><X aria-hidden="true" size={13} />驳回</button></div> : null}
+          </div>
           {notification.context?.article ? <button className="chat-system-article-link" onClick={() => onOpenArticle(notification.context?.article?.slug ?? "")} type="button"><FileText aria-hidden="true" size={15} /><span><small>相关文章</small><strong>{notification.context.article.title}</strong></span><ChevronLeft aria-hidden="true" size={15} /></button> : null}
-          {notification.context?.kind === "group_invitation" || notification.context?.kind === "group_join_request" ? <div className="chat-notification-inline-actions"><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "accept")} type="button"><Check aria-hidden="true" size={13} />同意</button><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "reject")} type="button"><X aria-hidden="true" size={13} />拒绝</button></div> : null}
-          {notification.context?.kind === "group_report" ? <div className="chat-notification-inline-actions"><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "resolve-report")} type="button"><Check aria-hidden="true" size={13} />处理并删除</button><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "reject-report")} type="button"><X aria-hidden="true" size={13} />驳回</button></div> : null}
         </article>;
       }) : <div className="chat-empty"><NotificationChannelIcon channel={channel} size={26} /><strong>暂时没有消息</strong><span>{emptyText}</span></div>}
     </div>
@@ -2480,6 +2521,51 @@ function NotificationPanel({
       <button className="danger" disabled={isActionRunning || !selectedIds.size} onClick={onDeleteSelected} type="button"><Trash2 aria-hidden="true" size={14} />删除</button>
     </div> : null}
   </div>;
+}
+
+function NotificationIdentity({
+  notification,
+  onOpenGroup,
+  onOpenProfile,
+}: {
+  notification: SocialNotification;
+  onOpenGroup: (groupId: number) => void;
+  onOpenProfile: (username: string) => void;
+}) {
+  const group = notification.context?.group;
+  const useGroup = Boolean(group && (notification.context?.kind === "group_invitation" || notification.context?.kind === "group_report"));
+  if (useGroup && group) {
+    return <button aria-label={`查看群聊 ${group.name}`} className="chat-notification-identity" onClick={() => onOpenGroup(group.id)} title="查看群资料" type="button"><span className="chat-user-avatar chat-group-conversation-avatar">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : Array.from(group.name.trim()).slice(-2).join("").toUpperCase()}</span></button>;
+  }
+  if (notification.actor) {
+    return <button aria-label={`查看 ${notification.actor.nickname} 的主页`} className="chat-notification-identity" onClick={() => onOpenProfile(notification.actor!.username)} title="查看主页" type="button"><UserAvatar user={notification.actor} /></button>;
+  }
+  return <span className="chat-system-notification-icon"><NotificationChannelIcon channel={notification.channel} size={17} /></span>;
+}
+
+function NotificationReportContent({ message, onPreview }: { message: ChatMessage; onPreview: (attachment: ChatAttachment) => void }) {
+  const images = message.attachments.filter((attachment) => attachment.kind === "image");
+  const files = message.attachments.filter((attachment) => attachment.kind !== "image");
+  return <div className="chat-notification-report-content">
+    {message.body ? <q>{message.body}</q> : null}
+    {images.length ? <div className={`chat-message-attachments chat-message-images count-${images.length}`}>{images.map((attachment) => <AuthenticatedImage attachment={attachment} key={attachment.id} onClick={() => onPreview(attachment)} />)}</div> : null}
+    {files.length ? <div className="chat-message-attachments chat-message-files">{files.map((attachment) => attachment.kind === "audio" || attachment.kind === "video" ? <AuthenticatedMedia attachment={attachment} key={attachment.id} /> : <AttachmentFile attachment={attachment} key={attachment.id} />)}</div> : null}
+  </div>;
+}
+
+function notificationStatusLabel(kind: NonNullable<SocialNotification["context"]>["kind"], status: string): string {
+  if (status === "already_joined") return "您已加入该群聊";
+  if (kind === "friend_request") {
+    if (status === "accepted") return "好友申请已接受";
+    if (status === "declined") return "好友申请已拒绝";
+    if (status === "blocked") return "该好友关系已被拉黑";
+    return "好友申请已失效";
+  }
+  if (kind === "group_report") return status === "rejected" ? "举报已驳回" : "举报已处理";
+  if (status === "accepted" || status === "approved") return "已通过";
+  if (status === "declined" || status === "rejected") return "已拒绝";
+  if (status === "expired") return "邀请已过期";
+  return "操作已失效";
 }
 
 function ChatMessageItem({
@@ -2623,6 +2709,8 @@ function ChatMessageItem({
     </div>;
   }
   const emojiOnly = isEmojiOnly(message.body);
+  const imageAttachments = message.attachments?.filter((attachment) => attachment.kind === "image") ?? [];
+  const otherAttachments = message.attachments?.filter((attachment) => attachment.kind !== "image") ?? [];
   return <div aria-selected={selectionMode ? selected : undefined} className={`chat-message ${mine ? "mine" : "theirs"}${selectionMode ? " selection-mode" : ""}${emojiOnly ? " emoji-only" : ""}${selected ? " selected" : ""}`} onClickCapture={handleSelectionClick} onContextMenu={handleContextMenu} onPointerCancel={handlePointerEnd} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd}>
     {selectionControl}
     <span
@@ -2636,11 +2724,8 @@ function ChatMessageItem({
       title={message.senderDisplayName || message.sender.nickname}
     ><UserAvatar user={message.sender} /><small>{message.senderDisplayName || message.sender.nickname}</small></span>
     <div>
-      {message.attachments?.length ? <div className={`chat-message-attachments count-${Math.min(message.attachments.length, 4)}${message.attachments.length === 1 && message.attachments[0].kind === "audio" ? " audio-only" : ""}`}>{message.attachments.map((attachment) => attachment.kind === "image"
-        ? <AuthenticatedImage attachment={attachment} key={attachment.id} onClick={() => onPreview(attachment)} />
-        : attachment.kind === "audio" || attachment.kind === "video"
-          ? <AuthenticatedMedia attachment={attachment} key={attachment.id} />
-          : <AttachmentFile attachment={attachment} key={attachment.id} />)}</div> : null}
+      {imageAttachments.length ? <div className={`chat-message-attachments chat-message-images count-${imageAttachments.length}`}>{imageAttachments.map((attachment) => <AuthenticatedImage attachment={attachment} key={attachment.id} onClick={() => onPreview(attachment)} />)}</div> : null}
+      {otherAttachments.length ? <div className={`chat-message-attachments chat-message-files${otherAttachments.length === 1 && otherAttachments[0].kind === "audio" ? " audio-only" : ""}`}>{otherAttachments.map((attachment) => attachment.kind === "audio" || attachment.kind === "video" ? <AuthenticatedMedia attachment={attachment} key={attachment.id} /> : <AttachmentFile attachment={attachment} key={attachment.id} />)}</div> : null}
       {message.body ? <p>{message.body}</p> : null}
       <span>{formatChatTime(message.createdAt)}{mine && showReadReceipt ? ` · ${message.readAt ? "已读" : "未读"}` : ""}</span>
     </div>

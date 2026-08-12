@@ -9,6 +9,9 @@ import {
   ArticleVisibility,
   ChatGroupMemberRole,
   ChatGroupMemberStatus,
+  ChatGroupInvitationStatus,
+  ChatGroupJoinRequestStatus,
+  ChatGroupReportStatus,
   ChatGroupStatus,
   ChatMessageType,
   ConversationKind,
@@ -108,6 +111,13 @@ type MessageRecord = Prisma.ChatMessageGetPayload<{ include: typeof messageInclu
 
 const notificationInclude = {
   actor: { select: socialUserSelect },
+  friendship: {
+    select: {
+      status: true,
+      requestedById: true,
+      requestNote: true,
+    },
+  },
   article: { select: { id: true, title: true, slug: true } },
   comment: {
     select: {
@@ -132,6 +142,7 @@ const notificationInclude = {
 } satisfies Prisma.UserNotificationInclude;
 
 type NotificationRecord = Prisma.UserNotificationGetPayload<{ include: typeof notificationInclude }>;
+type NotificationContext = NonNullable<UserNotificationResponse["context"]>;
 
 @Injectable()
 export class SocialService {
@@ -426,22 +437,21 @@ export class SocialService {
         },
         include: friendshipInclude,
       });
-      if (notificationSettings.notifyFriendRequest) {
-        await transaction.userNotification.create({
-          data: {
-            userId: targetId,
-            actorId: user.id,
-            type: UserNotificationType.friend_request_received,
-            title: "新的好友申请",
-            body: this.siteSettingsService.renderTemplate(notificationSettings.templates.friendRequest, {
-              actor: user.nickname || user.username,
-              note: requestNote,
-            }),
-            actionUrl: `/messages?friendshipId=${friendship.id}`,
-            friendshipId: friendship.id,
-          },
-        });
-      }
+      await transaction.userNotification.create({
+        data: {
+          userId: targetId,
+          actorId: user.id,
+          type: UserNotificationType.friend_request_received,
+          title: "新的好友申请",
+          body: this.siteSettingsService.renderTemplate(notificationSettings.templates.friendRequest, {
+            actor: user.nickname || user.username,
+            note: requestNote,
+          }),
+          actionUrl: `/messages?friendshipId=${friendship.id}`,
+          friendshipId: friendship.id,
+          pushDeliveredAt: notificationSettings.notifyFriendRequest ? null : new Date(),
+        },
+      });
       return friendship;
     });
     return this.toFriendship(record, user.id);
@@ -1275,8 +1285,10 @@ export class SocialService {
       this.listHiddenNotificationChannels(user.id),
       this.listNotificationChannelStates(user.id),
     ]);
+    const visibleNotifications = notifications.slice(0, query.limit);
+    const contexts = await this.buildNotificationContexts(visibleNotifications);
     return {
-      items: notifications.slice(0, query.limit).map((notification) => this.toNotification(notification)),
+      items: visibleNotifications.map((notification) => this.toNotification(notification, contexts.get(notification.id))),
       hasMore: notifications.length > query.limit,
       hiddenChannels,
       channelStates,
@@ -1297,7 +1309,8 @@ export class SocialService {
       throw new NotFoundException("通知不存在。");
     }
     void result;
-    return this.toNotification(notification);
+    const contexts = await this.buildNotificationContexts([notification]);
+    return this.toNotification(notification, contexts.get(notification.id));
   }
 
   async markAllNotificationsRead(user: AuthenticatedUser, channel?: "system" | "subscription" | "interaction"): Promise<{ count: number; readAt: string }> {
@@ -1696,7 +1709,7 @@ export class SocialService {
     };
   }
 
-  private toNotification(notification: NotificationRecord): UserNotificationResponse {
+  private toNotification(notification: NotificationRecord, enrichedContext?: NotificationContext): UserNotificationResponse {
     const groupContext = this.groupNotificationContext(notification.actionUrl, notification.title);
     return {
       id: notification.id,
@@ -1720,7 +1733,7 @@ export class SocialService {
         commentBody: notification.comment.body,
         commentStatus: notification.comment.status,
         article: notification.comment.article,
-      } : notification.article ? { kind: "article", article: notification.article } : groupContext,
+      } : notification.article ? { kind: "article", article: notification.article } : enrichedContext ?? groupContext,
       aggregateCount: notification.aggregateCount,
       readAt: notification.readAt?.toISOString() ?? null,
       openedAt: notification.openedAt?.toISOString() ?? null,
@@ -1744,6 +1757,167 @@ export class SocialService {
       return { kind: "group_join_request", groupId, joinRequestId };
     }
     return { kind: "group_invitation", groupId };
+  }
+
+  private async buildNotificationContexts(notifications: NotificationRecord[]): Promise<Map<number, NotificationContext>> {
+    const contexts = new Map<number, NotificationContext>();
+    const friendshipIds = [...new Set(notifications.map((notification) => notification.friendshipId).filter((id): id is number => Boolean(id)))];
+    const invitationKeys = [...new Set(notifications
+      .filter((notification) => this.groupNotificationContext(notification.actionUrl, notification.title)?.kind === "group_invitation" && notification.actionUrl)
+      .map((notification) => `${notification.userId}:${notification.actionUrl}`))];
+    const [latestFriendNotifications, latestInvitationNotifications] = await Promise.all([
+      friendshipIds.length ? this.prisma.userNotification.findMany({
+        where: { friendshipId: { in: friendshipIds }, type: UserNotificationType.friend_request_received },
+        orderBy: [{ id: "desc" }],
+        select: { id: true, friendshipId: true, userId: true },
+      }) : [],
+      invitationKeys.length ? this.prisma.userNotification.findMany({
+        where: {
+          OR: invitationKeys.map((key) => {
+            const separator = key.indexOf(":");
+            return { userId: Number(key.slice(0, separator)), actionUrl: key.slice(separator + 1) };
+          }),
+        },
+        orderBy: [{ id: "desc" }],
+        select: { id: true, userId: true, actionUrl: true },
+      }) : [],
+    ]);
+    const latestFriendNotificationId = new Map<string, number>();
+    latestFriendNotifications.forEach((notification) => {
+      const key = `${notification.userId}:${notification.friendshipId}`;
+      if (!latestFriendNotificationId.has(key)) latestFriendNotificationId.set(key, notification.id);
+    });
+    const latestInvitationNotificationId = new Map<string, number>();
+    latestInvitationNotifications.forEach((notification) => {
+      const key = `${notification.userId}:${notification.actionUrl}`;
+      if (!latestInvitationNotificationId.has(key)) latestInvitationNotificationId.set(key, notification.id);
+    });
+    const groupDescriptors = notifications
+      .map((notification) => ({ notification, context: this.groupNotificationContext(notification.actionUrl, notification.title) }))
+      .filter((item): item is { notification: NotificationRecord; context: NotificationContext } => Boolean(item.context));
+
+    for (const notification of notifications) {
+      if (notification.type !== UserNotificationType.friend_request_received || !notification.friendship) continue;
+      contexts.set(notification.id, {
+        kind: "friend_request",
+        status: notification.friendship.status,
+        actionable: notification.friendship.status === FriendshipStatus.pending &&
+          notification.friendship.requestedById !== notification.userId &&
+          latestFriendNotificationId.get(`${notification.userId}:${notification.friendshipId}`) === notification.id,
+        requestNote: notification.friendship.requestNote,
+      });
+    }
+    if (!groupDescriptors.length) return contexts;
+
+    const groupIds = [...new Set(groupDescriptors.map((item) => item.context.groupId).filter((id): id is number => Boolean(id)))];
+    const joinRequestIds = [...new Set(groupDescriptors.map((item) => item.context.joinRequestId).filter((id): id is number => Boolean(id)))];
+    const reportIds = [...new Set(groupDescriptors.map((item) => item.context.reportId).filter((id): id is number => Boolean(id)))];
+    const inviteeIds = [...new Set(groupDescriptors
+      .filter((item) => item.context.kind === "group_invitation")
+      .map((item) => item.notification.userId))];
+    const [groups, invitations, joinRequests, reports] = await Promise.all([
+      this.prisma.chatGroup.findMany({
+        where: { id: { in: groupIds } },
+        select: {
+          id: true,
+          conversationId: true,
+          name: true,
+          avatarStoredName: true,
+          avatarUrl: true,
+          status: true,
+          members: { select: { userId: true, status: true, role: true } },
+        },
+      }),
+      this.prisma.chatGroupInvitation.findMany({
+        where: { groupId: { in: groupIds }, inviteeId: { in: inviteeIds } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { groupId: true, inviteeId: true, status: true, expiresAt: true },
+      }),
+      this.prisma.chatGroupJoinRequest.findMany({
+        where: { id: { in: joinRequestIds } },
+        select: { id: true, groupId: true, userId: true, status: true },
+      }),
+      this.prisma.chatGroupMessageReport.findMany({
+        where: { id: { in: reportIds } },
+        select: {
+          id: true,
+          status: true,
+          group: {
+            select: { id: true, conversationId: true, name: true, avatarStoredName: true, avatarUrl: true },
+          },
+          message: { include: messageInclude },
+        },
+      }),
+    ]);
+    const groupMap = new Map(groups.map((group) => [group.id, group]));
+    const invitationMap = new Map<string, (typeof invitations)[number]>();
+    invitations.forEach((invitation) => {
+      const key = `${invitation.groupId}:${invitation.inviteeId}`;
+      if (!invitationMap.has(key)) invitationMap.set(key, invitation);
+    });
+    const joinRequestMap = new Map(joinRequests.map((request) => [request.id, request]));
+    const reportMap = new Map(reports.map((report) => [report.id, report]));
+
+    for (const { notification, context } of groupDescriptors) {
+      const group = context.groupId ? groupMap.get(context.groupId) : undefined;
+      const groupSummary = group ? {
+        id: group.id,
+        conversationId: group.conversationId,
+        name: group.name,
+        avatarUrl: group.avatarStoredName ? `/social/groups/avatars/${group.avatarStoredName}` : group.avatarUrl,
+      } : undefined;
+      if (context.kind === "group_invitation" && context.groupId) {
+        const membership = group?.members.find((member) => member.userId === notification.userId);
+        const invitation = invitationMap.get(`${context.groupId}:${notification.userId}`);
+        const status = membership?.status === ChatGroupMemberStatus.active
+          ? "already_joined"
+          : invitation?.status === ChatGroupInvitationStatus.pending && invitation.expiresAt <= new Date()
+            ? ChatGroupInvitationStatus.expired
+            : invitation?.status ?? ChatGroupInvitationStatus.cancelled;
+        contexts.set(notification.id, {
+          ...context,
+          conversationId: group?.conversationId,
+          group: groupSummary,
+          status,
+          actionable: status === ChatGroupInvitationStatus.pending &&
+            group?.status === ChatGroupStatus.active &&
+            latestInvitationNotificationId.get(`${notification.userId}:${notification.actionUrl}`) === notification.id,
+        });
+      } else if (context.kind === "group_join_request" && context.joinRequestId) {
+        const request = joinRequestMap.get(context.joinRequestId);
+        const targetMember = request ? group?.members.find((member) => member.userId === request.userId) : undefined;
+        const manager = group?.members.find((member) => member.userId === notification.userId);
+        const status = targetMember?.status === ChatGroupMemberStatus.active
+          ? "already_joined"
+          : request?.status ?? ChatGroupJoinRequestStatus.cancelled;
+        const managerCanAct = manager?.status === ChatGroupMemberStatus.active && manager.role !== ChatGroupMemberRole.member;
+        contexts.set(notification.id, {
+          ...context,
+          conversationId: group?.conversationId,
+          group: groupSummary,
+          status,
+          actionable: status === ChatGroupJoinRequestStatus.pending && Boolean(managerCanAct) && group?.status === ChatGroupStatus.active,
+        });
+      } else if (context.kind === "group_report" && context.reportId) {
+        const report = reportMap.get(context.reportId);
+        const manager = group?.members.find((member) => member.userId === notification.userId);
+        const managerCanAct = manager?.status === ChatGroupMemberStatus.active && manager.role !== ChatGroupMemberRole.member;
+        contexts.set(notification.id, {
+          ...context,
+          conversationId: report?.group.conversationId ?? group?.conversationId,
+          group: report ? {
+            id: report.group.id,
+            conversationId: report.group.conversationId,
+            name: report.group.name,
+            avatarUrl: report.group.avatarStoredName ? `/social/groups/avatars/${report.group.avatarStoredName}` : report.group.avatarUrl,
+          } : groupSummary,
+          status: report?.status ?? ChatGroupReportStatus.resolved,
+          actionable: report?.status === ChatGroupReportStatus.pending && Boolean(managerCanAct),
+          message: report ? this.toMessage(report.message) : undefined,
+        });
+      }
+    }
+    return contexts;
   }
 
   private toNotificationChannelState(state: {

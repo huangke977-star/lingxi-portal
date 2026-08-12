@@ -1,6 +1,8 @@
 import { ForbiddenException } from "@nestjs/common";
 import { AuthenticatedUser } from "../src/auth/auth.types";
 import {
+  ChatGroupInvitationStatus,
+  ChatGroupJoinRequestStatus,
   ChatGroupMemberRole,
   ChatGroupMemberStatus,
   ChatGroupStatus,
@@ -191,6 +193,82 @@ describe("ChatGroupsService", () => {
     expect(fixture.createNotifications).toHaveBeenCalledWith({
       data: [expect.objectContaining({ userId: 9, title: "新的群聊邀请" })],
     });
+  });
+
+  it("cancels a pending join request when an invitation is accepted", async () => {
+    const invitee = { ...owner, id: 9, username: "invitee", nickname: "受邀用户" };
+    const invitation = {
+      id: 61,
+      groupId: 11,
+      inviterId: owner.id,
+      inviteeId: invitee.id,
+      status: ChatGroupInvitationStatus.pending,
+      expiresAt: new Date(Date.now() + 60_000),
+      group: groupRecord(),
+    };
+    const cancelRequests = jest.fn(async () => ({ count: 1 }));
+    const updateNotifications = jest.fn(async () => ({ count: 1 }));
+    const transaction = {
+      chatGroupMember: { upsert: jest.fn(async () => ({})) },
+      conversationParticipantState: { upsert: jest.fn(async () => ({})) },
+      chatGroupInvitation: {
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        update: jest.fn(async () => invitation),
+      },
+      chatGroupJoinRequest: {
+        findMany: jest.fn(async () => [{ id: 71 }]),
+        updateMany: cancelRequests,
+      },
+      userNotification: { updateMany: updateNotifications },
+      chatGroupActivityLog: { create: jest.fn(async () => ({})) },
+    };
+    const service = createService({
+      chatGroupInvitation: { findUnique: jest.fn(async () => invitation) },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
+    });
+    jest.spyOn(service, "get").mockResolvedValue({ id: 11 } as never);
+
+    await service.respondInvitation(invitee, invitation.id, { status: "accepted" });
+
+    expect(cancelRequests).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: ChatGroupJoinRequestStatus.cancelled }),
+      where: { id: { in: [71] } },
+    }));
+    expect(updateNotifications).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ actionUrl: "/messages?groupApproval=11&joinRequest=71" }),
+    }));
+  });
+
+  it("cancels pending invitations when a join request is approved", async () => {
+    const cancelInvitations = jest.fn(async () => ({ count: 1 }));
+    const transaction = {
+      chatGroupMember: { upsert: jest.fn(async () => ({})) },
+      conversationParticipantState: { upsert: jest.fn(async () => ({})) },
+      chatGroupJoinRequest: {
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        update: jest.fn(async () => ({})),
+      },
+      chatGroupInvitation: { updateMany: cancelInvitations },
+      userNotification: {
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        create: jest.fn(async () => ({})),
+      },
+      chatGroupActivityLog: { create: jest.fn(async () => ({})) },
+    };
+    const service = createService({
+      chatGroup: { findUnique: jest.fn(async () => groupRecord()) },
+      chatGroupJoinRequest: {
+        findUnique: jest.fn(async () => ({ id: 72, groupId: 11, userId: 9, status: ChatGroupJoinRequestStatus.pending })),
+      },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
+    });
+
+    await service.respondJoinRequest(owner, 11, 72, { status: "approved" });
+
+    expect(cancelInvitations).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: ChatGroupInvitationStatus.cancelled }),
+      where: expect.objectContaining({ groupId: 11, inviteeId: 9, status: ChatGroupInvitationStatus.pending }),
+    }));
   });
 
   it("creates one pending report for another member's message", async () => {

@@ -142,7 +142,7 @@ export interface ChatGroupJoinRequestResponse {
 
 export interface ChatGroupReportResponse {
   id: number;
-  group: Pick<ChatGroupSummaryResponse, "id" | "conversationId" | "name">;
+  group: Pick<ChatGroupSummaryResponse, "id" | "conversationId" | "name" | "avatarUrl">;
   message: ChatMessageResponse;
   reporter: SocialUserResponse;
   reason: string;
@@ -219,7 +219,7 @@ export interface UserNotificationResponse {
   commentReportId: number | null;
   actor: SocialUserResponse | null;
   context: {
-    kind: "comment_report" | "article" | "article_comment" | "group_invitation" | "group_join_request" | "group_report";
+    kind: "comment_report" | "article" | "article_comment" | "friend_request" | "group_invitation" | "group_join_request" | "group_report";
     article?: { id: number; title: string; slug: string };
     commentId?: number;
     commentBody?: string;
@@ -229,6 +229,11 @@ export interface UserNotificationResponse {
     invitationId?: number;
     joinRequestId?: number;
     reportId?: number;
+    actionable?: boolean;
+    status?: string;
+    requestNote?: string | null;
+    group?: Pick<ChatGroupSummaryResponse, "id" | "conversationId" | "name" | "avatarUrl">;
+    message?: ChatMessageResponse;
   } | null;
   aggregateCount: number;
   readAt: string | null;

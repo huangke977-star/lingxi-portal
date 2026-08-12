@@ -4,12 +4,9 @@
 
 import {
   Bell,
-  Check,
   ListTodo,
   MessageCircleMore,
   ShieldCheck,
-  UserPlus,
-  X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -40,15 +37,12 @@ import {
 } from "@/lib/auth-storage";
 import {
   type Conversation,
-  type Friendship,
   type NotificationChannelState,
   type SocialNotification,
   getSocialSummary,
   listConversations,
-  listFriendships,
   listNotifications,
   markNotificationRead,
-  respondFriendRequest,
 } from "@/lib/social-api";
 import {
   SOCIAL_STATE_CHANGE_EVENT,
@@ -93,7 +87,6 @@ export function TopNav() {
   const [isTaskPopoverOpen, setIsTaskPopoverOpen] = useState(false);
   const [socialSummary, setSocialSummary] = useState(emptySummary);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [friendships, setFriendships] = useState<{ friends: Friendship[]; incoming: Friendship[]; outgoing: Friendship[]; blocked: Friendship[] }>({ friends: [], incoming: [], outgoing: [], blocked: [] });
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
   const [notificationChannelStates, setNotificationChannelStates] = useState<NotificationChannelState[]>([]);
   const [pendingReports, setPendingReports] = useState<ArticleCommentReport[]>([]);
@@ -107,7 +100,6 @@ export function TopNav() {
       setUser(null);
       setSocialSummary(emptySummary);
       setConversations([]);
-      setFriendships({ friends: [], incoming: [], outgoing: [], blocked: [] });
       setNotifications([]);
       setNotificationChannelStates([]);
       setPendingReports([]);
@@ -119,10 +111,9 @@ export function TopNav() {
     try {
       const currentUser = await getMe(accessToken);
       const canModerate = currentUser.isSuperAdmin || currentUser.role.level >= 90;
-      const [summary, conversationResult, friendshipResult, notificationResult, reportSummary, reportResult] = await Promise.all([
+      const [summary, conversationResult, notificationResult, reportSummary, reportResult] = await Promise.all([
         getSocialSummary(accessToken).catch(() => emptySummary),
         listConversations(accessToken).catch(() => ({ items: [] })),
-        listFriendships(accessToken).catch(() => ({ friends: [], incoming: [], outgoing: [], blocked: [] })),
         listNotifications(accessToken).catch(() => ({ items: [], hasMore: false, hiddenChannels: [], channelStates: [] })),
         canModerate ? getCommentReportSummary(accessToken).catch(() => ({ pending: 0 })) : Promise.resolve({ pending: 0 }),
         canModerate ? listCommentReports(accessToken, "pending").catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
@@ -130,7 +121,6 @@ export function TopNav() {
       setUser(currentUser);
       setSocialSummary(summary);
       setConversations(conversationResult.items);
-      setFriendships(friendshipResult);
       setNotifications(notificationResult.items);
       setNotificationChannelStates(notificationResult.channelStates ?? []);
       setPendingReportCount(reportSummary.pending);
@@ -233,26 +223,15 @@ export function TopNav() {
     [notificationChannelStates],
   );
   const loadedUnreadMessages = conversations.reduce((total, conversation) => total + (conversation.muted ? 0 : conversation.unreadCount), 0);
-  const loadedUnreadNotifications = notifications.filter((notification) =>
-    !notification.readAt &&
-    notification.type !== "friend_request_received" &&
-    !pushDisabledChannels.has(notification.channel),
-  ).length;
+  const loadedUnreadNotifications = notifications.filter((notification) => !notification.readAt && !pushDisabledChannels.has(notification.channel)).length;
   const socialCount =
     Math.max(socialSummary.unreadMessages, loadedUnreadMessages) +
-    Math.max(socialSummary.pendingFriendRequests, friendships.incoming.length) +
-    Math.max(socialSummary.unreadNotifications, loadedUnreadNotifications);
-  const incomingFriendRequests = friendships.incoming.slice(0, 2);
-  const conversationPreviewLimit = Math.max(0, HEADER_MESSAGE_PREVIEW_LIMIT - incomingFriendRequests.length);
+    Math.max(socialSummary.unreadNotifications + socialSummary.pendingFriendRequests, loadedUnreadNotifications);
+  const conversationPreviewLimit = HEADER_MESSAGE_PREVIEW_LIMIT;
   const unreadConversations = conversations.filter((conversation) => !conversation.muted && conversation.unreadCount > 0).slice(0, conversationPreviewLimit);
   const notificationPreviewLimit = Math.max(0, conversationPreviewLimit - unreadConversations.length);
-  const unreadNotifications = notifications.filter((notification) =>
-    !notification.readAt &&
-    notification.type !== "friend_request_received" &&
-    !pushDisabledChannels.has(notification.channel),
-  ).slice(0, notificationPreviewLimit);
-  const previewedUnreadCount = incomingFriendRequests.length
-    + unreadConversations.reduce((total, conversation) => total + conversation.unreadCount, 0)
+  const unreadNotifications = notifications.filter((notification) => !notification.readAt && !pushDisabledChannels.has(notification.channel)).slice(0, notificationPreviewLimit);
+  const previewedUnreadCount = unreadConversations.reduce((total, conversation) => total + conversation.unreadCount, 0)
     + unreadNotifications.length;
   const hiddenUnreadCount = Math.max(0, socialCount - previewedUnreadCount);
 
@@ -272,22 +251,6 @@ export function TopNav() {
     }
   }
 
-  async function handleFriendRequest(friendship: Friendship, status: "accepted" | "declined") {
-    const token = readAccessToken();
-    if (!token) return;
-    try {
-      await respondFriendRequest(token, friendship.id, status);
-      notifySocialStateChange();
-      await refreshHeaderData();
-      if (status === "accepted") {
-        setIsMessagePopoverOpen(false);
-        openChatDock({ userId: friendship.user.id });
-      }
-    } catch (actionError) {
-      setHeaderError(actionError instanceof Error ? actionError.message : "好友申请处理失败。");
-    }
-  }
-
   async function handleNotification(notification: SocialNotification) {
     const token = readAccessToken();
     setIsMessagePopoverOpen(false);
@@ -298,7 +261,7 @@ export function TopNav() {
       notifySocialStateChange();
     }
     if (notification.type === "friend_request_received") {
-      openChatDock({ tab: "friends" });
+      openChatDock({ systemNotificationId: notification.id, notificationChannel: "system" });
     } else if (notification.type === "friend_request_accepted" && notification.actor) {
       openChatDock({ userId: notification.actor.id });
     } else {
@@ -356,11 +319,10 @@ export function TopNav() {
               <div className={`header-popover message-popover${isMessagePopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(messageCloseTimerRef)}>
                 <div className="header-popover-heading"><strong>消息</strong><button onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">打开聊天</button></div>
                 <div className="header-popover-list">
-                  {incomingFriendRequests.map((friendship) => <div className="header-friend-request" key={`friend-${friendship.id}`}><span className="header-popover-icon"><UserPlus aria-hidden="true" size={16} /></span><span><strong>{friendship.user.nickname} 请求加为好友</strong>{friendship.note ? <small>{friendship.note}</small> : null}</span><div><button aria-label="接受好友申请" onClick={() => void handleFriendRequest(friendship, "accepted")} title="接受" type="button"><Check aria-hidden="true" size={15} /></button><button aria-label="拒绝好友申请" onClick={() => void handleFriendRequest(friendship, "declined")} title="拒绝" type="button"><X aria-hidden="true" size={15} /></button></div></div>)}
                   {unreadConversations.map((conversation) => <button key={`conversation-${conversation.id}`} onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ conversationId: conversation.id }); }} type="button"><span className="header-popover-icon"><MessageCircleMore aria-hidden="true" size={16} /></span><span><strong>{conversation.user.nickname}</strong><small>{conversation.lastMessage?.body || "发来附件"}</small></span><b>{conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</b></button>)}
                   {unreadNotifications.map((notification) => <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><span><strong>{notification.title}</strong><small>{notification.context?.commentBody ?? notification.body}</small></span></button>)}
                   {hiddenUnreadCount ? <button className="header-popover-more" onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">还有 {hiddenUnreadCount} 条未读消息，打开聊天查看</button> : null}
-                  {!friendships.incoming.length && !unreadConversations.length && !unreadNotifications.length ? <span className="header-popover-empty">暂无新消息。</span> : null}
+                  {!unreadConversations.length && !unreadNotifications.length ? <span className="header-popover-empty">暂无新消息。</span> : null}
                 </div>
               </div>
             </div>

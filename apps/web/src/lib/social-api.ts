@@ -171,7 +171,7 @@ export interface ChatGroupJoinRequest {
 
 export interface ChatGroupReport {
   id: number;
-  group: { id: number; conversationId: number; name: string };
+  group: { id: number; conversationId: number; name: string; avatarUrl: string | null };
   message: ChatMessage;
   reporter: SocialUser;
   reason: string;
@@ -212,7 +212,7 @@ export interface SocialNotification {
   commentReportId: number | null;
   actor: SocialUser | null;
   context: {
-    kind: "comment_report" | "article" | "article_comment" | "group_invitation" | "group_join_request" | "group_report";
+    kind: "comment_report" | "article" | "article_comment" | "friend_request" | "group_invitation" | "group_join_request" | "group_report";
     article?: { id: number; title: string; slug: string };
     commentId?: number;
     commentBody?: string;
@@ -222,6 +222,11 @@ export interface SocialNotification {
     invitationId?: number;
     joinRequestId?: number;
     reportId?: number;
+    actionable?: boolean;
+    status?: string;
+    requestNote?: string | null;
+    group?: { id: number; conversationId: number; name: string; avatarUrl: string | null };
+    message?: ChatMessage;
   } | null;
   aggregateCount: number;
   readAt: string | null;

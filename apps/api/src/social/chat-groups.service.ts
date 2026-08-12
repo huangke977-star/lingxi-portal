@@ -490,6 +490,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
       return { group: null };
     }
     this.assertCapacity(invitation.group);
+    const respondedAt = new Date();
     await this.prisma.$transaction(async (transaction) => {
       await transaction.chatGroupMember.upsert({
         where: { groupId_userId: { groupId: invitation.groupId, userId: user.id } },
@@ -501,9 +502,43 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
         create: { conversationId: invitation.group.conversationId, userId: user.id },
         update: { hidden: false },
       });
+      await transaction.chatGroupInvitation.updateMany({
+        where: {
+          groupId: invitation.groupId,
+          inviteeId: user.id,
+          status: ChatGroupInvitationStatus.pending,
+        },
+        data: { status: ChatGroupInvitationStatus.cancelled, respondedAt },
+      });
       await transaction.chatGroupInvitation.update({
         where: { id: invitationId },
-        data: { status: ChatGroupInvitationStatus.accepted, respondedAt: new Date() },
+        data: { status: ChatGroupInvitationStatus.accepted, respondedAt },
+      });
+      const cancelledRequests = await transaction.chatGroupJoinRequest.findMany({
+        where: {
+          groupId: invitation.groupId,
+          userId: user.id,
+          status: ChatGroupJoinRequestStatus.pending,
+        },
+        select: { id: true },
+      });
+      await transaction.chatGroupJoinRequest.updateMany({
+        where: { id: { in: cancelledRequests.map((request) => request.id) } },
+        data: { status: ChatGroupJoinRequestStatus.cancelled, respondedAt },
+      });
+      for (const request of cancelledRequests) {
+        await transaction.userNotification.updateMany({
+          where: { actionUrl: `/messages?groupApproval=${invitation.groupId}&joinRequest=${request.id}`, readAt: null },
+          data: { readAt: respondedAt },
+        });
+      }
+      await transaction.userNotification.updateMany({
+        where: {
+          userId: user.id,
+          actionUrl: `/messages?groupApproval=${invitation.groupId}`,
+          readAt: null,
+        },
+        data: { readAt: respondedAt },
       });
       await transaction.chatGroupActivityLog.create({
         data: { groupId: invitation.groupId, actorId: user.id, action: "member.joined", summary: "通过邀请加入群聊" },
@@ -600,6 +635,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException("入群申请不存在或已经处理。");
     }
     if (dto.status === "approved") this.assertCapacity(group);
+    const respondedAt = new Date();
     await this.prisma.$transaction(async (transaction) => {
       if (dto.status === "approved") {
         await transaction.chatGroupMember.upsert({
@@ -613,9 +649,39 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
           update: { hidden: false },
         });
       }
+      await transaction.chatGroupJoinRequest.updateMany({
+        where: {
+          groupId,
+          userId: request.userId,
+          status: ChatGroupJoinRequestStatus.pending,
+        },
+        data: { status: ChatGroupJoinRequestStatus.cancelled, handledById: user.id, respondedAt },
+      });
       await transaction.chatGroupJoinRequest.update({
         where: { id: requestId },
-        data: { status: dto.status, handledById: user.id, respondedAt: new Date() },
+        data: { status: dto.status, handledById: user.id, respondedAt },
+      });
+      if (dto.status === "approved") {
+        await transaction.chatGroupInvitation.updateMany({
+          where: {
+            groupId,
+            inviteeId: request.userId,
+            status: ChatGroupInvitationStatus.pending,
+          },
+          data: { status: ChatGroupInvitationStatus.cancelled, respondedAt },
+        });
+        await transaction.userNotification.updateMany({
+          where: {
+            userId: request.userId,
+            actionUrl: `/messages?groupApproval=${groupId}`,
+            readAt: null,
+          },
+          data: { readAt: respondedAt },
+        });
+      }
+      await transaction.userNotification.updateMany({
+        where: { actionUrl: `/messages?groupApproval=${groupId}&joinRequest=${requestId}`, readAt: null },
+        data: { readAt: respondedAt },
       });
       await transaction.userNotification.create({
         data: {
@@ -1093,7 +1159,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     const group = this.toSummary(report.group, userId);
     return {
       id: report.id,
-      group: { id: group.id, conversationId: group.conversationId, name: group.name },
+      group: { id: group.id, conversationId: group.conversationId, name: group.name, avatarUrl: group.avatarUrl },
       message: this.toMessage(
         report.message,
         report.group.members.find((member) => member.userId === report.message.senderId)?.alias ?? undefined,
