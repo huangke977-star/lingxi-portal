@@ -43,6 +43,7 @@ import {
 } from "./dto/social.dto";
 import {
   ChatGroupInvitationResponse,
+  ChatGroupApprovalResponse,
   ChatGroupJoinRequestResponse,
   ChatGroupReportResponse,
   ChatGroupResponse,
@@ -84,6 +85,10 @@ const groupInclude = {
   },
   joinRequests: {
     where: { status: ChatGroupJoinRequestStatus.pending },
+    select: { id: true },
+  },
+  reports: {
+    where: { status: ChatGroupReportStatus.pending },
     select: { id: true },
   },
 } satisfies Prisma.ChatGroupInclude;
@@ -213,7 +218,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
             type: UserNotificationType.system,
             title: "新的群聊邀请",
             body: `${user.nickname || user.username} 邀请你加入群聊“${dto.name.trim()}”。`,
-            actionUrl: "/messages",
+            actionUrl: `/messages?groupApproval=${created.id}`,
           })),
         });
       }
@@ -237,6 +242,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
           ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
           ...(dto.announcement !== undefined ? { announcement: dto.announcement.trim() } : {}),
           ...(dto.joinMode !== undefined ? { joinMode: dto.joinMode } : {}),
+          ...(dto.membersCanInvite !== undefined ? { membersCanInvite: dto.membersCanInvite } : {}),
           ...(dto.avatarUrl !== undefined ? {
             avatarUrl: dto.avatarUrl.trim(),
             avatarOriginalName: null,
@@ -314,7 +320,11 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     groupId: number,
     dto: InviteChatGroupMembersDto,
   ): Promise<{ count: number }> {
-    const { group } = await this.assertManager(groupId, user.id);
+    const group = await this.getActiveGroup(groupId);
+    const inviter = this.requireActiveMember(group, user.id);
+    if (inviter.role === ChatGroupMemberRole.member && !group.membersCanInvite) {
+      throw new ForbiddenException("群主尚未允许普通成员邀请新成员。");
+    }
     const userIds = [...new Set(dto.userIds.filter((id) => id !== user.id))];
     if (!userIds.length) throw new BadRequestException("请选择要邀请的用户。");
     const activeCount = group.members.filter((item) => item.status === ChatGroupMemberStatus.active).length;
@@ -378,7 +388,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
             type: UserNotificationType.system,
             title: "新的群聊邀请",
             body: notificationBody,
-            actionUrl: "/messages",
+            actionUrl: `/messages?groupApproval=${groupId}`,
           })),
         });
       }
@@ -404,6 +414,53 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
       expiresAt: invitation.expiresAt.toISOString(),
       createdAt: invitation.createdAt.toISOString(),
     })) };
+  }
+
+  async listApprovals(user: AuthenticatedUser): Promise<ChatGroupApprovalResponse> {
+    await this.expireInvitations(user.id);
+    const [invitationResult, requests] = await Promise.all([
+      this.listInvitations(user),
+      this.prisma.chatGroupJoinRequest.findMany({
+        where: {
+          status: ChatGroupJoinRequestStatus.pending,
+          group: {
+            status: ChatGroupStatus.active,
+            members: {
+              some: {
+                userId: user.id,
+                status: ChatGroupMemberStatus.active,
+                role: { in: [ChatGroupMemberRole.owner, ChatGroupMemberRole.admin] },
+              },
+            },
+          },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        include: {
+          user: { select: groupUserSelect },
+          group: { include: groupInclude },
+        },
+      }),
+    ]);
+    return {
+      invitations: invitationResult.items,
+      joinRequests: requests.map((request) => {
+        const group = this.toSummary(request.group, user.id);
+        return {
+          id: request.id,
+          groupId: request.groupId,
+          group: {
+            id: group.id,
+            conversationId: group.conversationId,
+            name: group.name,
+            avatarUrl: group.avatarUrl,
+          },
+          user: this.toUser(request.user),
+          note: request.note,
+          status: request.status,
+          createdAt: request.createdAt.toISOString(),
+        };
+      }),
+    };
   }
 
   async respondInvitation(
@@ -455,6 +512,26 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     return { group: await this.get(user, invitation.groupId) };
   }
 
+  async respondInvitationByGroup(
+    user: AuthenticatedUser,
+    groupId: number,
+    dto: RespondChatGroupInvitationDto,
+  ): Promise<{ group: ChatGroupResponse | null }> {
+    await this.expireInvitations(user.id);
+    const invitation = await this.prisma.chatGroupInvitation.findFirst({
+      where: {
+        groupId,
+        inviteeId: user.id,
+        status: ChatGroupInvitationStatus.pending,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { id: "desc" },
+      select: { id: true },
+    });
+    if (!invitation) throw new NotFoundException("群邀请不存在或已经处理。");
+    return this.respondInvitation(user, invitation.id, dto);
+  }
+
   async requestJoin(user: AuthenticatedUser, groupId: number, dto: RequestChatGroupJoinDto) {
     const group = await this.getActiveGroup(groupId);
     if (group.joinMode !== ChatGroupJoinMode.approval) throw new ForbiddenException("这个群聊仅能通过邀请加入。");
@@ -487,7 +564,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
           type: UserNotificationType.system,
           title: "新的入群申请",
           body: `${user.nickname || user.username} 申请加入群聊“${group.name}”。`,
-          actionUrl: `/messages?conversation=${group.conversationId}`,
+          actionUrl: `/messages?groupApproval=${groupId}&joinRequest=${request.id}`,
         })),
       });
     }
@@ -690,7 +767,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     this.requireActiveMember(group, user.id);
     const message = await this.prisma.chatMessage.findFirst({
       where: { id: messageId, conversationId: group.conversationId },
-      select: { id: true, senderId: true, type: true },
+      select: { id: true, senderId: true, type: true, body: true },
     });
     if (!message || message.type === ChatMessageType.system) throw new NotFoundException("可举报的群消息不存在。");
     if (message.senderId === user.id) throw new BadRequestException("不能举报自己发送的消息。");
@@ -706,8 +783,27 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
         resolution: null,
       },
     });
-    await this.prisma.chatGroupActivityLog.create({
-      data: { groupId, actorId: user.id, action: "message.reported", summary: "举报群消息", metadata: { messageId } },
+    const managerIds = group.members
+      .filter((member) => member.status === ChatGroupMemberStatus.active && member.role !== ChatGroupMemberRole.member)
+      .map((member) => member.userId)
+      .filter((managerId) => managerId !== user.id);
+    const excerpt = message.body.trim().slice(0, 180) || "附件消息";
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.chatGroupActivityLog.create({
+        data: { groupId, actorId: user.id, action: "message.reported", summary: "举报群消息", metadata: { messageId } },
+      });
+      if (managerIds.length) {
+        await transaction.userNotification.createMany({
+          data: managerIds.map((managerId) => ({
+            userId: managerId,
+            actorId: user.id,
+            type: UserNotificationType.system,
+            title: `群消息待处理举报 · ${group.name}`,
+            body: excerpt,
+            actionUrl: `/messages?groupApproval=${groupId}&report=${report.id}`,
+          })),
+        });
+      }
     });
     return { id: report.id, status: "pending" };
   }
@@ -874,6 +970,18 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
           summary: status === ChatGroupMemberStatus.blocked ? "拉黑群成员" : "移出群成员",
         },
       });
+      await transaction.userNotification.create({
+        data: {
+          userId: targetUserId,
+          actorId: user.id,
+          type: UserNotificationType.system,
+          title: status === ChatGroupMemberStatus.blocked ? "你已被移出并限制加入群聊" : "你已被移出群聊",
+          body: status === ChatGroupMemberStatus.blocked
+            ? `你已被移出群聊“${context.group.name}”，当前无法重新申请加入。`
+            : `你已被移出群聊“${context.group.name}”。`,
+          actionUrl: "/messages",
+        },
+      });
     });
     return this.get(user, groupId);
   }
@@ -941,7 +1049,6 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
         joinedAt: member.joinedAt.toISOString(),
         isSelf: member.userId === userId,
       })),
-      pendingJoinRequestCount: group.joinRequests.length,
     };
   }
 
@@ -962,6 +1069,10 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
       currentMemberRole: member?.role ?? null,
       currentAlias: member?.alias ?? null,
       canManage: Boolean(member && member.role !== ChatGroupMemberRole.member),
+      canInvite: Boolean(member && (member.role !== ChatGroupMemberRole.member || group.membersCanInvite)),
+      membersCanInvite: group.membersCanInvite,
+      pendingJoinRequestCount: member && member.role !== ChatGroupMemberRole.member ? group.joinRequests.length : 0,
+      pendingReportCount: member && member.role !== ChatGroupMemberRole.member ? group.reports.length : 0,
       createdAt: group.createdAt.toISOString(),
       updatedAt: group.updatedAt.toISOString(),
     };
@@ -983,7 +1094,10 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     return {
       id: report.id,
       group: { id: group.id, conversationId: group.conversationId, name: group.name },
-      message: this.toMessage(report.message),
+      message: this.toMessage(
+        report.message,
+        report.group.members.find((member) => member.userId === report.message.senderId)?.alias ?? undefined,
+      ),
       reporter: this.toUser(report.reporter),
       reason: report.reason,
       detail: report.detail,
@@ -994,7 +1108,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private toMessage(message: GroupMessageRecord): ChatMessageResponse {
+  private toMessage(message: GroupMessageRecord, senderDisplayName?: string): ChatMessageResponse {
     return {
       id: message.id,
       conversationId: message.conversationId,
@@ -1008,6 +1122,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
         durationSeconds: message.callSession.durationSeconds,
       } : null,
       sender: this.toUser(message.sender),
+      senderDisplayName: senderDisplayName || message.sender.nickname || message.sender.username,
       readAt: message.readAt?.toISOString() ?? null,
       createdAt: message.createdAt.toISOString(),
     };

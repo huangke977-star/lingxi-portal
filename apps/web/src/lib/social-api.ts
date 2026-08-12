@@ -50,6 +50,7 @@ export interface ChatAttachment {
   mimeType: string;
   sizeBytes: number;
   downloadUrl: string;
+  thumbnailUrl: string | null;
   createdAt: string;
 }
 
@@ -89,6 +90,7 @@ export interface ChatMessage {
     durationSeconds: number | null;
   } | null;
   sender: SocialUser;
+  senderDisplayName: string;
   readAt: string | null;
   createdAt: string;
 }
@@ -111,6 +113,7 @@ export interface ChatGroupSummary {
   avatarUrl: string | null;
   announcement: string;
   joinMode: "approval" | "invite_only";
+  membersCanInvite: boolean;
   memberLimit: number;
   memberCount: number;
   temporary: boolean;
@@ -119,6 +122,9 @@ export interface ChatGroupSummary {
   currentMemberRole: "owner" | "admin" | "member" | null;
   currentAlias: string | null;
   canManage: boolean;
+  canInvite: boolean;
+  pendingJoinRequestCount: number;
+  pendingReportCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -136,7 +142,13 @@ export interface ChatGroupMember {
 export interface ChatGroup extends ChatGroupSummary {
   owner: SocialUser;
   members: ChatGroupMember[];
-  pendingJoinRequestCount: number;
+}
+
+export interface ChatGroupApproval {
+  invitations: ChatGroupInvitation[];
+  joinRequests: Array<ChatGroupJoinRequest & {
+    group: Pick<ChatGroupSummary, "id" | "conversationId" | "name" | "avatarUrl">;
+  }>;
 }
 
 export interface ChatGroupInvitation {
@@ -200,11 +212,16 @@ export interface SocialNotification {
   commentReportId: number | null;
   actor: SocialUser | null;
   context: {
-    kind: "comment_report" | "article" | "article_comment";
-    article: { id: number; title: string; slug: string };
+    kind: "comment_report" | "article" | "article_comment" | "group_invitation" | "group_join_request" | "group_report";
+    article?: { id: number; title: string; slug: string };
     commentId?: number;
     commentBody?: string;
     commentStatus?: string;
+    groupId?: number;
+    conversationId?: number;
+    invitationId?: number;
+    joinRequestId?: number;
+    reportId?: number;
   } | null;
   aggregateCount: number;
   readAt: string | null;
@@ -369,7 +386,7 @@ export function createChatGroup(
 export function updateChatGroup(
   accessToken: string,
   groupId: number,
-  input: { name?: string; announcement?: string; joinMode?: "approval" | "invite_only"; avatarUrl?: string },
+  input: { name?: string; announcement?: string; joinMode?: "approval" | "invite_only"; membersCanInvite?: boolean; avatarUrl?: string },
 ): Promise<ChatGroup> {
   return requestJson(`/social/groups/${groupId}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(input) });
 }
@@ -392,8 +409,16 @@ export function listChatGroupInvitations(accessToken: string): Promise<{ items: 
   return requestJson("/social/group-invitations", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
+export function listChatGroupApprovals(accessToken: string): Promise<ChatGroupApproval> {
+  return requestJson("/social/group-approvals", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
 export function respondChatGroupInvitation(accessToken: string, invitationId: number, status: "accepted" | "declined"): Promise<{ group: ChatGroup | null }> {
   return requestJson(`/social/group-invitations/${invitationId}/respond`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify({ status }) });
+}
+
+export function respondChatGroupInvitationByGroup(accessToken: string, groupId: number, status: "accepted" | "declined"): Promise<{ group: ChatGroup | null }> {
+  return requestJson(`/social/groups/${groupId}/invitation/respond`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify({ status }) });
 }
 
 export function requestChatGroupJoin(accessToken: string, groupId: number, note = ""): Promise<{ status: "joined" | "pending"; id?: number }> {
@@ -456,7 +481,7 @@ export function getOrCreateConversation(accessToken: string, userId: number): Pr
 }
 
 export function listMessages(accessToken: string, conversationId: number, beforeId?: number): Promise<{ items: ChatMessage[]; hasMore: boolean }> {
-  const query = beforeId ? `?beforeId=${beforeId}&limit=30` : "?limit=30";
+  const query = beforeId ? `?beforeId=${beforeId}&limit=10` : "?limit=10";
   return requestJson(`/social/conversations/${conversationId}/messages${query}`, { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
@@ -492,6 +517,11 @@ export function uploadChatAttachments(accessToken: string, conversationId: numbe
 
 export function downloadChatAttachment(accessToken: string, attachment: Pick<ChatAttachment, "downloadUrl">): Promise<Blob> {
   return requestBlob(attachment.downloadUrl, { headers: authHeaders(accessToken), cache: "no-store" });
+}
+
+export function downloadChatAttachmentThumbnail(accessToken: string, attachment: Pick<ChatAttachment, "thumbnailUrl">): Promise<Blob> {
+  if (!attachment.thumbnailUrl) return Promise.reject(new Error("这张图片没有缩略图。"));
+  return requestBlob(attachment.thumbnailUrl, { headers: authHeaders(accessToken), cache: "force-cache" });
 }
 
 export function getChatSocketOrigin(): string {

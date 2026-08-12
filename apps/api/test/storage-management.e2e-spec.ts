@@ -174,6 +174,32 @@ describe("storage management scanning (e2e)", () => {
     );
   });
 
+  it("does not report a generated thumbnail for a healthy chat attachment as orphaned", async () => {
+    const storedName = "attachment.png";
+    const original = Buffer.from("chat-image");
+    await writeFile(join(process.env.CHAT_UPLOAD_DIR!, storedName), original);
+    await writeFile(join(process.env.CHAT_UPLOAD_DIR!, `${storedName}.thumb.webp`), Buffer.from("thumbnail"));
+    prisma.chatAttachment.findMany.mockResolvedValueOnce([{
+      id: 61,
+      conversationId: 9,
+      messageId: 17,
+      storedName,
+      originalName: "图片.png",
+      mimeType: "image/png",
+      sizeBytes: original.length,
+      uploadedBy: { username: "tester" },
+    }]);
+
+    const scan = await service.startScan(1);
+    const completed = await waitForScan(service, scan.id);
+
+    expect(completed.summary?.categories.find((category) => category.key === "chat")).toMatchObject({
+      fileCount: 2,
+      healthyCount: 1,
+      orphanCount: 0,
+    });
+  });
+
   it("treats managed topic covers as referenced article media", async () => {
     const storedName = "topic-00000000-0000-4000-8000-000000000001.webp";
     await mkdir(join(process.env.ARTICLE_UPLOAD_DIR!, "topic-covers"), { recursive: true });

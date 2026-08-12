@@ -9,7 +9,6 @@ import {
   BellOff,
   Check,
   ChevronLeft,
-  ChevronUp,
   Clock3,
   Copy,
   Download,
@@ -88,8 +87,10 @@ import {
   deleteNotification,
   deleteSelectedNotifications,
   downloadChatAttachment,
+  downloadChatAttachmentThumbnail,
   getChatSocketOrigin,
   getOrCreateConversation,
+  handleChatGroupReport,
   hideNotificationChannel,
   listConversations,
   listFriendships,
@@ -102,6 +103,8 @@ import {
   removeFriendship,
   requestFriend,
   reportChatGroupMessage,
+  respondChatGroupInvitationByGroup,
+  respondChatGroupJoinRequest,
   respondFriendRequest,
   searchSocialUsers,
   unblockFriendship,
@@ -233,6 +236,9 @@ export function ChatDock() {
   const discardVoiceRecordingRef = useRef(false);
   const voiceTimerRef = useRef<number | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const messageScrollRestoreRef = useRef<{ height: number; top: number } | null>(null);
+  const shouldScrollMessagesToBottomRef = useRef(false);
+  const loadingOlderMessagesRef = useRef(false);
   const systemMessageListRef = useRef<HTMLDivElement | null>(null);
   const dockRef = useRef<HTMLElement | null>(null);
   const pendingAttachmentsRef = useRef<PendingAttachment[]>([]);
@@ -270,6 +276,7 @@ export function ChatDock() {
   const [isMobileConversationOpen, setIsMobileConversationOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isMessagesLoading, setIsMessagesLoading] = useState(false);
+  const [isOlderMessagesLoading, setIsOlderMessagesLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const [voiceRecordingSeconds, setVoiceRecordingSeconds] = useState(0);
@@ -283,6 +290,7 @@ export function ChatDock() {
   const [isAddFriendOpen, setIsAddFriendOpen] = useState(false);
   const [isGroupManagerOpen, setIsGroupManagerOpen] = useState(false);
   const [groupManagerInitialId, setGroupManagerInitialId] = useState<number | null>(null);
+  const [groupManagerInitialView, setGroupManagerInitialView] = useState<"mine" | "invites">("mine");
   const [isMessageSettingsOpen, setIsMessageSettingsOpen] = useState(false);
   const [messageSettingsBusyKey, setMessageSettingsBusyKey] = useState("");
   const [browserPushState, setBrowserPushState] = useState<BrowserPushState | null>(null);
@@ -560,7 +568,7 @@ export function ChatDock() {
       setSelectedId((current) => {
         if (NOTIFICATION_CHANNELS.some((item) => item.id === current && !nextHiddenChannels.includes(item.channel))) return current;
         if (current && conversationResult.items.some((item) => item.id === current)) return current;
-        return defaultPrimaryId(conversationResult.items, notificationResult.items, nextHiddenChannels);
+        return 0;
       });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "消息数据加载失败。");
@@ -739,6 +747,9 @@ export function ChatDock() {
         openRef.current &&
         !minimizedRef.current &&
         (desktopRef.current || mobileConversationOpenRef.current);
+      const messageList = messageListRef.current;
+      const isNearMessageListBottom = !messageList ||
+        messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight <= 96;
       setConversations((current) => {
         const existing = current.find((item) => item.id === message.conversationId);
         if (!existing) {
@@ -756,6 +767,7 @@ export function ChatDock() {
         return [updated, ...current.filter((item) => item.id !== updated.id)];
       });
       if (message.conversationId === selectedIdRef.current) {
+        if (isViewing && isNearMessageListBottom) shouldScrollMessagesToBottomRef.current = true;
         setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
         if (message.sender.id !== userId && isViewing) {
           socket.emit("chat:read", { conversationId: message.conversationId });
@@ -842,6 +854,8 @@ export function ChatDock() {
     }
     let active = true;
     setIsMessagesLoading(true);
+    shouldScrollMessagesToBottomRef.current = true;
+    messageScrollRestoreRef.current = null;
     listMessages(token, selectedId)
       .then((result) => {
         if (!active) return null;
@@ -872,7 +886,17 @@ export function ChatDock() {
     if (!isMessagesLoading && isOpen && !isMinimized) {
       window.requestAnimationFrame(() => {
         const list = messageListRef.current;
-        if (list) list.scrollTop = list.scrollHeight;
+        if (!list) return;
+        const restore = messageScrollRestoreRef.current;
+        if (restore) {
+          list.scrollTop = restore.top + list.scrollHeight - restore.height;
+          messageScrollRestoreRef.current = null;
+          return;
+        }
+        if (shouldScrollMessagesToBottomRef.current) {
+          list.scrollTop = list.scrollHeight;
+          shouldScrollMessagesToBottomRef.current = false;
+        }
       });
     }
   }, [isMessagesLoading, isMinimized, isOpen, messages.length]);
@@ -898,14 +922,28 @@ export function ChatDock() {
   async function loadOlderMessages() {
     const token = readAccessToken();
     const firstId = messages[0]?.id;
-    if (!token || !selectedId || !firstId) return;
+    if (!token || !selectedId || !firstId || !hasMore || loadingOlderMessagesRef.current) return;
+    const list = messageListRef.current;
+    loadingOlderMessagesRef.current = true;
+    setIsOlderMessagesLoading(true);
+    if (list) messageScrollRestoreRef.current = { height: list.scrollHeight, top: list.scrollTop };
     try {
       const result = await listMessages(token, selectedId, firstId);
       setMessages((current) => [...result.items, ...current]);
       setHasMore(result.hasMore);
     } catch (loadError) {
+      messageScrollRestoreRef.current = null;
       setError(loadError instanceof Error ? loadError.message : "更早的消息加载失败。");
+    } finally {
+      loadingOlderMessagesRef.current = false;
+      setIsOlderMessagesLoading(false);
     }
+  }
+
+  function handleMessageListScroll() {
+    const list = messageListRef.current;
+    if (!list || list.scrollTop > 280 || !hasMore || isMessagesLoading) return;
+    void loadOlderMessages();
   }
 
   function updateDraft(value: string) {
@@ -1512,6 +1550,12 @@ export function ChatDock() {
       setIsMobileConversationOpen(false);
       return;
     }
+    if (notification.context?.groupId) {
+      setGroupManagerInitialId(notification.context.kind === "group_invitation" ? null : notification.context.groupId);
+      setGroupManagerInitialView(notification.context.kind === "group_invitation" || notification.context.kind === "group_join_request" ? "invites" : "mine");
+      setIsGroupManagerOpen(true);
+      return;
+    }
     setSelectedId(notificationConversationId(notification.channel));
     setSelectedSystemNotificationId(notification.id);
     setIsMobileConversationOpen(true);
@@ -1768,6 +1812,41 @@ export function ChatDock() {
     setIsMinimized(false);
   }
 
+  async function handleGroupNotificationAction(
+    notification: SocialNotification,
+    action: "accept" | "reject" | "resolve-report" | "reject-report",
+  ) {
+    const token = readAccessToken();
+    const context = notification.context;
+    if (!token || !context?.groupId) return;
+    setIsNotificationActionRunning(true);
+    try {
+      if (context.kind === "group_invitation") {
+        await respondChatGroupInvitationByGroup(token, context.groupId, action === "accept" ? "accepted" : "declined");
+      } else if (context.kind === "group_join_request" && context.joinRequestId) {
+        await respondChatGroupJoinRequest(token, context.groupId, context.joinRequestId, action === "accept" ? "approved" : "rejected");
+      } else if (context.kind === "group_report" && context.reportId) {
+        await handleChatGroupReport(token, context.reportId, action === "resolve-report"
+          ? { status: "resolved", deleteMessage: true, resolution: "群管理员已删除被举报消息" }
+          : { status: "rejected", resolution: "未发现违规" });
+      } else {
+        setGroupManagerInitialId(context.groupId);
+        setGroupManagerInitialView(context.kind === "group_join_request" ? "invites" : "mine");
+        setIsGroupManagerOpen(true);
+        return;
+      }
+      await deleteNotification(token, notification.id);
+      setNotifications((current) => current.filter((item) => item.id !== notification.id));
+      await refreshSocialData();
+      setNotice(action === "accept" ? "已同意。" : action === "reject" ? "已拒绝。" : action === "resolve-report" ? "举报已处理。" : "举报已驳回。");
+      notifySocialStateChange();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "群审批处理失败。");
+    } finally {
+      setIsNotificationActionRunning(false);
+    }
+  }
+
   async function submitGroupReport() {
     const token = readAccessToken();
     if (!token || !selected?.group || !pendingGroupReportMessageId) return;
@@ -1861,9 +1940,9 @@ export function ChatDock() {
           <span><MessageCircleMore aria-hidden="true" size={18} /><strong>{selectedNotificationConfig?.label ?? selected?.group?.name ?? selected?.user.nickname ?? "消息"}</strong></span>
           <div>
             {isDesktop || !isMobileConversationOpen ? <button aria-label="添加好友" onClick={() => { setIsAddFriendOpen(true); setUserSearch(""); setUserSearchResults([]); }} title="添加好友" type="button"><UserPlus aria-hidden="true" size={17} /></button> : null}
-            {isDesktop || !isMobileConversationOpen ? <button aria-label="群聊" onClick={() => { setGroupManagerInitialId(null); setIsGroupManagerOpen(true); }} title="群聊" type="button"><Users aria-hidden="true" size={17} /></button> : null}
+            {isDesktop || !isMobileConversationOpen ? <button aria-label="群聊" onClick={() => { setGroupManagerInitialId(null); setGroupManagerInitialView("mine"); setIsGroupManagerOpen(true); }} title="群聊" type="button"><Users aria-hidden="true" size={17} /></button> : null}
             {isDesktop || !isMobileConversationOpen ? <button aria-expanded={isMessageSettingsOpen} aria-label="消息设置" onClick={() => setIsMessageSettingsOpen((current) => !current)} title="消息设置" type="button"><Settings2 aria-hidden="true" size={17} /></button> : null}
-            {selected?.group && (isDesktop || isMobileConversationOpen) ? <button aria-label="群资料" onClick={() => { setGroupManagerInitialId(selected.group!.id); setIsGroupManagerOpen(true); }} title="群资料" type="button"><Users aria-hidden="true" size={17} /></button> : null}
+            {selected?.group && !isDesktop && isMobileConversationOpen ? <button aria-label="群资料" onClick={() => { setGroupManagerInitialId(selected.group!.id); setGroupManagerInitialView("mine"); setIsGroupManagerOpen(true); }} title="群资料" type="button"><Users aria-hidden="true" size={17} /></button> : null}
             {selected?.kind === "direct" && (isDesktop || isMobileConversationOpen) ? <>
               <button aria-label="发起语音通话" disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("voice")} title="语音通话" type="button"><Phone aria-hidden="true" size={17} /></button>
               <button aria-label="发起视频通话" disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("video")} title="视频通话" type="button"><Video aria-hidden="true" size={17} /></button>
@@ -1971,7 +2050,7 @@ export function ChatDock() {
                     setPendingConversationAction(action);
                     setOpenFriendActionId(0);
                   }}
-                  onManage={() => { setOpenFriendActionId(0); setGroupManagerInitialId(entry.conversation.group!.id); setIsGroupManagerOpen(true); }}
+                  onManage={() => { setOpenFriendActionId(0); setGroupManagerInitialId(entry.conversation.group!.id); setGroupManagerInitialView("mine"); setIsGroupManagerOpen(true); }}
                   onOpen={() => { setSelectedId(entry.conversation.id); setIsMobileConversationOpen(true); }}
                   onToggleMenu={() => setOpenFriendActionId((current) => current === -1_000_000 - entry.conversation.group!.id ? 0 : -1_000_000 - entry.conversation.group!.id)}
                   onToggleMute={(muted) => void toggleConversationMute(entry.conversation, muted)}
@@ -2051,6 +2130,7 @@ export function ChatDock() {
               onDeleteSelected={() => requestNotificationDeletion(Array.from(selectedNotificationIds))}
               onMarkSelectedRead={() => void markNotificationSelectionRead(Array.from(selectedNotificationIds))}
               onOpenArticle={(slug) => router.push(`/articles/${slug}`)}
+              onGroupAction={(notification, action) => void handleGroupNotificationAction(notification, action)}
               onOpenActions={openNotificationActionsAtPointer}
               onSelect={handleNotification}
               onToggleActions={toggleMobileNotificationActions}
@@ -2059,8 +2139,8 @@ export function ChatDock() {
               selectedIds={selectedNotificationIds}
               listRef={systemMessageListRef}
             /> : selected ? <>
-              <div className="chat-message-list" ref={messageListRef}>
-                {hasMore ? <button className="chat-load-older" onClick={() => void loadOlderMessages()} type="button"><ChevronUp aria-hidden="true" size={14} />更早消息</button> : null}
+              <div className="chat-message-list" onScroll={handleMessageListScroll} ref={messageListRef}>
+                {isOlderMessagesLoading ? <span className="chat-load-older"><LoaderCircle aria-hidden="true" className="spin" size={14} />正在读取更早消息</span> : null}
                 {isMessagesLoading ? <span className="chat-state">正在读取聊天记录。</span> : messages.map((message) => (
                   <ChatMessageItem
                     key={message.id}
@@ -2180,6 +2260,7 @@ export function ChatDock() {
         accessToken={readAccessToken()!}
         friendships={friendships.friends}
         initialGroupId={groupManagerInitialId}
+        initialView={groupManagerInitialView}
         onChanged={refreshSocialData}
         onClose={() => setIsGroupManagerOpen(false)}
         onOpenConversation={(conversationId) => { setSelectedId(conversationId); setIsMobileConversationOpen(true); setIsGroupManagerOpen(false); void refreshSocialData(); }}
@@ -2252,8 +2333,8 @@ function ChatSidebarGroupRow({ active, conversation, menuOpen, onConversationAct
   return <div className={`chat-sidebar-contact-row chat-sidebar-group-row${active ? " active" : ""}`}>
     <button className="chat-sidebar-primary-row" onClick={onOpen} type="button">
       <ConversationAvatar conversation={conversation} />
-      <span><strong className="chat-conversation-name">{group.name}{group.temporary ? <Clock3 aria-hidden="true" className="chat-muted-inline" size={13} /> : null}{conversation.muted ? <BellOff aria-hidden="true" className="chat-muted-inline" size={13} /> : null}</strong><small>{getConversationPreview(conversation)}</small></span>
-      {conversation.unreadCount ? <b className={conversation.muted ? "muted" : undefined}>{conversation.muted ? "" : formatCount(conversation.unreadCount)}</b> : null}
+      <span><strong className="chat-conversation-name"><Users aria-hidden="true" className="chat-group-inline-mark" size={13} />{group.name}{group.temporary ? <Clock3 aria-hidden="true" className="chat-muted-inline" size={13} /> : null}{conversation.muted ? <BellOff aria-hidden="true" className="chat-muted-inline" size={13} /> : null}</strong><small>{getConversationPreview(conversation)}</small></span>
+      <span className="chat-group-pending-badges">{group.pendingJoinRequestCount ? <b title="待处理入群申请"><UserPlus aria-hidden="true" size={11} />{formatCount(group.pendingJoinRequestCount)}</b> : null}{group.pendingReportCount ? <b className="report" title="待处理举报"><Flag aria-hidden="true" size={11} />{formatCount(group.pendingReportCount)}</b> : null}{conversation.unreadCount ? <b className={conversation.muted ? "muted" : undefined}>{conversation.muted ? "" : formatCount(conversation.unreadCount)}</b> : null}</span>
     </button>
     <div className="chat-friend-action" data-chat-friend-action>
       <button aria-expanded={menuOpen} aria-label={`${group.name} 的群聊管理`} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(); }} title="群聊管理" type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
@@ -2271,7 +2352,7 @@ function ChatSidebarGroupRow({ active, conversation, menuOpen, onConversationAct
 function ConversationAvatar({ conversation }: { conversation: Conversation }) {
   if (!conversation.group) return <UserAvatar user={conversation.user} />;
   return <span className="chat-user-avatar chat-group-conversation-avatar">{conversation.group.avatarUrl
-    ? <img alt="" src={conversation.group.avatarUrl} />
+    ? <img alt="" src={resolveApiUrl(conversation.group.avatarUrl)} />
     : Array.from(conversation.group.name.trim()).slice(-2).join("").toUpperCase()}</span>;
 }
 
@@ -2289,6 +2370,7 @@ function NotificationPanel({
   onMarkSelectedRead,
   onOpenActions,
   onOpenArticle,
+  onGroupAction,
   onSelect,
   onToggleActions,
   onToggleSelection,
@@ -2306,6 +2388,7 @@ function NotificationPanel({
   onMarkSelectedRead: () => void;
   onOpenActions: (notificationId: number, event: ReactMouseEvent<HTMLElement>) => void;
   onOpenArticle: (slug: string) => void;
+  onGroupAction: (notification: SocialNotification, action: "accept" | "reject" | "resolve-report" | "reject-report") => void;
   onSelect: (notification: SocialNotification) => Promise<void>;
   onToggleActions: (notificationId: number) => void;
   onToggleSelection: (notificationId: number) => void;
@@ -2384,7 +2467,9 @@ function NotificationPanel({
               <time>{formatChatTime(notification.updatedAt || notification.createdAt)}</time>
             </span>
           </button>
-          {notification.context?.article ? <button className="chat-system-article-link" onClick={() => onOpenArticle(notification.context!.article.slug)} type="button"><FileText aria-hidden="true" size={15} /><span><small>相关文章</small><strong>{notification.context.article.title}</strong></span><ChevronLeft aria-hidden="true" size={15} /></button> : null}
+          {notification.context?.article ? <button className="chat-system-article-link" onClick={() => onOpenArticle(notification.context?.article?.slug ?? "")} type="button"><FileText aria-hidden="true" size={15} /><span><small>相关文章</small><strong>{notification.context.article.title}</strong></span><ChevronLeft aria-hidden="true" size={15} /></button> : null}
+          {notification.context?.kind === "group_invitation" || notification.context?.kind === "group_join_request" ? <div className="chat-notification-inline-actions"><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "accept")} type="button"><Check aria-hidden="true" size={13} />同意</button><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "reject")} type="button"><X aria-hidden="true" size={13} />拒绝</button></div> : null}
+          {notification.context?.kind === "group_report" ? <div className="chat-notification-inline-actions"><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "resolve-report")} type="button"><Check aria-hidden="true" size={13} />处理并删除</button><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "reject-report")} type="button"><X aria-hidden="true" size={13} />驳回</button></div> : null}
         </article>;
       }) : <div className="chat-empty"><NotificationChannelIcon channel={channel} size={26} /><strong>暂时没有消息</strong><span>{emptyText}</span></div>}
     </div>
@@ -2427,13 +2512,47 @@ function ChatMessageItem({
   const longPressTimerRef = useRef<number | null>(null);
   const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
   const longPressTriggeredRef = useRef(false);
+  const senderLabelTimerRef = useRef<number | null>(null);
+  const senderLabelHideTimerRef = useRef<number | null>(null);
+  const senderLabelOriginRef = useRef<{ x: number; y: number } | null>(null);
+  const [senderLabelVisible, setSenderLabelVisible] = useState(false);
   const callType = message.type === "system" ? message.call?.type ?? inferCallType(message.body) : null;
   function clearLongPressTimer() {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = null;
     longPressOriginRef.current = null;
   }
-  useEffect(() => () => clearLongPressTimer(), []);
+  function clearSenderLabelTimer() {
+    if (senderLabelTimerRef.current !== null) window.clearTimeout(senderLabelTimerRef.current);
+    senderLabelTimerRef.current = null;
+    senderLabelOriginRef.current = null;
+  }
+  useEffect(() => () => {
+    clearLongPressTimer();
+    clearSenderLabelTimer();
+    if (senderLabelHideTimerRef.current !== null) window.clearTimeout(senderLabelHideTimerRef.current);
+  }, []);
+  function handleSenderPointerDown(event: ReactPointerEvent<HTMLSpanElement>) {
+    event.stopPropagation();
+    if (event.pointerType === "mouse" || event.button !== 0) return;
+    clearSenderLabelTimer();
+    senderLabelOriginRef.current = { x: event.clientX, y: event.clientY };
+    senderLabelTimerRef.current = window.setTimeout(() => {
+      senderLabelTimerRef.current = null;
+      setSenderLabelVisible(true);
+      if (senderLabelHideTimerRef.current !== null) window.clearTimeout(senderLabelHideTimerRef.current);
+      senderLabelHideTimerRef.current = window.setTimeout(() => setSenderLabelVisible(false), 1800);
+    }, 420);
+  }
+  function handleSenderPointerMove(event: ReactPointerEvent<HTMLSpanElement>) {
+    event.stopPropagation();
+    const origin = senderLabelOriginRef.current;
+    if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 8) clearSenderLabelTimer();
+  }
+  function handleSenderPointerEnd(event: ReactPointerEvent<HTMLSpanElement>) {
+    event.stopPropagation();
+    clearSenderLabelTimer();
+  }
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (!longPressActionsEnabled || selectionMode || event.pointerType === "mouse" || event.button !== 0) return;
     clearLongPressTimer();
@@ -2506,7 +2625,16 @@ function ChatMessageItem({
   const emojiOnly = isEmojiOnly(message.body);
   return <div aria-selected={selectionMode ? selected : undefined} className={`chat-message ${mine ? "mine" : "theirs"}${selectionMode ? " selection-mode" : ""}${emojiOnly ? " emoji-only" : ""}${selected ? " selected" : ""}`} onClickCapture={handleSelectionClick} onContextMenu={handleContextMenu} onPointerCancel={handlePointerEnd} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd}>
     {selectionControl}
-    <UserAvatar user={message.sender} />
+    <span
+      aria-label={message.senderDisplayName || message.sender.nickname}
+      className={`chat-message-sender${senderLabelVisible ? " label-visible" : ""}`}
+      onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}
+      onPointerCancel={handleSenderPointerEnd}
+      onPointerDown={handleSenderPointerDown}
+      onPointerMove={handleSenderPointerMove}
+      onPointerUp={handleSenderPointerEnd}
+      title={message.senderDisplayName || message.sender.nickname}
+    ><UserAvatar user={message.sender} /><small>{message.senderDisplayName || message.sender.nickname}</small></span>
     <div>
       {message.attachments?.length ? <div className={`chat-message-attachments count-${Math.min(message.attachments.length, 4)}${message.attachments.length === 1 && message.attachments[0].kind === "audio" ? " audio-only" : ""}`}>{message.attachments.map((attachment) => attachment.kind === "image"
         ? <AuthenticatedImage attachment={attachment} key={attachment.id} onClick={() => onPreview(attachment)} />
@@ -2540,7 +2668,7 @@ function AuthenticatedMedia({ attachment }: { attachment: ChatAttachment }) {
   }, [attachment]);
   if (!url) return <span className="chat-media-loading"><LoaderCircle aria-hidden="true" className="spin" size={18} /></span>;
   return attachment.kind === "audio"
-    ? <audio className="chat-audio-attachment" controls preload="metadata" src={url} />
+    ? <audio className="chat-audio-attachment" controls onEnded={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} preload="metadata" src={url} />
     : <video className="chat-video-attachment" controls playsInline preload="metadata" src={url} />;
 }
 
@@ -2551,7 +2679,7 @@ function AuthenticatedImage({ attachment, onClick }: { attachment: ChatAttachmen
     if (!token) return;
     let active = true;
     let objectUrl = "";
-    downloadChatAttachment(token, attachment)
+    downloadChatAttachmentThumbnail(token, attachment)
       .then((blob) => {
         if (!active) return;
         objectUrl = URL.createObjectURL(blob);
@@ -2624,14 +2752,6 @@ function timestamp(value: string | null | undefined): number {
   if (!value) return 0;
   const valueOf = new Date(value).getTime();
   return Number.isNaN(valueOf) ? 0 : valueOf;
-}
-
-function defaultPrimaryId(conversations: Conversation[], notifications: SocialNotification[], hiddenChannels: NotificationChannel[] = []): number {
-  const latestConversation = conversations.map((conversation) => ({ id: conversation.id, at: timestamp(conversation.lastMessage?.createdAt ?? conversation.updatedAt) })).sort((left, right) => right.at - left.at)[0];
-  const latestNotification = notifications.filter((notification) => notification.type !== "friend_request_received" && !hiddenChannels.includes(notification.channel)).map((notification) => ({ id: notificationConversationId(notification.channel), at: timestamp(notification.updatedAt || notification.createdAt) })).sort((left, right) => right.at - left.at)[0];
-  if (latestNotification && (!latestConversation || latestNotification.at > latestConversation.at)) return latestNotification.id;
-  if (latestConversation) return latestConversation.id;
-  return NOTIFICATION_CHANNELS.find((item) => !hiddenChannels.includes(item.channel))?.id ?? 0;
 }
 
 function getConversationPreview(conversation: Conversation): string {

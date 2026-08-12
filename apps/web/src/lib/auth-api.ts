@@ -429,8 +429,8 @@ async function performStoredSessionRefresh(): Promise<StoredSessionTokens | null
       continue;
     }
 
+    const latestRefreshToken = readRefreshToken();
     try {
-      const latestRefreshToken = readRefreshToken();
       if (!latestRefreshToken) {
         return null;
       }
@@ -449,6 +449,11 @@ async function performStoredSessionRefresh(): Promise<StoredSessionTokens | null
         error instanceof ApiRequestError &&
         (error.status === 401 || error.status === 403)
       ) {
+        // Another tab may have rotated the refresh token while this request
+        // was in flight. Its newly saved session must remain authoritative.
+        if (readRefreshToken() !== latestRefreshToken) {
+          return readStoredSessionTokens();
+        }
         clearAuthTokens();
         throw new ApiRequestError("登录状态已过期，请重新登录。", 401);
       }
@@ -543,7 +548,6 @@ function waitForAnotherTabRefresh(
     const check = () => finish();
     const interval = window.setInterval(finish, 250);
     const timeout = window.setTimeout(() => {
-      window.localStorage.removeItem(REFRESH_LOCK_KEY);
       finish();
     }, REFRESH_LOCK_DURATION_MS + 500);
     window.addEventListener("storage", check);

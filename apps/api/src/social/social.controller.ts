@@ -251,4 +251,20 @@ export class SocialController {
     });
     return new StreamableFile(createReadStream(attachment.filePath));
   }
+
+  @Get("attachments/:id/thumbnail")
+  async downloadAttachmentThumbnail(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const thumbnail = await this.chatAttachmentsService.getThumbnail(id, user.id);
+    response.set({
+      "Cache-Control": "private, max-age=86400",
+      "Content-Length": String(thumbnail.sizeBytes),
+      "Content-Type": "image/webp",
+      "X-Content-Type-Options": "nosniff",
+    });
+    return new StreamableFile(createReadStream(thumbnail.filePath));
+  }
 }

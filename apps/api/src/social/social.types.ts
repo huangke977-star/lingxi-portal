@@ -61,6 +61,7 @@ export interface ChatMessageResponse {
     durationSeconds: number | null;
   } | null;
   sender: SocialUserResponse;
+  senderDisplayName: string;
   readAt: string | null;
   createdAt: string;
 }
@@ -93,6 +94,7 @@ export interface ChatGroupSummaryResponse {
   avatarUrl: string | null;
   announcement: string;
   joinMode: "approval" | "invite_only";
+  membersCanInvite: boolean;
   memberLimit: number;
   memberCount: number;
   temporary: boolean;
@@ -101,6 +103,9 @@ export interface ChatGroupSummaryResponse {
   currentMemberRole: "owner" | "admin" | "member" | null;
   currentAlias: string | null;
   canManage: boolean;
+  canInvite: boolean;
+  pendingJoinRequestCount: number;
+  pendingReportCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -108,7 +113,13 @@ export interface ChatGroupSummaryResponse {
 export interface ChatGroupResponse extends ChatGroupSummaryResponse {
   owner: SocialUserResponse;
   members: ChatGroupMemberResponse[];
-  pendingJoinRequestCount: number;
+}
+
+export interface ChatGroupApprovalResponse {
+  invitations: ChatGroupInvitationResponse[];
+  joinRequests: Array<ChatGroupJoinRequestResponse & {
+    group: Pick<ChatGroupSummaryResponse, "id" | "conversationId" | "name" | "avatarUrl">;
+  }>;
 }
 
 export interface ChatGroupInvitationResponse {
@@ -156,6 +167,7 @@ export interface ChatAttachmentResponse {
   mimeType: string;
   sizeBytes: number;
   downloadUrl: string;
+  thumbnailUrl: string | null;
   createdAt: string;
 }
 
@@ -207,11 +219,16 @@ export interface UserNotificationResponse {
   commentReportId: number | null;
   actor: SocialUserResponse | null;
   context: {
-    kind: "comment_report" | "article" | "article_comment";
-    article: { id: number; title: string; slug: string };
+    kind: "comment_report" | "article" | "article_comment" | "group_invitation" | "group_join_request" | "group_report";
+    article?: { id: number; title: string; slug: string };
     commentId?: number;
     commentBody?: string;
     commentStatus?: string;
+    groupId?: number;
+    conversationId?: number;
+    invitationId?: number;
+    joinRequestId?: number;
+    reportId?: number;
   } | null;
   aggregateCount: number;
   readAt: string | null;

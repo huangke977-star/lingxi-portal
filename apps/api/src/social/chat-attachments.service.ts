@@ -5,8 +5,9 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { access, copyFile, mkdir, open, rename, unlink } from "node:fs/promises";
+import { access, copyFile, mkdir, open, rename, stat, unlink } from "node:fs/promises";
 import { extname, resolve } from "node:path";
+import sharp from "sharp";
 import {
   ChatAttachmentKind,
   ChatGroupMemberStatus,
@@ -157,7 +158,7 @@ export class ChatAttachmentsService {
   async getDownload(
     attachmentId: number,
     userId: number,
-  ): Promise<{ filePath: string; mimeType: string; originalName: string; sizeBytes: number }> {
+  ): Promise<{ filePath: string; mimeType: string; originalName: string; sizeBytes: number; storedName: string; kind: ChatAttachmentKind }> {
     const attachment = await this.prisma.chatAttachment.findUnique({
       where: { id: attachmentId },
       include: {
@@ -205,7 +206,36 @@ export class ChatAttachmentsService {
       mimeType: attachment.mimeType,
       originalName: this.safeOriginalName(attachment.originalName),
       sizeBytes: attachment.sizeBytes,
+      storedName: attachment.storedName,
+      kind: attachment.kind,
     };
+  }
+
+  async getThumbnail(
+    attachmentId: number,
+    userId: number,
+  ): Promise<{ filePath: string; sizeBytes: number }> {
+    const attachment = await this.getDownload(attachmentId, userId);
+    if (attachment.kind !== ChatAttachmentKind.image) {
+      throw new NotFoundException("图片缩略图不存在。");
+    }
+    const thumbnailPath = this.resolveStoredPath(this.thumbnailStoredName(attachment.storedName));
+    await access(thumbnailPath).catch(async () => {
+      const temporaryPath = `${thumbnailPath}.${randomUUID()}.tmp`;
+      try {
+        await sharp(attachment.filePath)
+          .rotate()
+          .resize(480, 480, { fit: "inside", withoutEnlargement: true })
+          .webp({ quality: 72, effort: 4 })
+          .toFile(temporaryPath);
+        await rename(temporaryPath, thumbnailPath);
+      } catch (error) {
+        await unlink(temporaryPath).catch(() => undefined);
+        if (await access(thumbnailPath).then(() => true).catch(() => false)) return;
+        throw error;
+      }
+    });
+    return { filePath: thumbnailPath, sizeBytes: (await stat(thumbnailPath)).size };
   }
 
   async bindToMessage(
@@ -291,10 +321,12 @@ export class ChatAttachmentsService {
 
   async deleteStoredFiles(storedNames: string[]): Promise<void> {
     await Promise.all(
-      Array.from(new Set(storedNames)).map((storedName) =>
-        unlink(this.resolveStoredPath(storedName)).catch((error: NodeJS.ErrnoException) => {
-          if (error.code !== "ENOENT") throw error;
-        }),
+      Array.from(new Set(storedNames)).flatMap((storedName) =>
+        [storedName, this.thumbnailStoredName(storedName)].map((name) =>
+          unlink(this.resolveStoredPath(name)).catch((error: NodeJS.ErrnoException) => {
+            if (error.code !== "ENOENT") throw error;
+          }),
+        ),
       ),
     );
   }
@@ -519,7 +551,14 @@ export class ChatAttachmentsService {
       mimeType: attachment.mimeType,
       sizeBytes: attachment.sizeBytes,
       downloadUrl: `/social/attachments/${attachment.id}/download`,
+      thumbnailUrl: attachment.kind === ChatAttachmentKind.image
+        ? `/social/attachments/${attachment.id}/thumbnail`
+        : null,
       createdAt: attachment.createdAt.toISOString(),
     };
+  }
+
+  private thumbnailStoredName(storedName: string): string {
+    return `${storedName}.thumb.webp`;
   }
 }

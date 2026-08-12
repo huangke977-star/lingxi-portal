@@ -76,6 +76,10 @@ const conversationGroupInclude = {
     where: { status: "pending" as const },
     select: { id: true },
   },
+  reports: {
+    where: { status: "pending" as const },
+    select: { id: true },
+  },
 } satisfies Prisma.ChatGroupInclude;
 
 type ConversationGroupRecord = Prisma.ChatGroupGetPayload<{ include: typeof conversationGroupInclude }>;
@@ -84,7 +88,7 @@ interface ConversationMembership {
   kind: ConversationKind;
   participantIds: number[];
   friendship: { userOneId: number; userTwoId: number } | null;
-  group: { id: number; role: ChatGroupMemberRole; mutedUntil: Date | null } | null;
+  group: { id: number; role: ChatGroupMemberRole; alias: string | null; mutedUntil: Date | null } | null;
 }
 
 const friendshipInclude = {
@@ -691,7 +695,7 @@ export class SocialService {
     conversationId: number,
     query: ListMessagesQueryDto,
   ): Promise<{ items: ChatMessageResponse[]; hasMore: boolean }> {
-    await this.assertConversationMember(conversationId, user.id);
+    const membership = await this.assertConversationMember(conversationId, user.id);
     const state = await this.prisma.conversationParticipantState.findUnique({
       where: { conversationId_userId: { conversationId, userId: user.id } },
       select: { clearedBeforeMessageId: true },
@@ -710,8 +714,14 @@ export class SocialService {
       include: messageInclude,
     });
     const hasMore = messages.length > query.limit;
+    const aliases = membership.group
+      ? new Map((await this.prisma.chatGroupMember.findMany({
+          where: { groupId: membership.group.id, userId: { in: messages.map((message) => message.senderId) } },
+          select: { userId: true, alias: true },
+        })).map((member) => [member.userId, member.alias]))
+      : new Map<number, string | null>();
     return {
-      items: messages.slice(0, query.limit).reverse().map((message) => this.toMessage(message)),
+      items: messages.slice(0, query.limit).reverse().map((message) => this.toMessage(message, aliases.get(message.senderId) ?? undefined)),
       hasMore,
     };
   }
@@ -763,7 +773,7 @@ export class SocialService {
       await transaction.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
       return transaction.chatMessage.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude });
     });
-    return this.toMessage(message);
+    return this.toMessage(message, membership.group?.alias ?? undefined);
   }
 
   async forwardMessages(
@@ -1522,7 +1532,7 @@ export class SocialService {
             expiresAt: true,
             members: {
               where: { status: ChatGroupMemberStatus.active },
-              select: { userId: true, role: true, mutedUntil: true },
+              select: { userId: true, role: true, alias: true, mutedUntil: true },
             },
           },
         },
@@ -1553,7 +1563,7 @@ export class SocialService {
         kind: conversation.kind,
         participantIds: conversation.group.members.map((member) => member.userId),
         friendship: null,
-        group: { id: conversation.group.id, role: groupMember.role, mutedUntil: groupMember.mutedUntil },
+        group: { id: conversation.group.id, role: groupMember.role, alias: groupMember.alias, mutedUntil: groupMember.mutedUntil },
       };
     }
     throw new ForbiddenException("没有访问这个会话的权限。");
@@ -1657,12 +1667,16 @@ export class SocialService {
       currentMemberRole: member?.role ?? null,
       currentAlias: member?.alias ?? null,
       canManage: Boolean(member && member.role !== ChatGroupMemberRole.member),
+      canInvite: Boolean(member && (member.role !== ChatGroupMemberRole.member || group.membersCanInvite)),
+      membersCanInvite: group.membersCanInvite,
+      pendingJoinRequestCount: member && member.role !== ChatGroupMemberRole.member ? group.joinRequests.length : 0,
+      pendingReportCount: member && member.role !== ChatGroupMemberRole.member ? group.reports.length : 0,
       createdAt: group.createdAt.toISOString(),
       updatedAt: group.updatedAt.toISOString(),
     };
   }
 
-  private toMessage(message: MessageRecord): ChatMessageResponse {
+  private toMessage(message: MessageRecord, senderDisplayName?: string): ChatMessageResponse {
     return {
       id: message.id,
       conversationId: message.conversationId,
@@ -1676,12 +1690,14 @@ export class SocialService {
         durationSeconds: message.callSession.durationSeconds,
       } : null,
       sender: this.toSocialUser(message.sender),
+      senderDisplayName: senderDisplayName || message.sender.nickname || message.sender.username,
       readAt: message.readAt?.toISOString() ?? null,
       createdAt: message.createdAt.toISOString(),
     };
   }
 
   private toNotification(notification: NotificationRecord): UserNotificationResponse {
+    const groupContext = this.groupNotificationContext(notification.actionUrl, notification.title);
     return {
       id: notification.id,
       type: notification.type,
@@ -1704,13 +1720,30 @@ export class SocialService {
         commentBody: notification.comment.body,
         commentStatus: notification.comment.status,
         article: notification.comment.article,
-      } : notification.article ? { kind: "article", article: notification.article } : null,
+      } : notification.article ? { kind: "article", article: notification.article } : groupContext,
       aggregateCount: notification.aggregateCount,
       readAt: notification.readAt?.toISOString() ?? null,
       openedAt: notification.openedAt?.toISOString() ?? null,
       createdAt: notification.createdAt.toISOString(),
       updatedAt: notification.updatedAt.toISOString(),
     };
+  }
+
+  private groupNotificationContext(
+    actionUrl: string | null,
+    title: string,
+  ): UserNotificationResponse["context"] {
+    if (!actionUrl?.includes("groupApproval=")) return null;
+    const url = new URL(actionUrl, "https://local.invalid");
+    const groupId = Number(url.searchParams.get("groupApproval"));
+    if (!Number.isInteger(groupId) || groupId < 1) return null;
+    const reportId = Number(url.searchParams.get("report")) || undefined;
+    const joinRequestId = Number(url.searchParams.get("joinRequest")) || undefined;
+    if (reportId) return { kind: "group_report", groupId, reportId };
+    if (joinRequestId || title.includes("入群申请")) {
+      return { kind: "group_join_request", groupId, joinRequestId };
+    }
+    return { kind: "group_invitation", groupId };
   }
 
   private toNotificationChannelState(state: {

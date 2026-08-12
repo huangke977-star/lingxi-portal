@@ -60,6 +60,11 @@ export class ChatGroupsController {
     return this.groupsService.listInvitations(user);
   }
 
+  @Get("group-approvals")
+  listApprovals(@CurrentUser() user: AuthenticatedUser) {
+    return this.groupsService.listApprovals(user);
+  }
+
   @Patch("group-invitations/:id/respond")
   respondInvitation(
     @CurrentUser() user: AuthenticatedUser,
@@ -67,6 +72,15 @@ export class ChatGroupsController {
     @Body() dto: RespondChatGroupInvitationDto,
   ) {
     return this.groupsService.respondInvitation(user, id, dto);
+  }
+
+  @Patch("groups/:id/invitation/respond")
+  respondInvitationByGroup(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: RespondChatGroupInvitationDto,
+  ) {
+    return this.groupsService.respondInvitationByGroup(user, id, dto);
   }
 
   @Get("group-reports")

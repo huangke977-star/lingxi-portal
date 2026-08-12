@@ -614,6 +614,11 @@ export class StorageManagementService implements OnModuleInit, OnModuleDestroy {
         fileUpdatedAt: file.updatedAt,
       });
       filesByName.delete(reference.storedName);
+      if (reference.category === "chat") {
+        // Chat thumbnails are reproducible derivatives of a healthy attachment,
+        // so they count toward disk usage but are not standalone orphan files.
+        filesByName.delete(`${reference.storedName}.thumb.webp`);
+      }
       if (reference.sizeBytes !== null && reference.sizeBytes !== file.sizeBytes) {
         mismatchCount += 1;
         issues.push(this.issueData(scanId, StorageIssueKind.metadata_mismatch, reference, file));

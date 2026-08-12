@@ -59,6 +59,7 @@ function groupRecord(currentRole: "owner" | "admin" | "member" = "owner") {
     avatarMimeType: null,
     avatarSizeBytes: null,
     joinMode: "approval",
+    membersCanInvite: false,
     memberLimit: 100,
     temporary: false,
     expiresAt: null,
@@ -93,6 +94,7 @@ function groupRecord(currentRole: "owner" | "admin" | "member" = "owner") {
       },
     ],
     joinRequests: [],
+    reports: [],
     createdAt: new Date("2026-08-01T00:00:00.000Z"),
     updatedAt: new Date("2026-08-02T00:00:00.000Z"),
   };
@@ -194,11 +196,17 @@ describe("ChatGroupsService", () => {
   it("creates one pending report for another member's message", async () => {
     const upsert = jest.fn(async () => ({ id: 31 }));
     const activity = jest.fn(async () => ({ id: 41 }));
+    const notifications = jest.fn(async () => ({ count: 1 }));
+    const transaction = {
+      chatGroupActivityLog: { create: activity },
+      userNotification: { createMany: notifications },
+    };
     const service = createService({
       chatGroup: { findUnique: jest.fn(async () => groupRecord()) },
-      chatMessage: { findFirst: jest.fn(async () => ({ id: 51, senderId: 8, type: "text" })) },
+      chatMessage: { findFirst: jest.fn(async () => ({ id: 51, senderId: 8, type: "text", body: "一条待举报消息" })) },
       chatGroupMessageReport: { upsert },
       chatGroupActivityLog: { create: activity },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
     });
 
     await expect(service.reportMessage(owner, 11, 51, { reason: "spam", detail: "重复广告" }))
