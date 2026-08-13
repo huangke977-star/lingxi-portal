@@ -28,7 +28,7 @@ const user: AuthenticatedUser = {
 };
 
 describe("AnnouncementsService", () => {
-  it("does not turn a draft into a scheduled announcement because of a stale date", async () => {
+  it("keeps immediate drafts from carrying a scheduled publish time", async () => {
     const service = new AnnouncementsService({
       role: { findMany: jest.fn(async () => []) },
     } as unknown as PrismaService);
@@ -39,10 +39,32 @@ describe("AnnouncementsService", () => {
     await expect(normalizeInput.normalizeInput({
       title: "草稿公告",
       content: "公告内容",
-      status: "draft",
+      publishMode: "immediate",
       scheduledAt: "2099-01-01T00:00:00.000Z",
     })).resolves.toMatchObject({
-      data: { status: AnnouncementStatus.draft, scheduledAt: null },
+      data: { publishMode: "immediate", scheduledAt: null },
+    });
+  });
+
+  it("normalizes announcement schedule times to whole minutes", async () => {
+    const service = new AnnouncementsService({
+      role: { findMany: jest.fn(async () => []) },
+    } as unknown as PrismaService);
+    const normalizeInput = service as unknown as {
+      normalizeInput(input: Record<string, unknown>): Promise<{ data: { scheduledAt: Date | null; expiresAt: Date | null } }>;
+    };
+
+    await expect(normalizeInput.normalizeInput({
+      title: "定时公告",
+      content: "公告内容",
+      publishMode: "scheduled",
+      scheduledAt: "2099-01-01T08:30:45.123Z",
+      expiresAt: "2099-01-01T09:30:59.999Z",
+    })).resolves.toMatchObject({
+      data: {
+        scheduledAt: new Date("2099-01-01T08:30:00.000Z"),
+        expiresAt: new Date("2099-01-01T09:30:00.000Z"),
+      },
     });
   });
 
@@ -66,6 +88,43 @@ describe("AnnouncementsService", () => {
       where: { userId: user.id, announcementId: 11, readAt: null },
       data: { readAt: expect.any(Date), openedAt: expect.any(Date) },
     });
+  });
+
+  it("returns an edited scheduled announcement to draft", async () => {
+    const update = jest.fn(async () => ({}));
+    const prisma = {
+      announcement: {
+        findUnique: jest.fn()
+          .mockResolvedValueOnce({ id: 12, status: AnnouncementStatus.scheduled })
+          .mockResolvedValueOnce({ id: 12 }),
+        update,
+      },
+      role: { findMany: jest.fn(async () => []) },
+    };
+    const service = new AnnouncementsService(prisma as unknown as PrismaService);
+    jest.spyOn(service, "getAdmin").mockResolvedValue({ id: 12 } as never);
+
+    await service.update(user, 12, {
+      title: "重新编辑",
+      content: "正文",
+      publishMode: "scheduled",
+      scheduledAt: "2099-01-01T00:00:00.000Z",
+    });
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: AnnouncementStatus.draft }),
+    }));
+  });
+
+  it("allows an administrator to delete only drafts", async () => {
+    const remove = jest.fn(async () => ({}));
+    const findUnique = jest.fn<Promise<{ status: AnnouncementStatus }>, []>(async () => ({ status: AnnouncementStatus.archived }));
+    const service = new AnnouncementsService({ announcement: { findUnique, delete: remove } } as unknown as PrismaService);
+
+    await expect(service.delete(user, 13)).rejects.toThrow("Administrators can only delete announcement drafts.");
+    findUnique.mockResolvedValueOnce({ status: AnnouncementStatus.draft });
+    await expect(service.delete(user, 13)).resolves.toEqual({ success: true });
+    expect(remove).toHaveBeenCalledWith({ where: { id: 13 } });
   });
 
   it("publishes due announcements and expires ended announcements", async () => {

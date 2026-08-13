@@ -337,6 +337,10 @@ export function ChatDock() {
     () => conversations.find((conversation) => conversation.id === selectedId) ?? null,
     [conversations, selectedId],
   );
+  const selectedGroupIsBanned = Boolean(selected?.group?.isBanned);
+  const selectedGroupBanNotice = selected?.group?.bannedUntil
+    ? `该群已被站点封禁，预计于 ${formatMinute(selected.group.bannedUntil)} 解除。`
+    : "该群已被站点永久封禁。";
   const actionMessage = useMemo(
     () => messages.find((message) => message.id === openMessageActionId) ?? null,
     [messages, openMessageActionId],
@@ -401,7 +405,7 @@ export function ChatDock() {
   const unreadNotifications = notifications.filter((item) => !item.readAt && !pushDisabledChannels.has(item.channel)).length;
   const selectedUnreadNotifications = selectedNotifications.filter((item) => !item.readAt).length;
   const selectedMessagesForAction = messages.filter((message) => selectedMessageIds.has(message.id));
-  const selectedMessagesCanForward = Boolean(selectedMessageIds.size) &&
+  const selectedMessagesCanForward = !selectedGroupIsBanned && Boolean(selectedMessageIds.size) &&
     selectedMessagesForAction.length === selectedMessageIds.size &&
     selectedMessagesForAction.every((message) => message.type !== "system");
   const normalizedForwardTargetSearch = forwardTargetSearch.trim().toLocaleLowerCase();
@@ -1067,6 +1071,10 @@ export function ChatDock() {
   }
 
   function addFiles(files: File[]) {
+    if (selectedGroupIsBanned) {
+      setError(selectedGroupBanNotice);
+      return;
+    }
     if (!files.length) return;
     if (!validateFiles(files, pendingAttachments.map((item) => item.file))) return;
     setPendingAttachments((current) => [
@@ -1089,6 +1097,10 @@ export function ChatDock() {
   // Images chosen from the file picker are intentional and can be sent immediately.
   // Pasted or dropped files still enter the composer so accidental clipboard files are reviewable.
   function handleSelectedFiles(files: File[]) {
+    if (selectedGroupIsBanned) {
+      setError(selectedGroupBanNotice);
+      return;
+    }
     if (!files.length) return;
     if (files.every((file) => file.type.startsWith("image/")) && selectedId && !isSending) {
       if (!validateFiles(files, [])) return;
@@ -1158,6 +1170,10 @@ export function ChatDock() {
     const socket = socketRef.current;
     const token = readAccessToken();
     if ((!body && !files.length) || !conversationId || !token) return;
+    if (selectedGroupIsBanned) {
+      setError(selectedGroupBanNotice);
+      return;
+    }
     if (!socket?.connected) {
       setError("聊天连接尚未建立，请稍后重试。");
       return;
@@ -1192,6 +1208,10 @@ export function ChatDock() {
   async function sendQuickMessage(body: string) {
     const socket = socketRef.current;
     if (!selected || !socket?.connected || isSending) return;
+    if (selectedGroupIsBanned) {
+      setError(selectedGroupBanNotice);
+      return;
+    }
     setIsSending(true);
     try {
       const response = await socket.timeout(10000).emitWithAck("chat:send", {
@@ -1557,6 +1577,12 @@ export function ChatDock() {
       return;
     }
     if (notification.type === "friend_request_received") {
+      setSelectedId(notificationConversationId("system"));
+      setSelectedSystemNotificationId(notification.id);
+      setIsMobileConversationOpen(true);
+      return;
+    }
+    if (notification.context?.kind === "group_ban") {
       setSelectedId(notificationConversationId("system"));
       setSelectedSystemNotificationId(notification.id);
       setIsMobileConversationOpen(true);
@@ -2194,13 +2220,14 @@ export function ChatDock() {
                   />
                 ))}
               </div>
+              {selectedGroupIsBanned ? <div className="chat-group-ban-notice"><Ban aria-hidden="true" size={16} /><span><strong>该群已被站点封禁</strong><small>{selectedGroupBanNotice}{selected?.group?.banReason ? ` 原因：${selected.group.banReason}` : ""}</small></span></div> : null}
               {isMessageSelectionMode ? <div className="chat-message-selection-bar">
                 <button onClick={cancelMessageSelection} type="button">取消</button>
                 <strong>已选择 {selectedMessageIds.size} 条</strong>
                 <button disabled={!selectedMessagesCanForward || isMessageActionRunning} onClick={() => openMessageForward(Array.from(selectedMessageIds))} title={selectedMessagesCanForward ? "逐条转发所选消息" : "系统消息不能转发"} type="button"><Forward aria-hidden="true" size={15} />转发</button>
                 <button disabled={!selectedMessageIds.size || isMessageActionRunning} onClick={() => requestSelectedMessageDeletion("self")} type="button"><Trash2 aria-hidden="true" size={15} />删除</button>
                 <button className="danger" disabled={!selectedMessageIds.size || isMessageActionRunning} onClick={() => requestSelectedMessageDeletion("everyone")} type="button"><Trash2 aria-hidden="true" size={15} />双向删除</button>
-              </div> : <form className="chat-composer" onDragOver={(event) => event.preventDefault()} onDrop={handleDrop} onSubmit={sendMessage}>
+              </div> : <form className={`chat-composer${selectedGroupIsBanned ? " disabled" : ""}`} onDragOver={(event) => { if (!selectedGroupIsBanned) event.preventDefault(); }} onDrop={handleDrop} onSubmit={sendMessage}>
                 {pendingAttachments.length ? <div className="chat-pending-attachments">{pendingAttachments.map((attachment) => (
                   <span key={attachment.id}>{attachment.kind === "image" && attachment.previewUrl
                     ? <img alt="" src={attachment.previewUrl} />
@@ -2213,15 +2240,15 @@ export function ChatDock() {
                 <div className="chat-composer-row">
                   <input accept=".jpg,.jpeg,.png,.webp,.webm,.m4a,.mp3,.wav,.ogg,.mp4,.mov,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.md,.csv,.json,.xml,.rtf,.zip,.rar,.7z,.gz,.tar" hidden multiple onChange={(event) => { handleSelectedFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} ref={fileInputRef} type="file" />
                   <div className="chat-composer-tools">
-                    {!isDesktop ? <button aria-label="更多聊天功能" className={`chat-mobile-more${isMobileToolsOpen ? " active" : ""}`} onClick={() => { setIsMobileToolsOpen((current) => !current); setIsEmojiOpen(false); }} title="更多" type="button"><Plus aria-hidden="true" size={19} /></button> : null}
-                    <button aria-label="添加表情" className={`chat-desktop-tool${isEmojiOpen ? " active" : ""}`} onClick={() => { setIsEmojiOpen((current) => !current); setIsMobileToolsOpen(false); }} title="表情" type="button"><Laugh aria-hidden="true" size={18} /></button>
-                    <button aria-label="添加图片或文件" className="chat-desktop-tool" onClick={() => fileInputRef.current?.click()} title="添加图片或文件" type="button"><Paperclip aria-hidden="true" size={18} /></button>
+                    {!isDesktop ? <button aria-label="更多聊天功能" className={`chat-mobile-more${isMobileToolsOpen ? " active" : ""}`} disabled={selectedGroupIsBanned} onClick={() => { setIsMobileToolsOpen((current) => !current); setIsEmojiOpen(false); }} title="更多" type="button"><Plus aria-hidden="true" size={19} /></button> : null}
+                    <button aria-label="添加表情" className={`chat-desktop-tool${isEmojiOpen ? " active" : ""}`} disabled={selectedGroupIsBanned} onClick={() => { setIsEmojiOpen((current) => !current); setIsMobileToolsOpen(false); }} title="表情" type="button"><Laugh aria-hidden="true" size={18} /></button>
+                    <button aria-label="添加图片或文件" className="chat-desktop-tool" disabled={selectedGroupIsBanned} onClick={() => fileInputRef.current?.click()} title="添加图片或文件" type="button"><Paperclip aria-hidden="true" size={18} /></button>
                   </div>
-                  <textarea aria-label={`给 ${selected.group?.name ?? selected.user.nickname} 发消息`} maxLength={2000} onChange={(event) => updateDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} onPaste={handlePaste} placeholder="输入消息" rows={2} value={draft} />
+                  <textarea aria-label={`给 ${selected.group?.name ?? selected.user.nickname} 发消息`} disabled={selectedGroupIsBanned} maxLength={2000} onChange={(event) => updateDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} onPaste={handlePaste} placeholder={selectedGroupIsBanned ? "该群已被封禁，暂时无法发送消息" : "输入消息"} rows={2} value={draft} />
                   <button
                     aria-label={isVoiceRecording ? `松开发送语音，已录制 ${formatDuration(voiceRecordingSeconds)}` : "发送消息，长按录制语音"}
                     className={isVoiceRecording ? "recording" : undefined}
-                    disabled={isSending || Boolean(chatCalls.state)}
+                    disabled={selectedGroupIsBanned || isSending || Boolean(chatCalls.state)}
                     onClick={(event) => { if (suppressSendClickRef.current || (!draft.trim() && !pendingAttachments.length)) event.preventDefault(); suppressSendClickRef.current = false; }}
                     onContextMenu={(event) => event.preventDefault()}
                     onPointerCancel={handleSendPointerCancel}
@@ -2231,7 +2258,7 @@ export function ChatDock() {
                     type="submit"
                   >{isSending ? <LoaderCircle aria-hidden="true" className="spin" size={18} /> : isVoiceRecording ? <Square aria-hidden="true" size={15} /> : <Send aria-hidden="true" size={18} />}</button>
                 </div>
-                {isMobileToolsOpen ? <div className="chat-mobile-tools-panel">
+                {isMobileToolsOpen && !selectedGroupIsBanned ? <div className="chat-mobile-tools-panel">
                   <button onClick={() => { setIsMobileToolsOpen(false); setIsEmojiOpen(true); }} type="button"><span><Laugh aria-hidden="true" size={22} /></span><small>表情</small></button>
                   <button onClick={() => { setIsMobileToolsOpen(false); fileInputRef.current?.click(); }} type="button"><span><ImageIcon aria-hidden="true" size={22} /></span><small>图片与文件</small></button>
                 </div> : null}
@@ -2243,7 +2270,7 @@ export function ChatDock() {
         {actionMessage && !isMessageSelectionMode ? <span className={`chat-message-action-menu${messageActionPosition ? " context-positioned" : ""}`} data-chat-message-action style={messageActionStyle}>
           <button onClick={() => beginMessageSelection(actionMessage.id)} type="button"><Check aria-hidden="true" size={14} />选择</button>
           {actionMessage.body ? <button onClick={() => void copyMessageBody(actionMessage)} type="button"><Copy aria-hidden="true" size={14} />复制</button> : null}
-          {actionMessage.type !== "system" ? <button onClick={() => openMessageForward([actionMessage.id])} type="button"><Forward aria-hidden="true" size={14} />转发</button> : null}
+          {actionMessage.type !== "system" && !selectedGroupIsBanned ? <button onClick={() => openMessageForward([actionMessage.id])} type="button"><Forward aria-hidden="true" size={14} />转发</button> : null}
           {selected?.group && actionMessage.sender.id !== user.id && actionMessage.type !== "system" ? <button onClick={() => { setPendingGroupReportMessageId(actionMessage.id); setOpenMessageActionId(0); setGroupReportReason("spam"); setGroupReportDetail(""); }} type="button"><Flag aria-hidden="true" size={14} />举报</button> : null}
           {actionMessage.sender.id === user.id && actionMessage.type !== "system" && messageActionOpenedAt - timestamp(actionMessage.createdAt) <= 2 * 60 * 1000
             ? <button onClick={() => requestMessageOperation("recall", actionMessage.id)} type="button"><Undo2 aria-hidden="true" size={14} />撤回消息</button>
@@ -2378,7 +2405,7 @@ function ChatSidebarGroupRow({ active, conversation, menuOpen, onConversationAct
   return <div className={`chat-sidebar-contact-row chat-sidebar-group-row${active ? " active" : ""}`}>
     <button className="chat-sidebar-primary-row" onClick={onOpen} type="button">
       <ConversationAvatar conversation={conversation} />
-      <span><strong className="chat-conversation-name"><Users aria-hidden="true" className="chat-group-inline-mark" size={13} />{group.name}{group.temporary ? <Clock3 aria-hidden="true" className="chat-muted-inline" size={13} /> : null}{conversation.muted ? <BellOff aria-hidden="true" className="chat-muted-inline" size={13} /> : null}</strong><small>{getConversationPreview(conversation)}</small></span>
+      <span><strong className="chat-conversation-name"><Users aria-hidden="true" className="chat-group-inline-mark" size={13} />{group.name}{group.isBanned ? <Ban aria-hidden="true" className="chat-group-banned-inline" size={13} /> : null}{group.temporary ? <Clock3 aria-hidden="true" className="chat-muted-inline" size={13} /> : null}{conversation.muted ? <BellOff aria-hidden="true" className="chat-muted-inline" size={13} /> : null}</strong><small>{group.isBanned ? "群聊已被站点封禁" : getConversationPreview(conversation)}</small></span>
       <span className="chat-group-pending-badges">{group.pendingJoinRequestCount ? <b title="待处理入群申请"><UserPlus aria-hidden="true" size={11} />{formatCount(group.pendingJoinRequestCount)}</b> : null}{group.pendingReportCount ? <b className="report" title="待处理举报"><Flag aria-hidden="true" size={11} />{formatCount(group.pendingReportCount)}</b> : null}{conversation.unreadCount ? <b className={conversation.muted ? "muted" : undefined}>{conversation.muted ? "" : formatCount(conversation.unreadCount)}</b> : null}</span>
     </button>
     <div className="chat-friend-action" data-chat-friend-action>
@@ -2513,7 +2540,8 @@ function NotificationPanel({
             <NotificationIdentity notification={notification} onOpenGroup={onOpenGroup} onOpenProfile={onOpenProfile} />
             <div className="chat-system-notification-main">
               <button className="chat-system-notification-copy" onClick={() => void onSelect(notification)} type="button"><span>
-                <strong>{notification.title}</strong>
+                <strong>{notification.context?.kind === "announcement" ? "站点公告" : notification.title}</strong>
+                {notification.context?.kind === "announcement" && notification.context.announcement?.title ? <small>{notification.context.announcement.title}</small> : null}
                 {notification.context?.group?.name ? <small className="chat-notification-group-name">{notification.context.group.name}</small> : null}
                 {notification.context?.kind !== "group_report" ? <small>{notification.context?.kind === "friend_request" && notification.context.requestNote ? notification.context.requestNote : notification.body}</small> : null}
                 {notification.context?.commentBody ? <q>{notification.context.commentBody}</q> : null}
@@ -2879,6 +2907,19 @@ function formatChatTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function formatMinute(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "稍后";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
     hour12: false,
   }).format(date);
 }

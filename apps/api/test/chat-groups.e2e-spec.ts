@@ -35,6 +35,15 @@ const owner: AuthenticatedUser = {
   role: { code: "qi_refining", name: "练气", level: 10 },
 };
 
+const siteManager: AuthenticatedUser = {
+  ...owner,
+  id: 1,
+  username: "site-manager",
+  nickname: "站点管理员",
+  isSuperAdmin: true,
+  role: { code: "super_administrator", name: "超级管理员", level: 100 },
+};
+
 const groupUser = (id: number) => ({
   id,
   nickname: `用户${id}`,
@@ -67,6 +76,9 @@ function groupRecord(currentRole: "owner" | "admin" | "member" = "owner") {
     expiresAt: null,
     status: ChatGroupStatus.active,
     dissolvedAt: null,
+    isBanned: false,
+    bannedUntil: null,
+    banReason: null,
     members: [
       {
         groupId: 11,
@@ -97,6 +109,7 @@ function groupRecord(currentRole: "owner" | "admin" | "member" = "owner") {
     ],
     joinRequests: [],
     reports: [],
+    banRecords: [],
     createdAt: new Date("2026-08-01T00:00:00.000Z"),
     updatedAt: new Date("2026-08-02T00:00:00.000Z"),
   };
@@ -162,6 +175,68 @@ describe("ChatGroupsService", () => {
     const service = createService({ chatGroup: { findUnique: jest.fn(async () => groupRecord("member")) } });
 
     await expect(service.update(owner, 11, { name: "新名称" })).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("records a site ban and notifies the group owner and administrators", async () => {
+    const activeGroup = groupRecord();
+    const bannedGroup = { ...activeGroup, isBanned: true, banReason: "持续发布违规内容" };
+    const updateGroup = jest.fn(async () => bannedGroup);
+    const createRecord = jest.fn(async () => ({ id: 91 }));
+    const createNotifications = jest.fn(async () => ({ count: 1 }));
+    const transaction = {
+      chatGroupBanRecord: { updateMany: jest.fn(async () => ({ count: 0 })), create: createRecord },
+      chatGroup: { update: updateGroup },
+      chatGroupActivityLog: { create: jest.fn(async () => ({ id: 41 })) },
+      userNotification: { createMany: createNotifications },
+    };
+    const service = createService({
+      chatGroup: {
+        findUnique: jest.fn(async () => activeGroup),
+        findUniqueOrThrow: jest.fn(async () => bannedGroup),
+      },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
+    });
+
+    await expect(service.ban(siteManager, 11, {
+      permanent: false,
+      durationMinutes: 60,
+      reason: "持续发布违规内容",
+    })).resolves.toEqual(expect.objectContaining({ id: 11, isBanned: true }));
+    expect(updateGroup).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ isBanned: true, banReason: "持续发布违规内容" }),
+    }));
+    expect(createRecord).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ groupId: 11, actorId: siteManager.id, reason: "持续发布违规内容" }),
+    }));
+    expect(createNotifications).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({ userId: owner.id, title: "群聊已被站点封禁" })],
+    }));
+  });
+
+  it("clears the active ban and closes the open ban record", async () => {
+    const activeGroup = { ...groupRecord(), isBanned: true, banReason: "持续发布违规内容" };
+    const liftedGroup = { ...activeGroup, isBanned: false, bannedUntil: null, banReason: null };
+    const updateGroup = jest.fn(async () => liftedGroup);
+    const closeRecords = jest.fn(async () => ({ count: 1 }));
+    const transaction = {
+      chatGroup: { update: updateGroup },
+      chatGroupBanRecord: { updateMany: closeRecords },
+      chatGroupActivityLog: { create: jest.fn(async () => ({ id: 42 })) },
+      userNotification: { createMany: jest.fn(async () => ({ count: 1 })) },
+    };
+    const service = createService({
+      chatGroup: {
+        findUnique: jest.fn(async () => activeGroup),
+        findUniqueOrThrow: jest.fn(async () => liftedGroup),
+      },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<void>) => callback(transaction)),
+    });
+
+    await expect(service.liftBan(siteManager, 11)).resolves.toEqual(expect.objectContaining({ id: 11, isBanned: false }));
+    expect(updateGroup).toHaveBeenCalledWith(expect.objectContaining({
+      data: { isBanned: false, bannedUntil: null, banReason: null },
+    }));
+    expect(closeRecords).toHaveBeenCalledWith(expect.objectContaining({ where: { groupId: 11, liftedAt: null } }));
   });
 
   it("creates an invitation and notification for a newly invited user", async () => {

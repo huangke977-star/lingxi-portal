@@ -86,7 +86,7 @@ export class AnnouncementsController {
 
   @Delete("admin/:id")
   @UseGuards(JwtAuthGuard, UserManagementGuard)
-  delete(@Param("id", ParseIntPipe) id: number) {
-    return this.announcementsService.delete(id);
+  delete(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
+    return this.announcementsService.delete(user, id);
   }
 }

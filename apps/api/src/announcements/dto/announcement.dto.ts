@@ -11,7 +11,7 @@ import {
 } from "class-validator";
 
 export const ANNOUNCEMENT_AUDIENCES = ["public", "authenticated", "role_restricted"] as const;
-export const ANNOUNCEMENT_MUTABLE_STATUSES = ["draft", "scheduled", "published", "archived"] as const;
+export const ANNOUNCEMENT_PUBLISH_MODES = ["immediate", "scheduled"] as const;
 
 export class CreateAnnouncementDto {
   @IsString()
@@ -32,8 +32,8 @@ export class CreateAnnouncementDto {
   audience?: (typeof ANNOUNCEMENT_AUDIENCES)[number];
 
   @IsOptional()
-  @IsIn(ANNOUNCEMENT_MUTABLE_STATUSES)
-  status?: (typeof ANNOUNCEMENT_MUTABLE_STATUSES)[number];
+  @IsIn(ANNOUNCEMENT_PUBLISH_MODES)
+  publishMode?: (typeof ANNOUNCEMENT_PUBLISH_MODES)[number];
 
   @IsOptional()
   @IsBoolean()

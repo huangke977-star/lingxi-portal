@@ -240,6 +240,23 @@ export class HandleChatGroupReportDto {
   deleteMessage = false;
 }
 
+export class UpdateChatGroupBanDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(525600)
+  durationMinutes?: number;
+
+  @IsBoolean()
+  permanent!: boolean;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(300)
+  reason!: string;
+}
+
 export class SearchChatGroupsQueryDto {
   @IsOptional()
   @IsString()

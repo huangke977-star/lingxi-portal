@@ -109,6 +109,7 @@ export interface Conversation {
 export interface ChatGroupSummary {
   id: number;
   conversationId: number;
+  owner: SocialUser;
   name: string;
   avatarUrl: string | null;
   announcement: string;
@@ -119,9 +120,13 @@ export interface ChatGroupSummary {
   temporary: boolean;
   expiresAt: string | null;
   status: "active" | "dissolved";
+  isBanned: boolean;
+  bannedUntil: string | null;
+  banReason: string | null;
   currentMemberRole: "owner" | "admin" | "member" | null;
   currentAlias: string | null;
   canManage: boolean;
+  canModerate: boolean;
   canInvite: boolean;
   pendingJoinRequestCount: number;
   pendingReportCount: number;
@@ -142,6 +147,18 @@ export interface ChatGroupMember {
 export interface ChatGroup extends ChatGroupSummary {
   owner: SocialUser;
   members: ChatGroupMember[];
+  banRecords: ChatGroupBanRecord[];
+}
+
+export interface ChatGroupBanRecord {
+  id: number;
+  reason: string;
+  startsAt: string;
+  expiresAt: string | null;
+  liftedAt: string | null;
+  createdAt: string;
+  actor: SocialUser;
+  liftedBy: SocialUser | null;
 }
 
 export interface ChatGroupApproval {
@@ -214,7 +231,7 @@ export interface SocialNotification {
   announcementId: number | null;
   actor: SocialUser | null;
   context: {
-    kind: "comment_report" | "article" | "article_comment" | "friend_request" | "group_invitation" | "group_join_request" | "group_report" | "announcement";
+    kind: "comment_report" | "article" | "article_comment" | "friend_request" | "group_invitation" | "group_join_request" | "group_report" | "group_ban" | "announcement";
     announcementId?: number;
     announcement?: { id: number; title: string; summary: string };
     article?: { id: number; title: string; slug: string };
@@ -376,6 +393,11 @@ export function listChatGroups(accessToken: string): Promise<{ items: ChatGroupS
   return requestJson("/social/groups", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
+export function listAdminChatGroups(accessToken: string, query = ""): Promise<{ items: ChatGroupSummary[] }> {
+  const params = new URLSearchParams({ q: query, limit: "50" });
+  return requestJson(`/social/groups/admin?${params}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
 export function searchChatGroups(accessToken: string, query: string): Promise<{ items: ChatGroupSummary[] }> {
   const params = new URLSearchParams({ q: query, limit: "20" });
   return requestJson(`/social/groups/search?${params}`, { cache: "no-store", headers: authHeaders(accessToken) });
@@ -383,6 +405,18 @@ export function searchChatGroups(accessToken: string, query: string): Promise<{ 
 
 export function getChatGroup(accessToken: string, groupId: number): Promise<ChatGroup> {
   return requestJson(`/social/groups/${groupId}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function banChatGroup(accessToken: string, groupId: number, input: { permanent: boolean; durationMinutes?: number; reason: string }): Promise<ChatGroupSummary> {
+  return requestJson(`/social/groups/${groupId}/ban`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(input) });
+}
+
+export function liftChatGroupBan(accessToken: string, groupId: number): Promise<ChatGroupSummary> {
+  return requestJson(`/social/groups/${groupId}/ban`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function listChatGroupBanRecords(accessToken: string, groupId: number): Promise<{ items: ChatGroupBanRecord[] }> {
+  return requestJson(`/social/groups/${groupId}/ban-records`, { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
 export function createChatGroup(

@@ -2,6 +2,7 @@ import { requestJson } from "./auth-api";
 
 export type AnnouncementAudience = "public" | "authenticated" | "role_restricted";
 export type AnnouncementStatus = "draft" | "scheduled" | "published" | "expired" | "archived";
+export type AnnouncementPublishMode = "immediate" | "scheduled";
 
 export interface AnnouncementSummary {
   id: number;
@@ -9,6 +10,7 @@ export interface AnnouncementSummary {
   summary: string;
   audience: AnnouncementAudience;
   status: AnnouncementStatus;
+  publishMode: AnnouncementPublishMode;
   isPinned: boolean;
   pinOrder: number;
   pushEnabled: boolean;
@@ -44,7 +46,7 @@ export interface AnnouncementInput {
   summary: string;
   content: string;
   audience: AnnouncementAudience;
-  status: "draft" | "scheduled" | "published" | "archived";
+  publishMode: AnnouncementPublishMode;
   isPinned: boolean;
   pinOrder: number;
   pushEnabled: boolean;

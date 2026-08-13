@@ -127,6 +127,11 @@ enum AnnouncementStatus {
   archived
 }
 
+enum AnnouncementPublishMode {
+  immediate
+  scheduled
+}
+
 enum OperationJobStatus {
   running
   completed
@@ -419,6 +424,8 @@ model User {
   handledChatGroupReports   ChatGroupMessageReport[]       @relation("ChatGroupReportHandler")
   chatGroupActivity         ChatGroupActivityLog[]         @relation("ChatGroupActivityActor")
   targetedChatGroupActivity ChatGroupActivityLog[]         @relation("ChatGroupActivityTarget")
+  chatGroupBanRecords        ChatGroupBanRecord[]           @relation("ChatGroupBanActor")
+  liftedChatGroupBanRecords  ChatGroupBanRecord[]           @relation("ChatGroupBanLifter")
   callsStarted              CallSession[]                  @relation("CallSessionCaller")
   callsReceived             CallSession[]                  @relation("CallSessionCallee")
   callsEnded                CallSession[]                  @relation("CallSessionEndedBy")
@@ -1377,17 +1384,40 @@ model ChatGroup {
   expiresAt          DateTime?                @map("expires_at")
   status             ChatGroupStatus          @default(active)
   dissolvedAt        DateTime?                @map("dissolved_at")
+  isBanned           Boolean                  @default(false) @map("is_banned")
+  bannedUntil        DateTime?                @map("banned_until")
+  banReason          String?                  @map("ban_reason") @db.VarChar(300)
   members            ChatGroupMember[]
   invitations        ChatGroupInvitation[]
   joinRequests       ChatGroupJoinRequest[]
   reports            ChatGroupMessageReport[]
   activityLogs       ChatGroupActivityLog[]
+  banRecords          ChatGroupBanRecord[]
   createdAt          DateTime                 @default(now()) @map("created_at")
   updatedAt          DateTime                 @updatedAt @map("updated_at")
 
   @@index([ownerId, status])
   @@index([status, expiresAt])
   @@map("chat_groups")
+}
+
+model ChatGroupBanRecord {
+  id          Int        @id @default(autoincrement())
+  groupId     Int        @map("group_id")
+  group       ChatGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  actorId     Int        @map("actor_id")
+  actor       User       @relation("ChatGroupBanActor", fields: [actorId], references: [id], onDelete: Restrict)
+  liftedById  Int?       @map("lifted_by_id")
+  liftedBy    User?      @relation("ChatGroupBanLifter", fields: [liftedById], references: [id], onDelete: SetNull)
+  reason      String     @db.VarChar(300)
+  startsAt    DateTime   @default(now()) @map("starts_at")
+  expiresAt   DateTime?  @map("expires_at")
+  liftedAt    DateTime?  @map("lifted_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  @@index([groupId, createdAt])
+  @@index([groupId, liftedAt, expiresAt])
+  @@map("chat_group_ban_records")
 }
 
 model ChatGroupMember {
@@ -1652,6 +1682,7 @@ model Announcement {
   content           String                    @db.Text
   audience          AnnouncementAudience      @default(public)
   status            AnnouncementStatus        @default(draft)
+  publishMode       AnnouncementPublishMode   @default(immediate) @map("publish_mode")
   isPinned          Boolean                   @default(false) @map("is_pinned")
   pinOrder          Int                       @default(0) @map("pin_order")
   pushEnabled       Boolean                   @default(true) @map("push_enabled")

@@ -4,6 +4,7 @@ export interface AnnouncementSummaryResponse {
   summary: string;
   audience: "public" | "authenticated" | "role_restricted";
   status: "draft" | "scheduled" | "published" | "expired" | "archived";
+  publishMode: "immediate" | "scheduled";
   isPinned: boolean;
   pinOrder: number;
   pushEnabled: boolean;

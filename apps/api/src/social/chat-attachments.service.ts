@@ -508,6 +508,8 @@ export class ChatAttachmentsService {
           select: {
             status: true,
             expiresAt: true,
+            isBanned: true,
+            bannedUntil: true,
             members: { where: { userId }, select: { status: true, mutedUntil: true } },
           },
         },
@@ -522,6 +524,7 @@ export class ChatAttachmentsService {
       conversation?.group &&
       conversation.group.status === ChatGroupStatus.active &&
       (!conversation.group.expiresAt || conversation.group.expiresAt > new Date()) &&
+      (!conversation.group.isBanned || (conversation.group.bannedUntil !== null && conversation.group.bannedUntil <= new Date())) &&
       conversation.group.members[0]?.status === ChatGroupMemberStatus.active &&
       (!conversation.group.members[0]?.mutedUntil || conversation.group.members[0].mutedUntil <= new Date()),
     );

@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import {
+  Ban,
   Bell,
   BellOff,
   Check,
@@ -328,6 +329,7 @@ export function ChatGroupManager({
           </section> : null}
           {!isLoading && view === "detail" && selectedGroup ? <section className="chat-group-detail">
             <div className="chat-group-detail-identity"><GroupAvatar group={selectedGroup} large /><span><strong>{selectedGroup.name}</strong><small>{selectedGroup.memberCount}/{selectedGroup.memberLimit} 人 · {groupRoleLabel(selectedGroup.currentMemberRole)}{selectedGroup.temporary && selectedGroup.expiresAt ? ` · ${formatExpiry(selectedGroup.expiresAt)}` : ""}</small></span><div className="chat-group-detail-actions">{selectedGroup.currentMemberRole === "owner" ? <button aria-label="解散群聊" className="danger" disabled={Boolean(busyKey)} onClick={() => void run("dissolve", async () => { await dissolveChatGroup(accessToken, selectedGroup.id); setSelectedGroup(null); setView("mine"); }, "群聊已解散。")} title="解散群聊" type="button"><Trash2 aria-hidden="true" size={16} /></button> : <button aria-label="退出群聊" className="danger" disabled={Boolean(busyKey)} onClick={() => void run("leave", async () => { await leaveChatGroup(accessToken, selectedGroup.id); setSelectedGroup(null); setView("mine"); }, "已退出群聊。")} title="退出群聊" type="button"><DoorOpen aria-hidden="true" size={16} /></button>}<button aria-label="进入群聊" onClick={() => onOpenConversation(selectedGroup.conversationId)} title="进入群聊" type="button"><MessageCircle aria-hidden="true" size={16} /></button></div></div>
+            {selectedGroup.isBanned ? <div className="chat-group-ban-status"><Ban aria-hidden="true" size={16} /><span><strong>该群已被站点封禁</strong><small>{selectedGroup.bannedUntil ? `${formatMinute(selectedGroup.bannedUntil)} 自动解除` : "永久封禁"}{selectedGroup.banReason ? ` · ${selectedGroup.banReason}` : ""}</small></span></div> : null}
             {selectedGroup.announcement ? <p className="chat-group-announcement">{selectedGroup.announcement}</p> : null}
             <div className="chat-group-detail-grid">
               <section>
@@ -348,6 +350,7 @@ export function ChatGroupManager({
             <section className="chat-group-management-section"><h3>群成员 <b>{activeMembers.length}</b></h3><div className="chat-group-member-avatar-grid">{activeMembers.map((member) => <GroupMemberAvatar accessToken={accessToken} group={selectedGroup} key={member.user.id} member={member} onOpenProfile={openMemberProfile} onUpdated={setSelectedGroup} run={run} />)}</div></section>
             {selectedGroup.canManage && blockedMembers.length ? <section className="chat-group-management-section"><h3>群黑名单 <b>{blockedMembers.length}</b></h3><div className="chat-group-member-avatar-grid">{blockedMembers.map((member) => <GroupMemberAvatar accessToken={accessToken} blocked group={selectedGroup} key={member.user.id} member={member} onOpenProfile={openMemberProfile} onUpdated={setSelectedGroup} run={run} />)}</div></section> : null}
             {selectedGroup.canManage ? <GroupReports accessToken={accessToken} groupId={selectedGroup.id} run={run} /> : null}
+            {selectedGroup.banRecords.length ? <section className="chat-group-management-section chat-group-ban-records"><h3>封禁记录 <b>{selectedGroup.banRecords.length}</b></h3>{selectedGroup.banRecords.map((record) => <article key={record.id}><Ban aria-hidden="true" size={14} /><span><strong>{record.reason}</strong><small>{record.actor.nickname} 于 {formatMinute(record.startsAt)} {record.expiresAt ? `封禁至 ${formatMinute(record.expiresAt)}` : "永久封禁"}{record.liftedAt ? ` · 已于 ${formatMinute(record.liftedAt)} 解除` : ""}</small></span></article>)}</section> : null}
           </section> : null}
         </main>
       </div>
@@ -569,6 +572,17 @@ function groupRoleLabel(role: ChatGroupSummary["currentMemberRole"] | "owner" | 
 
 function formatExpiry(value: string): string {
   return `${new Date(value).toLocaleString("zh-CN", { hour12: false })} 到期`;
+}
+
+function formatMinute(value: string): string {
+  return new Date(value).toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 function messageOf(error: unknown, fallback: string): string {

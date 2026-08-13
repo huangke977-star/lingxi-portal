@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -8,6 +9,7 @@ import {
 } from "@nestjs/common";
 import {
   AnnouncementAudience,
+  AnnouncementPublishMode,
   AnnouncementStatus,
   Prisma,
   UserNotificationChannel,
@@ -78,12 +80,18 @@ export class AnnouncementsService implements OnModuleInit, OnModuleDestroy {
     });
     if (!item) throw new NotFoundException("Announcement not found.");
     const now = new Date();
-    const read = await this.prisma.announcementRead.upsert({
-      where: { announcementId_userId: { announcementId: id, userId: user.id } },
-      create: { announcementId: id, userId: user.id, firstViewedAt: now, lastViewedAt: now },
-      update: { viewCount: { increment: 1 }, lastViewedAt: now },
-      select: { confirmedAt: true },
-    });
+    const [read] = await this.prisma.$transaction([
+      this.prisma.announcementRead.upsert({
+        where: { announcementId_userId: { announcementId: id, userId: user.id } },
+        create: { announcementId: id, userId: user.id, confirmedAt: now, firstViewedAt: now, lastViewedAt: now },
+        update: { viewCount: { increment: 1 }, lastViewedAt: now, confirmedAt: now },
+        select: { confirmedAt: true },
+      }),
+      this.prisma.userNotification.updateMany({
+        where: { userId: user.id, announcementId: id, readAt: null },
+        data: { readAt: now, openedAt: now },
+      }),
+    ]);
     await this.prisma.announcement.update({ where: { id }, data: { viewCount: { increment: 1 } } });
     return this.toDetail({ ...item, viewCount: item.viewCount + 1 }, read.confirmedAt, true);
   }
@@ -141,19 +149,20 @@ export class AnnouncementsService implements OnModuleInit, OnModuleDestroy {
       },
       include: announcementInclude,
     });
-    if (item.status === AnnouncementStatus.published) await this.deliver(item.id);
     return this.getAdmin(item.id);
   }
 
   async update(user: AuthenticatedUser, id: number, dto: UpdateAnnouncementDto): Promise<AnnouncementDetailResponse> {
     const existing = await this.prisma.announcement.findUnique({ where: { id }, select: { id: true, status: true } });
     if (!existing) throw new NotFoundException("Announcement not found.");
-    if (existing.status === AnnouncementStatus.expired) throw new BadRequestException("Expired announcements cannot be edited.");
+    if (existing.status === AnnouncementStatus.published) throw new BadRequestException("Published announcements must be archived before editing.");
     const input = await this.normalizeInput(dto);
     await this.prisma.announcement.update({
       where: { id },
       data: {
         ...input.data,
+        // Editing an unpublished scheduled announcement invalidates the existing schedule.
+        status: AnnouncementStatus.draft,
         updatedById: user.id,
         allowedRoles: {
           deleteMany: {},
@@ -161,47 +170,50 @@ export class AnnouncementsService implements OnModuleInit, OnModuleDestroy {
         },
       },
     });
-    if (input.data.status === AnnouncementStatus.published && existing.status !== AnnouncementStatus.published) {
-      await this.deliver(id);
-    }
     return this.getAdmin(id);
   }
 
   async publish(user: AuthenticatedUser, id: number): Promise<AnnouncementDetailResponse> {
     const existing = await this.prisma.announcement.findUnique({ where: { id }, include: { allowedRoles: true } });
     if (!existing) throw new NotFoundException("Announcement not found.");
-    this.assertPublishable(existing.title, existing.content, existing.audience, existing.allowedRoles.length, existing.expiresAt);
+    if (existing.status === AnnouncementStatus.published) throw new BadRequestException("Announcement is already published.");
+    const now = new Date();
+    const isScheduled = existing.publishMode === AnnouncementPublishMode.scheduled;
+    if (isScheduled && (!existing.scheduledAt || existing.scheduledAt <= now)) {
+      throw new BadRequestException("Scheduled announcements require a future publish time.");
+    }
+    const publishAt = isScheduled ? existing.scheduledAt! : now;
+    this.assertPublishable(existing.title, existing.content, existing.audience, existing.allowedRoles.length, existing.expiresAt, publishAt);
     await this.prisma.announcement.update({
       where: { id },
       data: {
-        status: AnnouncementStatus.published,
-        publishedAt: new Date(),
-        scheduledAt: null,
+        status: isScheduled ? AnnouncementStatus.scheduled : AnnouncementStatus.published,
+        publishedAt: isScheduled ? null : now,
+        scheduledAt: isScheduled ? existing.scheduledAt : null,
         deliveryStartedAt: null,
         deliveredAt: null,
         deliveryError: null,
         updatedById: user.id,
       },
     });
-    await this.deliver(id);
+    if (!isScheduled) await this.deliver(id);
     return this.getAdmin(id);
   }
 
   async archive(user: AuthenticatedUser, id: number): Promise<AnnouncementDetailResponse> {
     const result = await this.prisma.announcement.updateMany({
-      where: { id },
+      where: { id, status: AnnouncementStatus.published },
       data: { status: AnnouncementStatus.archived, updatedById: user.id },
     });
     if (!result.count) throw new NotFoundException("Announcement not found.");
     return this.getAdmin(id);
   }
 
-  async delete(id: number): Promise<{ success: true }> {
+  async delete(user: AuthenticatedUser, id: number): Promise<{ success: true }> {
     const existing = await this.prisma.announcement.findUnique({ where: { id }, select: { status: true } });
     if (!existing) throw new NotFoundException("Announcement not found.");
-    const deletableStatuses: AnnouncementStatus[] = [AnnouncementStatus.draft, AnnouncementStatus.scheduled, AnnouncementStatus.archived];
-    if (!deletableStatuses.includes(existing.status)) {
-      throw new BadRequestException("Published announcements must be archived before deletion.");
+    if (!user.isSuperAdmin && existing.status !== AnnouncementStatus.draft) {
+      throw new ForbiddenException("Administrators can only delete announcement drafts.");
     }
     await this.prisma.announcement.delete({ where: { id } });
     return { success: true };
@@ -292,10 +304,9 @@ export class AnnouncementsService implements OnModuleInit, OnModuleDestroy {
     const title = dto.title.trim();
     const content = dto.content.trim();
     const audience = (dto.audience ?? "public") as AnnouncementAudience;
-    const requestedStatus = (dto.status ?? "draft") as AnnouncementStatus;
+    const publishMode = (dto.publishMode ?? "immediate") as AnnouncementPublishMode;
     const scheduledAt = this.parseDate(dto.scheduledAt, "scheduledAt");
     const expiresAt = this.parseDate(dto.expiresAt, "expiresAt");
-    const status = requestedStatus;
     const roleCodes = [...new Set((dto.roleCodes ?? []).map((code) => code.trim()).filter(Boolean))];
     const roles = roleCodes.length
       ? await this.prisma.role.findMany({ where: { code: { in: roleCodes } }, select: { id: true, code: true } })
@@ -304,27 +315,18 @@ export class AnnouncementsService implements OnModuleInit, OnModuleDestroy {
     if (audience === AnnouncementAudience.role_restricted && !roles.length) {
       throw new BadRequestException("Role-targeted announcements require at least one role.");
     }
-    const now = new Date();
-    if (status === AnnouncementStatus.scheduled && (!scheduledAt || scheduledAt <= now)) {
-      throw new BadRequestException("Scheduled announcements require a future publish time.");
-    }
-    const publishAt = status === AnnouncementStatus.published ? now : scheduledAt;
-    if (expiresAt && publishAt && expiresAt <= publishAt) {
-      throw new BadRequestException("Announcement expiry must be later than its publish time.");
-    }
-    if (status === AnnouncementStatus.published) this.assertPublishable(title, content, audience, roles.length, expiresAt);
     return {
       data: {
         title,
         summary: dto.summary?.trim() ?? "",
         content,
         audience,
-        status,
+        publishMode,
         isPinned: dto.isPinned ?? false,
         pinOrder: dto.pinOrder ?? 0,
         pushEnabled: dto.pushEnabled ?? true,
-        scheduledAt: status === AnnouncementStatus.scheduled ? scheduledAt : null,
-        publishedAt: status === AnnouncementStatus.published ? now : null,
+        scheduledAt: publishMode === AnnouncementPublishMode.scheduled ? scheduledAt : null,
+        publishedAt: null,
         expiresAt,
         deliveryStartedAt: null,
         deliveredAt: null,
@@ -338,15 +340,23 @@ export class AnnouncementsService implements OnModuleInit, OnModuleDestroy {
     if (!value) return null;
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) throw new BadRequestException(`${field} is invalid.`);
+    parsed.setSeconds(0, 0);
     return parsed;
   }
 
-  private assertPublishable(title: string, content: string, audience: AnnouncementAudience, roleCount: number, expiresAt: Date | null): void {
+  private assertPublishable(
+    title: string,
+    content: string,
+    audience: AnnouncementAudience,
+    roleCount: number,
+    expiresAt: Date | null,
+    publishAt: Date,
+  ): void {
     if (!title || !content) throw new BadRequestException("Announcement title and content are required before publishing.");
     if (audience === AnnouncementAudience.role_restricted && !roleCount) {
       throw new BadRequestException("Role-targeted announcements require at least one role.");
     }
-    if (expiresAt && expiresAt <= new Date()) throw new BadRequestException("Announcement expiry must be in the future.");
+    if (expiresAt && expiresAt <= publishAt) throw new BadRequestException("Announcement expiry must be later than its publish time.");
   }
 
   private async deliver(id: number): Promise<void> {
@@ -406,6 +416,7 @@ export class AnnouncementsService implements OnModuleInit, OnModuleDestroy {
       summary: item.summary,
       audience: item.audience,
       status: item.status,
+      publishMode: item.publishMode,
       isPinned: item.isPinned,
       pinOrder: item.pinOrder,
       pushEnabled: item.pushEnabled,

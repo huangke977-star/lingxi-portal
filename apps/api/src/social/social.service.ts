@@ -91,7 +91,15 @@ interface ConversationMembership {
   kind: ConversationKind;
   participantIds: number[];
   friendship: { userOneId: number; userTwoId: number } | null;
-  group: { id: number; role: ChatGroupMemberRole; alias: string | null; mutedUntil: Date | null } | null;
+  group: {
+    id: number;
+    role: ChatGroupMemberRole;
+    alias: string | null;
+    mutedUntil: Date | null;
+    isBanned: boolean;
+    bannedUntil: Date | null;
+    banReason: string | null;
+  } | null;
 }
 
 const friendshipInclude = {
@@ -754,6 +762,7 @@ export class SocialService {
     if (membership.group?.mutedUntil && membership.group.mutedUntil > new Date()) {
       throw new ForbiddenException(`你已被禁言至 ${membership.group.mutedUntil.toLocaleString("zh-CN", { hour12: false })}。`);
     }
+    this.assertGroupCanSend(membership.group);
     const message = await this.prisma.$transaction(async (transaction) => {
       const created = await transaction.chatMessage.create({
         data: {
@@ -796,11 +805,13 @@ export class SocialService {
     const messageIds = this.normalizeMessageIds(rawMessageIds);
     if (messageIds.length > 20) throw new BadRequestException("单次最多转发 20 条消息。");
     if (sourceConversationId === targetConversationId) throw new BadRequestException("请选择其他好友进行转发。");
-    await this.assertConversationMember(sourceConversationId, userId);
+    const sourceMembership = await this.assertConversationMember(sourceConversationId, userId);
+    this.assertGroupCanSend(sourceMembership.group);
     const targetMembership = await this.assertConversationMember(targetConversationId, userId);
     if (targetMembership.group?.mutedUntil && targetMembership.group.mutedUntil > new Date()) {
       throw new ForbiddenException("你当前在目标群聊中被禁言。");
     }
+    this.assertGroupCanSend(targetMembership.group);
     const sourceState = await this.prisma.conversationParticipantState.findUnique({
       where: { conversationId_userId: { conversationId: sourceConversationId, userId } },
       select: { clearedBeforeMessageId: true },
@@ -1543,6 +1554,9 @@ export class SocialService {
             id: true,
             status: true,
             expiresAt: true,
+            isBanned: true,
+            bannedUntil: true,
+            banReason: true,
             members: {
               where: { status: ChatGroupMemberStatus.active },
               select: { userId: true, role: true, alias: true, mutedUntil: true },
@@ -1576,7 +1590,15 @@ export class SocialService {
         kind: conversation.kind,
         participantIds: conversation.group.members.map((member) => member.userId),
         friendship: null,
-        group: { id: conversation.group.id, role: groupMember.role, alias: groupMember.alias, mutedUntil: groupMember.mutedUntil },
+        group: {
+          id: conversation.group.id,
+          role: groupMember.role,
+          alias: groupMember.alias,
+          mutedUntil: groupMember.mutedUntil,
+          isBanned: conversation.group.isBanned,
+          bannedUntil: conversation.group.bannedUntil,
+          banReason: conversation.group.banReason,
+        },
       };
     }
     throw new ForbiddenException("没有访问这个会话的权限。");
@@ -1588,6 +1610,15 @@ export class SocialService {
       where: { userOneId_userTwoId: { userOneId, userTwoId } },
       include: friendshipInclude,
     });
+  }
+
+  private assertGroupCanSend(group: ConversationMembership["group"]): void {
+    if (!group?.isBanned) return;
+    if (group.bannedUntil && group.bannedUntil <= new Date()) return;
+    const until = group.bannedUntil
+      ? `至 ${group.bannedUntil.toLocaleString("zh-CN", { hour12: false })}`
+      : "，当前为永久封禁";
+    throw new ForbiddenException(`该群聊已被站点封禁${until}，暂时不能发送消息或文件。`);
   }
 
   private async getFriendshipForParticipant(id: number, userId: number): Promise<FriendshipRecord> {
@@ -1668,6 +1699,7 @@ export class SocialService {
     return {
       id: group.id,
       conversationId: group.conversationId,
+      owner: this.toSocialUser(group.owner),
       name: group.name,
       avatarUrl: group.avatarStoredName ? `/social/groups/avatars/${group.avatarStoredName}` : group.avatarUrl,
       announcement: group.announcement,
@@ -1677,9 +1709,13 @@ export class SocialService {
       temporary: group.temporary,
       expiresAt: group.expiresAt?.toISOString() ?? null,
       status: group.status,
+      isBanned: group.isBanned,
+      bannedUntil: group.bannedUntil?.toISOString() ?? null,
+      banReason: group.isBanned ? group.banReason : null,
       currentMemberRole: member?.role ?? null,
       currentAlias: member?.alias ?? null,
       canManage: Boolean(member && member.role !== ChatGroupMemberRole.member),
+      canModerate: false,
       canInvite: Boolean(member && (member.role !== ChatGroupMemberRole.member || group.membersCanInvite)),
       membersCanInvite: group.membersCanInvite,
       pendingJoinRequestCount: member && member.role !== ChatGroupMemberRole.member ? group.joinRequests.length : 0,
@@ -1751,6 +1787,11 @@ export class SocialService {
     actionUrl: string | null,
     title: string,
   ): UserNotificationResponse["context"] {
+    if (actionUrl?.includes("groupBan=")) {
+      const url = new URL(actionUrl, "https://local.invalid");
+      const groupId = Number(url.searchParams.get("groupBan"));
+      if (Number.isInteger(groupId) && groupId > 0) return { kind: "group_ban", groupId };
+    }
     if (!actionUrl?.includes("groupApproval=")) return null;
     const url = new URL(actionUrl, "https://local.invalid");
     const groupId = Number(url.searchParams.get("groupApproval"));

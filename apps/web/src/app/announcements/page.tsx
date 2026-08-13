@@ -34,5 +34,5 @@ export default function AnnouncementsPage() {
 }
 
 function formatTime(value: string): string {
-  return new Date(value).toLocaleString("zh-CN", { hour12: false });
+  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
 }

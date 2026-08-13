@@ -38,6 +38,7 @@ import {
   SearchChatGroupsQueryDto,
   TransferChatGroupOwnerDto,
   UpdateChatGroupAliasDto,
+  UpdateChatGroupBanDto,
   UpdateChatGroupDto,
   UpdateChatGroupMemberDto,
 } from "./dto/social.dto";
@@ -55,6 +56,7 @@ import {
 const GROUP_AVATAR_MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024;
 const GROUP_INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const GROUP_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+const GROUP_BAN_CLEANUP_INTERVAL_MS = 60 * 1000;
 
 type UploadedGroupAvatar = {
   buffer: Buffer;
@@ -91,6 +93,14 @@ const groupInclude = {
     where: { status: ChatGroupReportStatus.pending },
     select: { id: true },
   },
+  banRecords: {
+    orderBy: [{ createdAt: "desc" as const }, { id: "desc" as const }],
+    take: 30,
+    include: {
+      actor: { select: groupUserSelect },
+      liftedBy: { select: groupUserSelect },
+    },
+  },
 } satisfies Prisma.ChatGroupInclude;
 
 type GroupRecord = Prisma.ChatGroupGetPayload<{ include: typeof groupInclude }>;
@@ -111,6 +121,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
   );
   private readonly memberLimit = this.numberSetting("CHAT_GROUP_MEMBER_LIMIT", 100, 2, 500);
   private cleanupTimer: NodeJS.Timeout | null = null;
+  private banCleanupTimer: NodeJS.Timeout | null = null;
   private cleanupRunning = false;
 
   constructor(
@@ -122,11 +133,15 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     if (process.env.NODE_ENV === "test") return;
     this.cleanupTimer = setInterval(() => this.runCleanupInBackground(), GROUP_CLEANUP_INTERVAL_MS);
     this.cleanupTimer.unref();
+    this.banCleanupTimer = setInterval(() => this.liftExpiredBansInBackground(), GROUP_BAN_CLEANUP_INTERVAL_MS);
+    this.banCleanupTimer.unref();
     setTimeout(() => this.runCleanupInBackground(), 20_000).unref();
+    setTimeout(() => this.liftExpiredBansInBackground(), 25_000).unref();
   }
 
   onModuleDestroy(): void {
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
+    if (this.banCleanupTimer) clearInterval(this.banCleanupTimer);
   }
 
   async listMine(user: AuthenticatedUser): Promise<{ items: ChatGroupSummaryResponse[]; memberLimit: number }> {
@@ -139,6 +154,22 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
       include: groupInclude,
     });
     return { items: groups.map((group) => this.toSummary(group, user.id)), memberLimit: this.memberLimit };
+  }
+
+  async listForAdministration(user: AuthenticatedUser, query: SearchChatGroupsQueryDto): Promise<{ items: ChatGroupSummaryResponse[] }> {
+    this.assertSiteManager(user);
+    await this.liftExpiredBans();
+    const keyword = query.q.trim();
+    const groups = await this.prisma.chatGroup.findMany({
+      where: {
+        status: ChatGroupStatus.active,
+        ...(keyword ? { OR: [{ name: { contains: keyword } }, { announcement: { contains: keyword } }] } : {}),
+      },
+      orderBy: [{ isBanned: "desc" }, { updatedAt: "desc" }, { id: "desc" }],
+      take: query.limit,
+      include: groupInclude,
+    });
+    return { items: groups.map((group) => this.toSummary(group, user.id, true)) };
   }
 
   async search(user: AuthenticatedUser, query: SearchChatGroupsQueryDto): Promise<{ items: ChatGroupSummaryResponse[] }> {
@@ -158,9 +189,108 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async get(user: AuthenticatedUser, groupId: number): Promise<ChatGroupResponse> {
+    await this.liftExpiredBans();
     const group = await this.getActiveGroup(groupId);
-    this.requireActiveMember(group, user.id);
-    return this.toGroup(group, user.id);
+    const siteManager = this.isSiteManager(user);
+    if (!siteManager) this.requireActiveMember(group, user.id);
+    return this.toGroup(group, user.id, siteManager);
+  }
+
+  async ban(user: AuthenticatedUser, groupId: number, dto: UpdateChatGroupBanDto): Promise<ChatGroupSummaryResponse> {
+    this.assertSiteManager(user);
+    if (!dto.permanent && !dto.durationMinutes) throw new BadRequestException("请选择封禁时长或永久封禁。");
+    const group = await this.getActiveGroup(groupId);
+    const now = new Date();
+    const bannedUntil = dto.permanent ? null : new Date(now.getTime() + dto.durationMinutes! * 60 * 1000);
+    const reason = dto.reason.trim();
+    if (reason.length < 2) throw new BadRequestException("封禁理由至少需要 2 个字符。");
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.chatGroupBanRecord.updateMany({
+        where: { groupId, liftedAt: null },
+        data: { liftedAt: now, liftedById: user.id },
+      });
+      await transaction.chatGroup.update({
+        where: { id: groupId },
+        data: { isBanned: true, bannedUntil, banReason: reason },
+      });
+      await transaction.chatGroupBanRecord.create({
+        data: { groupId, actorId: user.id, reason, startsAt: now, expiresAt: bannedUntil },
+      });
+      await transaction.chatGroupActivityLog.create({
+        data: {
+          groupId,
+          actorId: user.id,
+          action: "group.banned",
+          summary: dto.permanent ? "永久封禁群聊" : "限时封禁群聊",
+          metadata: { bannedUntil: bannedUntil?.toISOString() ?? null, reason },
+        },
+      });
+      const managerIds = group.members
+        .filter((member) => member.status === ChatGroupMemberStatus.active && member.role !== ChatGroupMemberRole.member)
+        .map((member) => member.userId);
+      if (managerIds.length) {
+        await transaction.userNotification.createMany({
+          data: managerIds.map((userId) => ({
+            userId,
+            actorId: user.id,
+            type: UserNotificationType.system,
+            title: "群聊已被站点封禁",
+            body: `群聊“${group.name}”已被${dto.permanent ? "永久" : `封禁至 ${this.formatMinute(bannedUntil!)}`}。原因：${reason}`,
+            actionUrl: `/messages?groupBan=${groupId}`,
+          })),
+        });
+      }
+    });
+    const updated = await this.prisma.chatGroup.findUniqueOrThrow({ where: { id: groupId }, include: groupInclude });
+    return this.toSummary(updated, user.id, true);
+  }
+
+  async liftBan(user: AuthenticatedUser, groupId: number): Promise<ChatGroupSummaryResponse> {
+    this.assertSiteManager(user);
+    const group = await this.getActiveGroup(groupId);
+    const now = new Date();
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.chatGroup.update({
+        where: { id: groupId },
+        data: { isBanned: false, bannedUntil: null, banReason: null },
+      });
+      await transaction.chatGroupBanRecord.updateMany({
+        where: { groupId, liftedAt: null },
+        data: { liftedAt: now, liftedById: user.id },
+      });
+      await transaction.chatGroupActivityLog.create({
+        data: { groupId, actorId: user.id, action: "group.ban_lifted", summary: "解除群聊封禁" },
+      });
+      const managerIds = group.members
+        .filter((member) => member.status === ChatGroupMemberStatus.active && member.role !== ChatGroupMemberRole.member)
+        .map((member) => member.userId);
+      if (managerIds.length) {
+        await transaction.userNotification.createMany({
+          data: managerIds.map((userId) => ({
+            userId,
+            actorId: user.id,
+            type: UserNotificationType.system,
+            title: "群聊封禁已解除",
+            body: `群聊“${group.name}”已恢复正常发言。`,
+            actionUrl: `/messages?groupBan=${groupId}`,
+          })),
+        });
+      }
+    });
+    const updated = await this.prisma.chatGroup.findUniqueOrThrow({ where: { id: groupId }, include: groupInclude });
+    return this.toSummary(updated, user.id, true);
+  }
+
+  async listBanRecords(user: AuthenticatedUser, groupId: number) {
+    const siteManager = this.isSiteManager(user);
+    if (!siteManager) await this.assertManager(groupId, user.id);
+    const records = await this.prisma.chatGroupBanRecord.findMany({
+      where: { groupId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 50,
+      include: { actor: { select: groupUserSelect }, liftedBy: { select: groupUserSelect } },
+    });
+    return { items: records.map((record) => this.toBanRecord(record)) };
   }
 
   async create(user: AuthenticatedUser, dto: CreateChatGroupDto): Promise<ChatGroupResponse> {
@@ -1017,6 +1147,52 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async liftExpiredBansInBackground(): Promise<void> {
+    await this.liftExpiredBans().catch((error) => {
+      this.logger.warn(`Chat group ban cleanup failed: ${this.errorMessage(error)}`);
+    });
+  }
+
+  private async liftExpiredBans(): Promise<void> {
+    const now = new Date();
+    const expired = await this.prisma.chatGroup.findMany({
+      where: { isBanned: true, bannedUntil: { lte: now } },
+      select: { id: true, name: true, conversationId: true },
+      take: 30,
+    });
+    for (const group of expired) {
+      await this.prisma.$transaction(async (transaction) => {
+        const updated = await transaction.chatGroup.updateMany({
+          where: { id: group.id, isBanned: true, bannedUntil: { lte: now } },
+          data: { isBanned: false, bannedUntil: null, banReason: null },
+        });
+        if (!updated.count) return;
+        await transaction.chatGroupBanRecord.updateMany({
+          where: { groupId: group.id, liftedAt: null },
+          data: { liftedAt: now },
+        });
+        await transaction.chatGroupActivityLog.create({
+          data: { groupId: group.id, action: "group.ban_expired", summary: "群聊封禁到期自动解除" },
+        });
+        const managers = await transaction.chatGroupMember.findMany({
+          where: { groupId: group.id, status: ChatGroupMemberStatus.active, role: { in: [ChatGroupMemberRole.owner, ChatGroupMemberRole.admin] } },
+          select: { userId: true },
+        });
+        if (managers.length) {
+          await transaction.userNotification.createMany({
+            data: managers.map((manager) => ({
+              userId: manager.userId,
+              type: UserNotificationType.system,
+              title: "群聊封禁已到期",
+              body: `群聊“${group.name}”已恢复正常发言。`,
+              actionUrl: `/messages?groupBan=${group.id}`,
+            })),
+          });
+        }
+      });
+    }
+  }
+
   private async changeMemberStatus(
     user: AuthenticatedUser,
     groupId: number,
@@ -1069,6 +1245,14 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     return group;
   }
 
+  private isSiteManager(user: AuthenticatedUser): boolean {
+    return user.isSuperAdmin || user.role.level >= 90;
+  }
+
+  private assertSiteManager(user: AuthenticatedUser): void {
+    if (!this.isSiteManager(user)) throw new ForbiddenException("需要站点管理员权限。");
+  }
+
   private async assertManager(groupId: number, userId: number) {
     const group = await this.getActiveGroup(groupId);
     const member = this.requireActiveMember(group, userId);
@@ -1109,10 +1293,11 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private toGroup(group: GroupRecord, userId: number): ChatGroupResponse {
+  private toGroup(group: GroupRecord, userId: number, siteManager = false): ChatGroupResponse {
     return {
-      ...this.toSummary(group, userId),
+      ...this.toSummary(group, userId, siteManager),
       owner: this.toUser(group.owner),
+      banRecords: group.banRecords.map((record) => this.toBanRecord(record)),
       members: group.members.map((member) => ({
         user: this.toUser(member.user),
         role: member.role,
@@ -1125,11 +1310,12 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private toSummary(group: GroupRecord, userId: number): ChatGroupSummaryResponse {
+  private toSummary(group: GroupRecord, userId: number, siteManager = false): ChatGroupSummaryResponse {
     const member = group.members.find((item) => item.userId === userId && item.status === ChatGroupMemberStatus.active) ?? null;
     return {
       id: group.id,
       conversationId: group.conversationId,
+      owner: this.toUser(group.owner),
       name: group.name,
       avatarUrl: group.avatarStoredName ? `/social/groups/avatars/${group.avatarStoredName}` : group.avatarUrl,
       announcement: group.announcement,
@@ -1139,9 +1325,13 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
       temporary: group.temporary,
       expiresAt: group.expiresAt?.toISOString() ?? null,
       status: group.status,
+      isBanned: group.isBanned,
+      bannedUntil: group.bannedUntil?.toISOString() ?? null,
+      banReason: group.isBanned && (siteManager || Boolean(member)) ? group.banReason : null,
       currentMemberRole: member?.role ?? null,
       currentAlias: member?.alias ?? null,
       canManage: Boolean(member && member.role !== ChatGroupMemberRole.member),
+      canModerate: siteManager,
       canInvite: Boolean(member && (member.role !== ChatGroupMemberRole.member || group.membersCanInvite)),
       membersCanInvite: group.membersCanInvite,
       pendingJoinRequestCount: member && member.role !== ChatGroupMemberRole.member ? group.joinRequests.length : 0,
@@ -1179,6 +1369,43 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
       handledAt: report.handledAt?.toISOString() ?? null,
       createdAt: report.createdAt.toISOString(),
     };
+  }
+
+  private toBanRecord(record: {
+    id: number;
+    reason: string;
+    startsAt: Date;
+    expiresAt: Date | null;
+    liftedAt: Date | null;
+    createdAt: Date;
+    actor: GroupUserRecord;
+    liftedBy: GroupUserRecord | null;
+  }) {
+    return {
+      id: record.id,
+      reason: record.reason,
+      startsAt: record.startsAt.toISOString(),
+      expiresAt: record.expiresAt?.toISOString() ?? null,
+      liftedAt: record.liftedAt?.toISOString() ?? null,
+      createdAt: record.createdAt.toISOString(),
+      actor: this.toUser(record.actor),
+      liftedBy: record.liftedBy ? this.toUser(record.liftedBy) : null,
+    };
+  }
+
+  private formatMinute(value: Date): string {
+    return new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(value);
+  }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : "unknown error";
   }
 
   private toMessage(message: GroupMessageRecord, senderDisplayName?: string): ChatMessageResponse {

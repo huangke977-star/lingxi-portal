@@ -31,6 +31,7 @@ import {
   SearchChatGroupsQueryDto,
   TransferChatGroupOwnerDto,
   UpdateChatGroupAliasDto,
+  UpdateChatGroupBanDto,
   UpdateChatGroupDto,
   UpdateChatGroupMemberDto,
 } from "./dto/social.dto";
@@ -48,6 +49,11 @@ export class ChatGroupsController {
   @Get("groups")
   listMine(@CurrentUser() user: AuthenticatedUser) {
     return this.groupsService.listMine(user);
+  }
+
+  @Get("groups/admin")
+  listForAdministration(@CurrentUser() user: AuthenticatedUser, @Query() query: SearchChatGroupsQueryDto) {
+    return this.groupsService.listForAdministration(user, query);
   }
 
   @Get("groups/search")
@@ -114,6 +120,25 @@ export class ChatGroupsController {
     @Body() dto: UpdateChatGroupDto,
   ) {
     return this.groupsService.update(user, id, dto);
+  }
+
+  @Patch("groups/:id/ban")
+  ban(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UpdateChatGroupBanDto,
+  ) {
+    return this.groupsService.ban(user, id, dto);
+  }
+
+  @Delete("groups/:id/ban")
+  liftBan(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
+    return this.groupsService.liftBan(user, id);
+  }
+
+  @Get("groups/:id/ban-records")
+  listBanRecords(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
+    return this.groupsService.listBanRecords(user, id);
   }
 
   @Post("groups/:id/avatar")

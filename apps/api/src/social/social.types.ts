@@ -90,6 +90,7 @@ export interface ChatGroupMemberResponse {
 export interface ChatGroupSummaryResponse {
   id: number;
   conversationId: number;
+  owner: SocialUserResponse;
   name: string;
   avatarUrl: string | null;
   announcement: string;
@@ -100,9 +101,13 @@ export interface ChatGroupSummaryResponse {
   temporary: boolean;
   expiresAt: string | null;
   status: "active" | "dissolved";
+  isBanned: boolean;
+  bannedUntil: string | null;
+  banReason: string | null;
   currentMemberRole: "owner" | "admin" | "member" | null;
   currentAlias: string | null;
   canManage: boolean;
+  canModerate: boolean;
   canInvite: boolean;
   pendingJoinRequestCount: number;
   pendingReportCount: number;
@@ -113,6 +118,18 @@ export interface ChatGroupSummaryResponse {
 export interface ChatGroupResponse extends ChatGroupSummaryResponse {
   owner: SocialUserResponse;
   members: ChatGroupMemberResponse[];
+  banRecords: ChatGroupBanRecordResponse[];
+}
+
+export interface ChatGroupBanRecordResponse {
+  id: number;
+  reason: string;
+  startsAt: string;
+  expiresAt: string | null;
+  liftedAt: string | null;
+  createdAt: string;
+  actor: SocialUserResponse;
+  liftedBy: SocialUserResponse | null;
 }
 
 export interface ChatGroupApprovalResponse {
@@ -221,7 +238,7 @@ export interface UserNotificationResponse {
   announcementId: number | null;
   actor: SocialUserResponse | null;
   context: {
-    kind: "comment_report" | "article" | "article_comment" | "friend_request" | "group_invitation" | "group_join_request" | "group_report" | "announcement";
+    kind: "comment_report" | "article" | "article_comment" | "friend_request" | "group_invitation" | "group_join_request" | "group_report" | "group_ban" | "announcement";
     announcementId?: number;
     announcement?: { id: number; title: string; summary: string };
     article?: { id: number; title: string; slug: string };
