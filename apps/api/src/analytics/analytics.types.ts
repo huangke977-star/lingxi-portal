@@ -1,17 +1,38 @@
 export interface AnalyticsTrendPoint {
   date: string;
-  users: number;
+  newUsers: number;
+  activeUsers: number;
   articles: number;
+  comments: number;
+  messages: number;
   views: number;
   likes: number;
   favorites: number;
-  comments: number;
   subscriptions: number;
+  reports: number;
+  disabledUsers: number;
+  loginRisks: number;
+  failedJobs: number;
+}
+export interface AnalyticsRankingItem {
+  key: string;
+  label: string;
+  secondary: string;
+  score: number;
+  metadata: Record<string, unknown> | null;
 }
 
 export interface AdminAnalyticsResponse {
   range: 7 | 30 | 90;
   generatedAt: string;
+  latestAggregateAt: string | null;
   summary: Omit<AnalyticsTrendPoint, "date">;
   trend: AnalyticsTrendPoint[];
+  rankings: {
+    authors: AnalyticsRankingItem[];
+    articles: AnalyticsRankingItem[];
+    searches: AnalyticsRankingItem[];
+    subscriptionGrowth: AnalyticsRankingItem[];
+  };
+  definitions: Array<{ key: string; label: string; definition: string }>;
 }

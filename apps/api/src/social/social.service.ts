@@ -139,6 +139,7 @@ const notificationInclude = {
       },
     },
   },
+  announcement: { select: { id: true, title: true, summary: true } },
 } satisfies Prisma.UserNotificationInclude;
 
 type NotificationRecord = Prisma.UserNotificationGetPayload<{ include: typeof notificationInclude }>;
@@ -1254,7 +1255,6 @@ export class SocialService {
         where: {
           userId: user.id,
           readAt: null,
-          type: { not: UserNotificationType.friend_request_received },
           ...(pushDisabledChannels.length ? { channel: { notIn: pushDisabledChannels } } : {}),
         },
       }),
@@ -1720,6 +1720,7 @@ export class SocialService {
       actionUrl: notification.actionUrl,
       friendshipId: notification.friendshipId,
       commentReportId: notification.commentReportId,
+      announcementId: notification.announcementId,
       actor: notification.actor ? this.toSocialUser(notification.actor) : null,
       context: notification.commentReport ? {
         kind: "comment_report",
@@ -1733,7 +1734,11 @@ export class SocialService {
         commentBody: notification.comment.body,
         commentStatus: notification.comment.status,
         article: notification.comment.article,
-      } : notification.article ? { kind: "article", article: notification.article } : enrichedContext ?? groupContext,
+      } : notification.article ? { kind: "article", article: notification.article } : notification.announcement ? {
+        kind: "announcement",
+        announcementId: notification.announcement.id,
+        announcement: notification.announcement,
+      } : enrichedContext ?? groupContext,
       aggregateCount: notification.aggregateCount,
       readAt: notification.readAt?.toISOString() ?? null,
       openedAt: notification.openedAt?.toISOString() ?? null,

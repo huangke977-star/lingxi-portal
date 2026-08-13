@@ -922,6 +922,13 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
           resolution: dto.resolution?.trim() || null,
         },
       });
+      await transaction.userNotification.updateMany({
+        where: {
+          actionUrl: `/messages?groupApproval=${report.groupId}&report=${report.id}`,
+          readAt: null,
+        },
+        data: { readAt: new Date() },
+      });
       await transaction.chatGroupActivityLog.create({
         data: {
           groupId: report.groupId,

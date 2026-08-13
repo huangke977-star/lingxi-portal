@@ -682,7 +682,7 @@ describe("SocialService", () => {
     await expect(service.createMessage(user.id, 5, "", [])).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it("counts friend requests separately from unread system notifications", async () => {
+  it("includes unread friend-request notifications in the message badge total", async () => {
     const messageCount = jest.fn(async () => 2);
     const friendshipCount = jest.fn(async () => 3);
     const notificationCount = jest.fn(async () => 4);
@@ -699,13 +699,7 @@ describe("SocialService", () => {
       pendingFriendRequests: 3,
       unreadNotifications: 4,
     });
-    expect(notificationCount).toHaveBeenCalledWith({
-      where: {
-        userId: user.id,
-        readAt: null,
-        type: { not: "friend_request_received" },
-      },
-    });
+    expect(notificationCount).toHaveBeenCalledWith({ where: { userId: user.id, readAt: null } });
   });
 
   it("marks only the current user's selected notifications as read", async () => {

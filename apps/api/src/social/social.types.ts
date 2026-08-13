@@ -210,6 +210,7 @@ export interface UserNotificationResponse {
     | "comment_replied"
     | "author_subscribed"
     | "subscription_published"
+    | "announcement_published"
     | "system";
   channel: "system" | "subscription" | "interaction";
   title: string;
@@ -217,9 +218,12 @@ export interface UserNotificationResponse {
   actionUrl: string | null;
   friendshipId: number | null;
   commentReportId: number | null;
+  announcementId: number | null;
   actor: SocialUserResponse | null;
   context: {
-    kind: "comment_report" | "article" | "article_comment" | "friend_request" | "group_invitation" | "group_join_request" | "group_report";
+    kind: "comment_report" | "article" | "article_comment" | "friend_request" | "group_invitation" | "group_join_request" | "group_report" | "announcement";
+    announcementId?: number;
+    announcement?: { id: number; title: string; summary: string };
     article?: { id: number; title: string; slug: string };
     commentId?: number;
     commentBody?: string;

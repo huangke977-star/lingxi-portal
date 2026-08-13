@@ -4,9 +4,11 @@
 
 import {
   Bell,
+  Check,
   ListTodo,
   MessageCircleMore,
   ShieldCheck,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -39,10 +41,15 @@ import {
   type Conversation,
   type NotificationChannelState,
   type SocialNotification,
+  deleteNotification,
   getSocialSummary,
+  handleChatGroupReport,
   listConversations,
   listNotifications,
   markNotificationRead,
+  respondChatGroupInvitationByGroup,
+  respondChatGroupJoinRequest,
+  respondFriendRequest,
 } from "@/lib/social-api";
 import {
   SOCIAL_STATE_CHANGE_EVENT,
@@ -226,11 +233,14 @@ export function TopNav() {
   const loadedUnreadNotifications = notifications.filter((notification) => !notification.readAt && !pushDisabledChannels.has(notification.channel)).length;
   const socialCount =
     Math.max(socialSummary.unreadMessages, loadedUnreadMessages) +
-    Math.max(socialSummary.unreadNotifications + socialSummary.pendingFriendRequests, loadedUnreadNotifications);
+    Math.max(socialSummary.unreadNotifications, loadedUnreadNotifications);
   const conversationPreviewLimit = HEADER_MESSAGE_PREVIEW_LIMIT;
   const unreadConversations = conversations.filter((conversation) => !conversation.muted && conversation.unreadCount > 0).slice(0, conversationPreviewLimit);
   const notificationPreviewLimit = Math.max(0, conversationPreviewLimit - unreadConversations.length);
-  const unreadNotifications = notifications.filter((notification) => !notification.readAt && !pushDisabledChannels.has(notification.channel)).slice(0, notificationPreviewLimit);
+  const messageNotifications = notifications.filter((notification) =>
+    !pushDisabledChannels.has(notification.channel) && (!notification.readAt || notification.context?.actionable),
+  ).slice(0, notificationPreviewLimit);
+  const unreadNotifications = messageNotifications.filter((notification) => !notification.readAt);
   const previewedUnreadCount = unreadConversations.reduce((total, conversation) => total + conversation.unreadCount, 0)
     + unreadNotifications.length;
   const hiddenUnreadCount = Math.max(0, socialCount - previewedUnreadCount);
@@ -260,12 +270,42 @@ export function TopNav() {
       });
       notifySocialStateChange();
     }
-    if (notification.type === "friend_request_received") {
+    if (notification.context?.kind === "announcement" && notification.actionUrl) {
+      router.push(notification.actionUrl);
+    } else if (notification.type === "friend_request_received") {
       openChatDock({ systemNotificationId: notification.id, notificationChannel: "system" });
     } else if (notification.type === "friend_request_accepted" && notification.actor) {
       openChatDock({ userId: notification.actor.id });
     } else {
       openChatDock({ systemNotificationId: notification.id, notificationChannel: notification.channel });
+    }
+  }
+
+  async function handleNotificationAction(notification: SocialNotification, action: "accept" | "reject" | "resolve-report" | "reject-report") {
+    const token = readAccessToken();
+    const context = notification.context;
+    if (!token || !context) return;
+    try {
+      if (context.kind === "friend_request" && notification.friendshipId) {
+        await respondFriendRequest(token, notification.friendshipId, action === "accept" ? "accepted" : "declined");
+      } else if (context.kind === "group_invitation" && context.groupId) {
+        await respondChatGroupInvitationByGroup(token, context.groupId, action === "accept" ? "accepted" : "declined");
+      } else if (context.kind === "group_join_request" && context.groupId && context.joinRequestId) {
+        await respondChatGroupJoinRequest(token, context.groupId, context.joinRequestId, action === "accept" ? "approved" : "rejected");
+      } else if (context.kind === "group_report" && context.reportId) {
+        await handleChatGroupReport(token, context.reportId, action === "resolve-report"
+          ? { status: "resolved", deleteMessage: true, resolution: "管理员已删除被举报消息" }
+          : { status: "rejected", resolution: "未发现违规" });
+      } else {
+        await handleNotification(notification);
+        return;
+      }
+      await deleteNotification(token, notification.id).catch(() => undefined);
+      setNotifications((current) => current.filter((item) => item.id !== notification.id));
+      await refreshHeaderData();
+      notifySocialStateChange();
+    } catch (actionError) {
+      setHeaderError(actionError instanceof Error ? actionError.message : "消息处理失败。");
     }
   }
 
@@ -320,9 +360,9 @@ export function TopNav() {
                 <div className="header-popover-heading"><strong>消息</strong><button onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">打开聊天</button></div>
                 <div className="header-popover-list">
                   {unreadConversations.map((conversation) => <button key={`conversation-${conversation.id}`} onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ conversationId: conversation.id }); }} type="button"><span className="header-popover-icon"><MessageCircleMore aria-hidden="true" size={16} /></span><span><strong>{conversation.user.nickname}</strong><small>{conversation.lastMessage?.body || "发来附件"}</small></span><b>{conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</b></button>)}
-                  {unreadNotifications.map((notification) => <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><span><strong>{notification.title}</strong><small>{notification.context?.commentBody ?? notification.body}</small></span></button>)}
+                  {messageNotifications.map((notification) => notification.context?.actionable ? <div className="header-popover-actionable" key={`notification-${notification.id}`}><button onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><span><strong>{notification.title}</strong><small>{notification.context?.commentBody ?? notification.body}</small></span></button><span className="header-popover-inline-actions"><button aria-label="同意或处理" onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "resolve-report" : "accept")} title={notification.context?.kind === "group_report" ? "处理" : "同意"} type="button"><Check aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? "处理" : "同意"}</button><button aria-label="拒绝或驳回" onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "reject-report" : "reject")} title={notification.context?.kind === "group_report" ? "驳回" : "拒绝"} type="button"><X aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? "驳回" : "拒绝"}</button></span></div> : <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><span><strong>{notification.title}</strong><small>{notification.context?.commentBody ?? notification.body}</small></span></button>)}
                   {hiddenUnreadCount ? <button className="header-popover-more" onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">还有 {hiddenUnreadCount} 条未读消息，打开聊天查看</button> : null}
-                  {!unreadConversations.length && !unreadNotifications.length ? <span className="header-popover-empty">暂无新消息。</span> : null}
+                  {!unreadConversations.length && !messageNotifications.length ? <span className="header-popover-empty">暂无新消息。</span> : null}
                 </div>
               </div>
             </div>
@@ -333,7 +373,8 @@ export function TopNav() {
                 <div className="account-menu-head"><strong>{getUserDisplayName(user)}</strong><span>@{user.username}</span></div>
                 <Link href={`/users/${encodeURIComponent(user.username)}`} onClick={() => setIsAccountMenuOpen(false)}>我的主页</Link>
                 <Link href="/profile" onClick={() => setIsAccountMenuOpen(false)}>个人中心</Link>
-                {user.isSuperAdmin || user.role.level >= 90 ? <><Link href="/admin" onClick={() => setIsAccountMenuOpen(false)}>用户管理</Link><Link href="/admin/content" onClick={() => setIsAccountMenuOpen(false)}>内容管理</Link><Link href="/admin/groups" onClick={() => setIsAccountMenuOpen(false)}>群聊举报</Link><Link href="/admin/analytics" onClick={() => setIsAccountMenuOpen(false)}>数据分析</Link><Link href="/admin/audit" onClick={() => setIsAccountMenuOpen(false)}>审计日志</Link><Link href="/admin/security" onClick={() => setIsAccountMenuOpen(false)}><ShieldCheck aria-hidden="true" size={15} />安全管理</Link></> : null}
+                <Link href="/announcements" onClick={() => setIsAccountMenuOpen(false)}>站点公告</Link>
+                {user.isSuperAdmin || user.role.level >= 90 ? <><Link href="/admin" onClick={() => setIsAccountMenuOpen(false)}>用户管理</Link><Link href="/admin/content" onClick={() => setIsAccountMenuOpen(false)}>内容管理</Link><Link href="/admin/groups" onClick={() => setIsAccountMenuOpen(false)}>群聊举报</Link><Link href="/admin/analytics" onClick={() => setIsAccountMenuOpen(false)}>运营数据</Link><Link href="/admin/announcements" onClick={() => setIsAccountMenuOpen(false)}>公告管理</Link><Link href="/admin/audit" onClick={() => setIsAccountMenuOpen(false)}>审计日志</Link><Link href="/admin/security" onClick={() => setIsAccountMenuOpen(false)}><ShieldCheck aria-hidden="true" size={15} />安全管理</Link></> : null}
                 {user.isSuperAdmin ? <><Link href="/admin/settings" onClick={() => setIsAccountMenuOpen(false)}>站点设置</Link><Link href="/admin/android" onClick={() => setIsAccountMenuOpen(false)}>安装包管理</Link><Link href="/admin/cache" onClick={() => setIsAccountMenuOpen(false)}>缓存管理</Link><Link href="/admin/system" onClick={() => setIsAccountMenuOpen(false)}>系统概览</Link></> : null}
                 <button disabled={isLoggingOut} onClick={() => void handleLogout()} type="button">{isLoggingOut ? "退出中" : "退出登录"}</button>
               </div>

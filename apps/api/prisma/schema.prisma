@@ -109,7 +109,28 @@ enum UserNotificationType {
   comment_replied
   author_subscribed
   subscription_published
+  announcement_published
   system
+}
+
+enum AnnouncementAudience {
+  public
+  authenticated
+  role_restricted
+}
+
+enum AnnouncementStatus {
+  draft
+  scheduled
+  published
+  expired
+  archived
+}
+
+enum OperationJobStatus {
+  running
+  completed
+  failed
 }
 
 enum UserNotificationChannel {
@@ -325,6 +346,7 @@ model Role {
   portalEntryRoles    PortalEntryRole[]
   articleAllowedRoles ArticleAllowedRole[]
   articleTopicRoles   ArticleTopicAllowedRole[]
+  announcementRoles   AnnouncementAllowedRole[]
 
   @@map("roles")
 }
@@ -420,6 +442,9 @@ model User {
   passwordResetRequests     PasswordResetRequest[]
   mailJobs                  MailJob[]
   searchHistory             SearchHistory[]
+  announcementsCreated      Announcement[]                 @relation("AnnouncementCreatedBy")
+  announcementsUpdated      Announcement[]                 @relation("AnnouncementUpdatedBy")
+  announcementReads         AnnouncementRead[]
 
   @@index([roleId])
   @@index([createdAt])
@@ -1544,13 +1569,17 @@ model UserNotification {
   friendship      Friendship?             @relation(fields: [friendshipId], references: [id], onDelete: SetNull)
   commentReportId Int?                    @map("comment_report_id")
   commentReport   ArticleCommentReport?   @relation(fields: [commentReportId], references: [id], onDelete: SetNull)
+  announcementId  Int?                    @map("announcement_id")
+  announcement    Announcement?           @relation(fields: [announcementId], references: [id], onDelete: SetNull)
   aggregateCount  Int                     @default(1) @map("aggregate_count")
   readAt          DateTime?               @map("read_at")
   openedAt        DateTime?               @map("opened_at")
   pushDeliveredAt DateTime?               @map("push_delivered_at")
+  dedupeKey       String?                 @unique @map("dedupe_key") @db.VarChar(160)
   createdAt       DateTime                @default(now()) @map("created_at")
   updatedAt       DateTime                @updatedAt @map("updated_at")
 
+  @@unique([userId, announcementId])
   @@index([userId, channel, readAt, id])
   @@index([pushDeliveredAt, id])
   @@index([userId, type, articleId, readAt])
@@ -1559,6 +1588,123 @@ model UserNotification {
   @@index([friendshipId])
   @@index([commentReportId])
   @@map("user_notifications")
+}
+
+model DailyOperationMetric {
+  id                Int      @id @default(autoincrement())
+  metricDate        DateTime @unique @map("metric_date") @db.Date
+  newUsers          Int      @default(0) @map("new_users")
+  activeUsers       Int      @default(0) @map("active_users")
+  publishedArticles Int      @default(0) @map("published_articles")
+  comments          Int      @default(0)
+  messages          Int      @default(0)
+  articleViews      Int      @default(0) @map("article_views")
+  likes             Int      @default(0)
+  favorites         Int      @default(0)
+  subscriptions     Int      @default(0)
+  articleReports    Int      @default(0) @map("article_reports")
+  groupReports      Int      @default(0) @map("group_reports")
+  disabledUsers     Int      @default(0) @map("disabled_users")
+  loginRisks        Int      @default(0) @map("login_risks")
+  failedJobs        Int      @default(0) @map("failed_jobs")
+  generatedAt       DateTime @default(now()) @map("generated_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([metricDate])
+  @@map("daily_operation_metrics")
+}
+
+model DailyOperationRanking {
+  id          Int      @id @default(autoincrement())
+  metricDate  DateTime @map("metric_date") @db.Date
+  category    String   @db.VarChar(32)
+  entityKey   String   @map("entity_key") @db.VarChar(120)
+  label       String   @db.VarChar(160)
+  secondary   String   @default("") @db.VarChar(200)
+  score       Int      @default(0)
+  metadata    Json?
+  generatedAt DateTime @default(now()) @map("generated_at")
+
+  @@unique([metricDate, category, entityKey])
+  @@index([category, metricDate, score])
+  @@map("daily_operation_rankings")
+}
+
+model OperationJobRun {
+  id          Int                @id @default(autoincrement())
+  jobType     String             @map("job_type") @db.VarChar(48)
+  status      OperationJobStatus @default(running)
+  detail      String             @default("") @db.VarChar(255)
+  error       String?            @db.VarChar(1000)
+  startedAt   DateTime           @default(now()) @map("started_at")
+  completedAt DateTime?          @map("completed_at")
+  createdAt   DateTime           @default(now()) @map("created_at")
+
+  @@index([jobType, status, createdAt])
+  @@index([status, createdAt])
+  @@map("operation_job_runs")
+}
+
+model Announcement {
+  id                Int                       @id @default(autoincrement())
+  title             String                    @db.VarChar(120)
+  summary           String                    @default("") @db.VarChar(300)
+  content           String                    @db.Text
+  audience          AnnouncementAudience      @default(public)
+  status            AnnouncementStatus        @default(draft)
+  isPinned          Boolean                   @default(false) @map("is_pinned")
+  pinOrder          Int                       @default(0) @map("pin_order")
+  pushEnabled       Boolean                   @default(true) @map("push_enabled")
+  scheduledAt       DateTime?                 @map("scheduled_at")
+  publishedAt       DateTime?                 @map("published_at")
+  expiresAt         DateTime?                 @map("expires_at")
+  deliveryStartedAt DateTime?                 @map("delivery_started_at")
+  deliveredAt       DateTime?                 @map("delivered_at")
+  deliveryAttempts  Int                       @default(0) @map("delivery_attempts")
+  deliveryError     String?                   @map("delivery_error") @db.VarChar(1000)
+  recipientCount    Int                       @default(0) @map("recipient_count")
+  viewCount         Int                       @default(0) @map("view_count")
+  createdById       Int                       @map("created_by_id")
+  createdBy         User                      @relation("AnnouncementCreatedBy", fields: [createdById], references: [id])
+  updatedById       Int                       @map("updated_by_id")
+  updatedBy         User                      @relation("AnnouncementUpdatedBy", fields: [updatedById], references: [id])
+  allowedRoles      AnnouncementAllowedRole[]
+  reads             AnnouncementRead[]
+  notifications     UserNotification[]
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
+
+  @@index([status, publishedAt])
+  @@index([audience, status, isPinned, pinOrder])
+  @@index([scheduledAt, status])
+  @@index([expiresAt, status])
+  @@map("announcements")
+}
+
+model AnnouncementAllowedRole {
+  announcementId Int          @map("announcement_id")
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  roleId         Int          @map("role_id")
+  role           Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([announcementId, roleId])
+  @@index([roleId])
+  @@map("announcement_allowed_roles")
+}
+
+model AnnouncementRead {
+  announcementId Int          @map("announcement_id")
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         Int          @map("user_id")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  viewCount      Int          @default(1) @map("view_count")
+  firstViewedAt  DateTime     @default(now()) @map("first_viewed_at")
+  lastViewedAt   DateTime     @default(now()) @map("last_viewed_at")
+  confirmedAt    DateTime?    @map("confirmed_at")
+
+  @@id([announcementId, userId])
+  @@index([userId, confirmedAt, lastViewedAt])
+  @@map("announcement_reads")
 }
 
 model UserNotificationChannelState {

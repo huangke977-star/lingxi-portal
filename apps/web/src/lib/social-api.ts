@@ -203,6 +203,7 @@ export interface SocialNotification {
     | "comment_replied"
     | "author_subscribed"
     | "subscription_published"
+    | "announcement_published"
     | "system";
   channel: NotificationChannel;
   title: string;
@@ -210,9 +211,12 @@ export interface SocialNotification {
   actionUrl: string | null;
   friendshipId: number | null;
   commentReportId: number | null;
+  announcementId: number | null;
   actor: SocialUser | null;
   context: {
-    kind: "comment_report" | "article" | "article_comment" | "friend_request" | "group_invitation" | "group_join_request" | "group_report";
+    kind: "comment_report" | "article" | "article_comment" | "friend_request" | "group_invitation" | "group_join_request" | "group_report" | "announcement";
+    announcementId?: number;
+    announcement?: { id: number; title: string; summary: string };
     article?: { id: number; title: string; slug: string };
     commentId?: number;
     commentBody?: string;

@@ -6,3 +6,5 @@ export class AnalyticsQueryDto {
   @IsIn([7, 30, 90])
   range: 7 | 30 | 90 = 30;
 }
+
+export class RebuildAnalyticsDto extends AnalyticsQueryDto {}

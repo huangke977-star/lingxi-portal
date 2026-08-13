@@ -2,8 +2,8 @@
 
 - Document status: Active
 - Created: 2026-08-04
-- Last updated: 2026-08-11
-- Current phase: Phase 6 ready to start
+- Last updated: 2026-08-13
+- Current phase: Phase 6 in progress (implementation and local verification complete; production acceptance pending)
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -38,7 +38,7 @@ Status definitions:
 | Phase 3 | Content Capability | Autosave, version history, preview, unified search | Completed |
 | Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | Completed |
 | Phase 5 | Social Capability | Group chat, group files, moderation, temporary conversations | Completed |
-| Phase 6 | Operations Console | Operational analytics, announcements, scheduling, read statistics | Not started |
+| Phase 6 | Operations Console | Operational analytics, announcements, scheduling, read statistics | In progress |
 
 ## 4. External Prerequisites
 
@@ -279,16 +279,25 @@ Goal: give super administrators and administrators actionable operational data a
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P6-01 | Add daily aggregation jobs and aggregate tables | Not started |
-| P6-02 | Show user growth, active users, articles, comments, and message trends | Not started |
-| P6-03 | Show popular authors, articles, searches, and subscription growth | Not started |
-| P6-04 | Show reports, bans, login risks, and failed background jobs | Not started |
-| P6-05 | Add public, signed-in, and role-targeted announcements | Not started |
-| P6-06 | Add drafts, scheduling, automatic expiry, and pinning | Not started |
-| P6-07 | Add read confirmation, views, and unread counts | Not started |
-| P6-08 | Deliver announcements through in-app messages and optional push | Not started |
-| P6-09 | Apply existing super-admin and administrator permission boundaries | Not started |
-| P6-10 | Complete metric definitions, permission tests, and bilingual docs | Not started |
+| P6-01 | Add daily aggregation jobs and aggregate tables | In progress (implementation and local verification complete) |
+| P6-02 | Show user growth, active users, articles, comments, and message trends | In progress (implementation and local verification complete) |
+| P6-03 | Show popular authors, articles, searches, and subscription growth | In progress (implementation and local verification complete) |
+| P6-04 | Show reports, bans, login risks, and failed background jobs | In progress (implementation and local verification complete) |
+| P6-05 | Add public, signed-in, and role-targeted announcements | In progress (implementation and local verification complete) |
+| P6-06 | Add drafts, scheduling, automatic expiry, and pinning | In progress (implementation and local verification complete) |
+| P6-07 | Add read confirmation, views, and unread counts | In progress (implementation and local verification complete) |
+| P6-08 | Deliver announcements through in-app messages and optional push | In progress (implementation and local verification complete) |
+| P6-09 | Apply existing super-admin and administrator permission boundaries | In progress (implementation and local verification complete) |
+| P6-10 | Complete metric definitions, permission tests, and bilingual docs | In progress (production acceptance pending) |
+
+### Current Implementation Results
+
+- The additive `20260812170000_add_operations_console` migration, daily aggregates, ranking snapshots, job records, hourly refresh, and 7/30/90-day rebuild are implemented.
+- Thirteen operational metrics, three trend views, author/article/search/subscription-growth rankings, and complete metric definitions are implemented.
+- Public, authenticated, and role-targeted announcements support drafts, scheduling, immediate publication, expiry, archiving, pinning, views, read confirmation, and unread counts.
+- Announcements use the current in-app system channel with optional browser push. Announcement delivery and daily pending-action reminders use database uniqueness for idempotency.
+- Administrators and super administrators share analytics and announcement management while existing super-administrator-only server, security, and backup boundaries remain unchanged.
+- All 34 API suites with 216 tests passed. API/Web lint and production builds, Prisma validation, Compose configuration, and diff checks passed. See `docs/operations-console.en.md`.
 
 ### Acceptance
 
@@ -328,8 +337,8 @@ A phase can be marked `Completed` only when all conditions are met:
 | Phase 2 | 2026-08-07 | `a22a04f`, `8e97c4c`, `c139889` | P2-01 through P2-11 deployed (2026-08-07) | Live-device acceptance passed for untrusted-device email verification, trust removal, and per-session sign-out |
 | Phase 3 | 2026-08-10 | `47c7ae3` | Deployed 2026-08-07; Actions `31165692942` succeeded | P3-01 through P3-11 passed automated checks and production acceptance |
 | Phase 4 | 2026-08-10 | `ad2fd38`, `f3d9010` | Deployed 2026-08-10; Actions `31351553373`, `31358640865` succeeded | P4-01 through P4-10 and the collection/topic interaction refinement passed automated, desktop/mobile, and production health acceptance |
-| Phase 5 | - | - | - | Not started |
-| Phase 6 | - | - | - | Not started |
+| Phase 5 | 2026-08-12 | `1e7881a`, `ca7294c`, `6eb49bc`, `0c6ac56`, `ebdf73a` | Deployed | P5-01 through P5-10 plus group invitation, moderation, media, and mobile interaction refinements are complete |
+| Phase 6 | - | - | - | Implementation and local verification complete; push, Actions, production migration, and acceptance pending |
 
 ## 13. Resume Procedure
 

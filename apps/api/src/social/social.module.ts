@@ -12,11 +12,12 @@ import { SocialController } from "./social.controller";
 import { SocialService } from "./social.service";
 import { PublicProfilesController } from "./public-profiles.controller";
 import { PushModule } from "../push/push.module";
+import { PendingActionReminderService } from "./pending-action-reminder.service";
 
 @Module({
   imports: [JwtModule.register({}), UsersModule, RedisModule, SiteSettingsModule, PushModule],
   controllers: [SocialController, PublicProfilesController, ChatGroupsController, ChatGroupAvatarsController],
-  providers: [SocialService, ChatAttachmentsService, ChatGroupsService, CallsService, ChatGateway],
+  providers: [SocialService, ChatAttachmentsService, ChatGroupsService, CallsService, ChatGateway, PendingActionReminderService],
   exports: [SocialService, ChatGroupsService],
 })
 export class SocialModule {}

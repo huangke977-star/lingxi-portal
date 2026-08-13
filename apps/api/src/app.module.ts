@@ -15,8 +15,9 @@ import { SearchModule } from './search/search.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { DiscoveryModule } from './discovery/discovery.module';
+import { AnnouncementsModule } from './announcements/announcements.module';
 
 @Module({
-  imports: [PrismaModule, HealthModule, RolesModule, SiteSettingsModule, AuthModule, AuditModule, SearchModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, SystemStatusModule, PortalModule, ArticlesModule, SocialModule, AnalyticsModule, DiscoveryModule],
+  imports: [PrismaModule, HealthModule, RolesModule, SiteSettingsModule, AuthModule, AuditModule, SearchModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, SystemStatusModule, PortalModule, ArticlesModule, SocialModule, AnalyticsModule, DiscoveryModule, AnnouncementsModule],
 })
 export class AppModule {}

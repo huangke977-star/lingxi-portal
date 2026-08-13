@@ -399,11 +399,6 @@ export function ChatDock() {
   const pendingAttachments = selectedId ? pendingAttachmentsByConversation[selectedId] ?? [] : [];
   const unreadMessages = conversations.reduce((total, item) => total + (item.muted ? 0 : item.unreadCount), 0);
   const unreadNotifications = notifications.filter((item) => !item.readAt && !pushDisabledChannels.has(item.channel)).length;
-  const loadedPendingFriendshipIds = useMemo(
-    () => new Set(notifications.filter((item) => item.type === "friend_request_received" && !item.readAt && item.friendshipId).map((item) => item.friendshipId)),
-    [notifications],
-  );
-  const unloadedPendingFriendRequests = friendships.incoming.filter((friendship) => !loadedPendingFriendshipIds.has(friendship.id)).length;
   const selectedUnreadNotifications = selectedNotifications.filter((item) => !item.readAt).length;
   const selectedMessagesForAction = messages.filter((message) => selectedMessageIds.has(message.id));
   const selectedMessagesCanForward = Boolean(selectedMessageIds.size) &&
@@ -416,7 +411,7 @@ export function ChatDock() {
       friendship.user.nickname.toLocaleLowerCase().includes(normalizedForwardTargetSearch) ||
       friendship.user.username.toLocaleLowerCase().includes(normalizedForwardTargetSearch)
     ));
-  const dockUnreadCount = unreadMessages + unreadNotifications + unloadedPendingFriendRequests;
+  const dockUnreadCount = unreadMessages + unreadNotifications;
   const primaryEntries = useMemo(() => [
     ...conversations.filter(matchesConversationSearch).map((conversation) => ({ kind: "conversation" as const, id: conversation.id, activityAt: conversation.lastMessage?.createdAt ?? conversation.updatedAt, conversation })),
     ...(!normalizedFriendSearch ? NOTIFICATION_CHANNELS.filter((config) => !hiddenNotificationChannels.includes(config.channel)).map((config) => ({ kind: "notification" as const, id: config.id, activityAt: channelNotifications[config.channel][0]?.updatedAt ?? channelNotifications[config.channel][0]?.createdAt ?? "", config })) : []),
@@ -1073,42 +1068,7 @@ export function ChatDock() {
 
   function addFiles(files: File[]) {
     if (!files.length) return;
-    const available = MAX_ATTACHMENTS - pendingAttachments.length;
-    if (available <= 0 || files.length > available) {
-      setError(`每条消息最多添加 ${MAX_ATTACHMENTS} 个图片或文件。`);
-      return;
-    }
-    const nextFiles = [...pendingAttachments.map((item) => item.file), ...files];
-    if (nextFiles.reduce((total, file) => total + file.size, 0) > MAX_BATCH_SIZE) {
-      setError("一条消息的附件总大小不能超过 50MB。");
-      return;
-    }
-    for (const file of files) {
-      const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-      const isImage = file.type.startsWith("image/");
-      const isAudio = file.type.startsWith("audio/");
-      const isVideo = file.type.startsWith("video/");
-      if (BLOCKED_EXTENSIONS.has(extension)) {
-        setError(`不允许发送可执行文件或脚本：${file.name}`);
-        return;
-      }
-      if (isImage && file.size > MAX_IMAGE_SIZE) {
-        setError(`单张图片不能超过 8MB：${file.name}`);
-        return;
-      }
-      if (isAudio && file.size > MAX_AUDIO_SIZE) {
-        setError(`单个音频不能超过 20MB：${file.name}`);
-        return;
-      }
-      if (isVideo && file.size > MAX_VIDEO_SIZE) {
-        setError(`单个视频不能超过 50MB：${file.name}`);
-        return;
-      }
-      if (!isImage && !isAudio && !isVideo && file.size > MAX_FILE_SIZE) {
-        setError(`单个普通文件不能超过 20MB：${file.name}`);
-        return;
-      }
-    }
+    if (!validateFiles(files, pendingAttachments.map((item) => item.file))) return;
     setPendingAttachments((current) => [
       ...current,
       ...files.map((file) => ({
@@ -1124,6 +1084,56 @@ export function ChatDock() {
               : "file" as const,
       })),
     ]);
+  }
+
+  // Images chosen from the file picker are intentional and can be sent immediately.
+  // Pasted or dropped files still enter the composer so accidental clipboard files are reviewable.
+  function handleSelectedFiles(files: File[]) {
+    if (!files.length) return;
+    if (files.every((file) => file.type.startsWith("image/")) && selectedId && !isSending) {
+      if (!validateFiles(files, [])) return;
+      void sendPayload(selectedId, "", files, false);
+      return;
+    }
+    addFiles(files);
+  }
+
+  function validateFiles(files: File[], existingFiles: File[]): boolean {
+    if (files.length > MAX_ATTACHMENTS - existingFiles.length) {
+      setError(`每条消息最多添加 ${MAX_ATTACHMENTS} 个图片或文件。`);
+      return false;
+    }
+    if ([...existingFiles, ...files].reduce((total, file) => total + file.size, 0) > MAX_BATCH_SIZE) {
+      setError("一条消息的附件总大小不能超过 50MB。");
+      return false;
+    }
+    for (const file of files) {
+      const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+      const isImage = file.type.startsWith("image/");
+      const isAudio = file.type.startsWith("audio/");
+      const isVideo = file.type.startsWith("video/");
+      if (BLOCKED_EXTENSIONS.has(extension)) {
+        setError(`不允许发送可执行文件或脚本：${file.name}`);
+        return false;
+      }
+      if (isImage && file.size > MAX_IMAGE_SIZE) {
+        setError(`单张图片不能超过 8MB：${file.name}`);
+        return false;
+      }
+      if (isAudio && file.size > MAX_AUDIO_SIZE) {
+        setError(`单个音频不能超过 20MB：${file.name}`);
+        return false;
+      }
+      if (isVideo && file.size > MAX_VIDEO_SIZE) {
+        setError(`单个视频不能超过 50MB：${file.name}`);
+        return false;
+      }
+      if (!isImage && !isAudio && !isVideo && file.size > MAX_FILE_SIZE) {
+        setError(`单个普通文件不能超过 20MB：${file.name}`);
+        return false;
+      }
+    }
+    return true;
   }
 
   function removePendingAttachment(id: string) {
@@ -1540,6 +1550,11 @@ export function ChatDock() {
       } catch {
         // Following the action is still useful if read-state persistence fails.
       }
+    }
+    if (notification.context?.kind === "announcement" && notification.actionUrl) {
+      router.push(notification.actionUrl);
+      setIsMinimized(true);
+      return;
     }
     if (notification.type === "friend_request_received") {
       setSelectedId(notificationConversationId("system"));
@@ -2196,9 +2211,9 @@ export function ChatDock() {
                         : <FileText aria-hidden="true" size={22} />}<small title={attachment.file.name}>{attachment.file.name}</small><button aria-label={`移除 ${attachment.file.name}`} onClick={() => removePendingAttachment(attachment.id)} type="button"><X aria-hidden="true" size={13} /></button></span>
                 ))}</div> : null}
                 <div className="chat-composer-row">
-                  <input accept=".jpg,.jpeg,.png,.webp,.webm,.m4a,.mp3,.wav,.ogg,.mp4,.mov,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.md,.csv,.json,.xml,.rtf,.zip,.rar,.7z,.gz,.tar" hidden multiple onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} ref={fileInputRef} type="file" />
+                  <input accept=".jpg,.jpeg,.png,.webp,.webm,.m4a,.mp3,.wav,.ogg,.mp4,.mov,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.md,.csv,.json,.xml,.rtf,.zip,.rar,.7z,.gz,.tar" hidden multiple onChange={(event) => { handleSelectedFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} ref={fileInputRef} type="file" />
                   <div className="chat-composer-tools">
-                    <button aria-label="更多聊天功能" className={`chat-mobile-more${isMobileToolsOpen ? " active" : ""}`} onClick={() => { setIsMobileToolsOpen((current) => !current); setIsEmojiOpen(false); }} title="更多" type="button"><Plus aria-hidden="true" size={19} /></button>
+                    {!isDesktop ? <button aria-label="更多聊天功能" className={`chat-mobile-more${isMobileToolsOpen ? " active" : ""}`} onClick={() => { setIsMobileToolsOpen((current) => !current); setIsEmojiOpen(false); }} title="更多" type="button"><Plus aria-hidden="true" size={19} /></button> : null}
                     <button aria-label="添加表情" className={`chat-desktop-tool${isEmojiOpen ? " active" : ""}`} onClick={() => { setIsEmojiOpen((current) => !current); setIsMobileToolsOpen(false); }} title="表情" type="button"><Laugh aria-hidden="true" size={18} /></button>
                     <button aria-label="添加图片或文件" className="chat-desktop-tool" onClick={() => fileInputRef.current?.click()} title="添加图片或文件" type="button"><Paperclip aria-hidden="true" size={18} /></button>
                   </div>
