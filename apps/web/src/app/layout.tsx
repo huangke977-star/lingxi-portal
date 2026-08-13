@@ -4,6 +4,7 @@ import { AuthSessionController } from "@/components/auth-session-controller";
 import { ChatDock } from "@/components/chat-dock";
 import { PwaController } from "@/components/pwa-controller";
 import { RouteBackButton } from "@/components/route-back-button";
+import { ScrollContainment } from "@/components/scroll-containment";
 import { ScrollToTop } from "@/components/scroll-to-top";
 import { ThemeController } from "@/components/theme-controller";
 import { TopNav } from "@/components/top-nav";
@@ -82,6 +83,7 @@ export default function RootLayout({
         <AuthSessionController />
         <PwaController />
         <ThemeController />
+        <ScrollContainment />
         <TopNav />
         <main className="content-shell">
           <RouteBackButton />

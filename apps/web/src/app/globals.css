@@ -14378,6 +14378,41 @@ input[type="checkbox"]:not(:checked) { background-color: transparent; }
 input[type="checkbox"]:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
 input[type="checkbox"]:disabled { opacity: 0.48; cursor: default; }
 
+/* Floating surfaces own their scroll gestures instead of passing them to the page below. */
+.modal-backdrop,
+.password-modal-backdrop,
+.article-preview-backdrop,
+.article-versions-backdrop,
+.announcement-editor-backdrop,
+.site-background-preview-backdrop,
+.storage-preview-backdrop,
+.install-guide-backdrop,
+.chat-confirm-backdrop,
+.chat-group-manager-backdrop,
+.chat-dock,
+.header-popover,
+.account-menu,
+.public-profile-popover,
+.chat-emoji-picker,
+.chat-friend-action-menu,
+.chat-message-action-menu,
+.chat-notification-action-menu,
+.chat-notification-channel-menu,
+.chat-mobile-tools-panel {
+  overscroll-behavior: contain;
+}
+
+.chat-message-list,
+.chat-dock-sidebar-content,
+.header-popover-list,
+.chat-group-manager main,
+.chat-group-member-context,
+.article-versions-layout,
+.announcement-editor-body {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Keep scrolling within floating UI from chaining into the page behind it. */
 [role="dialog"],
 [role="dialog"] *,
