@@ -282,7 +282,7 @@ export function ChatGroupManager({
   }
 
   return <div className="chat-group-manager-backdrop" onClick={onClose} role="presentation">
-    <section aria-modal="true" className="chat-group-manager" onClick={(event) => event.stopPropagation()} role="dialog">
+    <section aria-modal="true" className="chat-group-manager" onClick={(event) => event.stopPropagation()} onTouchMove={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()} role="dialog">
       <header>
         <span><Users aria-hidden="true" size={19} /><strong>群聊</strong></span>
         <button aria-label="关闭群聊管理" onClick={onClose} type="button"><X aria-hidden="true" size={18} /></button>
@@ -327,15 +327,15 @@ export function ChatGroupManager({
             <footer><button disabled={busyKey === "create"} onClick={() => void submitCreate()} type="button">{busyKey === "create" ? "创建中" : "创建群聊"}</button></footer>
           </section> : null}
           {!isLoading && view === "detail" && selectedGroup ? <section className="chat-group-detail">
-            <div className="chat-group-detail-identity"><GroupAvatar group={selectedGroup} large /><span><strong>{selectedGroup.name}</strong><small>{selectedGroup.memberCount}/{selectedGroup.memberLimit} 人 · {groupRoleLabel(selectedGroup.currentMemberRole)}{selectedGroup.temporary && selectedGroup.expiresAt ? ` · ${formatExpiry(selectedGroup.expiresAt)}` : ""}</small></span><div className="chat-group-detail-actions"><button aria-label="进入群聊" onClick={() => onOpenConversation(selectedGroup.conversationId)} title="进入群聊" type="button"><MessageCircle aria-hidden="true" size={16} /></button></div></div>
+            <div className="chat-group-detail-identity"><GroupAvatar group={selectedGroup} large /><span><strong>{selectedGroup.name}</strong><small>{selectedGroup.memberCount}/{selectedGroup.memberLimit} 人 · {groupRoleLabel(selectedGroup.currentMemberRole)}{selectedGroup.temporary && selectedGroup.expiresAt ? ` · ${formatExpiry(selectedGroup.expiresAt)}` : ""}</small></span><div className="chat-group-detail-actions">{selectedGroup.currentMemberRole === "owner" ? <button aria-label="解散群聊" className="danger" disabled={Boolean(busyKey)} onClick={() => void run("dissolve", async () => { await dissolveChatGroup(accessToken, selectedGroup.id); setSelectedGroup(null); setView("mine"); }, "群聊已解散。")} title="解散群聊" type="button"><Trash2 aria-hidden="true" size={16} /></button> : <button aria-label="退出群聊" className="danger" disabled={Boolean(busyKey)} onClick={() => void run("leave", async () => { await leaveChatGroup(accessToken, selectedGroup.id); setSelectedGroup(null); setView("mine"); }, "已退出群聊。")} title="退出群聊" type="button"><DoorOpen aria-hidden="true" size={16} /></button>}<button aria-label="进入群聊" onClick={() => onOpenConversation(selectedGroup.conversationId)} title="进入群聊" type="button"><MessageCircle aria-hidden="true" size={16} /></button></div></div>
             {selectedGroup.announcement ? <p className="chat-group-announcement">{selectedGroup.announcement}</p> : null}
             <div className="chat-group-detail-grid">
               <section>
-                <h3>我的群名片 <button aria-label="保存群名片" className="chat-group-heading-action" disabled={busyKey === "alias"} onClick={() => void saveAlias()} title="保存群名片" type="button"><Save aria-hidden="true" size={15} /></button></h3>
+                <h3><span>我的群名片</span><button aria-label="保存群名片" className="chat-group-heading-action" disabled={busyKey === "alias"} onClick={() => void saveAlias()} title="保存群名片" type="button"><Save aria-hidden="true" size={15} /></button></h3>
                 <label><span>群内昵称</span><input maxLength={32} onChange={(event) => setAlias(event.target.value)} placeholder="跟随账号昵称" value={alias} /></label>
               </section>
               {selectedGroup.canManage ? <section>
-                <h3>群资料 <button aria-label="保存群资料" className="chat-group-heading-action" disabled={busyKey === "save" || busyKey === "avatar"} onClick={() => void saveGroup()} title="保存群资料" type="button"><Save aria-hidden="true" size={15} /></button></h3>
+                <h3><span>群资料</span><button aria-label="保存群资料" className="chat-group-heading-action" disabled={busyKey === "save" || busyKey === "avatar"} onClick={() => void saveGroup()} title="保存群资料" type="button"><Save aria-hidden="true" size={15} /></button></h3>
                 <label><span>名称</span><input maxLength={60} onChange={(event) => setGroupName(event.target.value)} value={groupName} /></label>
                 <label><span>公告</span><textarea maxLength={1000} onChange={(event) => setAnnouncement(event.target.value)} rows={3} value={announcement} /></label>
                 <label className="chat-group-switch"><input checked={selectedGroup.membersCanInvite} onChange={(event) => setSelectedGroup({ ...selectedGroup, membersCanInvite: event.target.checked, canInvite: true })} type="checkbox" /><span>允许普通成员邀请入群</span></label>
@@ -343,12 +343,11 @@ export function ChatGroupManager({
                 <input accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => void uploadAvatar(event.target.files?.[0])} ref={avatarInputRef} type="file" />
               </section> : null}
             </div>
-            {selectedGroup.canInvite ? <section className="chat-group-management-section"><h3>邀请成员 <button aria-label={`发送 ${inviteSelection.size} 个群邀请`} className="chat-group-heading-action" disabled={!inviteSelection.size || busyKey === "invite"} onClick={() => void inviteSelected()} title={inviteSelection.size ? `发送邀请（${inviteSelection.size}）` : "请选择成员"} type="button"><UserPlus aria-hidden="true" size={15} /></button></h3><GroupInviteSelector candidates={searchableInvitees} isSearching={isInviteSearchBusy} query={inviteSearchText} selected={inviteSelection} setQuery={setInviteSearchText} setSelected={setInviteSelection} onSearch={() => void searchInviteesNow()} /></section> : null}
+            {selectedGroup.canInvite ? <section className="chat-group-management-section"><h3><span>邀请成员</span><button aria-label={`发送 ${inviteSelection.size} 个群邀请`} className="chat-group-heading-action" disabled={!inviteSelection.size || busyKey === "invite"} onClick={() => void inviteSelected()} title={inviteSelection.size ? `发送邀请（${inviteSelection.size}）` : "请选择成员"} type="button"><UserPlus aria-hidden="true" size={15} /></button></h3><GroupInviteSelector candidates={searchableInvitees} isSearching={isInviteSearchBusy} query={inviteSearchText} selected={inviteSelection} setQuery={setInviteSearchText} setSelected={setInviteSelection} onSearch={() => void searchInviteesNow()} /></section> : null}
             {selectedGroup.canManage && joinRequests.length ? <section className="chat-group-management-section"><h3>入群申请 <b>{joinRequests.length}</b></h3><div className="chat-group-request-list">{joinRequests.map((request) => <article key={request.id}><UserAvatar user={request.user} /><span><strong>{request.user.nickname}</strong><small>{request.note || "未填写申请说明"}</small></span><button aria-label={`同意 ${request.user.nickname} 入群`} onClick={() => void run(`request:${request.id}`, async () => { await respondChatGroupJoinRequest(accessToken, selectedGroup.id, request.id, "approved"); await refreshCurrentGroup(); }, "已同意入群申请。")} title="同意" type="button"><Check aria-hidden="true" size={14} /></button><button aria-label={`拒绝 ${request.user.nickname} 入群`} onClick={() => void run(`request:${request.id}`, async () => { await respondChatGroupJoinRequest(accessToken, selectedGroup.id, request.id, "rejected"); await refreshCurrentGroup(); }, "已拒绝入群申请。")} title="拒绝" type="button"><X aria-hidden="true" size={14} /></button></article>)}</div></section> : null}
             <section className="chat-group-management-section"><h3>群成员 <b>{activeMembers.length}</b></h3><div className="chat-group-member-avatar-grid">{activeMembers.map((member) => <GroupMemberAvatar accessToken={accessToken} group={selectedGroup} key={member.user.id} member={member} onOpenProfile={openMemberProfile} onUpdated={setSelectedGroup} run={run} />)}</div></section>
-            {selectedGroup.canManage && blockedMembers.length ? <section className="chat-group-management-section"><h3>群黑名单 <b>{blockedMembers.length}</b></h3><div className="chat-group-member-list">{blockedMembers.map((member) => <article key={member.user.id}><UserAvatar user={member.user} /><span><strong>{member.user.nickname}</strong><small>@{member.user.username}</small></span><button aria-label={`解除拉黑 ${member.user.nickname}`} onClick={() => void run(`unblock:${member.user.id}`, async () => { setSelectedGroup(await unblockChatGroupMember(accessToken, selectedGroup.id, member.user.id)); }, "已解除群聊拉黑。")} title="解除拉黑" type="button"><ShieldCheck aria-hidden="true" size={14} /></button></article>)}</div></section> : null}
+            {selectedGroup.canManage && blockedMembers.length ? <section className="chat-group-management-section"><h3>群黑名单 <b>{blockedMembers.length}</b></h3><div className="chat-group-member-avatar-grid">{blockedMembers.map((member) => <GroupMemberAvatar accessToken={accessToken} blocked group={selectedGroup} key={member.user.id} member={member} onOpenProfile={openMemberProfile} onUpdated={setSelectedGroup} run={run} />)}</div></section> : null}
             {selectedGroup.canManage ? <GroupReports accessToken={accessToken} groupId={selectedGroup.id} run={run} /> : null}
-            <footer className="chat-group-danger-zone">{selectedGroup.currentMemberRole === "owner" ? <button aria-label="解散群聊" className="danger" disabled={Boolean(busyKey)} onClick={() => void run("dissolve", async () => { await dissolveChatGroup(accessToken, selectedGroup.id); setSelectedGroup(null); setView("mine"); }, "群聊已解散。")} title="解散群聊" type="button"><Trash2 aria-hidden="true" size={15} /></button> : <button aria-label="退出群聊" className="danger" disabled={Boolean(busyKey)} onClick={() => void run("leave", async () => { await leaveChatGroup(accessToken, selectedGroup.id); setSelectedGroup(null); setView("mine"); }, "已退出群聊。")} title="退出群聊" type="button"><DoorOpen aria-hidden="true" size={15} /></button>}</footer>
           </section> : null}
         </main>
       </div>
@@ -365,11 +364,12 @@ function GroupReports({ accessToken, groupId, run }: { accessToken: string; grou
 }
 
 function GroupReportMessage({ accessToken, attachments, body }: { accessToken: string; attachments: ChatAttachment[]; body: string }) {
+  const images = attachments.filter((attachment) => attachment.kind === "image");
+  const files = attachments.filter((attachment) => attachment.kind !== "image");
   return <div className="chat-group-report-content">
     {body ? <q>{body}</q> : null}
-    {attachments.map((attachment) => attachment.kind === "image"
-      ? <GroupReportImage accessToken={accessToken} attachment={attachment} key={attachment.id} />
-      : <button className="chat-group-report-file" key={attachment.id} onClick={() => void downloadChatAttachment(accessToken, attachment).then((blob) => saveBlob(blob, attachment.originalName))} type="button"><Download aria-hidden="true" size={14} /><span><strong>{attachment.originalName}</strong><small>{formatBytes(attachment.sizeBytes)}</small></span></button>)}
+    {images.length ? <div className={`chat-message-attachments chat-message-images count-${images.length} chat-group-report-images`}>{images.map((attachment) => <GroupReportImage accessToken={accessToken} attachment={attachment} key={attachment.id} />)}</div> : null}
+    {files.map((attachment) => <button className="chat-group-report-file" key={attachment.id} onClick={() => void downloadChatAttachment(accessToken, attachment).then((blob) => saveBlob(blob, attachment.originalName))} type="button"><Download aria-hidden="true" size={14} /><span><strong>{attachment.originalName}</strong><small>{formatBytes(attachment.sizeBytes)}</small></span></button>)}
   </div>;
 }
 
@@ -385,7 +385,7 @@ function GroupReportImage({ accessToken, attachment }: { accessToken: string; at
     }).catch(() => undefined);
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [accessToken, attachment]);
-  return <button className="chat-group-report-image" onClick={() => void downloadChatAttachment(accessToken, attachment).then((blob) => openBlob(blob))} type="button">{url ? <img alt={attachment.originalName} src={url} /> : <ImagePlus aria-hidden="true" size={18} />}</button>;
+  return <button className="chat-image-attachment chat-group-report-image" onClick={() => void downloadChatAttachment(accessToken, attachment).then((blob) => openBlob(blob))} type="button">{url ? <img alt={attachment.originalName} src={url} /> : <ImagePlus aria-hidden="true" size={18} />}</button>;
 }
 
 function GroupList({ groups, busyKey, empty, onOpen }: { groups: ChatGroupSummary[]; busyKey: string; empty: string; onOpen: (id: number) => Promise<void> }) {
@@ -414,6 +414,7 @@ function GroupInviteSelector({
 
 function GroupMemberAvatar({
   accessToken,
+  blocked = false,
   group,
   member,
   onOpenProfile,
@@ -421,6 +422,7 @@ function GroupMemberAvatar({
   run,
 }: {
   accessToken: string;
+  blocked?: boolean;
   group: ChatGroup;
   member: ChatGroupMember;
   onOpenProfile: (username: string) => void;
@@ -429,11 +431,12 @@ function GroupMemberAvatar({
 }) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
+  const [menuAnchor, setMenuAnchor] = useState({ left: 0, top: 0 });
   const longPressRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const muted = Boolean(member.mutedUntil && new Date(member.mutedUntil) > new Date());
-  const canOperate = group.canManage && !member.isSelf && member.role !== "owner" && (
+  const canOperate = !blocked && group.canManage && !member.isSelf && member.role !== "owner" && (
     group.currentMemberRole === "owner" || member.role === "member"
   );
 
@@ -457,17 +460,24 @@ function GroupMemberAvatar({
   useEffect(() => {
     if (!open || !menuRef.current) return;
     const rect = menuRef.current.getBoundingClientRect();
-    setMenuPosition((current) => ({
-      left: Math.max(8, Math.min(current.left, window.innerWidth - rect.width - 8)),
-      top: Math.max(8, Math.min(current.top, window.innerHeight - rect.height - 8)),
-    }));
-  }, [open]);
+    const left = menuAnchor.left + 10 + rect.width <= window.innerWidth - 8
+      ? menuAnchor.left + 10
+      : menuAnchor.left - rect.width - 10;
+    const top = menuAnchor.top + 8 + rect.height <= window.innerHeight - 8
+      ? menuAnchor.top + 8
+      : menuAnchor.top - rect.height - 8;
+    setMenuPosition({
+      left: Math.max(8, Math.min(left, window.innerWidth - rect.width - 8)),
+      top: Math.max(8, Math.min(top, window.innerHeight - rect.height - 8)),
+    });
+  }, [menuAnchor, open]);
 
   useEffect(() => () => {
     if (longPressRef.current !== null) window.clearTimeout(longPressRef.current);
   }, []);
 
   function openMenu(clientX: number, clientY: number) {
+    setMenuAnchor({ left: clientX, top: clientY });
     setMenuPosition({ left: clientX + 10, top: clientY + 8 });
     setOpen(true);
   }
@@ -483,7 +493,7 @@ function GroupMemberAvatar({
     if (longPressRef.current !== null) window.clearTimeout(longPressRef.current);
   }}>
     <button
-      aria-label={`${member.alias || member.user.nickname}，${groupRoleLabel(member.role)}`}
+      aria-label={`${member.alias || member.user.nickname}，${blocked ? "已拉黑" : groupRoleLabel(member.role)}`}
       className="chat-group-member-avatar-button"
       onContextMenu={(event) => { event.preventDefault(); openMenu(event.clientX, event.clientY); }}
       onPointerDown={(event) => {
@@ -500,6 +510,10 @@ function GroupMemberAvatar({
         if (longPressRef.current !== null) window.clearTimeout(longPressRef.current);
         longPressRef.current = null;
       }}
+      onPointerCancel={() => {
+        if (longPressRef.current !== null) window.clearTimeout(longPressRef.current);
+        longPressRef.current = null;
+      }}
       onClick={(event) => {
         if (longPressTriggeredRef.current) {
           longPressTriggeredRef.current = false;
@@ -508,15 +522,15 @@ function GroupMemberAvatar({
         }
         if (!open) onOpenProfile(member.user.username);
       }}
-      title={`${member.alias || member.user.nickname} · ${groupRoleLabel(member.role)}${muted ? " · 已禁言" : ""}`}
+      title={`${member.alias || member.user.nickname} · ${blocked ? "已拉黑" : `${groupRoleLabel(member.role)}${muted ? " · 已禁言" : ""}`}`}
       type="button"
     >
       <UserAvatar user={member.user} />
-      <i className={member.role}>{member.role === "owner" ? <Crown aria-hidden="true" size={12} /> : member.role === "admin" ? <ShieldCheck aria-hidden="true" size={12} /> : <Shield aria-hidden="true" size={11} />}</i>
+      {!blocked ? <i className={member.role}>{member.role === "owner" ? <Crown aria-hidden="true" size={12} /> : member.role === "admin" ? <ShieldCheck aria-hidden="true" size={12} /> : <Shield aria-hidden="true" size={11} />}</i> : null}
     </button>
-    {open && typeof document !== "undefined" ? createPortal(<div className="chat-group-member-context" onPointerDown={(event) => event.stopPropagation()} ref={menuRef} style={menuPosition}>
-      <strong>{member.alias || member.user.nickname}</strong>
-      <button onClick={() => onOpenProfile(member.user.username)} type="button">查看主页</button>
+    {open && typeof document !== "undefined" ? createPortal(<div className="chat-group-member-context" onPointerDown={(event) => event.stopPropagation()} onTouchMove={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()} ref={menuRef} style={menuPosition}>
+      {!blocked ? <><strong>{member.alias || member.user.nickname}</strong><button onClick={() => onOpenProfile(member.user.username)} type="button">查看主页</button></> : null}
+      {blocked ? <button onClick={() => void run(`unblock:${member.user.id}`, async () => { onUpdated(await unblockChatGroupMember(accessToken, group.id, member.user.id)); setOpen(false); }, "已解除群聊拉黑。")} type="button">解除拉黑</button> : null}
       {canOperate ? <>
         {group.currentMemberRole === "owner" ? <button onClick={() => update({ role: member.role === "admin" ? "member" : "admin" }, member.role === "admin" ? "已取消管理员。" : "已设为管理员。")} type="button">{member.role === "admin" ? "取消管理员" : "设为管理员"}</button> : null}
         <span>禁言时长</span>
@@ -532,11 +546,11 @@ function GroupMemberAvatar({
 }
 
 function GroupAvatar({ group, large = false }: { group: Pick<ChatGroupSummary, "name" | "avatarUrl">; large?: boolean }) {
-  return <span className={`chat-group-avatar${large ? " large" : ""}`}>{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : fallbackText(group.name)}</span>;
+  return <span className={`chat-group-avatar${large ? " large" : ""}`}>{group.avatarUrl ? <img alt="" draggable={false} src={resolveApiUrl(group.avatarUrl)} /> : fallbackText(group.name)}</span>;
 }
 
 function UserAvatar({ user }: { user: { nickname: string; avatarUrl: string | null } }) {
-  return <span className="chat-user-avatar">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : fallbackText(user.nickname)}</span>;
+  return <span className="chat-user-avatar">{user.avatarUrl ? <img alt="" draggable={false} src={resolveApiUrl(user.avatarUrl)} /> : fallbackText(user.nickname)}</span>;
 }
 
 function muteDurationLabel(minutes: number): string {

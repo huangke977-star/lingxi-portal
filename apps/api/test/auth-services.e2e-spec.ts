@@ -38,7 +38,7 @@ describe('auth support services', () => {
     await expect(service.findActiveById(2)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('rotates refresh tokens by removing old state', async () => {
+  it('rotates refresh tokens while preserving the device session id', async () => {
     const redisStore = new Map<string, string>();
     const redisSets = new Map<string, Set<string>>();
     const deleteKey = (key: string) => {
@@ -101,10 +101,15 @@ describe('auth support services', () => {
     const second = await service.rotate(first.refreshToken);
 
     expect(second.refreshToken).not.toBe(first.refreshToken);
+    expect(second.tokenId).toBe(first.tokenId);
     const secondRecord = JSON.parse(
       redisStore.get(`refresh_token:${second.tokenId}`) ?? '{}',
     ) as { issuedAt?: string };
     expect(secondRecord.issuedAt).toBe(firstRecord.issuedAt);
     await expect(service.rotate(first.refreshToken)).rejects.toBeInstanceOf(UnauthorizedException);
+
+    const sessions = await service.listSessions(1, second.tokenId);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({ id: first.tokenId, current: true });
   });
 });

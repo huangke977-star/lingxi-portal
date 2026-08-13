@@ -14378,6 +14378,14 @@ input[type="checkbox"]:not(:checked) { background-color: transparent; }
 input[type="checkbox"]:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
 input[type="checkbox"]:disabled { opacity: 0.48; cursor: default; }
 
+/* Keep scrolling within floating UI from chaining into the page behind it. */
+[role="dialog"],
+[role="dialog"] *,
+[role="menu"],
+[role="menu"] *,
+[role="listbox"],
+[role="listbox"] * { overscroll-behavior: contain; }
+
 @media (max-width: 760px) {
   .chat-system-notification-copy > span { padding-right: 78px; }
   .chat-notification-inline-actions { top: 7px; right: 6px; }
@@ -14409,6 +14417,7 @@ input[type="checkbox"]:disabled { opacity: 0.48; cursor: default; }
   background: rgba(39, 35, 45, 0.16);
   padding: 18px;
   backdrop-filter: blur(7px) saturate(108%);
+  overscroll-behavior: contain;
 }
 
 .chat-group-manager {
@@ -14492,6 +14501,8 @@ input[type="checkbox"]:disabled { opacity: 0.48; cursor: default; }
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 14px 16px 20px;
   scrollbar-color: color-mix(in srgb, var(--accent) 42%, transparent) transparent;
   scrollbar-width: thin;
@@ -14585,7 +14596,7 @@ input[type="checkbox"]:disabled { opacity: 0.48; cursor: default; }
 .chat-group-report-form select:focus { border-color: color-mix(in srgb, var(--accent) 58%, transparent); }
 .chat-group-form-split { display: grid; grid-template-columns: minmax(160px, 1fr) auto minmax(110px, 0.6fr); align-items: end; gap: 10px; }
 .chat-group-form-split > label:not(.chat-group-switch) { display: grid; gap: 5px; color: var(--muted-strong); font-size: 0.7rem; }
-.chat-group-switch { display: inline-flex; min-height: 38px; align-items: center; gap: 8px; color: var(--muted-strong); font-size: 0.7rem; white-space: nowrap; }
+.chat-group-switch { display: inline-flex !important; width: max-content; max-width: 100%; min-height: 38px; align-items: center; gap: 8px !important; color: var(--muted-strong); font-size: 0.7rem; line-height: 1.2; white-space: nowrap; }
 .chat-group-switch input {
   width: 15px;
   min-width: 15px;
@@ -14633,6 +14644,7 @@ input[type="checkbox"]:disabled { opacity: 0.48; cursor: default; }
 .chat-group-detail-actions { display: flex; align-items: center; gap: 4px; }
 .chat-group-detail-actions > button { display: grid; width: 34px; height: 34px; min-height: 34px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--accent-strong); padding: 0; cursor: pointer; }
 .chat-group-detail-actions > button:hover { background: var(--accent-soft); }
+.chat-group-detail-actions > button.danger { color: #b4233b; }
 .chat-group-detail-identity > span:nth-child(2) { display: grid; min-width: 0; gap: 3px; }
 .chat-group-detail-identity strong { overflow: hidden; font-size: 1rem; text-overflow: ellipsis; white-space: nowrap; }
 .chat-group-detail-identity small { color: var(--muted); font-size: 0.68rem; }
@@ -14644,6 +14656,8 @@ input[type="checkbox"]:disabled { opacity: 0.48; cursor: default; }
 .chat-group-management-section { display: grid; min-width: 0; gap: 8px; border-top: 1px solid var(--control-line); padding-top: 13px; }
 .chat-group-management-section > h3,
 .chat-group-detail-grid h3 { display: flex; min-height: 28px; align-items: center; gap: 6px; }
+.chat-group-management-section > h3 > span:first-child,
+.chat-group-detail-grid h3 > span:first-child { min-width: 0; flex: 1; }
 .chat-group-management-section h3 b { color: var(--accent-strong); font-size: 0.65rem; }
 .chat-group-management-section > button { width: max-content; justify-self: end; }
 .chat-group-heading-action,
@@ -14707,10 +14721,12 @@ input[type="checkbox"]:disabled { opacity: 0.48; cursor: default; }
   cursor: pointer;
 }
 .chat-group-member-avatar-button { position: relative; }
+.chat-group-member-avatar-button,
+.chat-group-member-avatar-button img { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
 .chat-group-member-avatar-button > i { position: absolute; right: 2px; bottom: 0; left: 2px; display: flex; height: 13px; align-items: center; justify-content: center; border-radius: 5px; background: rgba(25, 29, 40, 0.72); color: #fff; font-style: normal; pointer-events: none; }
 .chat-group-member-avatar-button > i.owner { color: #ffd36a; }
 .chat-group-member-avatar-button > i.admin { color: #8bd2ff; }
-.chat-group-member-context { position: fixed; z-index: 10020; display: grid; width: 156px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--control-line) 72%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--popover-surface) 97%, transparent); box-shadow: var(--shadow-strong); padding: 5px; backdrop-filter: blur(10px) saturate(112%); }
+.chat-group-member-context { position: fixed; z-index: 10020; display: grid; width: 156px; max-height: calc(100dvh - 16px); overflow: auto; overscroll-behavior: contain; border: 1px solid color-mix(in srgb, var(--control-line) 72%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--popover-surface) 97%, transparent); box-shadow: var(--shadow-strong); padding: 5px; backdrop-filter: blur(10px) saturate(112%); }
 .chat-group-member-context > strong,
 .chat-group-member-context > span { color: var(--muted); font-size: 0.63rem; padding: 5px 7px; }
 .chat-group-member-context > button,
@@ -14762,7 +14778,11 @@ input[type="checkbox"]:disabled { opacity: 0.48; cursor: default; }
 .chat-group-report-actions { position: absolute; top: 7px; right: 2px; display: flex; gap: 4px; }
 .chat-group-report-actions button { cursor: pointer; }
 .chat-group-report-content { display: grid; min-width: 0; gap: 5px; }
-.chat-group-report-image { display: block; width: 72px; height: 58px; overflow: hidden; border: 0; border-radius: 6px; background: var(--accent-soft); color: var(--muted); padding: 0; cursor: pointer; }
+.chat-group-report-images { width: min(286px, 100%) !important; margin: 0; }
+.chat-group-report-images .chat-group-report-image { grid-column: span 2; width: auto; height: 100%; aspect-ratio: auto; overflow: hidden; border: 0; border-radius: 6px; background: var(--accent-soft); color: var(--muted); padding: 0; cursor: pointer; }
+.chat-group-report-images.count-1 .chat-group-report-image { grid-column: span 6; }
+.chat-group-report-images.count-2 .chat-group-report-image,
+.chat-group-report-images.count-4 .chat-group-report-image { grid-column: span 3; }
 .chat-group-report-image img { width: 100%; height: 100%; object-fit: cover; }
 .chat-group-report-file { display: grid; width: min(260px, 100%); min-width: 0; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 7px; border: 0; border-radius: 6px; background: var(--accent-soft); color: var(--foreground); padding: 7px; text-align: left; cursor: pointer; }
 .chat-group-report-file > span { display: grid; min-width: 0; }

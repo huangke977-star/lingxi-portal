@@ -84,8 +84,7 @@ export class RefreshTokenService {
     }
 
     const user = await this.usersService.findActiveById(record.userId);
-    await this.revoke(refreshToken);
-    const next = await this.issue(record.userId, this.mergeSessionContext(record, context), record.issuedAt);
+    const next = await this.rotateSessionToken(parsed.tokenId, record, context);
 
     return { ...next, user };
   }
@@ -277,6 +276,31 @@ export class RefreshTokenService {
     if ((await this.redis.scard(sessionsKey)) === 0) {
       await this.redis.del(sessionsKey);
     }
+  }
+
+  /**
+   * Rotate only the refresh secret, keeping the stable device session id used
+   * by the access token, session list, and revoke endpoint. Replacing the id
+   * during every refresh can otherwise make the current device look stale.
+   */
+  private async rotateSessionToken(
+    tokenId: string,
+    record: StoredRefreshToken,
+    context: RefreshSessionContext,
+  ): Promise<{ refreshToken: string; tokenId: string; expiresAt: Date }> {
+    const secret = randomBytes(32).toString('base64url');
+    const refreshToken = `${tokenId}.${secret}`;
+    const expiresAt = this.createExpiryDate();
+    const nextRecord: StoredRefreshToken = {
+      ...record,
+      ...this.mergeSessionContext(record, context),
+      tokenHash: this.hashToken(refreshToken),
+      expiresAt: expiresAt.toISOString(),
+    };
+
+    await this.redis.set(this.tokenKey(tokenId), JSON.stringify(nextRecord), this.refreshTtlSeconds());
+    await this.repairCurrentSessionIndex(record.userId, tokenId);
+    return { refreshToken, tokenId, expiresAt };
   }
 
   private hashToken(refreshToken: string): string {
