@@ -3,7 +3,7 @@
 - Document status: Active
 - Created: 2026-08-04
 - Last updated: 2026-08-13
-- Current phase: Phase 6 in progress (implementation and local verification complete; production acceptance pending)
+- Current phase: Phase 6 complete (manual announcement-delivery regression remains for a future test announcement)
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -38,7 +38,7 @@ Status definitions:
 | Phase 3 | Content Capability | Autosave, version history, preview, unified search | Completed |
 | Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | Completed |
 | Phase 5 | Social Capability | Group chat, group files, moderation, temporary conversations | Completed |
-| Phase 6 | Operations Console | Operational analytics, announcements, scheduling, read statistics | In progress |
+| Phase 6 | Operations Console | Operational analytics, announcements, scheduling, read statistics | Completed |
 
 ## 4. External Prerequisites
 
@@ -279,16 +279,16 @@ Goal: give super administrators and administrators actionable operational data a
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P6-01 | Add daily aggregation jobs and aggregate tables | In progress (implementation and local verification complete) |
-| P6-02 | Show user growth, active users, articles, comments, and message trends | In progress (implementation and local verification complete) |
-| P6-03 | Show popular authors, articles, searches, and subscription growth | In progress (implementation and local verification complete) |
-| P6-04 | Show reports, bans, login risks, and failed background jobs | In progress (implementation and local verification complete) |
-| P6-05 | Add public, signed-in, and role-targeted announcements | In progress (implementation and local verification complete) |
-| P6-06 | Add drafts, scheduling, automatic expiry, and pinning | In progress (implementation and local verification complete) |
-| P6-07 | Add read confirmation, views, and unread counts | In progress (implementation and local verification complete) |
-| P6-08 | Deliver announcements through in-app messages and optional push | In progress (implementation and local verification complete) |
-| P6-09 | Apply existing super-admin and administrator permission boundaries | In progress (implementation and local verification complete) |
-| P6-10 | Complete metric definitions, permission tests, and bilingual docs | In progress (production acceptance pending) |
+| P6-01 | Add daily aggregation jobs and aggregate tables | Completed |
+| P6-02 | Show user growth, active users, articles, comments, and message trends | Completed |
+| P6-03 | Show popular authors, articles, searches, and subscription growth | Completed |
+| P6-04 | Show reports, bans, login risks, and failed background jobs | Completed |
+| P6-05 | Add public, signed-in, and role-targeted announcements | Completed |
+| P6-06 | Add drafts, scheduling, automatic expiry, and pinning | Completed |
+| P6-07 | Add read confirmation, views, and unread counts | Completed |
+| P6-08 | Deliver announcements through in-app messages and optional push | Completed |
+| P6-09 | Apply existing super-admin and administrator permission boundaries | Completed |
+| P6-10 | Complete metric definitions, permission tests, and bilingual docs | Completed |
 
 ### Current Implementation Results
 
@@ -298,6 +298,8 @@ Goal: give super administrators and administrators actionable operational data a
 - Announcements use the current in-app system channel with optional browser push. Announcement delivery and daily pending-action reminders use database uniqueness for idempotency.
 - Administrators and super administrators share analytics and announcement management while existing super-administrator-only server, security, and backup boundaries remain unchanged.
 - All 34 API suites with 216 tests passed. API/Web lint and production builds, Prisma validation, Compose configuration, and diff checks passed. See `docs/operations-console.en.md`.
+- Commit `3ddfd18` was pushed and GitHub Actions `31657738785` succeeded. Production applied its 35th migration, `20260812170000_add_operations_console`; aggregate tables contain data and no operation jobs have failed. The API health endpoint and announcements page return `200`, and API, Web, MySQL, Redis, Caddy, and TURN are running normally.
+- External Playwright passed the announcements page on desktop and a `390px` mobile viewport, with no horizontal overflow or console errors. Production has no announcement data, so delivery, read confirmation, and quick-action flows were not exercised by generating visible test messages; repeat those manual regressions when a test announcement is available. Repeat the administrator-page visual login review when the current administrator password is available.
 
 ### Acceptance
 
@@ -338,7 +340,7 @@ A phase can be marked `Completed` only when all conditions are met:
 | Phase 3 | 2026-08-10 | `47c7ae3` | Deployed 2026-08-07; Actions `31165692942` succeeded | P3-01 through P3-11 passed automated checks and production acceptance |
 | Phase 4 | 2026-08-10 | `ad2fd38`, `f3d9010` | Deployed 2026-08-10; Actions `31351553373`, `31358640865` succeeded | P4-01 through P4-10 and the collection/topic interaction refinement passed automated, desktop/mobile, and production health acceptance |
 | Phase 5 | 2026-08-12 | `1e7881a`, `ca7294c`, `6eb49bc`, `0c6ac56`, `ebdf73a` | Deployed | P5-01 through P5-10 plus group invitation, moderation, media, and mobile interaction refinements are complete |
-| Phase 6 | - | - | - | Implementation and local verification complete; push, Actions, production migration, and acceptance pending |
+| Phase 6 | 2026-08-13 | `3ddfd18` | Deployed; Actions `31657738785` succeeded and production migration applied | P6-01 through P6-10 passed automated checks, migration, health endpoint, and desktop/mobile baseline acceptance; announcement-delivery and administrator-page manual regression will be repeated when a test announcement and current administrator password are available |
 
 ## 13. Resume Procedure
 

@@ -2,7 +2,7 @@
 
 - Phase: P6 Operations Console
 - Document date: 2026-08-13
-- Status: implementation and local automated verification complete; production acceptance pending
+- Status: deployed with baseline production acceptance complete
 - Chinese version: `docs/operations-console.zh-CN.md`
 
 ## 1. Entry Points And Permissions
@@ -97,4 +97,6 @@ Friend requests, group invitations, join requests, and group-message reports fol
 
 The additive migration is `20260812170000_add_operations_console`. It adds operation aggregates, rankings, job runs, announcements, role targeting, and read records, and extends notifications with announcement and idempotency fields. It does not remove or rebuild existing business data.
 
-Local verification currently covers Prisma validation, all API tests, API/Web lint and production builds, and Compose configuration. Production migration status, scheduled aggregation, announcement delivery, desktop/mobile layouts, container logs, and resource use must still pass before P6 is marked complete.
+This phase was committed as `3ddfd18`; GitHub Actions run `31657738785` succeeded. Production applied `20260812170000_add_operations_console` and now has 35 migrations. Aggregate tables already contain data and there are no failed operation jobs. The API health endpoint and announcements page both return `200`; API, Web, MySQL, Redis, Caddy, and TURN are running, with healthy MySQL and Redis checks.
+
+External Playwright passed the public announcements page on desktop and a `390px` mobile viewport: no horizontal overflow and no console errors. Production currently has no announcement data, so end-to-end announcement delivery, read confirmation, and quick-action verification remain regression checks for when a test announcement is available; this acceptance did not create user-visible test messages. The visual authenticated administrator-page review should also be repeated when the current administrator password is available, without affecting the completed deployment, migration, and API acceptance.
