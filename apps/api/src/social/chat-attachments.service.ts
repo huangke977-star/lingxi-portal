@@ -15,6 +15,7 @@ import {
   FriendshipStatus,
   Prisma,
 } from "../generated/prisma/client";
+import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   CHAT_ATTACHMENT_MAX_BATCH_SIZE_BYTES,
@@ -157,11 +158,16 @@ export class ChatAttachmentsService {
 
   async getDownload(
     attachmentId: number,
-    userId: number,
+    user: AuthenticatedUser,
   ): Promise<{ filePath: string; mimeType: string; originalName: string; sizeBytes: number; storedName: string; kind: ChatAttachmentKind }> {
     const attachment = await this.prisma.chatAttachment.findUnique({
       where: { id: attachmentId },
       include: {
+        message: {
+          select: {
+            groupReports: { select: { id: true }, take: 1 },
+          },
+        },
         conversation: {
           select: {
             friendship: { select: { userOneId: true, userTwoId: true, status: true } },
@@ -169,7 +175,7 @@ export class ChatAttachmentsService {
               select: {
                 status: true,
                 expiresAt: true,
-                members: { where: { userId }, select: { status: true } },
+                members: { where: { userId: user.id }, select: { status: true } },
               },
             },
           },
@@ -180,10 +186,17 @@ export class ChatAttachmentsService {
       throw new NotFoundException("附件不存在。");
     }
     const { friendship, group } = attachment.conversation;
+    // Administrative access is deliberately limited to attachments belonging to a reported group message.
+    // Site managers must not gain a general bypass for private or unrelated group attachments.
+    const siteManager = Boolean(
+      group &&
+      attachment.message?.groupReports.length &&
+      (user.isSuperAdmin || user.role.level >= 90),
+    );
     const directMember = Boolean(
       friendship &&
       friendship.status === FriendshipStatus.accepted &&
-      [friendship.userOneId, friendship.userTwoId].includes(userId),
+      [friendship.userOneId, friendship.userTwoId].includes(user.id),
     );
     const groupMember = Boolean(
       group &&
@@ -191,10 +204,10 @@ export class ChatAttachmentsService {
       (!group.expiresAt || group.expiresAt > new Date()) &&
       group.members[0]?.status === ChatGroupMemberStatus.active,
     );
-    if (!directMember && !groupMember) {
+    if (!siteManager && !directMember && !groupMember) {
       throw new ForbiddenException("没有访问这个附件的权限。");
     }
-    if (attachment.messageId === null && attachment.uploadedById !== userId) {
+    if (!siteManager && attachment.messageId === null && attachment.uploadedById !== user.id) {
       throw new ForbiddenException("附件尚未发送。");
     }
     const filePath = this.resolveStoredPath(attachment.storedName);
@@ -213,9 +226,9 @@ export class ChatAttachmentsService {
 
   async getThumbnail(
     attachmentId: number,
-    userId: number,
+    user: AuthenticatedUser,
   ): Promise<{ filePath: string; sizeBytes: number }> {
-    const attachment = await this.getDownload(attachmentId, userId);
+    const attachment = await this.getDownload(attachmentId, user);
     if (attachment.kind !== ChatAttachmentKind.image) {
       throw new NotFoundException("图片缩略图不存在。");
     }

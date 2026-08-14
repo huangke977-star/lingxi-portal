@@ -238,7 +238,7 @@ export class SocialController {
     @Param("id", ParseIntPipe) id: number,
     @Res({ passthrough: true }) response: Response,
   ): Promise<StreamableFile> {
-    const attachment = await this.chatAttachmentsService.getDownload(id, user.id);
+    const attachment = await this.chatAttachmentsService.getDownload(id, user);
     const fallbackName = attachment.originalName.replace(/[^A-Za-z0-9._-]/g, "_") || "attachment";
     response.set({
       "Cache-Control": "private, no-store",
@@ -258,7 +258,7 @@ export class SocialController {
     @Param("id", ParseIntPipe) id: number,
     @Res({ passthrough: true }) response: Response,
   ): Promise<StreamableFile> {
-    const thumbnail = await this.chatAttachmentsService.getThumbnail(id, user.id);
+    const thumbnail = await this.chatAttachmentsService.getThumbnail(id, user);
     response.set({
       "Cache-Control": "private, max-age=86400",
       "Content-Length": String(thumbnail.sizeBytes),

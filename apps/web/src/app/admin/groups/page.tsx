@@ -189,7 +189,7 @@ function GroupAdminGrid({ groups, busyKey, membersLoadingId, onBan, onLift, onOp
   if (!groups.length) return <div className="article-empty-state">当前没有匹配的群聊。</div>;
   return <div className="group-admin-grid">{groups.map((group) => <article className={`group-admin-card${group.isBanned ? " banned" : ""}`} key={group.id}>
     <div className="group-admin-card-cover">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <strong>{fallbackText(group.name)}</strong>}<span>{group.isBanned ? <><Ban aria-hidden="true" size={14} />已封禁</> : "正常"}</span></div>
-    <div className="group-admin-card-body"><div className="group-admin-card-title"><strong>{group.name}</strong><small>{group.memberCount} 人 · {group.temporary ? "临时群聊" : "长期群聊"}</small></div><p>{group.announcement || "暂无群介绍"}</p><div className="group-admin-owner"><button className="group-admin-owner-profile" onClick={() => onOpenProfile(group.owner.username)} title={`查看群主 ${group.owner.nickname}`} type="button"><Avatar user={group.owner} /><span><small>群主</small><strong>{group.owner.nickname}</strong></span></button><button aria-label={`查看 ${group.name} 的群成员`} className="group-admin-owner-members" disabled={membersLoadingId === group.id} onClick={() => void onOpenMembers(group)} title="查看群成员" type="button">{membersLoadingId === group.id ? <LoaderCircle aria-hidden="true" className="spin" size={14} /> : <UserRound aria-hidden="true" size={14} />}</button></div><footer>{group.isBanned ? <button className="icon-action" disabled={busyKey === `lift:${group.id}`} onClick={() => void onLift(group)} title="解除封禁" type="button">{busyKey === `lift:${group.id}` ? <LoaderCircle className="spin" size={16} /> : <ShieldOff aria-hidden="true" size={16} />}</button> : <button className="icon-action danger" disabled={busyKey === `ban:${group.id}`} onClick={() => onBan(group)} title="封禁群聊" type="button">{busyKey === `ban:${group.id}` ? <LoaderCircle className="spin" size={16} /> : <Ban aria-hidden="true" size={16} />}</button>}<small>{group.isBanned ? group.bannedUntil ? `至 ${formatMinute(group.bannedUntil)}` : "永久封禁" : "允许正常发言"}</small></footer></div>
+    <div className="group-admin-card-body"><div className="group-admin-card-title"><strong>{group.name}</strong><small>{group.memberCount} 人 · {group.temporary ? "临时群聊" : "长期群聊"}</small></div><p>{group.announcement || "暂无群介绍"}</p><div className="group-admin-owner"><button className="group-admin-owner-profile" onClick={() => onOpenProfile(group.owner.username)} title={`查看群主 ${group.owner.nickname}`} type="button"><Avatar className="group-admin-owner-avatar" user={group.owner} /><span><small>群主</small><strong>{group.owner.nickname}</strong></span></button><button aria-label={`查看 ${group.name} 的群成员`} className="group-admin-owner-members" disabled={membersLoadingId === group.id} onClick={() => void onOpenMembers(group)} title="查看群成员" type="button">{membersLoadingId === group.id ? <LoaderCircle aria-hidden="true" className="spin" size={14} /> : <UserRound aria-hidden="true" size={14} />}</button></div><footer>{group.isBanned ? <button className="icon-action" disabled={busyKey === `lift:${group.id}`} onClick={() => void onLift(group)} title="解除封禁" type="button">{busyKey === `lift:${group.id}` ? <LoaderCircle className="spin" size={16} /> : <ShieldOff aria-hidden="true" size={16} />}</button> : <button className="icon-action danger" disabled={busyKey === `ban:${group.id}`} onClick={() => onBan(group)} title="封禁群聊" type="button">{busyKey === `ban:${group.id}` ? <LoaderCircle className="spin" size={16} /> : <Ban aria-hidden="true" size={16} />}</button>}<small>{group.isBanned ? group.bannedUntil ? `至 ${formatMinute(group.bannedUntil)}` : "永久封禁" : "允许正常发言"}</small></footer></div>
   </article>)}</div>;
 }
 
@@ -256,6 +256,7 @@ function ReportMessageImage({ attachment, onPreview }: { attachment: ChatAttachm
 
 function ReportMessageMedia({ attachment }: { attachment: ChatAttachment }) {
   const [previewUrl, setPreviewUrl] = useState("");
+  const [error, setError] = useState("");
   useEffect(() => {
     const token = readAccessToken();
     if (!token) return;
@@ -265,18 +266,21 @@ function ReportMessageMedia({ attachment }: { attachment: ChatAttachment }) {
       if (!active) return;
       objectUrl = URL.createObjectURL(blob);
       setPreviewUrl(objectUrl);
-    }).catch(() => undefined);
+    }).catch((mediaError) => {
+      if (active) setError(mediaError instanceof Error ? mediaError.message : "媒体读取失败。");
+    });
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [attachment]);
-  if (!previewUrl) return <span className="chat-media-loading"><LoaderCircle aria-hidden="true" className="spin" size={18} /></span>;
-  return attachment.kind === "audio" ? <audio className="chat-audio-attachment" controls onEnded={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} preload="metadata" src={previewUrl} /> : <video className="chat-video-attachment" controls playsInline preload="metadata" src={previewUrl} />;
+  if (!previewUrl) return <><span className="chat-media-loading">{error ? "媒体暂时无法读取" : <LoaderCircle aria-hidden="true" className="spin" size={18} />}</span><AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" /></>;
+  return <>{attachment.kind === "audio" ? <audio className="chat-audio-attachment" controls onEnded={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} preload="metadata" src={previewUrl} /> : <video className="chat-video-attachment" controls playsInline preload="metadata" src={previewUrl} />}<AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" /></>;
 }
 
 function ReportMessageFile({ attachment }: { attachment: ChatAttachment }) {
   const [isDownloading, setIsDownloading] = useState(false);
+  const [error, setError] = useState("");
   async function download() {
     const token = readAccessToken();
     if (!token || isDownloading) return;
@@ -289,15 +293,18 @@ function ReportMessageFile({ attachment }: { attachment: ChatAttachment }) {
       anchor.download = attachment.originalName;
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : "附件下载失败。");
     } finally {
       setIsDownloading(false);
     }
   }
-  return <button className="chat-file-attachment" onClick={() => void download()} type="button"><FileText aria-hidden="true" size={22} /><span><strong title={attachment.originalName}>{attachment.originalName}</strong><small>{formatBytes(attachment.sizeBytes)}</small></span>{isDownloading ? <LoaderCircle aria-hidden="true" className="spin" size={16} /> : <Download aria-hidden="true" size={16} />}</button>;
+  return <><button className="chat-file-attachment" onClick={() => void download()} type="button"><FileText aria-hidden="true" size={22} /><span><strong title={attachment.originalName}>{attachment.originalName}</strong><small>{formatBytes(attachment.sizeBytes)}</small></span>{isDownloading ? <LoaderCircle aria-hidden="true" className="spin" size={16} /> : <Download aria-hidden="true" size={16} />}</button><AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" /></>;
 }
 
 function ReportAttachmentPreview({ attachment, onClose }: { attachment: ChatAttachment; onClose: () => void }) {
   const [url, setUrl] = useState("");
+  const [error, setError] = useState("");
   useEffect(() => {
     const token = readAccessToken();
     if (!token) return;
@@ -305,18 +312,18 @@ function ReportAttachmentPreview({ attachment, onClose }: { attachment: ChatAtta
     downloadChatAttachment(token, attachment).then((blob) => {
       objectUrl = URL.createObjectURL(blob);
       setUrl(objectUrl);
-    }).catch(() => onClose());
+    }).catch((previewError) => setError(previewError instanceof Error ? previewError.message : "附件预览失败。"));
     return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [attachment, onClose]);
-  return <div className="chat-attachment-preview" onClick={onClose} role="presentation"><button aria-label="关闭图片预览" onClick={onClose} type="button"><X aria-hidden="true" size={22} /></button>{url ? <img alt={attachment.originalName} onClick={(event) => event.stopPropagation()} src={url} /> : <LoaderCircle aria-hidden="true" className="spin" size={26} />}</div>;
+  return <><div className="chat-attachment-preview" onClick={onClose} role="presentation"><button aria-label="关闭图片预览" onClick={onClose} type="button"><X aria-hidden="true" size={22} /></button>{url ? <img alt={attachment.originalName} onClick={(event) => event.stopPropagation()} src={url} /> : error ? <span>{error}</span> : <LoaderCircle aria-hidden="true" className="spin" size={26} />}</div><AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" /></>;
 }
 
 function PreviewUserAvatar({ user }: { user: SocialUser }) {
   return <span className="chat-user-avatar">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : fallbackText(user.nickname)}</span>;
 }
 
-function Avatar({ user }: { user: SocialUser }) {
-  return <span className="group-admin-avatar">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : <strong>{fallbackText(user.nickname)}</strong>}</span>;
+function Avatar({ user, className = "" }: { user: SocialUser; className?: string }) {
+  return <span className={`group-admin-avatar${className ? ` ${className}` : ""}`}>{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : <strong>{fallbackText(user.nickname)}</strong>}</span>;
 }
 
 function GroupAvatar({ group }: { group: Pick<ChatGroupSummary, "name" | "avatarUrl"> | ChatGroupReport["group"] }) {
