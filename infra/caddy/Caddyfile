@@ -16,8 +16,9 @@
   }
 
   handle {
-    reverse_proxy web:3000
     # HTML must be revalidated after each deployment; only fingerprinted Next assets are cacheable.
-    header_down Cache-Control "no-store, max-age=0, must-revalidate"
+    reverse_proxy web:3000 {
+      header_down Cache-Control "no-store, max-age=0, must-revalidate"
+    }
   }
 }
