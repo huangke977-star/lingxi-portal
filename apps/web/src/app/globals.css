@@ -10599,7 +10599,7 @@ html:has(.article-comment-form) {
 
 .chat-attachment-preview {
   position: fixed;
-  z-index: 1800;
+  z-index: 11050;
   inset: 0;
   display: flex;
   align-items: center;
