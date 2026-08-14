@@ -66,8 +66,10 @@ export function saveAnonymousIdentity(topicId: number, identity: AnonymousIdenti
   if (typeof window !== "undefined") window.localStorage.setItem(`${IDENTITY_STORAGE_PREFIX}${topicId}`, JSON.stringify(identity));
 }
 
-export function listAnonymousTopics(page = 1, pageSize = 8): Promise<AnonymousTopicPage> {
-  return requestJson(`/anonymous-topics?page=${page}&pageSize=${pageSize}`, { cache: "no-store" });
+export function listAnonymousTopics(page = 1, pageSize = 8, q = ""): Promise<AnonymousTopicPage> {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (q.trim()) params.set("q", q.trim());
+  return requestJson(`/anonymous-topics?${params.toString()}`, { cache: "no-store" });
 }
 
 export function getAnonymousTopic(id: number, input: { limit?: number; beforeSequence?: number } = {}): Promise<AnonymousTopicDetail> {
@@ -82,7 +84,7 @@ export function createAnonymousTopic(input: { title: string; nickname: string; p
   return requestJson("/anonymous-topics", { method: "POST", body: JSON.stringify({ ...input, visitorKey: getAnonymousVisitorKey() }) });
 }
 
-export function claimAnonymousIdentity(topicId: number, input: { nickname: string; password: string }): Promise<AnonymousIdentity> {
+export function claimAnonymousIdentity(topicId: number, input: { password: string; nickname?: string; create?: boolean }): Promise<AnonymousIdentity> {
   return requestJson(`/anonymous-topics/${topicId}/identity`, { method: "POST", body: JSON.stringify({ ...input, visitorKey: getAnonymousVisitorKey() }) });
 }
 

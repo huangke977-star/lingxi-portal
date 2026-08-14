@@ -33,7 +33,11 @@ export class AnonymousTopicsService {
   ) {}
 
   async list(query: ListAnonymousTopicsQueryDto) {
-    const where = { isHidden: false };
+    const keyword = query.q?.trim();
+    const where: Prisma.AnonymousTopicWhereInput = {
+      isHidden: false,
+      ...(keyword ? { title: { contains: keyword } } : {}),
+    };
     const [total, items] = await Promise.all([
       this.prisma.anonymousTopic.count({ where }),
       this.prisma.anonymousTopic.findMany({
@@ -88,16 +92,38 @@ export class AnonymousTopicsService {
   async claimIdentity(topicId: number, dto: ClaimAnonymousIdentityDto) {
     const topic = await this.prisma.anonymousTopic.findFirst({ where: { id: topicId, isHidden: false } });
     if (!topic) throw new NotFoundException("话题不存在或已隐藏。");
-    const nickname = dto.nickname.trim();
-    this.assertAnonymousInput("话题", nickname, dto.password, dto.visitorKey);
+    this.assertVisitorKey(dto.visitorKey);
+    if (dto.password.length < 6) throw new BadRequestException("密码至少需要 6 位。");
     await this.assertRateLimit("identity", dto.visitorKey, 10, 10 * 60);
+
+    if (!dto.create) {
+      const identities = await this.prisma.anonymousTopicIdentity.findMany({ where: { topicId } });
+      for (const identity of identities) {
+        if (await this.passwordService.verifyPassword(dto.password, identity.passwordHash)) {
+          return { identityToken: await this.signIdentity(topicId, identity.id), nickname: identity.nickname, isCreator: identity.isCreator };
+        }
+      }
+      throw new UnauthorizedException("未找到与该密码绑定的昵称。");
+    }
+
+    const nickname = dto.nickname?.trim() ?? "";
+    if (!nickname) throw new BadRequestException("创建昵称时请填写昵称。");
     const existing = await this.prisma.anonymousTopicIdentity.findUnique({ where: { topicId_nickname: { topicId, nickname } } });
     if (existing) {
-      if (!await this.passwordService.verifyPassword(dto.password, existing.passwordHash)) {
-        throw new UnauthorizedException("昵称或密码不正确。");
+      if (await this.passwordService.verifyPassword(dto.password, existing.passwordHash)) {
+        return { identityToken: await this.signIdentity(topicId, existing.id), nickname: existing.nickname, isCreator: existing.isCreator };
       }
-      return { identityToken: await this.signIdentity(topicId, existing.id), nickname: existing.nickname, isCreator: existing.isCreator };
+      throw new ConflictException("该昵称已经绑定其他密码，请更换昵称。");
     }
+    const identities = await this.prisma.anonymousTopicIdentity.findMany({ where: { topicId } });
+    let passwordBoundIdentity: typeof identities[number] | null = null;
+    for (const identity of identities) {
+      if (await this.passwordService.verifyPassword(dto.password, identity.passwordHash)) {
+        passwordBoundIdentity = identity;
+        break;
+      }
+    }
+    if (passwordBoundIdentity) throw new ConflictException("该密码已绑定其他昵称，请通过获取昵称继续。");
     const identity = await this.prisma.anonymousTopicIdentity.create({
       data: { topicId, nickname, passwordHash: await this.passwordService.hashPassword(dto.password) },
     }).catch((error) => {

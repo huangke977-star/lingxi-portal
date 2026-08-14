@@ -14,6 +14,11 @@ export class ListAnonymousTopicsQueryDto {
   @Min(1)
   @Max(50)
   pageSize = 8;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  q?: string;
 }
 
 export class GetAnonymousTopicQueryDto {
@@ -52,9 +57,14 @@ export class CreateAnonymousTopicDto {
 }
 
 export class ClaimAnonymousIdentityDto {
+  @IsOptional()
   @IsString()
   @MaxLength(32)
-  nickname!: string;
+  nickname?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  create?: boolean;
 
   @IsString()
   @MinLength(6)

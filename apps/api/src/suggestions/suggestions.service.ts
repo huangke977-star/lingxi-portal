@@ -78,10 +78,17 @@ export class SuggestionsService {
   }
 
   private async list(query: ListSuggestionsQueryDto, where: Prisma.SiteSuggestionWhereInput) {
+    const keyword = query.q?.trim();
+    const searchWhere: Prisma.SiteSuggestionWhereInput = keyword
+      ? { OR: [{ title: { contains: keyword } }, { content: { contains: keyword } }] }
+      : {};
+    const finalWhere: Prisma.SiteSuggestionWhereInput = {
+      AND: [where, searchWhere],
+    };
     const [total, items] = await Promise.all([
-      this.prisma.siteSuggestion.count({ where }),
+      this.prisma.siteSuggestion.count({ where: finalWhere }),
       this.prisma.siteSuggestion.findMany({
-        where,
+        where: finalWhere,
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,

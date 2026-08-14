@@ -35,18 +35,22 @@ export interface SuggestionPage {
 }
 
 function headers(accessToken: string) { return { Authorization: `Bearer ${accessToken}` }; }
-function query(page: number, pageSize: number) { return `?page=${page}&pageSize=${pageSize}`; }
-
-export function listPublicSuggestions(page = 1, pageSize = 6): Promise<SuggestionPage> {
-  return requestJson(`/suggestions${query(page, pageSize)}`, { cache: "no-store" });
+function query(page: number, pageSize: number, q = "") {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (q.trim()) params.set("q", q.trim());
+  return `?${params.toString()}`;
 }
 
-export function listMySuggestions(accessToken: string, page = 1, pageSize = 12): Promise<SuggestionPage> {
-  return requestJson(`/suggestions/mine${query(page, pageSize)}`, { cache: "no-store", headers: headers(accessToken) });
+export function listPublicSuggestions(page = 1, pageSize = 6, q = ""): Promise<SuggestionPage> {
+  return requestJson(`/suggestions${query(page, pageSize, q)}`, { cache: "no-store" });
 }
 
-export function listSuggestionInbox(accessToken: string, page = 1, pageSize = 12): Promise<SuggestionPage> {
-  return requestJson(`/suggestions/inbox${query(page, pageSize)}`, { cache: "no-store", headers: headers(accessToken) });
+export function listMySuggestions(accessToken: string, page = 1, pageSize = 12, q = ""): Promise<SuggestionPage> {
+  return requestJson(`/suggestions/mine${query(page, pageSize, q)}`, { cache: "no-store", headers: headers(accessToken) });
+}
+
+export function listSuggestionInbox(accessToken: string, page = 1, pageSize = 12, q = ""): Promise<SuggestionPage> {
+  return requestJson(`/suggestions/inbox${query(page, pageSize, q)}`, { cache: "no-store", headers: headers(accessToken) });
 }
 
 export function getSuggestion(id: number): Promise<SuggestionDetail> {

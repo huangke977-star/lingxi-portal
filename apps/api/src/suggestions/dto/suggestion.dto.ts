@@ -16,6 +16,11 @@ export class ListSuggestionsQueryDto {
   @Min(1)
   @Max(50)
   pageSize = 8;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  q?: string;
 }
 
 export class CreateSuggestionDto {

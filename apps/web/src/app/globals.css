@@ -15611,3 +15611,71 @@ input[type="checkbox"]:disabled { opacity: 0.48; cursor: default; }
   .announcement-editor-body { grid-template-columns: 1fr; }
   .announcement-editor-body .wide { grid-column: auto; }
 }
+
+/* Phase 9 follow-up: entry pages use the same dense page rhythm and control language. */
+.p8-page { gap: 8px; }
+.p8-home-layout,
+.p8-home-main,
+.p8-home-side,
+.p8-tools-layout { gap: 8px; }
+.p8-page-heading { align-items: flex-end; }
+.p8-page-heading h1 { font-size: 1.68rem; }
+.p8-section-heading h2 { font-size: 0.96rem; }
+.p8-heading-note,
+.p8-primary-link { min-height: 0; align-self: flex-end; padding-top: 0; padding-bottom: 3px; }
+.p8-heading-note { font-size: 0.82rem; }
+.p8-primary-link { font-size: 0.82rem; }
+.p8-home-stats { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; max-width: min(72%, 760px); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; white-space: nowrap; }
+.p8-home-stats::-webkit-scrollbar { display: none; }
+.p8-home-stats > span { flex: 0 0 auto; white-space: nowrap; }
+
+/* Native selects retain their platform menu while matching the announcement editor trigger. */
+select { border: 0 !important; border-radius: 6px !important; background: color-mix(in srgb, var(--surface) 76%, transparent) !important; box-shadow: none !important; color: var(--foreground); }
+select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 38%, transparent); outline-offset: 1px; }
+.glass-multi-select-trigger,
+.glass-multi-select-menu { border: 0; }
+
+/* Portal form controls must not fall back to browser-sized checkbox widgets. */
+.portal-role-grid input[type="checkbox"],
+.portal-checkbox-row input[type="checkbox"] { width: 15px; min-width: 15px; height: 15px; min-height: 15px; flex: 0 0 15px; aspect-ratio: 1; }
+
+/* Every dialog mask uses the same lighter login-style glass treatment. */
+:is(.modal-backdrop, .modal-backdrop--light, .password-modal-backdrop, .avatar-crop-backdrop, .cache-detail-backdrop, .global-search-backdrop, .article-preview-backdrop, .article-versions-backdrop, .comment-report-backdrop, .chat-confirm-backdrop, .install-guide-backdrop, .storage-preview-backdrop, .site-background-preview-backdrop, .announcement-editor-backdrop, .chat-group-manager-backdrop, .group-management-modal-backdrop, .group-management-preview-backdrop) { background: rgba(255, 247, 250, 0.58); backdrop-filter: blur(14px) saturate(120%); -webkit-backdrop-filter: blur(14px) saturate(120%); }
+
+/* Suggestions and topic directories use the same compact searchable list shell. */
+.p8-list-search { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; border-bottom: 1px solid color-mix(in srgb, var(--control-line) 72%, transparent); color: var(--muted); padding: 8px 12px; }
+.p8-list-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--foreground); font: inherit; font-size: 0.74rem; }
+.suggestion-reply-form { display: block; }
+.suggestion-reply-form > div { position: relative; width: 100%; }
+.suggestion-reply-form textarea { display: block; min-height: 76px; padding-right: 42px; }
+.suggestion-reply-form button { position: absolute; right: 6px; bottom: 6px; width: 28px; height: 28px; border-radius: 50%; background: transparent; color: var(--accent-strong); }
+.suggestion-reply-form button:hover:not(:disabled) { background: var(--accent-soft); }
+.suggestion-reply-form button:disabled { color: var(--muted); opacity: 0.52; }
+
+/* Article feeds stay in one readable panel instead of visually separated cards. */
+.discovery-feed-list { gap: 0; overflow: hidden; border-radius: 8px; background: var(--panel); box-shadow: var(--panel-shadow); }
+.discovery-feed-list .discovery-article-row { border-bottom: 1px solid color-mix(in srgb, var(--control-line) 76%, transparent); border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
+.discovery-feed-list .discovery-article-row:last-child { border-bottom: 0; }
+.discovery-feed-list .discovery-article-row:hover { background: color-mix(in srgb, var(--accent-soft) 42%, transparent); box-shadow: none; transform: none; }
+
+.anonymous-topic-title { display: grid !important; grid-template-columns: auto minmax(0, 1fr); column-gap: 7px; }
+.anonymous-topic-title > svg { grid-row: span 2; align-self: center; }
+.anonymous-topic-title > strong,
+.anonymous-topic-title > small { grid-column: 2; }
+.topic-create-modal > header > span { display: inline-flex; align-items: center; gap: 7px; }
+.topic-create-modal > header > span > svg { grid-row: auto; }
+.anonymous-identity-note { cursor: default; }
+button.anonymous-identity-note { cursor: pointer; }
+.anonymous-identity-sheet header > button { border: 0; }
+.anonymous-identity-create { display: inline-flex !important; width: fit-content; align-items: center; gap: 6px; color: var(--muted-strong); cursor: pointer; font-size: 0.68rem; }
+.anonymous-topic-chat { scrollbar-color: color-mix(in srgb, var(--accent-strong) 44%, transparent) transparent; scrollbar-width: thin; }
+.anonymous-topic-chat::-webkit-scrollbar { width: 5px; }
+.anonymous-topic-chat::-webkit-scrollbar-track { background: transparent; }
+.anonymous-topic-chat::-webkit-scrollbar-thumb { border-radius: 999px; background: color-mix(in srgb, var(--accent-strong) 44%, transparent); }
+
+@media (max-width: 640px) {
+  .p8-page { gap: 8px; }
+  .p8-page-heading { align-items: flex-end; }
+  .p8-page-heading h1 { font-size: 1.48rem; }
+  .p8-home-stats { display: flex; flex-wrap: nowrap; max-width: calc(100% - 84px); gap: 7px; margin-left: 0; }
+}
