@@ -15647,7 +15647,7 @@ select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 38%, transpar
 /* Suggestions and topic directories use the same compact searchable list shell. */
 .p8-list-search { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; border-bottom: 1px solid color-mix(in srgb, var(--control-line) 72%, transparent); color: var(--muted); padding: 8px 12px; }
 .p8-list-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--foreground); font: inherit; font-size: 0.74rem; }
-.suggestion-reply-form { display: block; }
+.suggestion-modal form.suggestion-reply-form { display: block; gap: 0; padding: 0; }
 .suggestion-reply-form > div { position: relative; width: 100%; }
 .suggestion-reply-form textarea { display: block; min-height: 76px; padding-right: 42px; }
 .suggestion-reply-form button { position: absolute; right: 6px; bottom: 6px; width: 28px; height: 28px; border-radius: 50%; background: transparent; color: var(--accent-strong); }
