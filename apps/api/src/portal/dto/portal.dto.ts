@@ -153,6 +153,15 @@ export class CreatePortalEntryDto {
   @IsIn(PORTAL_RECORD_STATUSES)
   status: PortalRecordStatus = "active";
 
+  @IsBoolean()
+  isFeatured = false;
+
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(-100000)
+  @Max(100000)
+  featuredSortOrder = 0;
+
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
@@ -219,9 +228,34 @@ export class UpdatePortalEntryDto {
   status?: PortalRecordStatus;
 
   @IsOptional()
+  @IsBoolean()
+  isFeatured?: boolean;
+
+  @Transform(({ value }) => (value === undefined ? value : Number(value)))
+  @IsOptional()
+  @IsInt()
+  @Min(-100000)
+  @Max(100000)
+  featuredSortOrder?: number;
+
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
   @IsString({ each: true })
   @MaxLength(64, { each: true })
   roleCodes?: string[];
+}
+
+export class UpdatePortalPreferenceDto {
+  @IsArray()
+  @ArrayMaxSize(12)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  homeEntryIds: number[] = [];
+
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  toolEntryIds: number[] = [];
 }

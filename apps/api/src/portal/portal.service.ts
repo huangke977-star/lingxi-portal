@@ -15,12 +15,14 @@ import {
   PortalListQueryDto,
   UpdatePortalCategoryDto,
   UpdatePortalEntryDto,
+  UpdatePortalPreferenceDto,
 } from "./dto/portal.dto";
 import {
   PortalCategoryKind,
   PortalCategoryResponse,
   PortalContentResponse,
   PortalEntryResponse,
+  PortalPreferenceResponse,
   PortalVisibility,
 } from "./portal.types";
 
@@ -35,6 +37,8 @@ interface PortalEntryRecord {
   visibility: PortalVisibility;
   sortOrder: number;
   status: "active" | "disabled";
+  isFeatured: boolean;
+  featuredSortOrder: number;
   allowedRoles: Array<{
     role: {
       code: string;
@@ -72,6 +76,28 @@ export class PortalService {
     user: AuthenticatedUser,
   ): Promise<PortalContentResponse> {
     return this.listVisible(query, user);
+  }
+
+  async getPreferences(
+    user: AuthenticatedUser,
+  ): Promise<PortalPreferenceResponse> {
+    const preference = await this.prisma.userPortalPreference.findUnique({
+      where: { userId: user.id },
+    });
+    return this.normalizePreferences(preference, user);
+  }
+
+  async updatePreferences(
+    dto: UpdatePortalPreferenceDto,
+    user: AuthenticatedUser,
+  ): Promise<PortalPreferenceResponse> {
+    const valid = await this.normalizeSubmittedPreferences(dto, user);
+    const preference = await this.prisma.userPortalPreference.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, ...valid },
+      update: valid,
+    });
+    return this.normalizePreferences(preference, user);
   }
 
   async listAdmin(actor: AuthenticatedUser): Promise<PortalContentResponse> {
@@ -127,7 +153,11 @@ export class PortalService {
         if (entryIds.length > 0) {
           await transaction.portalEntry.updateMany({
             where: { id: { in: entryIds.map((entry) => entry.id) } },
-            data: { visibility: "authenticated", updatedById: actor.id },
+            data: {
+              visibility: "authenticated",
+              isFeatured: false,
+              updatedById: actor.id,
+            },
           });
           await transaction.portalEntryRole.deleteMany({
             where: { entryId: { in: entryIds.map((entry) => entry.id) } },
@@ -197,6 +227,8 @@ export class PortalService {
         visibility,
         sortOrder: dto.sortOrder,
         status: dto.status,
+        isFeatured: category.kind === "server" ? false : dto.isFeatured,
+        featuredSortOrder: dto.featuredSortOrder,
         ...buildSearchFields([dto.title, dto.description, category.name]),
         createdById: actor.id,
         updatedById: actor.id,
@@ -247,6 +279,12 @@ export class PortalService {
         visibility,
         sortOrder: dto.sortOrder ?? existing.sortOrder,
         status: dto.status ?? existing.status,
+        isFeatured:
+          category.kind === "server"
+            ? false
+            : (dto.isFeatured ?? existing.isFeatured),
+        featuredSortOrder:
+          dto.featuredSortOrder ?? existing.featuredSortOrder,
         ...buildSearchFields([title, description, category.name]),
         updatedById: actor.id,
         allowedRoles: {
@@ -421,6 +459,8 @@ export class PortalService {
       visibility: true,
       sortOrder: true,
       status: true,
+      isFeatured: true,
+      featuredSortOrder: true,
       allowedRoles: {
         orderBy: { role: { level: "asc" as const } },
         select: {
@@ -467,9 +507,62 @@ export class PortalService {
       visibility: entry.visibility,
       sortOrder: entry.sortOrder,
       status: entry.status,
+      isFeatured: entry.isFeatured,
+      featuredSortOrder: entry.featuredSortOrder,
       allowedRoles: entry.allowedRoles.map(({ role }) => role),
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
     };
+  }
+
+  private async normalizePreferences(
+    preference: { homeEntryIds: unknown; toolEntryIds: unknown } | null,
+    user: AuthenticatedUser,
+  ): Promise<PortalPreferenceResponse> {
+    const validEntryIds = await this.getVisibleEntryIds(user);
+    return {
+      homeEntryIds: this.normalizeEntryIds(preference?.homeEntryIds, validEntryIds, 12),
+      toolEntryIds: this.normalizeEntryIds(preference?.toolEntryIds, validEntryIds, 30),
+    };
+  }
+
+  private async normalizeSubmittedPreferences(
+    dto: UpdatePortalPreferenceDto,
+    user: AuthenticatedUser,
+  ): Promise<PortalPreferenceResponse> {
+    const validEntryIds = await this.getVisibleEntryIds(user);
+    const homeEntryIds = this.normalizeEntryIds(dto.homeEntryIds, validEntryIds, 12);
+    const toolEntryIds = this.normalizeEntryIds(dto.toolEntryIds, validEntryIds, 30);
+    if (homeEntryIds.length !== new Set(dto.homeEntryIds).size || toolEntryIds.length !== new Set(dto.toolEntryIds).size) {
+      throw new BadRequestException("One or more portal entries are unavailable to this account.");
+    }
+    return { homeEntryIds, toolEntryIds };
+  }
+
+  private async getVisibleEntryIds(user: AuthenticatedUser): Promise<Set<number>> {
+    const categories = await this.prisma.portalCategory.findMany({
+      where: { status: "active" },
+      select: this.categorySelect({ activeEntriesOnly: true }),
+    });
+    return new Set(
+      categories
+        .filter((category) => category.kind !== "server" || user.isSuperAdmin)
+        .flatMap((category) => category.entries)
+        .filter((entry) => this.isEntryVisible(entry, user))
+        .map((entry) => entry.id),
+    );
+  }
+
+  private normalizeEntryIds(value: unknown, validEntryIds: Set<number>, limit: number): number[] {
+    if (!Array.isArray(value)) return [];
+    const result: number[] = [];
+    const seen = new Set<number>();
+    for (const entryId of value) {
+      if (!Number.isInteger(entryId) || seen.has(entryId) || !validEntryIds.has(entryId)) continue;
+      seen.add(entryId);
+      result.push(entryId);
+      if (result.length === limit) break;
+    }
+    return result;
   }
 }

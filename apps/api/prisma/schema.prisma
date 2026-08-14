@@ -395,6 +395,7 @@ model User {
   portalCategoriesUpdated   PortalCategory[]               @relation("PortalCategoryUpdatedBy")
   portalEntriesCreated      PortalEntry[]                  @relation("PortalEntryCreatedBy")
   portalEntriesUpdated      PortalEntry[]                  @relation("PortalEntryUpdatedBy")
+  portalPreference          UserPortalPreference?
   articles                  Article[]                      @relation("ArticleAuthor")
   articleVersionsEdited     ArticleVersion[]               @relation("ArticleVersionEditor")
   articleComments           ArticleComment[]               @relation("ArticleCommentAuthor")
@@ -851,6 +852,8 @@ model PortalEntry {
   visibility   PortalVisibility   @default(public)
   sortOrder    Int                @default(0) @map("sort_order")
   status       PortalRecordStatus @default(active)
+  isFeatured   Boolean            @default(false) @map("is_featured")
+  featuredSortOrder Int            @default(0) @map("featured_sort_order")
   searchText   String             @default("") @map("search_text") @db.VarChar(4096)
   searchPinyin String             @default("") @map("search_pinyin") @db.VarChar(4096)
   createdById  Int?               @map("created_by_id")
@@ -866,6 +869,17 @@ model PortalEntry {
   @@index([createdById])
   @@index([updatedById])
   @@map("portal_entries")
+}
+
+model UserPortalPreference {
+  userId       Int      @id @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  homeEntryIds Json     @map("home_entry_ids")
+  toolEntryIds Json     @map("tool_entry_ids")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("user_portal_preferences")
 }
 
 model PortalEntryRole {

@@ -71,6 +71,8 @@ interface StoredEntry {
   visibility: "public" | "authenticated" | "role_restricted";
   sortOrder: number;
   status: "active" | "disabled";
+  isFeatured: boolean;
+  featuredSortOrder: number;
   allowedRoleIds: number[];
   createdAt: Date;
   updatedAt: Date;
@@ -98,6 +100,8 @@ interface PortalEntryWriteData {
   visibility: StoredEntry["visibility"];
   sortOrder: number;
   status: StoredEntry["status"];
+  isFeatured: boolean;
+  featuredSortOrder: number;
   allowedRoles?: {
     create?: Array<{ roleId: number }>;
   };
@@ -152,6 +156,8 @@ function createPrismaMock() {
       visibility: "public",
       sortOrder: 10,
       status: "active",
+      isFeatured: true,
+      featuredSortOrder: 10,
       allowedRoleIds: [],
       createdAt: now,
       updatedAt: now,
@@ -167,6 +173,8 @@ function createPrismaMock() {
       visibility: "authenticated",
       sortOrder: 10,
       status: "active",
+      isFeatured: false,
+      featuredSortOrder: 0,
       allowedRoleIds: [],
       createdAt: now,
       updatedAt: now,
@@ -182,6 +190,8 @@ function createPrismaMock() {
       visibility: "role_restricted",
       sortOrder: 20,
       status: "active",
+      isFeatured: true,
+      featuredSortOrder: 20,
       allowedRoleIds: [1],
       createdAt: now,
       updatedAt: now,
@@ -197,6 +207,8 @@ function createPrismaMock() {
       visibility: "authenticated",
       sortOrder: 10,
       status: "active",
+      isFeatured: false,
+      featuredSortOrder: 0,
       allowedRoleIds: [],
       createdAt: now,
       updatedAt: now,
@@ -312,6 +324,8 @@ function createPrismaMock() {
         visibility: data.visibility,
         sortOrder: data.sortOrder,
         status: data.status,
+        isFeatured: data.isFeatured,
+        featuredSortOrder: data.featuredSortOrder,
         allowedRoleIds: (data.allowedRoles?.create ?? []).map(
           (item: { roleId: number }) => item.roleId,
         ),
@@ -341,6 +355,8 @@ function createPrismaMock() {
           visibility: data.visibility,
           sortOrder: data.sortOrder,
           status: data.status,
+          isFeatured: data.isFeatured,
+          featuredSortOrder: data.featuredSortOrder,
           allowedRoleIds: (data.allowedRoles?.create ?? []).map(
             (item: { roleId: number }) => item.roleId,
           ),
@@ -387,6 +403,15 @@ function createPrismaMock() {
       },
     ),
   };
+  const preferences = new Map<number, { userId: number; homeEntryIds: number[]; toolEntryIds: number[] }>();
+  const userPortalPreference = {
+    findUnique: jest.fn(async ({ where }: { where: { userId: number } }) => preferences.get(where.userId) ?? null),
+    upsert: jest.fn(async ({ where, create, update }: { where: { userId: number }; create: { userId: number; homeEntryIds: number[]; toolEntryIds: number[] }; update: { homeEntryIds: number[]; toolEntryIds: number[] } }) => {
+      const next = { ...(preferences.get(where.userId) ?? create), ...update, userId: where.userId };
+      preferences.set(where.userId, next);
+      return next;
+    }),
+  };
 
   return {
     categories,
@@ -395,6 +420,7 @@ function createPrismaMock() {
       portalCategory,
       portalEntry,
       portalEntryRole,
+      userPortalPreference,
       role: {
         findMany: jest.fn(
           async (args?: { where?: { code?: { in?: string[] } } }) => {
@@ -417,8 +443,9 @@ function createPrismaMock() {
             portalCategory: typeof portalCategory;
             portalEntry: typeof portalEntry;
             portalEntryRole: typeof portalEntryRole;
+            userPortalPreference: typeof userPortalPreference;
           }) => unknown,
-        ) => callback({ portalCategory, portalEntry, portalEntryRole }),
+        ) => callback({ portalCategory, portalEntry, portalEntryRole, userPortalPreference }),
       ),
     },
   };
@@ -508,6 +535,35 @@ describe("portal content management (e2e)", () => {
 
     expect(response.body.categories).toHaveLength(1);
     expect(response.body.categories[0].entries[0].title).toBe("内部面板");
+  });
+
+  it("stores personal shortcut and tool order only for entries visible to the account", async () => {
+    const normalToken = await tokenFor(3);
+    const updated = await request(app.getHttpServer())
+      .patch("/portal/me/preferences")
+      .set("Authorization", `Bearer ${normalToken}`)
+      .send({ homeEntryIds: [2, 1], toolEntryIds: [3, 2] })
+      .expect(200);
+
+    expect(updated.body).toEqual({
+      homeEntryIds: [2, 1],
+      toolEntryIds: [3, 2],
+    });
+
+    await request(app.getHttpServer())
+      .patch("/portal/me/preferences")
+      .set("Authorization", `Bearer ${normalToken}`)
+      .send({ homeEntryIds: [4], toolEntryIds: [] })
+      .expect(400);
+
+    const loaded = await request(app.getHttpServer())
+      .get("/portal/me/preferences")
+      .set("Authorization", `Bearer ${normalToken}`)
+      .expect(200);
+    expect(loaded.body).toEqual({
+      homeEntryIds: [2, 1],
+      toolEntryIds: [3, 2],
+    });
   });
 
   it("allows administrators to manage non-server content only", async () => {
@@ -732,9 +788,10 @@ describe("portal content management (e2e)", () => {
     expect(convertedCategoryResponse.body.kind).toBe("server");
     expect(
       convertedCategoryResponse.body.entries.every(
-        (entry: { visibility: string; allowedRoles: unknown[] }) =>
+        (entry: { visibility: string; allowedRoles: unknown[]; isFeatured: boolean }) =>
           entry.visibility === "authenticated" &&
-          entry.allowedRoles.length === 0,
+          entry.allowedRoles.length === 0 &&
+          !entry.isFeatured,
       ),
     ).toBe(true);
   });

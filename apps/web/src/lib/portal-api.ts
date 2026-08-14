@@ -28,6 +28,8 @@ export interface PortalEntry {
   visibility: PortalVisibility;
   sortOrder: number;
   status: PortalRecordStatus;
+  isFeatured: boolean;
+  featuredSortOrder: number;
   allowedRoles: PortalRoleSummary[];
   createdAt: string;
   updatedAt: string;
@@ -50,6 +52,11 @@ export interface PortalContent {
   categories: PortalCategory[];
 }
 
+export interface PortalPreferences {
+  homeEntryIds: number[];
+  toolEntryIds: number[];
+}
+
 export interface PortalCategoryInput {
   kind: PortalCategoryKind;
   name: string;
@@ -68,6 +75,8 @@ export interface PortalEntryInput {
   visibility: PortalVisibility;
   sortOrder: number;
   status: PortalRecordStatus;
+  isFeatured: boolean;
+  featuredSortOrder: number;
   roleCodes: string[];
 }
 
@@ -101,6 +110,26 @@ export async function listPortalAdminContent(
   return requestJson<PortalContent>("/portal/admin", {
     cache: "no-store",
     headers: authorizationHeader(accessToken),
+  });
+}
+
+export async function getPortalPreferences(
+  accessToken: string,
+): Promise<PortalPreferences> {
+  return requestJson<PortalPreferences>("/portal/me/preferences", {
+    cache: "no-store",
+    headers: authorizationHeader(accessToken),
+  });
+}
+
+export async function updatePortalPreferences(
+  accessToken: string,
+  input: PortalPreferences,
+): Promise<PortalPreferences> {
+  return requestJson<PortalPreferences>("/portal/me/preferences", {
+    method: "PATCH",
+    headers: authorizationHeader(accessToken),
+    body: JSON.stringify(input),
   });
 }
 

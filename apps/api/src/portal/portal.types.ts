@@ -33,6 +33,8 @@ export interface PortalEntryResponse {
   visibility: PortalVisibility;
   sortOrder: number;
   status: PortalRecordStatus;
+  isFeatured: boolean;
+  featuredSortOrder: number;
   allowedRoles: PortalRoleSummary[];
   createdAt: Date;
   updatedAt: Date;
@@ -53,4 +55,9 @@ export interface PortalCategoryResponse {
 
 export interface PortalContentResponse {
   categories: PortalCategoryResponse[];
+}
+
+export interface PortalPreferenceResponse {
+  homeEntryIds: number[];
+  toolEntryIds: number[];
 }

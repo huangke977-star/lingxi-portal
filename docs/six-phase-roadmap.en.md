@@ -3,7 +3,7 @@
 - Document status: Active
 - Created: 2026-08-04
 - Last updated: 2026-08-14
-- Current phase: Phase 8 not started (the Phase 7 backup recovery closure is complete)
+- Current phase: Phase 9 not started (the Phase 8 portal entry upgrade is complete)
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -40,7 +40,7 @@ Status definitions:
 | Phase 5 | Social Capability | Group chat, group files, moderation, temporary conversations | Completed |
 | Phase 6 | Operations Console | Operational analytics, announcements, scheduling, read statistics | Completed |
 | Phase 7 | Backup Recovery Closure | Paired database/media snapshots, integrity verification, restore preflight | Completed |
-| Phase 8 | Portal Entry Upgrade | Home, dashboard, and tools-center redesign | Not started |
+| Phase 8 | Portal Entry Upgrade | Home, dashboard, and tools-center redesign | Completed |
 | Phase 9 | Privacy And Discovery Extension | Social permissions, search scope, discovery entry points | Not started |
 | Phase 10 | Moderation Automation | Unified reports, anti-spam, and review rules | Not started |
 
@@ -369,12 +369,21 @@ Goal: organize existing articles, messages, groups, announcements, navigation, a
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P8-01 | Define information architecture and signed-in/role-aware display rules for home, dashboard, and tools center | Not started |
-| P8-02 | Redesign home with announcements, site activity, popular content, topics/collections, and quick entry points | Not started |
-| P8-03 | Redesign dashboard with creations, message tasks, group tasks, management tasks, and role-relevant overview | Not started |
-| P8-04 | Redesign tools center with search, favorites, ordering, and permission-filtered tool/navigation entries | Not started |
-| P8-05 | Persist each user's home shortcuts and tool order while administrators maintain public recommendations | Not started |
-| P8-06 | Complete desktop, Android, and iPhone layout verification with no horizontal overflow | Not started |
+| P8-01 | Define information architecture and signed-in/role-aware display rules for home, dashboard, and tools center | Completed |
+| P8-02 | Redesign home with announcements, site activity, popular content, topics/collections, and quick entry points | Completed |
+| P8-03 | Redesign dashboard with creations, message tasks, group tasks, management tasks, and role-relevant overview | Completed |
+| P8-04 | Redesign tools center with search, favorites, ordering, and permission-filtered tool/navigation entries | Completed |
+| P8-05 | Persist each user's home shortcuts and tool order while administrators maintain public recommendations | Completed |
+| P8-06 | Complete desktop, Android, and iPhone layout verification with no horizontal overflow | Completed |
+
+### Current Implementation Results
+
+- The home page is now a compact information hub. Announcements, popular articles, topics/collections, and shortcuts reuse existing visibility rules. When users have not chosen shortcuts, it falls back to administrator recommendations or visible entries.
+- The dashboard brings together article states, unread messages, friend requests, group approvals, comment reports, group reports, and role-relevant management work. Moderator tasks are visible only to administrators and super administrators.
+- The tools center searches navigation, tools, and super-administrator server entries together. Signed-in users can save up to thirty entries and drag to reorder them. The API filters deleted, disabled, and unauthorized entries again on both read and write.
+- Portal entries now have a homepage recommendation flag and order, maintained in Content Management. Server entries cannot become public recommendations.
+- Mobile uses a single-column layout. The database restore dialog is centered against viewport width while preserving its height constraints and avoiding horizontal overflow.
+- Prisma schema validation, API build, Web build, API/Web lint, and focused portal API tests passed. The complete API run passed 34 of 35 suites; the sole existing failure is `chat-attachments.e2e-spec.ts`, which calls an outdated download-method signature and is unrelated to P8.
 
 ### Phase 9: Privacy And Discovery Extension
 

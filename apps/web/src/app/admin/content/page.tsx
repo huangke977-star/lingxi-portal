@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Star, Trash2 } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
 import { listRoles } from "@/lib/admin-api";
 import { AuthRole, AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
@@ -215,6 +215,8 @@ export default function ContentManagementPage() {
         visibility: entry.visibility,
         sortOrder: entry.sortOrder,
         status: entry.status,
+        isFeatured: entry.isFeatured,
+        featuredSortOrder: entry.featuredSortOrder,
         roleCodes: entry.allowedRoles.map((role) => role.code),
       },
     });
@@ -486,6 +488,7 @@ export default function ContentManagementPage() {
                       <span>{VISIBILITY_LABEL[entry.visibility]}</span>
                       <span>{entry.status === "active" ? "启用" : "停用"}</span>
                       <span>排序 {entry.sortOrder}</span>
+                      {entry.isFeatured ? <span>首页推荐 {entry.featuredSortOrder}</span> : null}
                     </div>
                   </div>
                   <div className="portal-row-actions">
@@ -918,6 +921,35 @@ function EntryDialog({
             />
             <span>在新标签页打开</span>
           </label>
+          {!isServer ? (
+            <div className="portal-form-columns portal-featured-fields">
+              <label className="portal-checkbox-row">
+                <input
+                  checked={dialog.draft.isFeatured}
+                  disabled={isSaving}
+                  onChange={(event) =>
+                    onChange({ ...dialog.draft, isFeatured: event.target.checked })
+                  }
+                  type="checkbox"
+                />
+                <span><Star aria-hidden="true" size={14} />首页推荐</span>
+              </label>
+              <label>
+                推荐排序
+                <input
+                  disabled={isSaving || !dialog.draft.isFeatured}
+                  onChange={(event) =>
+                    onChange({
+                      ...dialog.draft,
+                      featuredSortOrder: Number(event.target.value),
+                    })
+                  }
+                  type="number"
+                  value={dialog.draft.featuredSortOrder}
+                />
+              </label>
+            </div>
+          ) : null}
           <div className="actions">
             <button className="button" disabled={isSaving} type="submit">
               {isSaving ? "保存中" : "保存"}
@@ -948,6 +980,8 @@ function emptyEntryDraft(category: PortalCategory): PortalEntryInput {
     visibility: category.kind === "server" ? "authenticated" : "public",
     sortOrder: 0,
     status: "active",
+    isFeatured: false,
+    featuredSortOrder: 0,
     roleCodes: [],
   };
 }

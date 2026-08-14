@@ -20,12 +20,14 @@ import {
   PortalListQueryDto,
   UpdatePortalCategoryDto,
   UpdatePortalEntryDto,
+  UpdatePortalPreferenceDto,
 } from "./dto/portal.dto";
 import { PortalService } from "./portal.service";
 import {
   PortalCategoryResponse,
   PortalContentResponse,
   PortalEntryResponse,
+  PortalPreferenceResponse,
 } from "./portal.types";
 
 @Controller("portal")
@@ -46,6 +48,23 @@ export class PortalController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<PortalContentResponse> {
     return this.portalService.listForUser(query, user);
+  }
+
+  @Get("me/preferences")
+  @UseGuards(JwtAuthGuard)
+  getPreferences(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<PortalPreferenceResponse> {
+    return this.portalService.getPreferences(user);
+  }
+
+  @Patch("me/preferences")
+  @UseGuards(JwtAuthGuard)
+  updatePreferences(
+    @Body() dto: UpdatePortalPreferenceDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<PortalPreferenceResponse> {
+    return this.portalService.updatePreferences(dto, user);
   }
 
   @Get("admin")
