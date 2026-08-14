@@ -542,6 +542,43 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async deployPendingMigrations(): Promise<void> {
+    try {
+      await this.runPrismaMigrationCommand(["migrate", "deploy"], "数据库恢复后迁移失败。");
+    } catch (error) {
+      if (!this.isRecoverableChatGroupBanMigrationError(error) || !(await this.hasChatGroupBanSchema())) {
+        throw error;
+      }
+      this.logger.warn("Recovered the completed chat group ban migration left pending by a restored backup.");
+      await this.runPrismaMigrationCommand(
+        ["migrate", "resolve", "--applied", "20260813113000_add_chat_group_bans"],
+        "数据库恢复后迁移记录修复失败。",
+      );
+      await this.runPrismaMigrationCommand(["migrate", "deploy"], "数据库恢复后迁移失败。");
+    }
+  }
+
+  private async hasChatGroupBanSchema(): Promise<boolean> {
+    try {
+      await Promise.all([
+        this.prisma.chatGroup.findFirst({
+          select: { id: true, isBanned: true, bannedUntil: true, banReason: true },
+        }),
+        this.prisma.chatGroupBanRecord.findFirst({ select: { id: true } }),
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private isRecoverableChatGroupBanMigrationError(error: unknown): boolean {
+    const message = this.errorMessage(error);
+    return message.includes("P3018")
+      && message.includes("20260813113000_add_chat_group_bans")
+      && message.includes("chat_group_ban_records");
+  }
+
+  private async runPrismaMigrationCommand(arguments_: string[], fallback: string): Promise<void> {
     const apiDirectory = join(process.cwd(), "apps", "api");
     const prismaBinary = join(
       apiDirectory,
@@ -549,13 +586,13 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       ".bin",
       process.platform === "win32" ? "prisma.cmd" : "prisma",
     );
-    const child = spawn(prismaBinary, ["migrate", "deploy"], {
+    const child = spawn(prismaBinary, arguments_, {
       cwd: apiDirectory,
       env: process.env,
       stdio: ["ignore", "ignore", "pipe"],
     });
     const stderr = this.collectProcessError(child.stderr);
-    await this.waitForProcess(child, stderr, "数据库恢复后迁移失败。");
+    await this.waitForProcess(child, stderr, fallback);
   }
 
   private operationLabel(operation: string): string {
