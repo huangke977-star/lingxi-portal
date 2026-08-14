@@ -3,7 +3,7 @@
 - Document status: Active
 - Created: 2026-08-04
 - Last updated: 2026-08-14
-- Current phase: Phase 7 in progress (paired database and media snapshots are deployed)
+- Current phase: Phase 8 not started (the Phase 7 backup recovery closure is complete)
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -39,7 +39,7 @@ Status definitions:
 | Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | Completed |
 | Phase 5 | Social Capability | Group chat, group files, moderation, temporary conversations | Completed |
 | Phase 6 | Operations Console | Operational analytics, announcements, scheduling, read statistics | Completed |
-| Phase 7 | Backup Recovery Closure | Paired database/media snapshots, integrity verification, restore preflight | In progress |
+| Phase 7 | Backup Recovery Closure | Paired database/media snapshots, integrity verification, restore preflight | Completed |
 | Phase 8 | Portal Entry Upgrade | Home, dashboard, and tools-center redesign | Not started |
 | Phase 9 | Privacy And Discovery Extension | Social permissions, search scope, discovery entry points | Not started |
 | Phase 10 | Moderation Automation | Unified reports, anti-spam, and review rules | Not started |
@@ -345,6 +345,7 @@ A phase can be marked `Completed` only when all conditions are met:
 | Phase 4 | 2026-08-10 | `ad2fd38`, `f3d9010` | Deployed 2026-08-10; Actions `31351553373`, `31358640865` succeeded | P4-01 through P4-10 and the collection/topic interaction refinement passed automated, desktop/mobile, and production health acceptance |
 | Phase 5 | 2026-08-12 | `1e7881a`, `ca7294c`, `6eb49bc`, `0c6ac56`, `ebdf73a` | Deployed | P5-01 through P5-10 plus group invitation, moderation, media, and mobile interaction refinements are complete |
 | Phase 6 | 2026-08-13 | `3ddfd18` | Deployed; Actions `31657738785` succeeded and production migration applied | P6-01 through P6-10 passed automated checks, migration, health endpoint, and desktop/mobile baseline acceptance; announcement-delivery and administrator-page manual regression will be repeated when a test announcement and current administrator password are available |
+| Phase 7 | 2026-08-14 | `c8b0e3e`, `f813700` | Deployed 2026-08-14 with no pending migrations | Paired snapshots, archive verification, restore preflight, and the post-restore attachment scan are complete; 14 focused API tests, API/Web builds, and the production health endpoint passed |
 
 ## 13. Phase 7 And Beyond Delivery Plan
 
@@ -355,7 +356,7 @@ Goal: prevent local database backups from being separated from uploaded media an
 | ID | Scope | Status |
 | --- | --- | --- |
 | P7-01 | Create a matching media snapshot for every new SQL backup and additively restore the six upload directories | Completed (`c8b0e3e`, 2026-08-14) |
-| P7-02 | Verify SQL, gzip, and media archive readability after backup, then record the latest validation result | Completed (verification metadata is stored beside the backup) |
+| P7-02 | Verify SQL, gzip, and media archive readability after backup, then record the latest validation result | Completed (`f813700`; verification metadata is stored beside the backup) |
 | P7-03 | Show database size, media size, archive state, and validation state in the backup list | Completed |
 | P7-04 | Preflight attachment references and archive availability before restore, including clear legacy SQL-only limitations | Completed (the restore endpoint repeats preflight server-side) |
 | P7-05 | Link missing restored attachments to Storage Management repair records and complete desktop/mobile regression | Completed (restore starts an attachment scan and exposes its repair entry) |
