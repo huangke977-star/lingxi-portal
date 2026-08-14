@@ -76,6 +76,19 @@ const emptySummary = {
 
 const HEADER_MESSAGE_PREVIEW_LIMIT = 8;
 
+function HeaderNotificationCopy({ notification }: { notification: SocialNotification }) {
+  const announcement = notification.context?.kind === "announcement" ? notification.context.announcement : null;
+  if (announcement) {
+    return <span className="header-announcement-notification">
+      <small className="header-announcement-notification-type">站点公告</small>
+      <strong className="header-announcement-notification-title">{announcement.title}</strong>
+      <small className="header-announcement-notification-summary">{announcement.summary || notification.body}</small>
+    </span>;
+  }
+
+  return <span><strong>{notification.title}</strong><small>{notification.context?.commentBody ?? notification.body}</small></span>;
+}
+
 export function TopNav() {
   const router = useRouter();
   const pathname = usePathname();
@@ -361,7 +374,7 @@ export function TopNav() {
                 <div className="header-popover-heading"><strong>消息</strong><button onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">打开聊天</button></div>
                 <div className="header-popover-list">
                   {unreadConversations.map((conversation) => <button key={`conversation-${conversation.id}`} onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ conversationId: conversation.id }); }} type="button"><span className="header-popover-icon"><MessageCircleMore aria-hidden="true" size={16} /></span><span><strong>{conversation.user.nickname}</strong><small>{conversation.lastMessage?.body || "发来附件"}</small></span><b>{conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</b></button>)}
-                  {messageNotifications.map((notification) => { const announcement = notification.context?.kind === "announcement" ? notification.context.announcement : null; return notification.context?.actionable ? <div className="header-popover-actionable" key={`notification-${notification.id}`}><button onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><span><strong>{announcement ? "站点公告" : notification.title}</strong><small>{announcement?.title ?? notification.context?.commentBody ?? notification.body}</small></span></button><span className="header-popover-inline-actions"><button aria-label="同意或处理" onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "resolve-report" : "accept")} title={notification.context?.kind === "group_report" ? "处理" : "同意"} type="button"><Check aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? "处理" : "同意"}</button><button aria-label="拒绝或驳回" onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "reject-report" : "reject")} title={notification.context?.kind === "group_report" ? "驳回" : "拒绝"} type="button"><X aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? "驳回" : "拒绝"}</button></span></div> : <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><span><strong>{announcement ? "站点公告" : notification.title}</strong><small>{announcement?.title ?? notification.context?.commentBody ?? notification.body}</small></span></button>; })}
+                  {messageNotifications.map((notification) => notification.context?.actionable ? <div className="header-popover-actionable" key={`notification-${notification.id}`}><button onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy notification={notification} /></button><span className="header-popover-inline-actions"><button aria-label="同意或处理" onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "resolve-report" : "accept")} title={notification.context?.kind === "group_report" ? "处理" : "同意"} type="button"><Check aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? "处理" : "同意"}</button><button aria-label="拒绝或驳回" onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "reject-report" : "reject")} title={notification.context?.kind === "group_report" ? "驳回" : "拒绝"} type="button"><X aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? "驳回" : "拒绝"}</button></span></div> : <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy notification={notification} /></button>)}
                   {hiddenUnreadCount ? <button className="header-popover-more" onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">还有 {hiddenUnreadCount} 条未读消息，打开聊天查看</button> : null}
                   {!unreadConversations.length && !messageNotifications.length ? <span className="header-popover-empty">暂无新消息。</span> : null}
                 </div>

@@ -1,8 +1,8 @@
 "use client";
 
-import { Archive, BellRing, Check, Eye, LoaderCircle, Pencil, Plus, Search, Send, Trash2, X } from "lucide-react";
+import { Archive, BellRing, Check, ChevronDown, Eye, LoaderCircle, Pencil, Plus, Save, Search, Send, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { listRoles } from "@/lib/admin-api";
 import {
@@ -214,25 +214,44 @@ export default function AnnouncementAdminPage() {
   </section>;
 }
 
+function AnnouncementSelect({ label, onChange, options, value }: { label: string; onChange: (value: string) => void; options: ReadonlyArray<{ label: string; value: string }>; value: string }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const selected = options.find((option) => option.value === value) ?? options[0];
+
+  useEffect(() => {
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setIsOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    return () => window.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, []);
+
+  return <div className="announcement-editor-select" ref={rootRef}>
+    <button aria-expanded={isOpen} aria-haspopup="listbox" aria-label={label} className="announcement-editor-select-trigger" onClick={() => setIsOpen((current) => !current)} type="button"><span>{selected.label}</span><ChevronDown aria-hidden="true" size={15} /></button>
+    {isOpen ? <div aria-label={label} className="announcement-editor-select-menu" role="listbox">{options.map((option) => <button aria-selected={option.value === value} key={option.value} onClick={() => { onChange(option.value); setIsOpen(false); }} role="option" type="button">{option.label}</button>)}</div> : null}
+  </div>;
+}
+
 function AnnouncementEditor({ editor, roles, isSaving, setEditor, onPublish, onSubmit }: { editor: EditorState; roles: AuthRole[]; isSaving: boolean; setEditor: (value: EditorState | null) => void; onPublish: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const input = editor.input;
   const setInput = (next: Partial<AnnouncementInput>) => setEditor({ ...editor, input: { ...input, ...next } });
   const publishBlocked = !isPublishable(input);
-  return <div className="announcement-editor-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !isSaving) setEditor(null); }} role="presentation"><form aria-modal="true" className="announcement-editor" onSubmit={onSubmit} role="dialog">
+  return <div className="announcement-editor-backdrop" role="presentation"><form aria-modal="true" className="announcement-editor" onSubmit={onSubmit} role="dialog">
     <header><span><BellRing aria-hidden="true" size={18} /><strong>{editor.id ? "编辑公告" : "新建公告"}</strong></span><button aria-label="关闭公告编辑" disabled={isSaving} onClick={() => setEditor(null)} type="button"><X aria-hidden="true" size={17} /></button></header>
     <div className="announcement-editor-body">
       <label><span>标题</span><input maxLength={120} onChange={(event) => setInput({ title: event.target.value })} required value={input.title} /></label>
       <label><span>摘要</span><input maxLength={300} onChange={(event) => setInput({ summary: event.target.value })} value={input.summary} /></label>
       <label className="wide"><span>内容</span><textarea maxLength={20000} onChange={(event) => setInput({ content: event.target.value })} required rows={10} value={input.content} /></label>
-      <label><span>投放范围</span><select onChange={(event) => setInput({ audience: event.target.value as AnnouncementAudience })} value={input.audience}><option value="public">所有访客</option><option value="authenticated">登录用户</option><option value="role_restricted">指定角色</option></select></label>
-      <label><span>发布方式</span><select onChange={(event) => setInput({ publishMode: event.target.value as AnnouncementInput["publishMode"] })} value={input.publishMode}><option value="immediate">立即发布</option><option value="scheduled">定时发布</option></select></label>
+      <div className="announcement-editor-select-field"><span>投放范围</span><AnnouncementSelect label="投放范围" onChange={(value) => setInput({ audience: value as AnnouncementAudience })} options={[{ label: "所有访客", value: "public" }, { label: "登录用户", value: "authenticated" }, { label: "指定角色", value: "role_restricted" }]} value={input.audience} /></div>
+      <div className="announcement-editor-select-field"><span>发布方式</span><AnnouncementSelect label="发布方式" onChange={(value) => setInput({ publishMode: value as AnnouncementInput["publishMode"] })} options={[{ label: "立即发布", value: "immediate" }, { label: "定时发布", value: "scheduled" }]} value={input.publishMode} /></div>
       {input.publishMode === "scheduled" ? <label><span>发布时间</span><input onChange={(event) => setInput({ scheduledAt: event.target.value || null })} required step={60} type="datetime-local" value={input.scheduledAt ?? ""} /></label> : null}
       <label><span>自动下线</span><input onChange={(event) => setInput({ expiresAt: event.target.value || null })} step={60} type="datetime-local" value={input.expiresAt ?? ""} /></label>
       <label><span>置顶顺序</span><input disabled={!input.isPinned} min={0} onChange={(event) => setInput({ pinOrder: Number(event.target.value) })} type="number" value={input.pinOrder} /></label>
       <div className="announcement-editor-options"><button aria-pressed={input.isPinned} onClick={() => setInput({ isPinned: !input.isPinned })} type="button"><i>{input.isPinned ? <Check aria-hidden="true" size={11} /> : null}</i>置顶公告</button><button aria-pressed={input.pushEnabled} onClick={() => setInput({ pushEnabled: !input.pushEnabled })} type="button"><i>{input.pushEnabled ? <Check aria-hidden="true" size={11} /> : null}</i>浏览器推送</button></div>
       {input.audience === "role_restricted" ? <fieldset className="wide"><legend>可见角色</legend><div>{roles.map((role) => <button aria-pressed={input.roleCodes.includes(role.code)} key={role.code} onClick={() => setInput({ roleCodes: input.roleCodes.includes(role.code) ? input.roleCodes.filter((code) => code !== role.code) : [...input.roleCodes, role.code] })} type="button"><i>{input.roleCodes.includes(role.code) ? <Check aria-hidden="true" size={11} /> : null}</i>{role.name}</button>)}</div></fieldset> : null}
     </div>
-    <footer><button disabled={isSaving} onClick={() => setEditor(null)} type="button">取消</button><button disabled={isSaving} type="submit">{isSaving ? "保存中" : "保存"}</button><button disabled={isSaving || publishBlocked} onClick={onPublish} title={publishBlocked ? publishBlockReason(input) : "发布公告"} type="button">{input.publishMode === "scheduled" ? "定时发布" : "发布"}</button></footer>
+    <footer><button aria-label="取消编辑" disabled={isSaving} onClick={() => setEditor(null)} title="取消" type="button"><X aria-hidden="true" size={16} /></button><button aria-label="保存草稿" disabled={isSaving} title={isSaving ? "保存中" : "保存草稿"} type="submit">{isSaving ? <LoaderCircle aria-hidden="true" className="spin" size={16} /> : <Save aria-hidden="true" size={16} />}</button><button aria-label={input.publishMode === "scheduled" ? "定时发布" : "发布公告"} disabled={isSaving || publishBlocked} onClick={onPublish} title={publishBlocked ? publishBlockReason(input) : input.publishMode === "scheduled" ? "定时发布" : "发布公告"} type="button"><Send aria-hidden="true" size={16} /></button></footer>
   </form></div>;
 }
 

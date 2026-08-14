@@ -2540,10 +2540,13 @@ function NotificationPanel({
             <NotificationIdentity notification={notification} onOpenGroup={onOpenGroup} onOpenProfile={onOpenProfile} />
             <div className="chat-system-notification-main">
               <button className="chat-system-notification-copy" onClick={() => void onSelect(notification)} type="button"><span>
-                <strong>{notification.context?.kind === "announcement" ? "站点公告" : notification.title}</strong>
-                {notification.context?.kind === "announcement" && notification.context.announcement?.title ? <small>{notification.context.announcement.title}</small> : null}
+                {notification.context?.kind === "announcement" ? <>
+                  <small className="chat-announcement-notification-type">站点公告</small>
+                  <strong className="chat-announcement-notification-title">{notification.context.announcement?.title || notification.title}</strong>
+                  <small className="chat-announcement-notification-summary">{notification.context.announcement?.summary || notification.body}</small>
+                </> : <strong>{notification.title}</strong>}
                 {notification.context?.group?.name ? <small className="chat-notification-group-name">{notification.context.group.name}</small> : null}
-                {notification.context?.kind !== "group_report" ? <small>{notification.context?.kind === "friend_request" && notification.context.requestNote ? notification.context.requestNote : notification.body}</small> : null}
+                {notification.context?.kind !== "announcement" && notification.context?.kind !== "group_report" ? <small>{notification.context?.kind === "friend_request" && notification.context.requestNote ? notification.context.requestNote : notification.body}</small> : null}
                 {notification.context?.commentBody ? <q>{notification.context.commentBody}</q> : null}
                 {notification.context && !notification.context.actionable && notification.context.status ? <em>{notificationStatusLabel(notification.context.kind, notification.context.status)}</em> : null}
                 <time>{formatChatTime(notification.updatedAt || notification.createdAt)}</time>
