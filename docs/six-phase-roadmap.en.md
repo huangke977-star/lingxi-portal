@@ -346,6 +346,7 @@ A phase can be marked `Completed` only when all conditions are met:
 | Phase 5 | 2026-08-12 | `1e7881a`, `ca7294c`, `6eb49bc`, `0c6ac56`, `ebdf73a` | Deployed | P5-01 through P5-10 plus group invitation, moderation, media, and mobile interaction refinements are complete |
 | Phase 6 | 2026-08-13 | `3ddfd18` | Deployed; Actions `31657738785` succeeded and production migration applied | P6-01 through P6-10 passed automated checks, migration, health endpoint, and desktop/mobile baseline acceptance; announcement-delivery and administrator-page manual regression will be repeated when a test announcement and current administrator password are available |
 | Phase 7 | 2026-08-14 | `c8b0e3e`, `f813700` | Deployed 2026-08-14 with no pending migrations | Paired snapshots, archive verification, restore preflight, and the post-restore attachment scan are complete; 14 focused API tests, API/Web builds, and the production health endpoint passed |
+| Phase 8 | 2026-08-14 | `d809d19` | Deployed 2026-08-14 with the portal-preference migration applied | Home, dashboard, tools center, personal shortcuts, administrator recommendations, and mobile restore-dialog centering are complete; focused portal API tests, builds, and desktop/mobile no-overflow checks passed |
 
 ## 13. Phase 7 And Beyond Delivery Plan
 
