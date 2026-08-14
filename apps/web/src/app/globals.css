@@ -15641,6 +15641,8 @@ select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 38%, transpar
 
 /* Every dialog mask uses the same lighter login-style glass treatment. */
 :is(.modal-backdrop, .modal-backdrop--light, .password-modal-backdrop, .avatar-crop-backdrop, .cache-detail-backdrop, .global-search-backdrop, .article-preview-backdrop, .article-versions-backdrop, .comment-report-backdrop, .chat-confirm-backdrop, .install-guide-backdrop, .storage-preview-backdrop, .site-background-preview-backdrop, .announcement-editor-backdrop, .chat-group-manager-backdrop, .group-management-modal-backdrop, .group-management-preview-backdrop) { background: rgba(255, 247, 250, 0.58); backdrop-filter: blur(14px) saturate(120%); -webkit-backdrop-filter: blur(14px) saturate(120%); }
+.suggestion-modal-backdrop,
+.anonymous-topic-backdrop { z-index: 1800; }
 
 /* Suggestions and topic directories use the same compact searchable list shell. */
 .p8-list-search { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; border-bottom: 1px solid color-mix(in srgb, var(--control-line) 72%, transparent); color: var(--muted); padding: 8px 12px; }
