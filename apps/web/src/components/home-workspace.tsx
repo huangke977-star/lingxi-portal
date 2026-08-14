@@ -94,7 +94,7 @@ export function HomeWorkspace() {
 
   const shortcuts = useMemo(() => {
     const preferred = orderedEntries(data.entries, data.preferences?.homeEntryIds ?? []);
-    if (preferred.length) return preferred.slice(0, 8);
+    if (preferred.length) return preferred.slice(0, 12);
     const featured = [...data.entries]
       .filter((entry) => entry.isFeatured)
       .sort((left, right) => left.featuredSortOrder - right.featuredSortOrder || left.id - right.id)
