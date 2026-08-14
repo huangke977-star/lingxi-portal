@@ -14686,8 +14686,12 @@ input[type="checkbox"]:disabled { opacity: 0.48; cursor: default; }
 .p8-star-button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; padding: 0; }
 .p8-star-button:hover { background: var(--accent-soft); color: var(--accent-strong); }
 .p8-star-button.saved { color: #ba8623; }
+.p8-tool-actions { display: flex; align-items: center; gap: 1px; }
+.p8-home-shortcut-button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; padding: 0; }
+.p8-home-shortcut-button:hover { background: var(--accent-soft); color: var(--accent-strong); }
+.p8-home-shortcut-button.selected { color: var(--accent-strong); }
 .p8-all-tools-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; padding: 8px; }
-.p8-tool-card { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) 28px; grid-template-rows: auto auto; gap: 4px 5px; border: 1px solid color-mix(in srgb, var(--control-line) 68%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--surface-strong) 54%, transparent); padding: 9px; }
+.p8-tool-card { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 4px 5px; border: 1px solid color-mix(in srgb, var(--control-line) 68%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--surface-strong) 54%, transparent); padding: 9px; }
 .p8-tool-card:hover { background: color-mix(in srgb, var(--accent-soft) 38%, var(--surface)); }
 .p8-tool-card > small { grid-column: 1 / -1; overflow: hidden; color: var(--muted); font-size: 0.59rem; text-overflow: ellipsis; white-space: nowrap; }
 .p8-tool-card .p8-entry-icon { width: 30px; height: 30px; flex-basis: 30px; }

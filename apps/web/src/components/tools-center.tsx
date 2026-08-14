@@ -3,7 +3,7 @@
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Search, Star, Wrench } from "lucide-react";
+import { House, Search, Star, Wrench } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { PortalEntryVisual } from "@/components/portal-entry-visual";
@@ -76,6 +76,13 @@ export function ToolsCenter() {
     void save({ ...preferences, toolEntryIds: nextIds });
   }
 
+  function toggleHomeShortcut(entryId: number) {
+    const shortcuts = preferences.homeEntryIds;
+    const nextIds = shortcuts.includes(entryId) ? shortcuts.filter((id) => id !== entryId) : [...shortcuts, entryId];
+    if (nextIds.length > 12) { setError("首页快捷入口最多设置 12 个。"); return; }
+    void save({ ...preferences, homeEntryIds: nextIds });
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     if (!event.over || event.active.id === event.over.id) return;
     const oldIndex = preferences.toolEntryIds.indexOf(Number(event.active.id));
@@ -92,7 +99,7 @@ export function ToolsCenter() {
         {savedRecords.length ? <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd} sensors={sensors}><SortableContext items={savedRecords.map(({ entry }) => entry.id)} strategy={verticalListSortingStrategy}><div className="p8-saved-tool-list">{savedRecords.map((record) => <SortableTool key={record.entry.id} onToggle={toggleSaved} record={record} />)}</div></SortableContext></DndContext> : <p className="p8-empty">从右侧工具列表收藏常用入口，可拖动调整顺序。</p>}
       </section>
       <section className="p8-surface p8-all-tools"><div className="p8-section-heading"><div><Wrench aria-hidden="true" size={17} /><h2>全部入口</h2></div><small>按账号权限展示</small></div>
-        {filteredRecords.length ? <div className="p8-all-tools-grid">{filteredRecords.map((record) => <ToolCard isSaved={preferences.toolEntryIds.includes(record.entry.id)} key={record.entry.id} onToggle={toggleSaved} record={record} />)}</div> : <p className="p8-empty">没有匹配的工具或导航。</p>}
+        {filteredRecords.length ? <div className="p8-all-tools-grid">{filteredRecords.map((record) => <ToolCard isHomeShortcut={preferences.homeEntryIds.includes(record.entry.id)} isSaved={preferences.toolEntryIds.includes(record.entry.id)} key={record.entry.id} onToggleHomeShortcut={toggleHomeShortcut} onToggleSaved={toggleSaved} record={record} />)}</div> : <p className="p8-empty">没有匹配的工具或导航。</p>}
       </section>
     </div>}
     <AppToast message={error} onDismiss={() => setError("")} tone="error" />
@@ -105,8 +112,8 @@ function SortableTool({ record, onToggle }: { record: ToolRecord; onToggle: (id:
   return <div className="p8-saved-tool" ref={setNodeRef} style={style}><button aria-label={`拖动排序 ${record.entry.title}`} className="p8-drag-handle" {...attributes} {...listeners} type="button">::</button><ToolLink record={record} /><button aria-label={`取消收藏 ${record.entry.title}`} className="p8-star-button saved" onClick={() => onToggle(record.entry.id)} title="取消收藏" type="button"><Star aria-hidden="true" size={16} fill="currentColor" /></button></div>;
 }
 
-function ToolCard({ record, isSaved, onToggle }: { record: ToolRecord; isSaved: boolean; onToggle: (id: number) => void }) {
-  return <article className="p8-tool-card"><ToolLink record={record} /><button aria-label={isSaved ? `取消收藏 ${record.entry.title}` : `收藏 ${record.entry.title}`} className={`p8-star-button${isSaved ? " saved" : ""}`} onClick={() => onToggle(record.entry.id)} title={isSaved ? "取消收藏" : "加入常用"} type="button"><Star aria-hidden="true" size={16} fill={isSaved ? "currentColor" : "none"} /></button><small>{kindLabel(record.category.kind)} · {record.entry.description || portalHost(record.entry.url)}</small></article>;
+function ToolCard({ record, isHomeShortcut, isSaved, onToggleHomeShortcut, onToggleSaved }: { record: ToolRecord; isHomeShortcut: boolean; isSaved: boolean; onToggleHomeShortcut: (id: number) => void; onToggleSaved: (id: number) => void }) {
+  return <article className="p8-tool-card"><ToolLink record={record} /><div className="p8-tool-actions"><button aria-label={isHomeShortcut ? `移出首页快捷入口 ${record.entry.title}` : `加入首页快捷入口 ${record.entry.title}`} className={`p8-home-shortcut-button${isHomeShortcut ? " selected" : ""}`} onClick={() => onToggleHomeShortcut(record.entry.id)} title={isHomeShortcut ? "移出首页快捷入口" : "加入首页快捷入口"} type="button"><House aria-hidden="true" size={15} fill={isHomeShortcut ? "currentColor" : "none"} /></button><button aria-label={isSaved ? `取消收藏 ${record.entry.title}` : `收藏 ${record.entry.title}`} className={`p8-star-button${isSaved ? " saved" : ""}`} onClick={() => onToggleSaved(record.entry.id)} title={isSaved ? "取消收藏" : "加入常用"} type="button"><Star aria-hidden="true" size={16} fill={isSaved ? "currentColor" : "none"} /></button></div><small>{kindLabel(record.category.kind)} · {record.entry.description || portalHost(record.entry.url)}</small></article>;
 }
 
 function ToolLink({ record }: { record: ToolRecord }) {
