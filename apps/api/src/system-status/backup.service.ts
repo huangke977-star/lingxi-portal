@@ -4,13 +4,15 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   OnModuleDestroy,
   OnModuleInit,
 } from "@nestjs/common";
 import { spawn } from "node:child_process";
 import { createReadStream, createWriteStream } from "node:fs";
-import { chmod, mkdir, opendir, rename, stat, unlink } from "node:fs/promises";
+import { chmod, mkdir, opendir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
+import { Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip, createGzip } from "node:zlib";
 import type { BackupConfiguration } from "../generated/prisma/client";
@@ -22,15 +24,22 @@ import {
 } from "./backup-operation-lock.service";
 import { BackupRemoteService } from "./backup-remote.service";
 import { UpdateBackupConfigurationDto } from "./dto/backup.dto";
+import { StorageManagementService } from "./storage-management.service";
 import type {
   BackupConfigurationResponse,
+  BackupRestorePreflightResponse,
   BackupStatusResponse,
+  BackupVerificationResponse,
   DatabaseBackupResponse,
   RemoteBackupResult,
   RemoteProvider,
 } from "./system-status.types";
 
 type BackupEntry = DatabaseBackupResponse;
+
+type BackupVerificationRecord = BackupVerificationResponse & {
+  version: 1;
+};
 
 const MEDIA_SNAPSHOT_DIRECTORIES = [
   "backgrounds",
@@ -55,6 +64,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     private readonly crypto: BackupCryptoService,
     private readonly remote: BackupRemoteService,
     private readonly operationLock: BackupOperationLockService,
+    @Optional() private readonly storageManagement?: StorageManagementService,
   ) {}
 
   onModuleInit(): void {
@@ -76,14 +86,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
         if (!entry.isFile() || !/\.sql(?:\.gz)?$/i.test(entry.name)) continue;
         const file = await stat(join(this.backupDirectory, entry.name));
         const name = basename(entry.name);
-        const mediaSnapshot = await this.mediaSnapshotStat(name);
-        items.push({
-          name,
-          sizeBytes: file.size,
-          mediaSnapshotAvailable: Boolean(mediaSnapshot),
-          mediaSnapshotSizeBytes: mediaSnapshot?.size ?? null,
-          updatedAt: file.mtime.toISOString(),
-        });
+        items.push(await this.toBackupResponse(name, file));
       }
       items.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
       return {
@@ -196,34 +199,81 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       await this.backupFileStat(filePath);
       await unlink(filePath);
       await unlink(this.mediaSnapshotPath(name)).catch(() => undefined);
+      await unlink(this.verificationPath(name)).catch(() => undefined);
       return { success: true };
+    });
+  }
+
+  async verifyBackup(rawName: string): Promise<DatabaseBackupResponse> {
+    return this.withBackupLock("verify", async () => {
+      const name = this.backupName(rawName);
+      const file = await this.backupFileStat(join(this.backupDirectory, name));
+      await this.verifyAndPersistBackup(name);
+      return this.toBackupResponse(name, file);
+    });
+  }
+
+  async getRestorePreflight(rawName: string): Promise<BackupRestorePreflightResponse> {
+    return this.withBackupLock("preflight", async () => {
+      const name = this.backupName(rawName);
+      const file = await this.backupFileStat(join(this.backupDirectory, name));
+      const verification = await this.verifyAndPersistBackup(name);
+      return this.toRestorePreflight(await this.toBackupResponse(name, file, verification));
     });
   }
 
   async restoreBackup(
     rawName: string,
     confirmation: string,
-  ): Promise<{ success: true; restored: string; safetyBackup: DatabaseBackupResponse; warning: string | null }> {
+  ): Promise<{
+    success: true;
+    restored: string;
+    safetyBackup: DatabaseBackupResponse;
+    warning: string | null;
+    storageScanId: number | null;
+  }> {
     return this.withBackupLock("restore", async () => {
       const name = this.backupName(rawName);
       if (confirmation.trim() !== name) {
         throw new BadRequestException("请输入完整备份文件名确认恢复操作。");
       }
       const filePath = join(this.backupDirectory, name);
-      await this.backupFileStat(filePath);
+      const file = await this.backupFileStat(filePath);
+      const preflight = this.toRestorePreflight(await this.toBackupResponse(
+        name,
+        file,
+        await this.verifyAndPersistBackup(name),
+      ));
+      if (!preflight.canRestore) {
+        throw new BadRequestException(`备份校验未通过，无法恢复：${preflight.warnings.join("；")}`);
+      }
       const safetyBackup = await this.createBackupFile("pre-restore");
       await this.restoreBackupFile(filePath, name.endsWith(".gz"));
       const mediaSnapshotRestored = await this.restoreMediaSnapshot(name);
       // A backup can predate the running API. Bring its schema forward before
       // reporting success so restored data cannot leave newer API queries unusable.
       await this.deployPendingMigrations();
+      let storageScanId: number | null = null;
+      let storageScanWarning: string | null = null;
+      if (this.storageManagement) {
+        try {
+          storageScanId = (await this.storageManagement.startScan(null)).id;
+        } catch (error) {
+          storageScanWarning = `恢复后的附件扫描未启动：${this.errorMessage(error)}`;
+        }
+      }
+      const warning = [
+        mediaSnapshotRestored
+          ? null
+          : "该备份仅包含数据库，未找到对应媒体快照。当前上传文件已保留，但此前已被物理删除的历史附件无法恢复。",
+        storageScanWarning,
+      ].filter((item): item is string => Boolean(item)).join("；") || null;
       return {
         success: true,
         restored: name,
         safetyBackup,
-        warning: mediaSnapshotRestored
-          ? null
-          : "该备份仅包含数据库，未找到对应媒体快照。当前上传文件已保留，但此前已被物理删除的历史附件无法恢复。",
+        warning,
+        storageScanId,
       };
     });
   }
@@ -341,21 +391,17 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
         this.waitForProcess(process, stderr, "数据库备份失败。"),
       ]);
       await rename(temporaryPath, filePath);
-      const [file, mediaSnapshot] = await Promise.all([
-        stat(filePath),
-        this.createMediaSnapshot(name),
-      ]);
-      return {
-        name,
-        sizeBytes: file.size,
-        mediaSnapshotAvailable: true,
-        mediaSnapshotSizeBytes: mediaSnapshot.size,
-        updatedAt: file.mtime.toISOString(),
-      };
+      await this.createMediaSnapshot(name);
+      const verification = await this.verifyAndPersistBackup(name, true);
+      if (verification.status === "failed") {
+        throw new BadRequestException(`备份归档校验失败：${verification.error ?? "无法读取备份文件。"}`);
+      }
+      return this.toBackupResponse(name, await stat(filePath), verification);
     } catch (error) {
       await unlink(temporaryPath).catch(() => undefined);
       await unlink(filePath).catch(() => undefined);
       await unlink(this.mediaSnapshotPath(name)).catch(() => undefined);
+      await unlink(this.verificationPath(name)).catch(() => undefined);
       throw error;
     }
   }
@@ -430,6 +476,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
         if (file.mtimeMs < cutoff) {
           await unlink(filePath);
           await unlink(this.mediaSnapshotPath(entry.name)).catch(() => undefined);
+          await unlink(this.verificationPath(entry.name)).catch(() => undefined);
         }
       }
     } catch (error) {
@@ -706,8 +753,228 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private async toBackupResponse(
+    name: string,
+    file: { size: number; mtime: Date },
+    verification?: BackupVerificationResponse,
+  ): Promise<DatabaseBackupResponse> {
+    const mediaSnapshot = await this.mediaSnapshotStat(name);
+    return {
+      name,
+      sizeBytes: file.size,
+      mediaSnapshotAvailable: Boolean(mediaSnapshot),
+      mediaSnapshotSizeBytes: mediaSnapshot?.size ?? null,
+      verification: verification ?? await this.readVerification(name, Boolean(mediaSnapshot)),
+      updatedAt: file.mtime.toISOString(),
+    };
+  }
+
+  private toRestorePreflight(backup: DatabaseBackupResponse): BackupRestorePreflightResponse {
+    const warnings: string[] = [];
+    if (!backup.verification.databaseValid) {
+      warnings.push(backup.verification.error || "数据库备份归档无法完整读取。");
+    }
+    if (backup.mediaSnapshotAvailable && !backup.verification.mediaValid) {
+      warnings.push(backup.verification.error || "媒体快照归档无法完整读取。");
+    }
+    if (!backup.mediaSnapshotAvailable) {
+      warnings.push("这是仅数据库的旧备份。恢复后会保留当前上传文件，但无法找回此前已物理删除的历史附件。");
+    } else if (backup.verification.mediaDirectories.length !== MEDIA_SNAPSHOT_DIRECTORIES.length) {
+      warnings.push("媒体快照未覆盖全部六个上传目录，恢复前请先重新校验或使用其他备份。");
+    }
+    return {
+      backup,
+      canRestore: backup.verification.databaseValid === true
+        && (!backup.mediaSnapshotAvailable || backup.verification.mediaValid === true)
+        && (backup.verification.mediaDirectories.length === 0
+          || backup.verification.mediaDirectories.length === MEDIA_SNAPSHOT_DIRECTORIES.length),
+      warnings,
+    };
+  }
+
+  private async verifyAndPersistBackup(
+    name: string,
+    requireMediaSnapshot = false,
+  ): Promise<BackupVerificationResponse> {
+    const current = await this.readVerificationRecord(name);
+    const verification = await this.validateBackup(
+      name,
+      requireMediaSnapshot || current?.mediaValid === true,
+    );
+    await this.writeVerification(name, verification);
+    return verification;
+  }
+
+  /** Reads every compressed byte so a successful result means the archive is structurally readable. */
+  private async validateBackup(
+    name: string,
+    requireMediaSnapshot: boolean,
+  ): Promise<BackupVerificationResponse> {
+    let databaseValid = false;
+    let mediaValid: boolean | null = null;
+    let mediaFileCount: number | null = null;
+    let mediaDirectories: string[] = [];
+    let error: string | null = null;
+    try {
+      await this.validateDatabaseArchive(name);
+      databaseValid = true;
+    } catch (validationError) {
+      error = `数据库归档校验失败：${this.errorMessage(validationError)}`;
+    }
+
+    const mediaSnapshot = await this.mediaSnapshotStat(name);
+    if (mediaSnapshot) {
+      try {
+        const archive = await this.inspectMediaArchive(name);
+        mediaFileCount = archive.fileCount;
+        mediaDirectories = archive.directories;
+        mediaValid = archive.directories.length === MEDIA_SNAPSHOT_DIRECTORIES.length;
+        if (!mediaValid) {
+          error = error || "媒体快照未覆盖全部六个上传目录。";
+        }
+      } catch (validationError) {
+        mediaValid = false;
+        error = error || `媒体归档校验失败：${this.errorMessage(validationError)}`;
+      }
+    } else if (requireMediaSnapshot) {
+      mediaValid = false;
+      error = error || "媒体快照文件已缺失。";
+    }
+
+    const status = !databaseValid || mediaValid === false
+      ? "failed"
+      : mediaSnapshot
+        ? "verified"
+        : "database_only";
+    return {
+      status,
+      verifiedAt: new Date().toISOString(),
+      databaseValid,
+      mediaValid,
+      mediaFileCount,
+      mediaDirectories,
+      error,
+    };
+  }
+
+  private async validateDatabaseArchive(name: string): Promise<void> {
+    const source = createReadStream(join(this.backupDirectory, name));
+    const discard = () => new Writable({
+      write(_chunk, _encoding, callback) { callback(); },
+    });
+    if (name.endsWith(".gz")) {
+      await pipeline(source, createGunzip(), discard());
+      return;
+    }
+    await pipeline(source, discard());
+  }
+
+  private async inspectMediaArchive(name: string): Promise<{ fileCount: number; directories: string[] }> {
+    const snapshotPath = this.mediaSnapshotPath(name);
+    const process = spawn("tar", ["-tzf", snapshotPath], { stdio: ["ignore", "pipe", "pipe"] });
+    const stderr = this.collectProcessError(process.stderr);
+    let buffered = "";
+    let fileCount = 0;
+    const directories = new Set<string>();
+    const inspectLine = (line: string) => {
+      const path = line.trim().replace(/^\.\//, "");
+      if (!path) return;
+      const root = path.split("/", 1)[0];
+      if ((MEDIA_SNAPSHOT_DIRECTORIES as readonly string[]).includes(root)) directories.add(root);
+      if (!path.endsWith("/")) fileCount += 1;
+    };
+    const outputDone = new Promise<void>((resolveOutput, rejectOutput) => {
+      process.stdout.setEncoding("utf8");
+      process.stdout.on("data", (chunk: string) => {
+        buffered += chunk;
+        let newline = buffered.indexOf("\n");
+        while (newline >= 0) {
+          inspectLine(buffered.slice(0, newline));
+          buffered = buffered.slice(newline + 1);
+          newline = buffered.indexOf("\n");
+        }
+      });
+      process.stdout.once("end", () => {
+        inspectLine(buffered);
+        resolveOutput();
+      });
+      process.stdout.once("error", rejectOutput);
+    });
+    await Promise.all([
+      outputDone,
+      this.waitForProcess(process, stderr, "媒体归档校验失败。", "媒体归档工具不可用。"),
+    ]);
+    return {
+      fileCount,
+      directories: MEDIA_SNAPSHOT_DIRECTORIES.filter((directory) => directories.has(directory)),
+    };
+  }
+
+  private async readVerification(name: string, mediaSnapshotAvailable: boolean): Promise<BackupVerificationResponse> {
+    const record = await this.readVerificationRecord(name);
+    if (!record) {
+      return {
+        status: "not_verified",
+        verifiedAt: null,
+        databaseValid: null,
+        mediaValid: null,
+        mediaFileCount: null,
+        mediaDirectories: [],
+        error: null,
+      };
+    }
+    if (record.mediaValid === true && !mediaSnapshotAvailable) {
+      return {
+        ...record,
+        status: "failed",
+        mediaValid: false,
+        error: "媒体快照文件已缺失，请勿恢复此备份。",
+      };
+    }
+    return record;
+  }
+
+  private async readVerificationRecord(name: string): Promise<BackupVerificationRecord | null> {
+    try {
+      const parsed: unknown = JSON.parse(await readFile(this.verificationPath(name), "utf8"));
+      if (!this.isVerificationRecord(parsed)) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  private isVerificationRecord(value: unknown): value is BackupVerificationRecord {
+    if (!value || typeof value !== "object") return false;
+    const record = value as Partial<BackupVerificationRecord>;
+    return record.version === 1
+      && (record.status === "verified" || record.status === "database_only" || record.status === "failed")
+      && typeof record.verifiedAt === "string"
+      && typeof record.databaseValid === "boolean"
+      && (typeof record.mediaValid === "boolean" || record.mediaValid === null)
+      && (typeof record.mediaFileCount === "number" || record.mediaFileCount === null)
+      && Array.isArray(record.mediaDirectories)
+      && (typeof record.error === "string" || record.error === null);
+  }
+
+  private async writeVerification(name: string, verification: BackupVerificationResponse): Promise<void> {
+    const filePath = this.verificationPath(name);
+    const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    const record: BackupVerificationRecord = { version: 1, ...verification };
+    try {
+      await writeFile(temporaryPath, JSON.stringify(record), { encoding: "utf8", mode: 0o600 });
+      await rename(temporaryPath, filePath);
+    } finally {
+      await unlink(temporaryPath).catch(() => undefined);
+    }
+  }
+
   private mediaSnapshotPath(backupName: string): string {
     return join(this.backupDirectory, `${backupName}.media.tar.gz`);
+  }
+
+  private verificationPath(backupName: string): string {
+    return join(this.backupDirectory, `${backupName}.verification.json`);
   }
 
   private async mediaSnapshotStat(backupName: string) {

@@ -8,6 +8,7 @@ import { StorageManagementService } from "./storage-management.service";
 import { UpdateBackupConfigurationDto } from "./dto/backup.dto";
 import {
   BackupConfigurationResponse,
+  BackupRestorePreflightResponse,
   DatabaseBackupResponse,
   RemoteProvider,
   SystemStatusResponse,
@@ -113,10 +114,24 @@ export class SystemStatusService {
     return this.backups.deleteBackup(rawName);
   }
 
+  getRestorePreflight(rawName: string): Promise<BackupRestorePreflightResponse> {
+    return this.backups.getRestorePreflight(rawName);
+  }
+
+  verifyBackup(rawName: string): Promise<DatabaseBackupResponse> {
+    return this.backups.verifyBackup(rawName);
+  }
+
   async restoreBackup(
     rawName: string,
     confirmation: string,
-  ): Promise<{ success: true; restored: string; safetyBackup: DatabaseBackupResponse; warning: string | null }> {
+  ): Promise<{
+    success: true;
+    restored: string;
+    safetyBackup: DatabaseBackupResponse;
+    warning: string | null;
+    storageScanId: number | null;
+  }> {
     return this.backups.restoreBackup(rawName, confirmation);
   }
 

@@ -88,9 +88,26 @@ export interface DatabaseBackupResponse {
   sizeBytes: number;
   mediaSnapshotAvailable: boolean;
   mediaSnapshotSizeBytes: number | null;
+  verification: BackupVerificationResponse;
   updatedAt: string;
   remoteResults?: RemoteBackupResult[];
   warning?: string | null;
+}
+
+export interface BackupVerificationResponse {
+  status: "verified" | "database_only" | "failed" | "not_verified";
+  verifiedAt: string | null;
+  databaseValid: boolean | null;
+  mediaValid: boolean | null;
+  mediaFileCount: number | null;
+  mediaDirectories: string[];
+  error: string | null;
+}
+
+export interface BackupRestorePreflightResponse {
+  backup: DatabaseBackupResponse;
+  canRestore: boolean;
+  warnings: string[];
 }
 
 export type RemoteProvider = "oss" | "r2";

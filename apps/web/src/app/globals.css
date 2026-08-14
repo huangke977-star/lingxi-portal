@@ -5342,10 +5342,23 @@ a.entry-item:hover {
 .system-backup-heading > span { display: flex; align-items: center; gap: 7px; }
 .system-backup-heading > button { border: 0; background: transparent; color: var(--accent-strong); cursor: pointer; font: inherit; font-size: 0.7rem; }
 .system-backup-row { display: grid !important; grid-template-columns: minmax(0, 1fr) auto auto; }
+.system-backup-row > span:first-child { min-width: 0; }
+.backup-verification { display: inline-flex; width: max-content; margin-top: 4px; border-radius: 999px; background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--muted-strong); font-size: 0.61rem; font-style: normal; line-height: 1; padding: 3px 6px; }
+.backup-verification.verified,
+.backup-verification.database_only { background: color-mix(in srgb, #2c9a72 16%, transparent); color: #28795d; }
+.backup-verification.failed { background: color-mix(in srgb, #c84f5f 17%, transparent); color: #a73b4b; }
 .system-backup-actions { display: flex !important; grid-auto-flow: column; gap: 2px; }
 .system-backup-actions button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .system-backup-actions button:hover { background: color-mix(in srgb, var(--accent-soft) 60%, transparent); color: var(--accent-strong); }
 .backup-restore-modal { width: min(520px, calc(100vw - 28px)); }
+.backup-preflight,
+.backup-preflight-loading { display: grid; gap: 7px; margin: 0; border-radius: 7px; background: color-mix(in srgb, var(--surface) 54%, transparent); color: var(--muted-strong); font-size: 0.72rem; padding: 10px; }
+.backup-preflight > span { font-weight: 700; }
+.backup-preflight > span.ok { color: #28795d; }
+.backup-preflight > span.error,
+.backup-preflight small { color: #a73b4b; }
+.backup-post-restore-scan { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 9px 0 0; color: var(--muted-strong); font-size: 0.7rem; }
+.backup-post-restore-scan a { color: var(--accent-strong); }
 .backup-confirm-field { display: grid; gap: 7px; }
 .backup-confirm-field span { overflow-wrap: anywhere; border-radius: 6px; background: color-mix(in srgb, var(--surface) 54%, transparent); color: var(--muted-strong); font-size: 0.72rem; padding: 8px; }
 .backup-confirm-field input { min-height: 42px; border: 1px solid var(--control-line); border-radius: 7px; background: var(--control-surface); color: var(--foreground); padding: 0 10px; }

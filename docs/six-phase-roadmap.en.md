@@ -355,10 +355,10 @@ Goal: prevent local database backups from being separated from uploaded media an
 | ID | Scope | Status |
 | --- | --- | --- |
 | P7-01 | Create a matching media snapshot for every new SQL backup and additively restore the six upload directories | Completed (`c8b0e3e`, 2026-08-14) |
-| P7-02 | Verify SQL, gzip, and media archive readability after backup, then record the latest validation result | Not started |
-| P7-03 | Show database size, media size, archive state, and validation state in the backup list | Not started |
-| P7-04 | Preflight attachment references and archive availability before restore, including clear legacy SQL-only limitations | Not started |
-| P7-05 | Link missing restored attachments to Storage Management repair records and complete desktop/mobile regression | Not started |
+| P7-02 | Verify SQL, gzip, and media archive readability after backup, then record the latest validation result | Completed (verification metadata is stored beside the backup) |
+| P7-03 | Show database size, media size, archive state, and validation state in the backup list | Completed |
+| P7-04 | Preflight attachment references and archive availability before restore, including clear legacy SQL-only limitations | Completed (the restore endpoint repeats preflight server-side) |
+| P7-05 | Link missing restored attachments to Storage Management repair records and complete desktop/mobile regression | Completed (restore starts an attachment scan and exposes its repair entry) |
 
 Note: restoring a legacy SQL-only backup must retain current media files and cannot claim to recover historical attachments that were already physically deleted.
 

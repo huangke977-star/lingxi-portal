@@ -35,6 +35,7 @@ import {
   deleteDatabaseBackup,
   downloadDatabaseBackup,
   getBackupConfiguration,
+  getBackupRestorePreflight,
   getMediaBackupJob,
   getStorageOverview,
   getSystemStatus,
@@ -43,8 +44,10 @@ import {
   startMediaBackup,
   testBackupProvider,
   updateBackupConfiguration,
+  verifyDatabaseBackup,
   type BackupConfiguration,
   type BackupConfigurationUpdate,
+  type BackupRestorePreflight,
   type MediaBackupJob,
   type MediaBackupJobDetail,
   type StorageOverview,
@@ -78,6 +81,8 @@ export default function SystemStatusPage() {
   const [providerTesting, setProviderTesting] = useState<"oss" | "r2" | "">("");
   const [restoreTarget, setRestoreTarget] = useState("");
   const [restoreConfirmation, setRestoreConfirmation] = useState("");
+  const [restorePreflight, setRestorePreflight] = useState<BackupRestorePreflight | null>(null);
+  const [postRestoreStorageScanId, setPostRestoreStorageScanId] = useState<number | null>(null);
 
   const loadStatus = useCallback(async (token: string, refresh = false) => {
     if (refresh) setIsRefreshing(true);
@@ -271,14 +276,49 @@ export default function SystemStatusPage() {
     }
   }
 
+  async function handleVerifyBackup(name: string) {
+    if (!accessToken || backupBusy) return;
+    setBackupBusy(`verify:${name}`);
+    setError("");
+    try {
+      const backup = await verifyDatabaseBackup(accessToken, name);
+      await loadStatus(accessToken);
+      setNotice(backup.verification.status === "failed" ? "备份校验失败，请勿用于恢复。" : `备份校验完成：${backup.name}`);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "备份校验失败。");
+    } finally {
+      setBackupBusy("");
+    }
+  }
+
+  async function handleOpenRestoreBackup(name: string) {
+    if (!accessToken || backupBusy) return;
+    setRestoreTarget(name);
+    setRestoreConfirmation("");
+    setRestorePreflight(null);
+    setBackupBusy(`preflight:${name}`);
+    setError("");
+    try {
+      const preflight = await getBackupRestorePreflight(accessToken, name);
+      setRestorePreflight(preflight);
+      await loadStatus(accessToken);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "恢复前校验失败。");
+    } finally {
+      setBackupBusy("");
+    }
+  }
+
   async function handleRestoreBackup() {
-    if (!accessToken || !restoreTarget || restoreConfirmation !== restoreTarget || backupBusy) return;
+    if (!accessToken || !restoreTarget || !restorePreflight?.canRestore || restoreConfirmation !== restoreTarget || backupBusy) return;
     setBackupBusy(`restore:${restoreTarget}`);
     setError("");
     try {
       const restored = await restoreDatabaseBackup(accessToken, restoreTarget);
       setRestoreTarget("");
       setRestoreConfirmation("");
+      setRestorePreflight(null);
+      setPostRestoreStorageScanId(restored.storageScanId);
       await refreshAfterBackup(restored.warning || `数据库与媒体文件已恢复，恢复前备份：${restored.safetyBackup.name}`);
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "数据库恢复失败。");
@@ -355,9 +395,10 @@ export default function SystemStatusPage() {
             <span><HardDrive aria-hidden="true" size={16} /><small>备份占用</small><strong>{formatBytes(status.backups.totalBytes)}</strong></span>
           </div>
           <div className="system-backup-list">
-            {status.backups.items.map((backup) => <div className="system-backup-row" key={backup.name}><span><strong title={backup.name}>{backup.name}</strong><small>{formatDateTime(backup.updatedAt)} · {backup.mediaSnapshotAvailable ? "含媒体快照" : "仅数据库"}</small></span><b>{formatBytes(backup.sizeBytes + (backup.mediaSnapshotSizeBytes ?? 0))}</b><span className="system-backup-actions"><button aria-label={`下载 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => void handleDownloadBackup(backup.name)} title="下载" type="button"><Download aria-hidden="true" size={15} /></button><button aria-label={`恢复 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => { setRestoreTarget(backup.name); setRestoreConfirmation(""); }} title="恢复" type="button"><ArchiveRestore aria-hidden="true" size={15} /></button><button aria-label={`删除 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => void handleDeleteBackup(backup.name)} title="删除" type="button"><Trash2 aria-hidden="true" size={15} /></button></span></div>)}
+            {status.backups.items.map((backup) => <div className="system-backup-row" key={backup.name}><span><strong title={backup.name}>{backup.name}</strong><small>{formatDateTime(backup.updatedAt)} · SQL {formatBytes(backup.sizeBytes)} · {backup.mediaSnapshotAvailable ? `媒体 ${formatBytes(backup.mediaSnapshotSizeBytes ?? 0)}` : "仅数据库"}</small><i className={`backup-verification ${backup.verification.status}`}>{backupVerificationLabel(backup.verification.status)}</i></span><b>{formatBytes(backup.sizeBytes + (backup.mediaSnapshotSizeBytes ?? 0))}</b><span className="system-backup-actions"><button aria-label={`下载 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => void handleDownloadBackup(backup.name)} title="下载" type="button"><Download aria-hidden="true" size={15} /></button><button aria-label={`校验 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => void handleVerifyBackup(backup.name)} title="校验备份" type="button"><ShieldCheck aria-hidden="true" size={15} /></button><button aria-label={`恢复 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => void handleOpenRestoreBackup(backup.name)} title="恢复" type="button"><ArchiveRestore aria-hidden="true" size={15} /></button><button aria-label={`删除 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => void handleDeleteBackup(backup.name)} title="删除" type="button"><Trash2 aria-hidden="true" size={15} /></button></span></div>)}
             {!status.backups.items.length ? <p>{status.backups.available ? "备份目录中暂无 SQL 备份文件。" : "备份目录尚未挂载或不可读取。"}</p> : null}
           </div>
+          {postRestoreStorageScanId ? <p className="backup-post-restore-scan"><ShieldCheck aria-hidden="true" size={15} />恢复后的附件扫描已启动。<Link href={`/admin/storage?scan=${postRestoreStorageScanId}`}>查看扫描与修复</Link></p> : null}
         </section>
 
         <section className="system-status-panel media-backups">
@@ -467,7 +508,7 @@ export default function SystemStatusPage() {
 
       </div>
     </> : <div className="system-status-empty"><CircleAlert aria-hidden="true" size={22} /><span>暂时无法读取系统状态，请稍后刷新。</span></div>}
-    {restoreTarget ? <div className="modal-backdrop modal-backdrop--light" onMouseDown={(event) => { if (event.target === event.currentTarget && !backupBusy) setRestoreTarget(""); }} role="presentation"><div aria-modal="true" className="modal-panel backup-restore-modal" role="dialog"><div className="modal-heading"><span className="section-label">Database restore</span><h2>恢复数据库</h2><p>恢复会覆盖当前数据库，系统会先自动创建一份恢复前备份。含媒体快照的备份会同时追加还原文件，旧备份仅恢复数据库。请输入完整文件名确认。</p></div><label className="backup-confirm-field"><span>{restoreTarget}</span><input autoFocus onChange={(event) => setRestoreConfirmation(event.target.value)} placeholder="输入上方完整文件名" value={restoreConfirmation} /></label><div className="actions"><button className="button" disabled={restoreConfirmation !== restoreTarget || Boolean(backupBusy)} onClick={() => void handleRestoreBackup()} type="button">{backupBusy ? "恢复中" : "确认恢复"}</button><button className="button secondary" disabled={Boolean(backupBusy)} onClick={() => setRestoreTarget("")} type="button">取消</button></div></div></div> : null}
+    {restoreTarget ? <div className="modal-backdrop modal-backdrop--light" onMouseDown={(event) => { if (event.target === event.currentTarget && !backupBusy) { setRestoreTarget(""); setRestorePreflight(null); } }} role="presentation"><div aria-modal="true" className="modal-panel backup-restore-modal" role="dialog"><div className="modal-heading"><span className="section-label">Database restore</span><h2>恢复数据库</h2><p>系统先校验数据库与媒体归档，再创建恢复前安全备份。媒体恢复采用追加方式，不会删除现有上传文件。</p></div>{backupBusy.startsWith("preflight:") ? <p className="backup-preflight-loading">正在完整校验备份归档...</p> : restorePreflight ? <div className="backup-preflight"><span className={restorePreflight.backup.verification.databaseValid ? "ok" : "error"}>数据库归档：{restorePreflight.backup.verification.databaseValid ? "可读取" : "校验失败"}</span><span className={restorePreflight.backup.mediaSnapshotAvailable && !restorePreflight.backup.verification.mediaValid ? "error" : "ok"}>媒体快照：{restorePreflight.backup.mediaSnapshotAvailable ? restorePreflight.backup.verification.mediaValid ? `${restorePreflight.backup.verification.mediaFileCount ?? 0} 个文件，六目录完整` : "校验失败" : "旧备份，仅数据库"}</span>{restorePreflight.warnings.map((warning) => <small key={warning}>{warning}</small>)}</div> : <p className="backup-preflight-loading">无法读取校验结果。</p>}<label className="backup-confirm-field"><span>{restoreTarget}</span><input autoFocus disabled={!restorePreflight?.canRestore || Boolean(backupBusy)} onChange={(event) => setRestoreConfirmation(event.target.value)} placeholder="输入上方完整文件名" value={restoreConfirmation} /></label><div className="actions"><button className="button" disabled={!restorePreflight?.canRestore || restoreConfirmation !== restoreTarget || Boolean(backupBusy)} onClick={() => void handleRestoreBackup()} type="button">{backupBusy ? "恢复中" : "确认恢复"}</button><button className="button secondary" disabled={Boolean(backupBusy)} onClick={() => { setRestoreTarget(""); setRestorePreflight(null); }} type="button">取消</button></div></div></div> : null}
     {selectedMediaJob ? <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedMediaJob(null); }} role="presentation"><div aria-modal="true" className="modal-panel media-backup-detail-modal" role="dialog">
       <header><span><small>Media backup</small><h2>媒体备份任务 #{selectedMediaJob.id}</h2></span><button aria-label="关闭任务详情" onClick={() => setSelectedMediaJob(null)} title="关闭" type="button"><X aria-hidden="true" size={18} /></button></header>
       <div className="media-backup-detail-summary"><span><small>状态</small><strong className={mediaJobTone(selectedMediaJob.status)}>{mediaJobStatusLabel(selectedMediaJob.status)}</strong></span><span><small>文件</small><strong>{selectedMediaJob.processedFiles} / {selectedMediaJob.totalFiles}</strong></span><span><small>上传流量</small><strong>{formatBytes(selectedMediaJob.uploadedBytes)}</strong></span><span><small>提供商</small><strong>{selectedMediaJob.providers.map(providerLabel).join("、") || "未配置"}</strong></span></div>
@@ -621,6 +662,15 @@ function formatBackupSource(value: "media" | "database" | null): string {
   if (value === "media") return "媒体文件备份";
   if (value === "database") return "数据库备份";
   return "等待首次成功任务";
+}
+
+function backupVerificationLabel(status: BackupRestorePreflight["backup"]["verification"]["status"]): string {
+  return ({
+    verified: "已校验",
+    database_only: "仅数据库已校验",
+    failed: "校验失败",
+    not_verified: "未校验",
+  })[status];
 }
 
 function enabledProviderLabel(configuration: BackupConfiguration): string {

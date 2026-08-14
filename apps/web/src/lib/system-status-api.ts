@@ -5,6 +5,7 @@ export interface DatabaseBackup {
   sizeBytes: number;
   mediaSnapshotAvailable: boolean;
   mediaSnapshotSizeBytes: number | null;
+  verification: BackupVerification;
   updatedAt: string;
   remoteResults?: Array<{
     provider: "oss" | "r2";
@@ -13,6 +14,22 @@ export interface DatabaseBackup {
     error: string | null;
   }>;
   warning?: string | null;
+}
+
+export interface BackupVerification {
+  status: "verified" | "database_only" | "failed" | "not_verified";
+  verifiedAt: string | null;
+  databaseValid: boolean | null;
+  mediaValid: boolean | null;
+  mediaFileCount: number | null;
+  mediaDirectories: string[];
+  error: string | null;
+}
+
+export interface BackupRestorePreflight {
+  backup: DatabaseBackup;
+  canRestore: boolean;
+  warnings: string[];
 }
 
 export interface BackupConfiguration {
@@ -586,7 +603,27 @@ export function deleteDatabaseBackup(accessToken: string, name: string): Promise
   return requestJson(`/admin/system/backups/${encodeURIComponent(name)}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } });
 }
 
-export function restoreDatabaseBackup(accessToken: string, name: string): Promise<{ success: true; restored: string; safetyBackup: DatabaseBackup; warning: string | null }> {
+export function getBackupRestorePreflight(accessToken: string, name: string): Promise<BackupRestorePreflight> {
+  return requestJson(`/admin/system/backups/${encodeURIComponent(name)}/preflight`, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function verifyDatabaseBackup(accessToken: string, name: string): Promise<DatabaseBackup> {
+  return requestJson(`/admin/system/backups/${encodeURIComponent(name)}/verify`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function restoreDatabaseBackup(accessToken: string, name: string): Promise<{
+  success: true;
+  restored: string;
+  safetyBackup: DatabaseBackup;
+  warning: string | null;
+  storageScanId: number | null;
+}> {
   return requestJson(`/admin/system/backups/${encodeURIComponent(name)}/restore`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },

@@ -66,6 +66,16 @@ export class SystemStatusController {
     return this.systemStatusService.createBackup();
   }
 
+  @Get("backups/:name/preflight")
+  getRestorePreflight(@Param("name") name: string) {
+    return this.systemStatusService.getRestorePreflight(name);
+  }
+
+  @Post("backups/:name/verify")
+  verifyBackup(@Param("name") name: string) {
+    return this.systemStatusService.verifyBackup(name);
+  }
+
   @Get("backups/configuration")
   getBackupConfiguration() {
     return this.systemStatusService.getBackupConfiguration();
