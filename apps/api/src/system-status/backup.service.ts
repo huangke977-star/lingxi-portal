@@ -194,6 +194,9 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       await this.backupFileStat(filePath);
       const safetyBackup = await this.createBackupFile("pre-restore");
       await this.restoreBackupFile(filePath, name.endsWith(".gz"));
+      // A backup can predate the running API. Bring its schema forward before
+      // reporting success so restored data cannot leave newer API queries unusable.
+      await this.deployPendingMigrations();
       return { success: true, restored: name, safetyBackup };
     });
   }
@@ -536,6 +539,23 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       this.activeBackupOperation = null;
       releaseOperationLock();
     }
+  }
+
+  private async deployPendingMigrations(): Promise<void> {
+    const apiDirectory = join(process.cwd(), "apps", "api");
+    const prismaBinary = join(
+      apiDirectory,
+      "node_modules",
+      ".bin",
+      process.platform === "win32" ? "prisma.cmd" : "prisma",
+    );
+    const child = spawn(prismaBinary, ["migrate", "deploy"], {
+      cwd: apiDirectory,
+      env: process.env,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    const stderr = this.collectProcessError(child.stderr);
+    await this.waitForProcess(child, stderr, "数据库恢复后迁移失败。");
   }
 
   private operationLabel(operation: string): string {
