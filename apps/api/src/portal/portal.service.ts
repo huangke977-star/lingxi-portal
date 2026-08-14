@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { AuthenticatedUser } from "../auth/auth.types";
+import { ArticleCommentStatus, ArticleStatus, ChatGroupMemberStatus, FriendshipStatus } from "../generated/prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { buildSearchFields } from "../search/search-normalization";
 import {
@@ -98,6 +99,29 @@ export class PortalService {
       update: valid,
     });
     return this.normalizePreferences(preference, user);
+  }
+
+  async getHomeSummary(user: AuthenticatedUser) {
+    // These figures describe reactions received by the current user's published content, not actions they performed.
+    const publishedArticleWhere = { authorId: user.id, status: ArticleStatus.published };
+    const [articleViews, commentCount, subscriberCount, likeCount, favoriteCount, friendCount, groupCount] = await Promise.all([
+      this.prisma.article.aggregate({ where: publishedArticleWhere, _sum: { viewCount: true } }),
+      this.prisma.articleComment.count({ where: { status: ArticleCommentStatus.active, article: publishedArticleWhere } }),
+      this.prisma.userSubscription.count({ where: { authorId: user.id } }),
+      this.prisma.articleLike.count({ where: { article: publishedArticleWhere } }),
+      this.prisma.articleFavorite.count({ where: { article: publishedArticleWhere } }),
+      this.prisma.friendship.count({ where: { status: FriendshipStatus.accepted, OR: [{ userOneId: user.id }, { userTwoId: user.id }] } }),
+      this.prisma.chatGroupMember.count({ where: { userId: user.id, status: ChatGroupMemberStatus.active } }),
+    ]);
+    return {
+      articleViews: articleViews._sum.viewCount ?? 0,
+      commentCount,
+      subscriberCount,
+      likeCount,
+      favoriteCount,
+      friendCount,
+      groupCount,
+    };
   }
 
   async listAdmin(actor: AuthenticatedUser): Promise<PortalContentResponse> {

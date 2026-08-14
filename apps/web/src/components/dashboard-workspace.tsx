@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Bell, FilePenLine, MessageCircleMore, ShieldAlert, UsersRound } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
+import { SuggestionsPanel } from "@/components/suggestions-panel";
 import { getCommentReportSummary, getMyArticleSummary, type ArticleMineSummary } from "@/lib/article-api";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
@@ -78,6 +79,7 @@ export function DashboardWorkspace() {
         <section className="p8-surface p8-dashboard-card"><div className="p8-dashboard-card-heading"><UsersRound aria-hidden="true" size={18} /><span><h2>我的群聊</h2><small>加入的群聊与待审批事项</small></span><b>{data.groupCount}</b></div><div className="p8-dashboard-links"><button onClick={() => openChatDock({ tab: "chats" })} type="button">待审批 {data.groupPending}</button><button onClick={() => openChatDock({ tab: "chats" })} type="button">聊天列表 {data.groupCount}</button></div><button className="p8-card-footer-link" onClick={() => openChatDock({ tab: "chats" })} type="button">进入群聊</button></section>
         {canManage ? <section className="p8-surface p8-dashboard-card management"><div className="p8-dashboard-card-heading"><ShieldAlert aria-hidden="true" size={18} /><span><h2>管理待办</h2><small>需要管理员处理的举报</small></span><b>{moderationCount}</b></div><div className="p8-dashboard-links"><Link href="/admin/articles?tab=comments">评论举报 {data.commentReports}</Link><Link href="/admin/groups?tab=reports">群聊举报 {data.groupReports}</Link></div><Link className="p8-card-footer-link" href="/admin">进入管理</Link></section> : null}
       </div>
+      <div className="p8-dashboard-suggestion-row"><SuggestionsPanel mode={user.isSuperAdmin ? "inbox" : "mine"} pageSize={8} title={user.isSuperAdmin ? "收到的建议" : "我的建议"} /></div>
       <section className="p8-surface p8-dashboard-note"><Bell aria-hidden="true" size={16} /><span>工作台只汇总需要处理的内容；所有明细仍保留在文章、聊天和管理页面。</span></section>
     </> : null}
     <AppToast message={error} onDismiss={() => setError("")} tone="error" />

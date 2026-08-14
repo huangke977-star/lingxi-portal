@@ -58,6 +58,12 @@ export class PortalController {
     return this.portalService.getPreferences(user);
   }
 
+  @Get("me/home-summary")
+  @UseGuards(JwtAuthGuard)
+  getHomeSummary(@CurrentUser() user: AuthenticatedUser) {
+    return this.portalService.getHomeSummary(user);
+  }
+
   @Patch("me/preferences")
   @UseGuards(JwtAuthGuard)
   updatePreferences(

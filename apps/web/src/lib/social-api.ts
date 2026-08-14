@@ -221,6 +221,7 @@ export interface SocialNotification {
     | "author_subscribed"
     | "subscription_published"
     | "announcement_published"
+    | "suggestion_updated"
     | "system";
   channel: NotificationChannel;
   title: string;

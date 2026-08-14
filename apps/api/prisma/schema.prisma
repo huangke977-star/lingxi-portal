@@ -110,7 +110,26 @@ enum UserNotificationType {
   author_subscribed
   subscription_published
   announcement_published
+  suggestion_updated
   system
+}
+
+enum SuggestionStatus {
+  pending
+  scheduled
+  in_progress
+  completed
+  rejected
+}
+
+enum AnonymousTopicStatus {
+  active
+  closed
+}
+
+enum AnonymousTopicReactionValue {
+  up
+  down
 }
 
 enum AnnouncementAudience {
@@ -453,6 +472,9 @@ model User {
   announcementsCreated      Announcement[]                 @relation("AnnouncementCreatedBy")
   announcementsUpdated      Announcement[]                 @relation("AnnouncementUpdatedBy")
   announcementReads         AnnouncementRead[]
+  suggestionsSubmitted      SiteSuggestion[]             @relation("SiteSuggestionSubmitter")
+  suggestionsReviewed       SiteSuggestion[]             @relation("SiteSuggestionReviewer")
+  suggestionReplies         SiteSuggestionReply[]        @relation("SiteSuggestionReplyAuthor")
 
   @@index([roleId])
   @@index([createdAt])
@@ -880,6 +902,102 @@ model UserPortalPreference {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@map("user_portal_preferences")
+}
+
+model SiteSuggestion {
+  id           Int              @id @default(autoincrement())
+  userId       Int              @map("user_id")
+  user         User             @relation("SiteSuggestionSubmitter", fields: [userId], references: [id], onDelete: Cascade)
+  title        String           @db.VarChar(120)
+  content      String           @db.Text
+  status       SuggestionStatus @default(pending)
+  reviewedById Int?             @map("reviewed_by_id")
+  reviewedBy   User?            @relation("SiteSuggestionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?        @map("reviewed_at")
+  replies      SiteSuggestionReply[]
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  @@index([status, updatedAt])
+  @@index([userId, updatedAt])
+  @@map("site_suggestions")
+}
+
+model SiteSuggestionReply {
+  id           Int            @id @default(autoincrement())
+  suggestionId Int            @map("suggestion_id")
+  suggestion   SiteSuggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  authorId     Int            @map("author_id")
+  author       User           @relation("SiteSuggestionReplyAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  content      String         @db.Text
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  @@index([suggestionId, createdAt])
+  @@map("site_suggestion_replies")
+}
+
+model AnonymousTopic {
+  id           Int                  @id @default(autoincrement())
+  title        String               @db.VarChar(120)
+  status       AnonymousTopicStatus @default(active)
+  isHidden     Boolean              @default(false) @map("is_hidden")
+  messageCount Int                  @default(0) @map("message_count")
+  identities   AnonymousTopicIdentity[]
+  messages     AnonymousTopicMessage[]
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  @@index([status, isHidden, updatedAt])
+  @@map("anonymous_topics")
+}
+
+model AnonymousTopicIdentity {
+  id           Int            @id @default(autoincrement())
+  topicId      Int            @map("topic_id")
+  topic        AnonymousTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  nickname     String         @db.VarChar(32)
+  passwordHash String         @map("password_hash") @db.VarChar(255)
+  isCreator    Boolean        @default(false) @map("is_creator")
+  messages     AnonymousTopicMessage[]
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  @@unique([topicId, nickname])
+  @@index([topicId, createdAt])
+  @@map("anonymous_topic_identities")
+}
+
+model AnonymousTopicMessage {
+  id           Int            @id @default(autoincrement())
+  topicId      Int            @map("topic_id")
+  topic        AnonymousTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  sequence     Int
+  identityId   Int?           @map("identity_id")
+  identity     AnonymousTopicIdentity? @relation(fields: [identityId], references: [id], onDelete: SetNull)
+  body         String         @db.Text
+  isHidden     Boolean        @default(false) @map("is_hidden")
+  likeCount    Int            @default(0) @map("like_count")
+  dislikeCount Int            @default(0) @map("dislike_count")
+  reactions    AnonymousTopicReaction[]
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  @@unique([topicId, sequence])
+  @@index([topicId, isHidden, sequence])
+  @@map("anonymous_topic_messages")
+}
+
+model AnonymousTopicReaction {
+  messageId  Int                         @map("message_id")
+  message    AnonymousTopicMessage       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  visitorKey String                      @map("visitor_key") @db.Char(64)
+  value      AnonymousTopicReactionValue
+  createdAt  DateTime                    @default(now()) @map("created_at")
+  updatedAt  DateTime                    @updatedAt @map("updated_at")
+
+  @@id([messageId, visitorKey])
+  @@index([visitorKey, updatedAt])
+  @@map("anonymous_topic_reactions")
 }
 
 model PortalEntryRole {

@@ -57,6 +57,16 @@ export interface PortalPreferences {
   toolEntryIds: number[];
 }
 
+export interface PortalHomeSummary {
+  articleViews: number;
+  commentCount: number;
+  subscriberCount: number;
+  likeCount: number;
+  favoriteCount: number;
+  friendCount: number;
+  groupCount: number;
+}
+
 export interface PortalCategoryInput {
   kind: PortalCategoryKind;
   name: string;
@@ -117,6 +127,13 @@ export async function getPortalPreferences(
   accessToken: string,
 ): Promise<PortalPreferences> {
   return requestJson<PortalPreferences>("/portal/me/preferences", {
+    cache: "no-store",
+    headers: authorizationHeader(accessToken),
+  });
+}
+
+export async function getPortalHomeSummary(accessToken: string): Promise<PortalHomeSummary> {
+  return requestJson<PortalHomeSummary>("/portal/me/home-summary", {
     cache: "no-store",
     headers: authorizationHeader(accessToken),
   });

@@ -10,19 +10,28 @@ import {
   BookOpenText,
   Compass,
   FolderOpen,
-  LayoutGrid,
+  Heart,
+  MessageCircleMore,
+  Rss,
+  Star,
+  Users,
+  UsersRound,
   Wrench,
 } from "lucide-react";
+import { AnonymousTopicsPanel } from "@/components/anonymous-topics-panel";
 import { AppToast } from "@/components/app-toast";
 import { PortalEntryVisual } from "@/components/portal-entry-visual";
+import { SuggestionsPanel } from "@/components/suggestions-panel";
 import { listVisibleArticles, listPublicArticles, type Article } from "@/lib/article-api";
 import { listAnnouncements, type AnnouncementSummary } from "@/lib/announcements-api";
 import { AUTH_STATE_CHANGE_EVENT, readAccessToken } from "@/lib/auth-storage";
 import { listTopics, listVisibleCollections, type ArticleCollection, type ArticleTopic } from "@/lib/discovery-api";
 import {
   getPortalPreferences,
+  getPortalHomeSummary,
   listPortalContent,
   type PortalEntry,
+  type PortalHomeSummary,
   type PortalPreferences,
 } from "@/lib/portal-api";
 
@@ -32,6 +41,7 @@ interface HomeData {
   collections: ArticleCollection[];
   entries: PortalEntry[];
   preferences: PortalPreferences | null;
+  homeSummary: PortalHomeSummary | null;
   topics: ArticleTopic[];
 }
 
@@ -40,6 +50,7 @@ const emptyData: HomeData = {
   articles: [],
   collections: [],
   entries: [],
+  homeSummary: null,
   preferences: null,
   topics: [],
 };
@@ -59,7 +70,7 @@ export function HomeWorkspace() {
         ["navigation", "tool", "server", "custom_page"],
         token,
       ).catch(() => ({ categories: [] }));
-      const [announcements, articles, topics, collections, preferences] = await Promise.all([
+      const [announcements, articles, topics, collections, preferences, homeSummary] = await Promise.all([
         listAnnouncements({ page: 1, pageSize: 3 }, token).then((result) => result.items).catch(() => []),
         (token ? listVisibleArticles(token, { page: 1, pageSize: 4, sort: "popular" }) : listPublicArticles({ page: 1, pageSize: 4, sort: "popular" }))
           .then((result) => result.items)
@@ -69,6 +80,7 @@ export function HomeWorkspace() {
           ? listVisibleCollections(token, { page: 1, pageSize: 3 }).then((result) => result.items).catch(() => [])
           : Promise.resolve([]),
         token ? getPortalPreferences(token).catch(() => null) : Promise.resolve(null),
+        token ? getPortalHomeSummary(token).catch(() => null) : Promise.resolve(null),
       ]);
 
       if (!active) return;
@@ -77,6 +89,7 @@ export function HomeWorkspace() {
         articles,
         collections,
         entries: content.categories.flatMap((category) => category.entries),
+        homeSummary,
         preferences,
         topics,
       });
@@ -109,11 +122,7 @@ export function HomeWorkspace() {
           <span className="section-label">HOME</span>
           <h1>首页</h1>
         </div>
-        <nav aria-label="首页快捷入口" className="p8-heading-actions">
-          <Link href="/articles"><BookOpenText aria-hidden="true" size={16} />文章</Link>
-          <Link href="/tools"><Wrench aria-hidden="true" size={16} />工具</Link>
-          <Link href="/dashboard"><LayoutGrid aria-hidden="true" size={16} />工作台</Link>
-        </nav>
+        <HomeStats summary={data.homeSummary} />
       </header>
 
       {isLoading ? <div className="status-row compact-status-row"><span className="status">正在整理首页</span></div> : (
@@ -146,6 +155,7 @@ export function HomeWorkspace() {
                 </Link>)}
               </div> : <P8Empty text="暂时没有可展示的文章。" />}
             </section>
+            <AnonymousTopicsPanel moreHref="/voices" />
           </div>
 
           <aside className="p8-home-side">
@@ -158,6 +168,7 @@ export function HomeWorkspace() {
                 {shortcuts.map((entry) => <PortalShortcut entry={entry} key={entry.id} />)}
               </div> : <P8Empty text="管理员尚未设置推荐入口。" />}
             </section>
+            <SuggestionsPanel moreHref="/suggestions" />
 
             <section className="p8-surface p8-discovery-panel">
               <div className="p8-section-heading"><div><Compass aria-hidden="true" size={17} /><h2>专题</h2></div><Link href="/topics">查看全部<ArrowRight aria-hidden="true" size={14} /></Link></div>
@@ -170,6 +181,20 @@ export function HomeWorkspace() {
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );
+}
+
+function HomeStats({ summary }: { summary: PortalHomeSummary | null }) {
+  if (!summary) return <Link className="p8-home-login-stat" href="/login">登录后查看统计</Link>;
+  const stats = [
+    { icon: BookOpenText, label: "文章阅读", value: summary.articleViews },
+    { icon: MessageCircleMore, label: "收到评论", value: summary.commentCount },
+    { icon: Rss, label: "订阅者", value: summary.subscriberCount },
+    { icon: Heart, label: "收到点赞", value: summary.likeCount },
+    { icon: Star, label: "收到收藏", value: summary.favoriteCount },
+    { icon: Users, label: "好友", value: summary.friendCount },
+    { icon: UsersRound, label: "群聊", value: summary.groupCount },
+  ];
+  return <div aria-label="个人统计" className="p8-home-stats">{stats.map(({ icon: Icon, label, value }) => <span key={label} title={`${label} ${value}`}><Icon aria-hidden="true" size={15} /><b>{value}</b><small>{label}</small></span>)}</div>;
 }
 
 function PortalShortcut({ entry }: { entry: PortalEntry }) {

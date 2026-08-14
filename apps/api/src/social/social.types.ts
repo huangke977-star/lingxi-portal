@@ -228,6 +228,7 @@ export interface UserNotificationResponse {
     | "author_subscribed"
     | "subscription_published"
     | "announcement_published"
+    | "suggestion_updated"
     | "system";
   channel: "system" | "subscription" | "interaction";
   title: string;

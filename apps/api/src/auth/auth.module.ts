@@ -14,5 +14,6 @@ import { RefreshTokenService } from './refresh-token.service';
   imports: [JwtModule.register({}), RedisModule, UsersModule, SiteSettingsModule, SecurityModule],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard, PasswordService, RefreshTokenService],
+  exports: [PasswordService],
 })
 export class AuthModule {}
