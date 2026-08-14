@@ -1,9 +1,9 @@
-# HLOVET Six-Phase Product And Engineering Roadmap
+# HLOVET Product And Engineering Roadmap
 
 - Document status: Active
 - Created: 2026-08-04
-- Last updated: 2026-08-13
-- Current phase: Phase 6 complete (manual announcement-delivery regression remains for a future test announcement)
+- Last updated: 2026-08-14
+- Current phase: Phase 7 in progress (paired database and media snapshots are deployed)
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -19,7 +19,7 @@ Status definitions:
 
 ## 2. Delivery Principles
 
-1. The six phases form one roadmap but must be developed and deployed independently.
+1. All phases form one roadmap but must be developed and deployed independently.
 2. Every phase must be independently releasable and recoverable.
 3. Database migrations should be additive and backward compatible whenever possible.
 4. Incomplete features remain hidden behind permissions or feature flags.
@@ -39,6 +39,10 @@ Status definitions:
 | Phase 4 | Discovery And Profiles | Subscription feed, collections, enhanced profiles | Completed |
 | Phase 5 | Social Capability | Group chat, group files, moderation, temporary conversations | Completed |
 | Phase 6 | Operations Console | Operational analytics, announcements, scheduling, read statistics | Completed |
+| Phase 7 | Backup Recovery Closure | Paired database/media snapshots, integrity verification, restore preflight | In progress |
+| Phase 8 | Portal Entry Upgrade | Home, dashboard, and tools-center redesign | Not started |
+| Phase 9 | Privacy And Discovery Extension | Social permissions, search scope, discovery entry points | Not started |
+| Phase 10 | Moderation Automation | Unified reports, anti-spam, and review rules | Not started |
 
 ## 4. External Prerequisites
 
@@ -342,7 +346,60 @@ A phase can be marked `Completed` only when all conditions are met:
 | Phase 5 | 2026-08-12 | `1e7881a`, `ca7294c`, `6eb49bc`, `0c6ac56`, `ebdf73a` | Deployed | P5-01 through P5-10 plus group invitation, moderation, media, and mobile interaction refinements are complete |
 | Phase 6 | 2026-08-13 | `3ddfd18` | Deployed; Actions `31657738785` succeeded and production migration applied | P6-01 through P6-10 passed automated checks, migration, health endpoint, and desktop/mobile baseline acceptance; announcement-delivery and administrator-page manual regression will be repeated when a test announcement and current administrator password are available |
 
-## 13. Resume Procedure
+## 13. Phase 7 And Beyond Delivery Plan
+
+### Phase 7: Backup Recovery Closure
+
+Goal: prevent local database backups from being separated from uploaded media and make recovery outcomes visible and verifiable.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P7-01 | Create a matching media snapshot for every new SQL backup and additively restore the six upload directories | Completed (`c8b0e3e`, 2026-08-14) |
+| P7-02 | Verify SQL, gzip, and media archive readability after backup, then record the latest validation result | Not started |
+| P7-03 | Show database size, media size, archive state, and validation state in the backup list | Not started |
+| P7-04 | Preflight attachment references and archive availability before restore, including clear legacy SQL-only limitations | Not started |
+| P7-05 | Link missing restored attachments to Storage Management repair records and complete desktop/mobile regression | Not started |
+
+Note: restoring a legacy SQL-only backup must retain current media files and cannot claim to recover historical attachments that were already physically deleted.
+
+### Phase 8: Home, Dashboard, And Tools Center
+
+Goal: organize existing articles, messages, groups, announcements, navigation, and management capabilities around the entry points users use every day, without waiting for Phases 9 or 10.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P8-01 | Define information architecture and signed-in/role-aware display rules for home, dashboard, and tools center | Not started |
+| P8-02 | Redesign home with announcements, site activity, popular content, topics/collections, and quick entry points | Not started |
+| P8-03 | Redesign dashboard with creations, message tasks, group tasks, management tasks, and role-relevant overview | Not started |
+| P8-04 | Redesign tools center with search, favorites, ordering, and permission-filtered tool/navigation entries | Not started |
+| P8-05 | Persist each user's home shortcuts and tool order while administrators maintain public recommendations | Not started |
+| P8-06 | Complete desktop, Android, and iPhone layout verification with no horizontal overflow | Not started |
+
+### Phase 9: Privacy And Discovery Extension
+
+Goal: provide controlled social boundaries for real user growth and make public content easier to discover.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P9-01 | Add visibility and delivery settings for profiles, friend requests, private messages, and group invitations | Not started |
+| P9-02 | Add a stranger-message request inbox and consistent blacklist behavior | Not started |
+| P9-03 | Extend global search to permission-visible topics, collections, groups, and site announcements | Not started |
+| P9-04 | Add permission-filtered recommended topics, collections, and active groups to discovery | Not started |
+
+### Phase 10: Moderation Automation
+
+Goal: reduce manual review pressure while retaining a complete handling record as public users and groups grow.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P10-01 | Consolidate article-comment, group-message, and user-related reports into one pending queue | Not started |
+| P10-02 | Add configurable sensitive-word, link-frequency, duplicate-content, and high-frequency-message rules | Not started |
+| P10-03 | Add bulk handling, resolution templates, handling deadlines, and automatic notices | Not started |
+| P10-04 | Add moderation audit, statistics, and administrator permission-boundary coverage | Not started |
+
+The fixed delivery order is remaining P7 work -> P8 home/dashboard/tools center -> P9 -> P10. Each phase must be independently accepted, deployed, and recorded under this roadmap's definition of done.
+
+## 14. Resume Procedure
 
 When continuing this roadmap:
 
