@@ -3,6 +3,8 @@ import { requestBlob, requestJson } from "./auth-api";
 export interface DatabaseBackup {
   name: string;
   sizeBytes: number;
+  mediaSnapshotAvailable: boolean;
+  mediaSnapshotSizeBytes: number | null;
   updatedAt: string;
   remoteResults?: Array<{
     provider: "oss" | "r2";
@@ -584,7 +586,7 @@ export function deleteDatabaseBackup(accessToken: string, name: string): Promise
   return requestJson(`/admin/system/backups/${encodeURIComponent(name)}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } });
 }
 
-export function restoreDatabaseBackup(accessToken: string, name: string): Promise<{ success: true; restored: string; safetyBackup: DatabaseBackup }> {
+export function restoreDatabaseBackup(accessToken: string, name: string): Promise<{ success: true; restored: string; safetyBackup: DatabaseBackup; warning: string | null }> {
   return requestJson(`/admin/system/backups/${encodeURIComponent(name)}/restore`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },

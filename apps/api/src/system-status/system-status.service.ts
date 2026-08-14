@@ -116,7 +116,7 @@ export class SystemStatusService {
   async restoreBackup(
     rawName: string,
     confirmation: string,
-  ): Promise<{ success: true; restored: string; safetyBackup: DatabaseBackupResponse }> {
+  ): Promise<{ success: true; restored: string; safetyBackup: DatabaseBackupResponse; warning: string | null }> {
     return this.backups.restoreBackup(rawName, confirmation);
   }
 

@@ -32,10 +32,20 @@ import type {
 
 type BackupEntry = DatabaseBackupResponse;
 
+const MEDIA_SNAPSHOT_DIRECTORIES = [
+  "backgrounds",
+  "site-assets",
+  "android-releases",
+  "avatars",
+  "articles",
+  "chat",
+] as const;
+
 @Injectable()
 export class BackupService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BackupService.name);
   private readonly backupDirectory = resolve(process.env.BACKUP_DIR ?? join(process.cwd(), "backups"));
+  private readonly mediaDirectory = resolve(process.cwd(), "uploads");
   private activeBackupOperation: string | null = null;
   private schedulerTimer: NodeJS.Timeout | null = null;
   private schedulerRunning = false;
@@ -65,12 +75,20 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       for await (const entry of directory) {
         if (!entry.isFile() || !/\.sql(?:\.gz)?$/i.test(entry.name)) continue;
         const file = await stat(join(this.backupDirectory, entry.name));
-        items.push({ name: basename(entry.name), sizeBytes: file.size, updatedAt: file.mtime.toISOString() });
+        const name = basename(entry.name);
+        const mediaSnapshot = await this.mediaSnapshotStat(name);
+        items.push({
+          name,
+          sizeBytes: file.size,
+          mediaSnapshotAvailable: Boolean(mediaSnapshot),
+          mediaSnapshotSizeBytes: mediaSnapshot?.size ?? null,
+          updatedAt: file.mtime.toISOString(),
+        });
       }
       items.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
       return {
         available: true,
-        totalBytes: items.reduce((total, item) => total + item.sizeBytes, 0),
+        totalBytes: items.reduce((total, item) => total + item.sizeBytes + (item.mediaSnapshotSizeBytes ?? 0), 0),
         fileCount: items.length,
         latest: items[0] ?? null,
         items,
@@ -177,6 +195,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       const filePath = join(this.backupDirectory, name);
       await this.backupFileStat(filePath);
       await unlink(filePath);
+      await unlink(this.mediaSnapshotPath(name)).catch(() => undefined);
       return { success: true };
     });
   }
@@ -184,7 +203,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
   async restoreBackup(
     rawName: string,
     confirmation: string,
-  ): Promise<{ success: true; restored: string; safetyBackup: DatabaseBackupResponse }> {
+  ): Promise<{ success: true; restored: string; safetyBackup: DatabaseBackupResponse; warning: string | null }> {
     return this.withBackupLock("restore", async () => {
       const name = this.backupName(rawName);
       if (confirmation.trim() !== name) {
@@ -194,10 +213,18 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       await this.backupFileStat(filePath);
       const safetyBackup = await this.createBackupFile("pre-restore");
       await this.restoreBackupFile(filePath, name.endsWith(".gz"));
+      const mediaSnapshotRestored = await this.restoreMediaSnapshot(name);
       // A backup can predate the running API. Bring its schema forward before
       // reporting success so restored data cannot leave newer API queries unusable.
       await this.deployPendingMigrations();
-      return { success: true, restored: name, safetyBackup };
+      return {
+        success: true,
+        restored: name,
+        safetyBackup,
+        warning: mediaSnapshotRestored
+          ? null
+          : "该备份仅包含数据库，未找到对应媒体快照。当前上传文件已保留，但此前已被物理删除的历史附件无法恢复。",
+      };
     });
   }
 
@@ -314,12 +341,64 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
         this.waitForProcess(process, stderr, "数据库备份失败。"),
       ]);
       await rename(temporaryPath, filePath);
-      const file = await stat(filePath);
-      return { name, sizeBytes: file.size, updatedAt: file.mtime.toISOString() };
+      const [file, mediaSnapshot] = await Promise.all([
+        stat(filePath),
+        this.createMediaSnapshot(name),
+      ]);
+      return {
+        name,
+        sizeBytes: file.size,
+        mediaSnapshotAvailable: true,
+        mediaSnapshotSizeBytes: mediaSnapshot.size,
+        updatedAt: file.mtime.toISOString(),
+      };
+    } catch (error) {
+      await unlink(temporaryPath).catch(() => undefined);
+      await unlink(filePath).catch(() => undefined);
+      await unlink(this.mediaSnapshotPath(name)).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /** Keeps SQL and upload files paired so a restored database still has its referenced media. */
+  private async createMediaSnapshot(backupName: string) {
+    await mkdir(this.mediaDirectory, { recursive: true, mode: 0o700 });
+    await Promise.all(MEDIA_SNAPSHOT_DIRECTORIES.map((directory) => mkdir(join(this.mediaDirectory, directory), {
+      recursive: true,
+      mode: 0o700,
+    })));
+    const snapshotPath = this.mediaSnapshotPath(backupName);
+    const temporaryPath = `${snapshotPath}.tmp`;
+    const process = spawn("tar", [
+      "-C",
+      this.mediaDirectory,
+      "-czf",
+      temporaryPath,
+      ...MEDIA_SNAPSHOT_DIRECTORIES,
+    ], { stdio: ["ignore", "ignore", "pipe"] });
+    const stderr = this.collectProcessError(process.stderr);
+    try {
+      await this.waitForProcess(process, stderr, "媒体快照创建失败。", "媒体归档工具不可用。");
+      await chmod(temporaryPath, 0o600);
+      await rename(temporaryPath, snapshotPath);
+      return await stat(snapshotPath);
     } catch (error) {
       await unlink(temporaryPath).catch(() => undefined);
       throw error;
     }
+  }
+
+  /** Extracts additively so recovering an old database cannot delete newer uploaded files. */
+  private async restoreMediaSnapshot(backupName: string): Promise<boolean> {
+    const snapshotPath = this.mediaSnapshotPath(backupName);
+    if (!(await this.mediaSnapshotStat(backupName))) return false;
+    await mkdir(this.mediaDirectory, { recursive: true, mode: 0o700 });
+    const process = spawn("tar", ["-C", this.mediaDirectory, "-xzf", snapshotPath], {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    const stderr = this.collectProcessError(process.stderr);
+    await this.waitForProcess(process, stderr, "媒体快照恢复失败。", "媒体归档工具不可用。");
+    return true;
   }
 
   private async restoreBackupFile(filePath: string, compressed: boolean): Promise<void> {
@@ -348,7 +427,10 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
         if (!entry.isFile() || entry.name === currentName || !/\.sql(?:\.gz)?$/i.test(entry.name)) continue;
         const filePath = join(this.backupDirectory, entry.name);
         const file = await stat(filePath);
-        if (file.mtimeMs < cutoff) await unlink(filePath);
+        if (file.mtimeMs < cutoff) {
+          await unlink(filePath);
+          await unlink(this.mediaSnapshotPath(entry.name)).catch(() => undefined);
+        }
       }
     } catch (error) {
       this.logger.warn(`Local backup cleanup failed: ${this.errorMessage(error)}`);
@@ -517,9 +599,10 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     child: ReturnType<typeof spawn>,
     stderr: { value: string },
     fallback: string,
+    unavailableMessage = "数据库客户端不可用。",
   ): Promise<void> {
     return new Promise((resolveProcess, rejectProcess) => {
-      child.once("error", () => rejectProcess(new BadRequestException(`${fallback} 数据库客户端不可用。`)));
+      child.once("error", () => rejectProcess(new BadRequestException(`${fallback} ${unavailableMessage}`)));
       child.once("close", (code) => {
         if (code === 0) resolveProcess();
         else rejectProcess(new BadRequestException(stderr.value.trim() || fallback));
@@ -620,6 +703,19 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       return file;
     } catch {
       throw new NotFoundException("备份文件不存在。");
+    }
+  }
+
+  private mediaSnapshotPath(backupName: string): string {
+    return join(this.backupDirectory, `${backupName}.media.tar.gz`);
+  }
+
+  private async mediaSnapshotStat(backupName: string) {
+    try {
+      const file = await stat(this.mediaSnapshotPath(backupName));
+      return file.isFile() ? file : null;
+    } catch {
+      return null;
     }
   }
 

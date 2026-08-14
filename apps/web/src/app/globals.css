@@ -14569,6 +14569,9 @@ input[type="checkbox"]:disabled { opacity: 0.48; cursor: default; }
   .group-management-search { width: 100%; }
   .group-management-report-filter { justify-content: flex-start; }
   .group-admin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-admin-card { grid-template-rows: auto minmax(0, 1fr); }
+  .report-admin-card-images img { height: auto; aspect-ratio: 3 / 2; }
+  .report-admin-card-images.count-1 img { height: auto; aspect-ratio: 16 / 10; }
 }
 
 @media (max-width: 420px) {

@@ -86,6 +86,8 @@ export interface SystemStatusResponse {
 export interface DatabaseBackupResponse {
   name: string;
   sizeBytes: number;
+  mediaSnapshotAvailable: boolean;
+  mediaSnapshotSizeBytes: number | null;
   updatedAt: string;
   remoteResults?: RemoteBackupResult[];
   warning?: string | null;
