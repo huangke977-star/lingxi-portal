@@ -115,7 +115,6 @@ const BUILTIN_PWA_ICON_OPTIONS = [
 ] as const;
 
 const BUILTIN_BACKGROUND_OPTIONS = [
-  { label: "浅云蓝白", path: "/images/hlovet-cloud-blue.jpeg" },
   { label: "城市灯火", path: "/images/hlovet-city-lights.jpg" },
 ] as const;
 
@@ -464,6 +463,7 @@ export default function SiteSettingsPage() {
       const configuredPath = toConfiguredApiAssetPath(active.url);
       setBackgrounds((current) => current.map((item) => ({ ...item, isActive: item.id === active.id })));
       updateDraft({ defaultBackgroundUrl: configuredPath }, true);
+      notifyBackgroundChange();
       setNotice("全站背景已切换。");
     } catch (useError) {
       setError(useError instanceof Error ? useError.message : "背景切换失败。");
@@ -606,11 +606,11 @@ export default function SiteSettingsPage() {
             <div className="site-settings-summary-grid">
               <SummaryTile label="Logo" value={resourceDisplayName(draft.logoPath, [...BUILTIN_LOGO_OPTIONS], logoAssets)} />
               <SummaryTile label="PWA 图标" value={resourceDisplayName(draft.pwaIconPath, [...BUILTIN_PWA_ICON_OPTIONS], pwaIconAssets)} />
-              <SummaryTile label="默认背景" value={backgroundDisplayName(draft.defaultBackgroundUrl, backgrounds)} />
+              <SummaryTile label="当前背景" value={backgrounds.find((background) => background.isActive)?.originalName ?? "未设置"} />
               <SummaryTile label="背景图库" value={`${backgrounds.length} 张`} />
             </div>
             <p className="site-settings-hint">
-              默认背景就是新访客和未单独设置主题用户看到的全站背景；点击背景卡片上的“使用”后会立即同步到所有用户。
+              当前背景就是所有用户实际看到的全站背景；点击背景卡片上的“使用”后会立即同步到当前页面，其他页面刷新后生效。
             </p>
           </section>
 
@@ -618,7 +618,7 @@ export default function SiteSettingsPage() {
             <PanelTitle icon={ImageIcon} label="背景管理" />
             <div className="site-background-tools">
               <div>
-                <strong>默认背景</strong>
+                <strong>全站背景</strong>
                 <span>上传自己的背景图片，每次最多 5 张；系统会自动压缩为 WebP，仍可预览、启用或永久删除。</span>
               </div>
               <form className="site-background-upload" onSubmit={(event) => void handleBackgroundUpload(event)}>
@@ -642,7 +642,6 @@ export default function SiteSettingsPage() {
             <BackgroundPicker
               backgrounds={backgrounds}
               busyBackgroundId={busyBackgroundId}
-              currentPath={draft.defaultBackgroundUrl}
               onDelete={(background) => void handleDeleteBackground(background)}
               onPreview={setPreviewBackground}
               onUse={(background) => void handleUseBackground(background)}
@@ -871,14 +870,12 @@ function SiteResourcePicker({
 function BackgroundPicker({
   backgrounds,
   busyBackgroundId,
-  currentPath,
   onDelete,
   onPreview,
   onUse,
 }: {
   backgrounds: ManagedBackground[];
   busyBackgroundId: number | null;
-  currentPath: string;
   onDelete: (background: ManagedBackground) => void;
   onPreview: (background: ManagedBackground) => void;
   onUse: (background: ManagedBackground) => void;
@@ -886,8 +883,7 @@ function BackgroundPicker({
   return (
     <div className="site-background-picker">
       {backgrounds.map((background) => {
-        const configuredPath = toConfiguredApiAssetPath(background.url);
-        const isActive = background.isActive || currentPath === configuredPath;
+        const isActive = background.isActive;
         return (
           <article className={`site-background-choice uploaded${isActive ? " active live" : ""}`} key={background.id}>
             <span className="site-background-image" style={{ backgroundImage: `url("${resolveBackgroundUrl(background)}")` }} />
@@ -1010,13 +1006,6 @@ function resourceDisplayName(
   const builtin = builtins.find((item) => item.path === path);
   if (builtin) return builtin.label;
   const uploaded = assets.find((asset) => toConfiguredApiAssetPath(asset.url) === path);
-  return uploaded?.originalName ?? path;
-}
-
-function backgroundDisplayName(path: string, backgrounds: ManagedBackground[]): string {
-  const builtin = BUILTIN_BACKGROUND_OPTIONS.find((item) => item.path === path);
-  if (builtin) return builtin.label;
-  const uploaded = backgrounds.find((background) => toConfiguredApiAssetPath(background.url) === path);
   return uploaded?.originalName ?? path;
 }
 

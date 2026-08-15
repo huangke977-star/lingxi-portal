@@ -11,10 +11,10 @@ import {
 import { getMe, resolveApiUrl } from "@/lib/auth-api";
 import { AUTH_STATE_CHANGE_EVENT, readAccessToken } from "@/lib/auth-storage";
 import {
-  cacheDefaultBackgroundUrl,
-  clearDefaultBackgroundCache,
   BACKGROUND_CHANGE_EVENT,
-  readCachedDefaultBackgroundUrl,
+  clearBackgroundCaches,
+  getActiveBackground,
+  resolveBackgroundUrl,
 } from "@/lib/background-api";
 import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-api";
 
@@ -22,10 +22,10 @@ export function ThemeController() {
   useEffect(() => {
     let isMounted = true;
     let publicSettings: SiteSettings | null = null;
+    let backgroundSyncId = 0;
 
     function applyBackgroundUrl(url: string) {
       document.documentElement.style.setProperty("--portal-bg-image", `url("${escapeCssUrl(url)}")`);
-      cacheDefaultBackgroundUrl(url);
     }
 
     function preloadBackground(url: string): Promise<boolean> {
@@ -77,27 +77,27 @@ export function ThemeController() {
     }
 
     async function syncBackground() {
+      const syncId = ++backgroundSyncId;
       try {
-        const defaultBackgroundUrl = publicSettings?.defaultBackgroundUrl;
-        if (defaultBackgroundUrl) {
-          const nextUrl = resolveConfiguredAssetUrl(defaultBackgroundUrl);
-          const isAvailable = await preloadBackground(nextUrl);
-          if (!isMounted) return;
-          if (isAvailable) {
-            applyBackgroundUrl(nextUrl);
-          } else {
-            clearDefaultBackgroundCache();
-            document.documentElement.style.removeProperty("--portal-bg-image");
-          }
-        } else {
-          clearDefaultBackgroundCache();
+        const activeBackground = await getActiveBackground();
+        if (!isMounted || syncId !== backgroundSyncId) return;
+        const defaultBackgroundUrl = publicSettings?.defaultBackgroundUrl ?? "";
+        const nextUrl = activeBackground
+          ? resolveBackgroundUrl(activeBackground)
+          : defaultBackgroundUrl
+            ? resolveConfiguredAssetUrl(defaultBackgroundUrl)
+            : "";
+        if (!nextUrl) {
           document.documentElement.style.removeProperty("--portal-bg-image");
+          return;
         }
+
+        const isAvailable = await preloadBackground(nextUrl);
+        if (!isMounted || syncId !== backgroundSyncId) return;
+        if (isAvailable) applyBackgroundUrl(nextUrl);
+        else document.documentElement.style.removeProperty("--portal-bg-image");
       } catch {
-        const cachedUrl = readCachedDefaultBackgroundUrl();
-        if (cachedUrl) {
-          applyBackgroundUrl(cachedUrl);
-        }
+        if (isMounted && syncId === backgroundSyncId) document.documentElement.style.removeProperty("--portal-bg-image");
       }
     }
 
@@ -106,6 +106,7 @@ export function ThemeController() {
     }
 
     syncTheme();
+    clearBackgroundCaches();
     void syncPublicSettings().then(() => syncBackground());
     void syncAccountTheme();
     window.addEventListener("storage", syncTheme);

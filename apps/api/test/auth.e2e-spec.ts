@@ -33,7 +33,7 @@ const defaultSiteSetting = {
   browserTitle: 'HLOVET',
   logoPath: '/favicon.svg',
   pwaIconPath: '/icon-192.png',
-  defaultBackgroundUrl: '/images/hlovet-cloud-blue.jpeg',
+  defaultBackgroundUrl: '/images/hlovet-city-lights.jpg',
   defaultThemeId: 'cloud-blue',
   defaultAccent: '#1814f0',
   defaultSurface: '#dfc8c8',
