@@ -28,11 +28,11 @@ export function ThemeController() {
       cacheDefaultBackgroundUrl(url);
     }
 
-    function preloadBackground(url: string): Promise<void> {
+    function preloadBackground(url: string): Promise<boolean> {
       return new Promise((resolve) => {
         const image = new Image();
-        image.onload = () => resolve();
-        image.onerror = () => resolve();
+        image.onload = () => resolve(true);
+        image.onerror = () => resolve(false);
         image.src = url;
       });
     }
@@ -81,8 +81,14 @@ export function ThemeController() {
         const defaultBackgroundUrl = publicSettings?.defaultBackgroundUrl;
         if (defaultBackgroundUrl) {
           const nextUrl = resolveConfiguredAssetUrl(defaultBackgroundUrl);
-          await preloadBackground(nextUrl);
-          if (isMounted) applyBackgroundUrl(nextUrl);
+          const isAvailable = await preloadBackground(nextUrl);
+          if (!isMounted) return;
+          if (isAvailable) {
+            applyBackgroundUrl(nextUrl);
+          } else {
+            clearDefaultBackgroundCache();
+            document.documentElement.style.removeProperty("--portal-bg-image");
+          }
         } else {
           clearDefaultBackgroundCache();
           document.documentElement.style.removeProperty("--portal-bg-image");
