@@ -942,6 +942,7 @@ model AnonymousTopic {
   status           AnonymousTopicStatus     @default(active)
   isHidden         Boolean                  @default(false) @map("is_hidden")
   messageCount     Int                      @default(0) @map("message_count")
+  messageSequence  Int                      @default(0) @map("message_sequence")
   messageLikeCount Int                      @default(0) @map("message_like_count")
   favoriteCount    Int                      @default(0) @map("favorite_count")
   identities       AnonymousTopicIdentity[]

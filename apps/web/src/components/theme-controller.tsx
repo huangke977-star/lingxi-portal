@@ -11,12 +11,10 @@ import {
 import { getMe, resolveApiUrl } from "@/lib/auth-api";
 import { AUTH_STATE_CHANGE_EVENT, readAccessToken } from "@/lib/auth-storage";
 import {
-  cacheActiveBackgroundUrl,
-  clearActiveBackgroundCache,
+  cacheDefaultBackgroundUrl,
+  clearDefaultBackgroundCache,
   BACKGROUND_CHANGE_EVENT,
-  getActiveBackground,
-  readCachedActiveBackgroundUrl,
-  resolveBackgroundUrl,
+  readCachedDefaultBackgroundUrl,
 } from "@/lib/background-api";
 import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-api";
 
@@ -27,7 +25,7 @@ export function ThemeController() {
 
     function applyBackgroundUrl(url: string) {
       document.documentElement.style.setProperty("--portal-bg-image", `url("${escapeCssUrl(url)}")`);
-      cacheActiveBackgroundUrl(url);
+      cacheDefaultBackgroundUrl(url);
     }
 
     function preloadBackground(url: string): Promise<void> {
@@ -80,38 +78,17 @@ export function ThemeController() {
 
     async function syncBackground() {
       try {
-        const cachedUrl = readCachedActiveBackgroundUrl();
-        if (cachedUrl) {
-          applyBackgroundUrl(cachedUrl);
-        }
-
-        const background = await getActiveBackground();
-        if (!isMounted) {
-          return;
-        }
-
-        if (background) {
-          const nextUrl = resolveBackgroundUrl(background);
-          cacheActiveBackgroundUrl(nextUrl);
+        const defaultBackgroundUrl = publicSettings?.defaultBackgroundUrl;
+        if (defaultBackgroundUrl) {
+          const nextUrl = resolveConfiguredAssetUrl(defaultBackgroundUrl);
           await preloadBackground(nextUrl);
-          if (isMounted) {
-            applyBackgroundUrl(nextUrl);
-          }
+          if (isMounted) applyBackgroundUrl(nextUrl);
         } else {
-          const defaultBackgroundUrl = publicSettings?.defaultBackgroundUrl;
-          if (defaultBackgroundUrl) {
-            const nextUrl = resolveConfiguredAssetUrl(defaultBackgroundUrl);
-            await preloadBackground(nextUrl);
-            if (isMounted) {
-              applyBackgroundUrl(nextUrl);
-            }
-          } else {
-            clearActiveBackgroundCache();
-            document.documentElement.style.removeProperty("--portal-bg-image");
-          }
+          clearDefaultBackgroundCache();
+          document.documentElement.style.removeProperty("--portal-bg-image");
         }
       } catch {
-        const cachedUrl = readCachedActiveBackgroundUrl();
+        const cachedUrl = readCachedDefaultBackgroundUrl();
         if (cachedUrl) {
           applyBackgroundUrl(cachedUrl);
         }
@@ -119,7 +96,7 @@ export function ThemeController() {
     }
 
     function handleBackgroundChange() {
-      void syncBackground();
+      void syncPublicSettings().then(() => syncBackground());
     }
 
     syncTheme();

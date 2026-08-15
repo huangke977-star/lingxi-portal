@@ -23,6 +23,10 @@ export class ListAnonymousTopicsQueryDto {
   @IsOptional()
   @IsIn(["time", "participation", "likes", "favorites", "home"])
   sort: "time" | "participation" | "likes" | "favorites" | "home" = "time";
+
+  @IsOptional()
+  @IsIn(["all", "visible", "hidden"])
+  visibility?: "all" | "visible" | "hidden";
 }
 
 export class GetAnonymousTopicQueryDto {

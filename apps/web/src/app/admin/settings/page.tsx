@@ -250,6 +250,7 @@ export default function SiteSettingsPage() {
       .then(async () => {
         const saved = await updateSiteSettings(accessToken, patch);
         setSettings(saved);
+        if ("defaultBackgroundUrl" in patch) notifyBackgroundChange();
       })
       .catch((saveError) => {
         pendingSettingsPatchRef.current = { ...patch, ...pendingSettingsPatchRef.current };
@@ -463,7 +464,6 @@ export default function SiteSettingsPage() {
       const configuredPath = toConfiguredApiAssetPath(active.url);
       setBackgrounds((current) => current.map((item) => ({ ...item, isActive: item.id === active.id })));
       updateDraft({ defaultBackgroundUrl: configuredPath }, true);
-      notifyBackgroundChange();
       setNotice("全站背景已切换。");
     } catch (useError) {
       setError(useError instanceof Error ? useError.message : "背景切换失败。");

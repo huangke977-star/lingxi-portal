@@ -58,7 +58,7 @@ const themeBootScript = String.raw`
       }
     }
 
-    const cachedBackground = window.localStorage.getItem("hlovet.active-background.url");
+    const cachedBackground = window.localStorage.getItem("hlovet.default-background.url");
     if (!cachedBackground) return;
     const backgroundUrl = new URL(cachedBackground, window.location.origin);
     if (!["http:", "https:"].includes(backgroundUrl.protocol)) return;

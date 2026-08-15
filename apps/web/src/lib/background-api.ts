@@ -1,7 +1,8 @@
 import { requestJson, resolveApiUrl } from './auth-api';
 
 export const BACKGROUND_CHANGE_EVENT = 'hlovet-background-change';
-export const ACTIVE_BACKGROUND_CACHE_KEY = 'hlovet.active-background.url';
+export const DEFAULT_BACKGROUND_CACHE_KEY = 'hlovet.default-background.url';
+const LEGACY_ACTIVE_BACKGROUND_CACHE_KEY = 'hlovet.active-background.url';
 
 export interface ManagedBackground {
   id: number;
@@ -20,13 +21,6 @@ export interface ManagedBackground {
 
 function authorizationHeader(accessToken: string) {
   return { Authorization: `Bearer ${accessToken}` };
-}
-
-export async function getActiveBackground(): Promise<ManagedBackground | null> {
-  const response = await requestJson<{ background: ManagedBackground | null }>('/backgrounds/active', {
-    cache: 'no-store',
-  });
-  return response.background;
 }
 
 export async function listBackgrounds(accessToken: string): Promise<ManagedBackground[]> {
@@ -74,34 +68,36 @@ export function resolveBackgroundUrl(background: Pick<ManagedBackground, 'url'>)
   return resolveApiUrl(background.url);
 }
 
-export function readCachedActiveBackgroundUrl(): string | null {
+export function readCachedDefaultBackgroundUrl(): string | null {
   if (typeof window === 'undefined') {
     return null;
   }
 
-  return normalizeBackgroundUrl(window.localStorage.getItem(ACTIVE_BACKGROUND_CACHE_KEY));
+  return normalizeBackgroundUrl(window.localStorage.getItem(DEFAULT_BACKGROUND_CACHE_KEY));
 }
 
-export function cacheActiveBackgroundUrl(url: string): void {
+export function cacheDefaultBackgroundUrl(url: string): void {
   if (typeof window === 'undefined') {
     return;
   }
 
   const normalizedUrl = normalizeBackgroundUrl(url);
   if (!normalizedUrl) {
-    clearActiveBackgroundCache();
+    clearDefaultBackgroundCache();
     return;
   }
 
-  window.localStorage.setItem(ACTIVE_BACKGROUND_CACHE_KEY, normalizedUrl);
+  window.localStorage.setItem(DEFAULT_BACKGROUND_CACHE_KEY, normalizedUrl);
+  window.localStorage.removeItem(LEGACY_ACTIVE_BACKGROUND_CACHE_KEY);
 }
 
-export function clearActiveBackgroundCache(): void {
+export function clearDefaultBackgroundCache(): void {
   if (typeof window === 'undefined') {
     return;
   }
 
-  window.localStorage.removeItem(ACTIVE_BACKGROUND_CACHE_KEY);
+  window.localStorage.removeItem(DEFAULT_BACKGROUND_CACHE_KEY);
+  window.localStorage.removeItem(LEGACY_ACTIVE_BACKGROUND_CACHE_KEY);
 }
 
 export function notifyBackgroundChange() {

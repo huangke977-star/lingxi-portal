@@ -61,7 +61,11 @@ export class AnonymousTopicsService {
   async listAdmin(user: AuthenticatedUser, query: ListAnonymousTopicsQueryDto) {
     this.assertManager(user);
     const keyword = query.q?.trim();
-    const where: Prisma.AnonymousTopicWhereInput = keyword ? { title: { contains: keyword } } : {};
+    const visibility = query.visibility ?? "visible";
+    const where: Prisma.AnonymousTopicWhereInput = {
+      ...(keyword ? { title: { contains: keyword } } : {}),
+      ...(visibility === "all" ? {} : { isHidden: visibility === "hidden" }),
+    };
     const [total, items] = await Promise.all([
       this.prisma.anonymousTopic.count({ where }),
       this.prisma.anonymousTopic.findMany({
@@ -190,10 +194,13 @@ export class AnonymousTopicsService {
     if (topic.status !== AnonymousTopicStatus.active) throw new BadRequestException("该话题已关闭，不能继续发言。");
     const identityId = await this.resolveIdentityToken(topicId, dto.identityToken);
     const message = await this.prisma.$transaction(async (transaction) => {
-      // The incremented counter is the public sequence number, so messages do not expose a sender identity.
-      const updatedTopic = await transaction.anonymousTopic.update({ where: { id: topicId }, data: { messageCount: { increment: 1 } } });
+      // Visibility count and public sequence are separate: moderation may reduce the former, while sequence numbers never repeat.
+      const updatedTopic = await transaction.anonymousTopic.update({
+        where: { id: topicId },
+        data: { messageCount: { increment: 1 }, messageSequence: { increment: 1 } },
+      });
       return transaction.anonymousTopicMessage.create({
-        data: { topicId, sequence: updatedTopic.messageCount, identityId, body },
+        data: { topicId, sequence: updatedTopic.messageSequence, identityId, body },
         include: messageInclude,
       });
     });
@@ -288,12 +295,15 @@ export class AnonymousTopicsService {
       if (!current) throw new NotFoundException("消息不存在。");
       if (current.isHidden === dto.isHidden) return current;
       const updated = await transaction.anonymousTopicMessage.update({ where: { id }, data: { isHidden: dto.isHidden }, include: messageInclude });
-      if (current.likeCount) {
-        await transaction.anonymousTopic.update({
-          where: { id: current.topicId },
-          data: { messageLikeCount: { increment: dto.isHidden ? -current.likeCount : current.likeCount } },
-        });
-      }
+      await transaction.anonymousTopic.update({
+        where: { id: current.topicId },
+        data: {
+          messageCount: { increment: dto.isHidden ? -1 : 1 },
+          ...(current.likeCount
+            ? { messageLikeCount: { increment: dto.isHidden ? -current.likeCount : current.likeCount } }
+            : {}),
+        },
+      });
       return updated;
     });
     return this.toMessage(message);

@@ -24,6 +24,7 @@ import {
   type AnonymousTopicMessage,
   type AnonymousTopicSort,
   type AnonymousTopicSummary,
+  type AnonymousTopicVisibility,
   updateAnonymousMessage,
   updateAnonymousTopic,
   updateAnonymousTopicAsCreator,
@@ -34,6 +35,12 @@ const TOPIC_SORT_OPTIONS: ReadonlyArray<{ label: string; value: AnonymousTopicSo
   { label: "参与最多", value: "participation" },
   { label: "点赞最多", value: "likes" },
   { label: "喜欢最多", value: "favorites" },
+];
+
+const TOPIC_VISIBILITY_OPTIONS: ReadonlyArray<{ label: string; value: AnonymousTopicVisibility }> = [
+  { label: "全部", value: "all" },
+  { label: "正常", value: "visible" },
+  { label: "隐藏", value: "hidden" },
 ];
 
 export function AnonymousTopicsPanel({ initialSort = "time", management = false, pageSize = 5, title = "匿名话题", moreHref, showLoadMore = false, showSearch = false, showSort = false }: { initialSort?: AnonymousTopicSort; management?: boolean; pageSize?: number; title?: string; moreHref?: string; showLoadMore?: boolean; showSearch?: boolean; showSort?: boolean }) {
@@ -52,13 +59,15 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
   const [identityCreate, setIdentityCreate] = useState(false);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<AnonymousTopicSort>(initialSort);
+  const [visibility, setVisibility] = useState<AnonymousTopicVisibility>("visible");
 
   const loadTopics = useCallback(async (pageNumber = 1, append = false) => {
     setIsLoading(true);
     try {
       const token = readAccessToken();
-      const page = management && token
-        ? await listAnonymousTopicsAdmin(token, { page: pageNumber, pageSize, q: query, sort })
+      const useAdminList = Boolean(token && (management || (isManager && showSearch)));
+      const page = useAdminList && token
+        ? await listAnonymousTopicsAdmin(token, { page: pageNumber, pageSize, q: query, sort, visibility })
         : await listAnonymousTopics({ page: pageNumber, pageSize, q: query, sort });
       setItems((current) => append ? [...current, ...page.items.filter((item) => !current.some((known) => known.id === item.id))] : page.items);
       setPageInfo({ page: page.page, totalPages: page.totalPages });
@@ -66,7 +75,7 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
     }
     catch (loadError) { setError(loadError instanceof Error ? loadError.message : "无法读取匿名话题。"); }
     finally { setIsLoading(false); }
-  }, [management, pageSize, query, sort]);
+  }, [isManager, management, pageSize, query, showSearch, sort, visibility]);
 
   function loadMoreTopics() {
     if (isLoading || pageInfo.page >= pageInfo.totalPages) return;
@@ -75,7 +84,7 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
 
   const loadTopic = useCallback(async (id: number, beforeSequence?: number) => {
     const token = readAccessToken();
-    const next = management && token
+    const next = token && (management || isManager)
       ? await getAnonymousTopicAdmin(token, id, { limit: 40, beforeSequence })
       : await getAnonymousTopic(id, { limit: 40, beforeSequence });
     setTopic((current) => {
@@ -83,7 +92,7 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
       const known = new Set(current.messages.map((item) => item.id));
       return { ...next, messages: [...next.messages.filter((item) => !known.has(item.id)), ...current.messages] };
     });
-  }, [management]);
+  }, [isManager, management]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadTopics(), query ? 220 : 0);
@@ -202,13 +211,16 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
     const token = readAccessToken();
     if (!token || !topic) return;
     setIsSaving(true);
-    try { await updateAnonymousMessage(token, messageId, isHidden); await loadTopic(topic.id); }
+    try {
+      await updateAnonymousMessage(token, messageId, isHidden);
+      await Promise.all([loadTopic(topic.id), loadTopics()]);
+    }
     catch (saveError) { setError(saveError instanceof Error ? saveError.message : "更新消息可见状态失败。"); }
     finally { setIsSaving(false); }
   }
 
   return <section className="p8-surface anonymous-topics-panel">
-    <div className="p8-section-heading"><div><MessageCircleMore aria-hidden="true" size={17} /><h2>{title}</h2></div><span className="p8-heading-actions-compact">{showSort ? <span className="anonymous-topic-sort"><GlassSelect ariaLabel="匿名话题排序" onChange={setSort} options={TOPIC_SORT_OPTIONS} value={sort} /></span> : null}{moreHref ? <Link href={moreHref}>全部</Link> : null}{!management ? <button aria-label="发起话题" className="p8-heading-icon" onClick={() => setIsCreateOpen(true)} title="发起话题" type="button"><Plus aria-hidden="true" size={17} /></button> : null}</span></div>
+    <div className="p8-section-heading"><div><MessageCircleMore aria-hidden="true" size={17} /><h2>{title}</h2></div><span className="p8-heading-actions-compact">{isManager && (showSearch || management) ? <span className="anonymous-topic-visibility"><GlassSelect ariaLabel="话题可见性" onChange={setVisibility} options={TOPIC_VISIBILITY_OPTIONS} value={visibility} /></span> : null}{showSort ? <span className="anonymous-topic-sort"><GlassSelect ariaLabel="匿名话题排序" onChange={setSort} options={TOPIC_SORT_OPTIONS} value={sort} /></span> : null}{moreHref ? <Link href={moreHref}>全部</Link> : null}{!management ? <button aria-label="发起话题" className="p8-heading-icon" onClick={() => setIsCreateOpen(true)} title="发起话题" type="button"><Plus aria-hidden="true" size={17} /></button> : null}</span></div>
     {showSearch || management ? <label className="p8-list-search"><Search aria-hidden="true" size={16} /><input onChange={(event) => setQuery(event.target.value)} placeholder="搜索话题" value={query} /></label> : null}
     {isLoading && !items.length ? <p className="p8-empty"><LoaderCircle aria-hidden="true" className="spin" size={15} />正在读取话题</p> : items.length ? <><div className="anonymous-topic-list">{items.map((item) => <AnonymousTopicListRow item={item} key={item.id} onFavorite={toggleFavorite} onOpen={openTopic} />)}</div>{showLoadMore && pageInfo.page < pageInfo.totalPages ? <button className="p8-load-more" disabled={isLoading} onClick={loadMoreTopics} type="button">{isLoading ? "正在加载" : "加载更多话题"}</button> : null}</> : <p className="p8-empty">暂时没有话题，发起一个让大家聊聊。</p>}
     {topic ? <TopicDialog identityCreate={identityCreate} identityOpen={isIdentityOpen} identityDraft={identityDraft} isManager={isManager} isSaving={isSaving} message={message} onClaim={claimIdentity} onClose={() => { setIdentityCreate(false); setIsIdentityOpen(false); setTopic(null); }} onCloseIdentity={() => { setIdentityCreate(false); setIsIdentityOpen(false); }} onHideMessage={hideMessage} onLoadMore={() => void loadTopic(topic.id, topic.messages[0]?.sequence)} onModerateTopic={moderateTopic} onOpenIdentity={() => { setIdentityDraft({ nickname: "", password: "" }); setIdentityCreate(false); setIsIdentityOpen(true); }} onReact={react} onSend={sendMessage} onToggleTopicHidden={toggleTopicHidden} setIdentityCreate={setIdentityCreate} setIdentityDraft={setIdentityDraft} setMessage={setMessage} topic={topic} /> : null}
@@ -245,7 +257,6 @@ function AnonymousTopicListRow({ item, onFavorite, onOpen }: {
     </button>
     <span className="anonymous-topic-metrics">
       {item.status === "closed" ? <em className="closed">已关闭</em> : <em>{item.messageCount} 条</em>}
-      <small title="点评获赞"><ThumbsUp aria-hidden="true" size={12} />{item.messageLikeCount}</small>
       <button aria-label={item.favorited ? `取消喜欢 ${item.title}` : `喜欢 ${item.title}`} className={item.favorited ? "active" : undefined} onClick={() => void onFavorite(item)} title={item.favorited ? "取消喜欢" : "喜欢话题"} type="button"><Heart aria-hidden="true" fill={item.favorited ? "currentColor" : "none"} size={15} /><span>{item.favoriteCount}</span></button>
     </span>
   </article>;

@@ -15731,8 +15731,13 @@ button.anonymous-identity-note { cursor: pointer; }
 .topics-search input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--foreground); font: inherit; font-size: 0.72rem; }
 
 .anonymous-topic-sort { width: 108px; }
-.anonymous-topic-sort .announcement-editor-select-trigger { min-height: 28px; background: transparent; color: var(--muted-strong); font-size: 0.65rem; padding: 4px 6px; }
+.anonymous-topic-visibility { width: 76px; }
+.anonymous-topic-sort .announcement-editor-select-trigger,
+.anonymous-topic-visibility .announcement-editor-select-trigger { min-height: 28px; background: transparent; color: var(--muted-strong); font-size: 0.75rem; padding: 4px 6px; }
 .anonymous-topic-sort .announcement-editor-select-menu { min-width: 108px; }
+.anonymous-topic-visibility .announcement-editor-select-menu { min-width: 76px; }
+.anonymous-topic-sort .announcement-editor-select-menu button,
+.anonymous-topic-visibility .announcement-editor-select-menu button { font-size: 0.75rem; }
 .anonymous-topic-list > article { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid color-mix(in srgb, var(--control-line) 76%, transparent); }
 .anonymous-topic-list > article:last-child { border-bottom: 0; }
 .anonymous-topic-list > article:hover { background: color-mix(in srgb, var(--accent-soft) 42%, transparent); }
@@ -15742,10 +15747,12 @@ button.anonymous-identity-note { cursor: pointer; }
 .anonymous-topic-list-copy strong,
 .anonymous-topic-list-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .anonymous-topic-list-copy strong { font-size: 0.72rem; }
-.anonymous-topic-subline { display: flex; min-width: 0; align-items: center; gap: 8px; }
-.anonymous-topic-subline > small { flex: 0 0 auto; color: var(--muted); font-size: 0.61rem; }
-.anonymous-topic-highlights { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 8px; overflow: hidden; }
-.anonymous-topic-highlights small { display: flex; min-width: 0; flex: 1 1 0; align-items: center; gap: 4px; color: var(--muted-strong); font-size: 0.59rem; }
+.anonymous-topic-subline { display: grid; min-width: 0; grid-template-columns: minmax(82px, 0.55fr) repeat(2, minmax(0, 1fr)); align-items: center; column-gap: 12px; }
+.anonymous-topic-subline > small { color: var(--muted); font-size: 0.61rem; }
+.anonymous-topic-highlights { display: contents; }
+.anonymous-topic-highlights small { display: flex; min-width: 0; align-items: center; gap: 4px; color: var(--muted-strong); font-size: 0.59rem; line-height: 1.25; }
+.anonymous-topic-highlights small.up { grid-column: 2; }
+.anonymous-topic-highlights small.down { grid-column: 3; }
 .anonymous-topic-highlights small > svg { color: var(--accent-strong); }
 .anonymous-topic-highlights small.down > svg { color: #a15a68; }
 .anonymous-topic-highlights small > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -15763,6 +15770,9 @@ button.anonymous-identity-note { cursor: pointer; }
 .anonymous-message-composer button { position: absolute; right: 18px; bottom: 15px; width: 28px; height: 28px; border-radius: 50%; background: transparent; color: var(--accent-strong); }
 .anonymous-message-composer button:hover:not(:disabled) { background: var(--accent-soft); }
 .anonymous-message-composer button:disabled { color: var(--muted); opacity: 0.48; }
+.anonymous-message.hidden { opacity: 0.76; border-left-color: #a15a68; background: color-mix(in srgb, rgba(161, 90, 104, 0.12) 70%, var(--surface)); }
+.anonymous-message.hidden p { color: var(--muted-strong); text-decoration: line-through; text-decoration-thickness: 1px; }
+.anonymous-message.hidden footer { opacity: 0.46; pointer-events: none; }
 
 .article-comment-input-wrap { position: relative; }
 .article-comment-input-wrap textarea { display: block; padding-right: 44px; }
@@ -15794,4 +15804,5 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .anonymous-topic-open { padding-right: 12px; }
   .anonymous-topic-metrics { justify-content: flex-end; padding: 0 10px 8px; }
   .anonymous-topic-sort { width: 102px; }
+  .anonymous-topic-subline { grid-template-columns: minmax(72px, 0.7fr) repeat(2, minmax(0, 1fr)); column-gap: 7px; }
 }

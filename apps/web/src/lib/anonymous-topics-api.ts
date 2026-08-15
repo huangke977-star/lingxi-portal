@@ -2,6 +2,7 @@ import { requestJson } from "./auth-api";
 
 export type AnonymousTopicStatus = "active" | "closed";
 export type AnonymousTopicSort = "time" | "participation" | "likes" | "favorites" | "home";
+export type AnonymousTopicVisibility = "all" | "visible" | "hidden";
 
 export interface AnonymousTopicHighlight {
   id: number;
@@ -106,11 +107,12 @@ export function getAnonymousTopic(id: number, input: { limit?: number; beforeSeq
   });
 }
 
-export function listAnonymousTopicsAdmin(accessToken: string, input: { page?: number; pageSize?: number; q?: string; sort?: AnonymousTopicSort } = {}): Promise<AnonymousTopicPage> {
+export function listAnonymousTopicsAdmin(accessToken: string, input: { page?: number; pageSize?: number; q?: string; sort?: AnonymousTopicSort; visibility?: AnonymousTopicVisibility } = {}): Promise<AnonymousTopicPage> {
   const params = new URLSearchParams({
     page: String(input.page ?? 1),
     pageSize: String(input.pageSize ?? 20),
     sort: input.sort ?? "time",
+    visibility: input.visibility ?? "visible",
   });
   if (input.q?.trim()) params.set("q", input.q.trim());
   return requestJson(`/anonymous-topics/admin?${params.toString()}`, { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } });
