@@ -441,7 +441,14 @@ export class DiscoveryService {
   }
 
   async listTopics(query: ListDiscoveryQueryDto, viewer: AuthenticatedUser | null) {
-    const where = this.topicVisibleWhere(viewer);
+    const keyword = query.q?.trim();
+    const visibleWhere = this.topicVisibleWhere(viewer);
+    const where: Prisma.ArticleTopicWhereInput = keyword ? {
+      AND: [
+        visibleWhere,
+        { OR: [{ title: { contains: keyword } }, { description: { contains: keyword } }] },
+      ],
+    } : visibleWhere;
     const total = await this.prisma.articleTopic.count({ where });
     const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
     const page = Math.min(query.page, totalPages);

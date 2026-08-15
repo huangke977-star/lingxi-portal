@@ -10,9 +10,11 @@ import {
   Heart,
   LoaderCircle,
   MessageCircle,
+  MessagesSquare,
   RefreshCw,
   Rss,
   ShieldAlert,
+  ThumbsUp,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -46,6 +48,10 @@ const metrics: Array<{ key: SeriesKey; label: string; icon: typeof Activity }> =
   { key: "disabledUsers", label: "停用账号", icon: Ban },
   { key: "loginRisks", label: "登录风险", icon: ShieldAlert },
   { key: "failedJobs", label: "异常任务", icon: ShieldAlert },
+  { key: "anonymousTopics", label: "匿名话题", icon: MessagesSquare },
+  { key: "anonymousMessages", label: "匿名发言", icon: MessageCircle },
+  { key: "anonymousLikes", label: "点评获赞", icon: ThumbsUp },
+  { key: "anonymousFavorites", label: "话题喜欢", icon: Heart },
 ];
 
 export default function AdminAnalyticsPage() {
@@ -125,12 +131,14 @@ export default function AdminAnalyticsPage() {
         <TrendChart data={data.trend} series={[{ key: "newUsers", label: "新增", color: "#4b78d1" }, { key: "activeUsers", label: "活跃", color: "#2f9378" }, { key: "articles", label: "文章", color: "#a46cbd" }]} title="用户与内容" />
         <TrendChart data={data.trend} series={[{ key: "comments", label: "评论", color: "#4f86a8" }, { key: "messages", label: "消息", color: "#7359a8" }, { key: "views", label: "阅读", color: "#2f9378" }]} title="访问与交流" />
         <TrendChart data={data.trend} series={[{ key: "reports", label: "举报", color: "#d15f79" }, { key: "loginRisks", label: "风险", color: "#c07b31" }, { key: "failedJobs", label: "异常任务", color: "#8d5961" }]} title="风险与异常" />
+        <TrendChart data={data.trend} series={[{ key: "anonymousTopics", label: "话题", color: "#3f7f9b" }, { key: "anonymousMessages", label: "发言", color: "#6d75b8" }, { key: "anonymousLikes", label: "点评获赞", color: "#b15c76" }, { key: "anonymousFavorites", label: "话题喜欢", color: "#c08338" }]} title="匿名话题" />
       </div>
       <div className="analytics-rankings">
         <Ranking title="热门作者" items={data.rankings.authors} kind="author" />
         <Ranking title="热门文章" items={data.rankings.articles} kind="article" />
         <Ranking title="热门搜索" items={data.rankings.searches} kind="search" />
         <Ranking title="订阅增长" items={data.rankings.subscriptionGrowth} kind="author" />
+        <Ranking title="热门匿名话题" items={data.rankings.anonymousTopics} kind="topic" />
       </div>
       <details className="analytics-definitions"><summary>统计口径</summary><div>{data.definitions.map((item) => <p key={item.key}><strong>{item.label}</strong><span>{item.definition}</span></p>)}</div></details>
       <span className="analytics-generated">最近聚合：{data.latestAggregateAt ? formatTime(data.latestAggregateAt) : "尚未生成"} · 页面读取：{formatTime(data.generatedAt)}</span>
@@ -139,7 +147,7 @@ export default function AdminAnalyticsPage() {
   </section>;
 }
 
-function Ranking({ items, kind, title }: { items: AnalyticsRankingItem[]; kind: "author" | "article" | "search"; title: string }) {
+function Ranking({ items, kind, title }: { items: AnalyticsRankingItem[]; kind: "author" | "article" | "search" | "topic"; title: string }) {
   return <section className="analytics-ranking"><header><strong>{title}</strong><span>{items.length ? `前 ${items.length}` : "暂无数据"}</span></header><ol>{items.map((item, index) => {
     const slug = typeof item.metadata?.slug === "string" ? item.metadata.slug : "";
     const content = <><b>{index + 1}</b><span><strong>{item.label}</strong><small>{item.secondary}</small></span><em>{item.score.toLocaleString("zh-CN")}</em></>;

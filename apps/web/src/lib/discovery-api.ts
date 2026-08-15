@@ -83,7 +83,7 @@ export interface ProfileShowcase {
 
 const authHeaders = (accessToken: string) => ({ Authorization: `Bearer ${accessToken}` });
 
-function pageQuery(input: { page?: number; pageSize?: number; sort?: string } = {}) {
+function pageQuery(input: { page?: number; pageSize?: number; q?: string; sort?: string } = {}) {
   const params = new URLSearchParams();
   Object.entries(input).forEach(([key, value]) => {
     if (value !== undefined) params.set(key, String(value));
@@ -147,7 +147,7 @@ export function getCollection(id: number, accessToken?: string | null) {
   return requestJson<ArticleCollection>(`/discovery/collections/${accessToken ? "visible" : "public"}/${id}`, { cache: "no-store", headers: accessToken ? authHeaders(accessToken) : undefined });
 }
 
-export function listTopics(accessToken?: string | null, input: { page?: number; pageSize?: number } = {}) {
+export function listTopics(accessToken?: string | null, input: { page?: number; pageSize?: number; q?: string } = {}) {
   const path = accessToken ? "/discovery/topics/visible" : "/discovery/topics";
   return requestJson<{ items: ArticleTopic[]; total: number; page: number; pageSize: number; totalPages: number }>(`${path}${pageQuery(input)}`, { cache: "no-store", headers: accessToken ? authHeaders(accessToken) : undefined });
 }

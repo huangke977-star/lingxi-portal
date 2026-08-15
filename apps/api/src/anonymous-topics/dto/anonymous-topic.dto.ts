@@ -19,6 +19,10 @@ export class ListAnonymousTopicsQueryDto {
   @IsString()
   @MaxLength(120)
   q?: string;
+
+  @IsOptional()
+  @IsIn(["time", "participation", "likes", "favorites", "home"])
+  sort: "time" | "participation" | "likes" | "favorites" | "home" = "time";
 }
 
 export class GetAnonymousTopicQueryDto {
@@ -97,6 +101,13 @@ export class ReactAnonymousMessageDto {
   @IsIn(["up", "down"])
   value!: "up" | "down";
 
+  @IsString()
+  @MinLength(16)
+  @MaxLength(128)
+  visitorKey!: string;
+}
+
+export class FavoriteAnonymousTopicDto {
   @IsString()
   @MinLength(16)
   @MaxLength(128)

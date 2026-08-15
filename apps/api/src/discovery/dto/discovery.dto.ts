@@ -26,6 +26,11 @@ export class ListDiscoveryQueryDto {
   @Min(1)
   @Max(50)
   pageSize = 12;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  q?: string;
 }
 
 export class ListSubscriptionFeedQueryDto extends ListDiscoveryQueryDto {

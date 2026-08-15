@@ -1,10 +1,11 @@
 "use client";
 
-import { Eye, EyeOff, KeyRound, LoaderCircle, Lock, MessageCircleMore, Plus, Search, Send, ThumbsDown, ThumbsUp, Unlock, UserRoundPen, X } from "lucide-react";
+import { Eye, EyeOff, Heart, KeyRound, LoaderCircle, Lock, MessageCircleMore, Plus, Search, Send, ThumbsDown, ThumbsUp, Unlock, UserRoundPen, X } from "lucide-react";
 import { FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { AppToast } from "@/components/app-toast";
+import { GlassSelect } from "@/components/glass-select";
 import { getMe } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
 import {
@@ -18,15 +19,24 @@ import {
   reactToAnonymousMessage,
   saveAnonymousIdentity,
   sendAnonymousMessage,
+  toggleAnonymousTopicFavorite,
   type AnonymousTopicDetail,
   type AnonymousTopicMessage,
+  type AnonymousTopicSort,
   type AnonymousTopicSummary,
   updateAnonymousMessage,
   updateAnonymousTopic,
   updateAnonymousTopicAsCreator,
 } from "@/lib/anonymous-topics-api";
 
-export function AnonymousTopicsPanel({ management = false, pageSize = 5, title = "匿名话题", moreHref, showLoadMore = false, showSearch = false }: { management?: boolean; pageSize?: number; title?: string; moreHref?: string; showLoadMore?: boolean; showSearch?: boolean }) {
+const TOPIC_SORT_OPTIONS: ReadonlyArray<{ label: string; value: AnonymousTopicSort }> = [
+  { label: "最近活跃", value: "time" },
+  { label: "参与最多", value: "participation" },
+  { label: "点赞最多", value: "likes" },
+  { label: "喜欢最多", value: "favorites" },
+];
+
+export function AnonymousTopicsPanel({ initialSort = "time", management = false, pageSize = 5, title = "匿名话题", moreHref, showLoadMore = false, showSearch = false, showSort = false }: { initialSort?: AnonymousTopicSort; management?: boolean; pageSize?: number; title?: string; moreHref?: string; showLoadMore?: boolean; showSearch?: boolean; showSort?: boolean }) {
   const [items, setItems] = useState<AnonymousTopicSummary[]>([]);
   const [pageInfo, setPageInfo] = useState({ page: 1, totalPages: 1 });
   const [topic, setTopic] = useState<AnonymousTopicDetail | null>(null);
@@ -41,21 +51,22 @@ export function AnonymousTopicsPanel({ management = false, pageSize = 5, title =
   const [identityDraft, setIdentityDraft] = useState({ nickname: "", password: "" });
   const [identityCreate, setIdentityCreate] = useState(false);
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<AnonymousTopicSort>(initialSort);
 
   const loadTopics = useCallback(async (pageNumber = 1, append = false) => {
     setIsLoading(true);
     try {
       const token = readAccessToken();
       const page = management && token
-        ? await listAnonymousTopicsAdmin(token, pageNumber, pageSize, query)
-        : await listAnonymousTopics(pageNumber, pageSize, query);
+        ? await listAnonymousTopicsAdmin(token, { page: pageNumber, pageSize, q: query, sort })
+        : await listAnonymousTopics({ page: pageNumber, pageSize, q: query, sort });
       setItems((current) => append ? [...current, ...page.items.filter((item) => !current.some((known) => known.id === item.id))] : page.items);
       setPageInfo({ page: page.page, totalPages: page.totalPages });
       setError("");
     }
     catch (loadError) { setError(loadError instanceof Error ? loadError.message : "无法读取匿名话题。"); }
     finally { setIsLoading(false); }
-  }, [management, pageSize, query]);
+  }, [management, pageSize, query, sort]);
 
   function loadMoreTopics() {
     if (isLoading || pageInfo.page >= pageInfo.totalPages) return;
@@ -143,7 +154,17 @@ export function AnonymousTopicsPanel({ management = false, pageSize = 5, title =
     try {
       const next = await reactToAnonymousMessage(messageId, value);
       setTopic((current) => current ? { ...current, messages: current.messages.map((item) => item.id === next.id ? next : item) } : current);
+      await loadTopics();
     } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "操作失败。"); }
+  }
+
+  async function toggleFavorite(item: AnonymousTopicSummary) {
+    try {
+      const next = await toggleAnonymousTopicFavorite(item.id);
+      setItems((current) => current.map((known) => known.id === item.id ? { ...known, ...next } : known));
+      setTopic((current) => current?.id === item.id ? { ...current, ...next } : current);
+      if (sort === "favorites" || sort === "home") await loadTopics();
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "无法更新话题喜欢状态。"); }
   }
 
   async function moderateTopic() {
@@ -187,9 +208,9 @@ export function AnonymousTopicsPanel({ management = false, pageSize = 5, title =
   }
 
   return <section className="p8-surface anonymous-topics-panel">
-    <div className="p8-section-heading"><div><MessageCircleMore aria-hidden="true" size={17} /><h2>{title}</h2></div>{moreHref || !management ? <span className="p8-heading-actions-compact">{moreHref ? <Link href={moreHref}>全部</Link> : null}{!management ? <button aria-label="发起话题" className="p8-heading-icon" onClick={() => setIsCreateOpen(true)} title="发起话题" type="button"><Plus aria-hidden="true" size={17} /></button> : null}</span> : null}</div>
+    <div className="p8-section-heading"><div><MessageCircleMore aria-hidden="true" size={17} /><h2>{title}</h2></div><span className="p8-heading-actions-compact">{showSort ? <span className="anonymous-topic-sort"><GlassSelect ariaLabel="匿名话题排序" onChange={setSort} options={TOPIC_SORT_OPTIONS} value={sort} /></span> : null}{moreHref ? <Link href={moreHref}>全部</Link> : null}{!management ? <button aria-label="发起话题" className="p8-heading-icon" onClick={() => setIsCreateOpen(true)} title="发起话题" type="button"><Plus aria-hidden="true" size={17} /></button> : null}</span></div>
     {showSearch || management ? <label className="p8-list-search"><Search aria-hidden="true" size={16} /><input onChange={(event) => setQuery(event.target.value)} placeholder="搜索话题" value={query} /></label> : null}
-    {isLoading && !items.length ? <p className="p8-empty"><LoaderCircle aria-hidden="true" className="spin" size={15} />正在读取话题</p> : items.length ? <><div className="anonymous-topic-list">{items.map((item) => <button className={item.isHidden ? "hidden" : undefined} key={item.id} onClick={() => void openTopic(item.id)} type="button"><span><strong>{item.title}</strong><small>{formatTime(item.updatedAt)}{item.isHidden ? " · 已隐藏" : ""}</small></span><em className={item.status === "closed" ? "closed" : ""}>{item.status === "closed" ? "已关闭" : `${item.messageCount} 条`}</em></button>)}</div>{showLoadMore && pageInfo.page < pageInfo.totalPages ? <button className="p8-load-more" disabled={isLoading} onClick={loadMoreTopics} type="button">{isLoading ? "正在加载" : "加载更多话题"}</button> : null}</> : <p className="p8-empty">暂时没有话题，发起一个让大家聊聊。</p>}
+    {isLoading && !items.length ? <p className="p8-empty"><LoaderCircle aria-hidden="true" className="spin" size={15} />正在读取话题</p> : items.length ? <><div className="anonymous-topic-list">{items.map((item) => <AnonymousTopicListRow item={item} key={item.id} onFavorite={toggleFavorite} onOpen={openTopic} />)}</div>{showLoadMore && pageInfo.page < pageInfo.totalPages ? <button className="p8-load-more" disabled={isLoading} onClick={loadMoreTopics} type="button">{isLoading ? "正在加载" : "加载更多话题"}</button> : null}</> : <p className="p8-empty">暂时没有话题，发起一个让大家聊聊。</p>}
     {topic ? <TopicDialog identityCreate={identityCreate} identityOpen={isIdentityOpen} identityDraft={identityDraft} isManager={isManager} isSaving={isSaving} message={message} onClaim={claimIdentity} onClose={() => { setIdentityCreate(false); setIsIdentityOpen(false); setTopic(null); }} onCloseIdentity={() => { setIdentityCreate(false); setIsIdentityOpen(false); }} onHideMessage={hideMessage} onLoadMore={() => void loadTopic(topic.id, topic.messages[0]?.sequence)} onModerateTopic={moderateTopic} onOpenIdentity={() => { setIdentityDraft({ nickname: "", password: "" }); setIdentityCreate(false); setIsIdentityOpen(true); }} onReact={react} onSend={sendMessage} onToggleTopicHidden={toggleTopicHidden} setIdentityCreate={setIdentityCreate} setIdentityDraft={setIdentityDraft} setMessage={setMessage} topic={topic} /> : null}
     {isCreateOpen ? <ModalPortal><div className="modal-backdrop anonymous-topic-backdrop" role="presentation"><section aria-modal="true" className="anonymous-topic-modal topic-create-modal" role="dialog"><header><span><MessageCircleMore aria-hidden="true" size={18} /><strong>发起匿名话题</strong></span><button aria-label="关闭" onClick={() => setIsCreateOpen(false)} type="button"><X aria-hidden="true" size={17} /></button></header><form onSubmit={createTopic}><label><span>话题</span><input autoFocus maxLength={120} onChange={(event) => setTopicDraft({ ...topicDraft, title: event.target.value })} placeholder="一句话描述想吐槽的内容" required value={topicDraft.title} /></label><label><span>昵称</span><input maxLength={32} onChange={(event) => setTopicDraft({ ...topicDraft, nickname: event.target.value })} placeholder="创建话题必须填写昵称" required value={topicDraft.nickname} /></label><label><span>密码</span><input minLength={6} onChange={(event) => setTopicDraft({ ...topicDraft, password: event.target.value })} placeholder="用于其他设备恢复昵称" required type="password" value={topicDraft.password} /></label><footer><button disabled={isSaving} type="submit"><Plus aria-hidden="true" size={15} />{isSaving ? "创建中" : "创建并进入"}</button></footer></form></section></div></ModalPortal> : null}
     <AppToast message={error} onDismiss={() => setError("")} tone="error" />
@@ -205,6 +226,34 @@ function TopicDialog({ identityCreate, identityOpen, identityDraft, isManager, i
 function ModalPortal({ children }: { children: ReactNode }) {
   if (typeof document === "undefined") return null;
   return createPortal(children, document.body);
+}
+
+function AnonymousTopicListRow({ item, onFavorite, onOpen }: {
+  item: AnonymousTopicSummary;
+  onFavorite: (item: AnonymousTopicSummary) => Promise<void>;
+  onOpen: (id: number) => Promise<void>;
+}) {
+  return <article className={item.isHidden ? "hidden" : undefined}>
+    <button className="anonymous-topic-open" onClick={() => void onOpen(item.id)} type="button">
+      <span className="anonymous-topic-list-copy">
+        <span><strong>{item.title}</strong><small>{formatTime(item.updatedAt)}{item.isHidden ? " · 已隐藏" : ""}</small></span>
+        {item.topLikedMessage || item.topDislikedMessage ? <span className="anonymous-topic-highlights">
+          {item.topLikedMessage ? <small className="up" title={item.topLikedMessage.body}><ThumbsUp aria-hidden="true" size={12} />{topicHighlightLabel(item.topLikedMessage)}<b>{item.topLikedMessage.count}</b></small> : null}
+          {item.topDislikedMessage ? <small className="down" title={item.topDislikedMessage.body}><ThumbsDown aria-hidden="true" size={12} />{topicHighlightLabel(item.topDislikedMessage)}<b>{item.topDislikedMessage.count}</b></small> : null}
+        </span> : null}
+      </span>
+    </button>
+    <span className="anonymous-topic-metrics">
+      {item.status === "closed" ? <em className="closed">已关闭</em> : <em>{item.messageCount} 条</em>}
+      <small title="点评获赞"><ThumbsUp aria-hidden="true" size={12} />{item.messageLikeCount}</small>
+      <button aria-label={item.favorited ? `取消喜欢 ${item.title}` : `喜欢 ${item.title}`} className={item.favorited ? "active" : undefined} onClick={() => void onFavorite(item)} title={item.favorited ? "取消喜欢" : "喜欢话题"} type="button"><Heart aria-hidden="true" fill={item.favorited ? "currentColor" : "none"} size={15} /><span>{item.favoriteCount}</span></button>
+    </span>
+  </article>;
+}
+
+function topicHighlightLabel(message: NonNullable<AnonymousTopicSummary["topLikedMessage"]>) {
+  const author = message.nickname ? `#${message.sequence} ${message.nickname}` : `第 ${message.sequence} 条`;
+  return `${author}：${message.body}`;
 }
 
 function AnonymousMessageRow({ isManager, message, onHide, onReact }: { isManager: boolean; message: AnonymousTopicMessage; onHide: (id: number, isHidden: boolean) => void; onReact: (id: number, value: "up" | "down") => void }) {

@@ -8,7 +8,7 @@ interface CountRow { value: bigint | number | string; }
 interface RankingRow { entityKey: string | number; label: string; secondary: string; score: bigint | number | string; metadata?: string | null; }
 
 const AGGREGATION_INTERVAL_MS = 60 * 60 * 1000;
-const rankingCategories = ["author", "article", "search", "subscription_growth"] as const;
+const rankingCategories = ["author", "article", "search", "subscription_growth", "anonymous_topic"] as const;
 
 @Injectable()
 export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
@@ -59,6 +59,10 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
         disabledUsers: item?.disabledUsers ?? 0,
         loginRisks: item?.loginRisks ?? 0,
         failedJobs: item?.failedJobs ?? 0,
+        anonymousTopics: item?.anonymousTopics ?? 0,
+        anonymousMessages: item?.anonymousMessages ?? 0,
+        anonymousLikes: item?.anonymousLikes ?? 0,
+        anonymousFavorites: item?.anonymousFavorites ?? 0,
       };
     });
     const summary = trend.reduce<Omit<AnalyticsTrendPoint, "date">>((total, point) => ({
@@ -75,7 +79,11 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       disabledUsers: total.disabledUsers + point.disabledUsers,
       loginRisks: total.loginRisks + point.loginRisks,
       failedJobs: total.failedJobs + point.failedJobs,
-    }), { newUsers: 0, activeUsers: 0, articles: 0, comments: 0, messages: 0, views: 0, likes: 0, favorites: 0, subscriptions: 0, reports: 0, disabledUsers: 0, loginRisks: 0, failedJobs: 0 });
+      anonymousTopics: total.anonymousTopics + point.anonymousTopics,
+      anonymousMessages: total.anonymousMessages + point.anonymousMessages,
+      anonymousLikes: total.anonymousLikes + point.anonymousLikes,
+      anonymousFavorites: total.anonymousFavorites + point.anonymousFavorites,
+    }), { newUsers: 0, activeUsers: 0, articles: 0, comments: 0, messages: 0, views: 0, likes: 0, favorites: 0, subscriptions: 0, reports: 0, disabledUsers: 0, loginRisks: 0, failedJobs: 0, anonymousTopics: 0, anonymousMessages: 0, anonymousLikes: 0, anonymousFavorites: 0 });
     const rankings = Object.fromEntries(rankingCategories.map((category) => {
       const byEntity = new Map<string, AnalyticsRankingItem>();
       for (const row of rankingRows) {
@@ -110,6 +118,7 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
         articles: rankings.article,
         searches: rankings.search,
         subscriptionGrowth: rankings.subscription_growth,
+        anonymousTopics: rankings.anonymous_topic,
       },
       definitions: this.metricDefinitions(),
     };
@@ -176,7 +185,8 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
   private async aggregateDate(dateKey: string): Promise<void> {
     const { start, end } = this.utcBounds(dateKey);
     const count = (table: Prisma.Sql, column: Prisma.Sql = Prisma.sql`created_at`) => this.count(Prisma.sql`SELECT COUNT(*) AS value FROM ${table} WHERE ${column} >= ${start} AND ${column} < ${end}`);
-    const [newUsers, articles, comments, messages, views, likes, favorites, subscriptions, articleReports, groupReports, disabledUsers, loginRisks, failedMailJobs, failedStorageJobs, failedMediaJobs, failedOperationJobs, activeRows] = await Promise.all([
+    // Anonymous interaction metrics follow the existing net-relation definition used by article likes and favorites.
+    const [newUsers, articles, comments, messages, views, likes, favorites, subscriptions, articleReports, groupReports, disabledUsers, loginRisks, failedMailJobs, failedStorageJobs, failedMediaJobs, failedOperationJobs, anonymousTopics, anonymousMessages, anonymousLikes, anonymousFavorites, activeRows] = await Promise.all([
       count(Prisma.raw("users")),
       count(Prisma.raw("articles"), Prisma.sql`published_at`),
       count(Prisma.raw("article_comments")),
@@ -193,6 +203,10 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       this.count(Prisma.sql`SELECT COUNT(*) AS value FROM storage_scans WHERE status = 'failed' AND created_at >= ${start} AND created_at < ${end}`),
       this.count(Prisma.sql`SELECT COUNT(*) AS value FROM media_backup_jobs WHERE status IN ('partial', 'failed') AND created_at >= ${start} AND created_at < ${end}`),
       this.count(Prisma.sql`SELECT COUNT(*) AS value FROM operation_job_runs WHERE job_type <> 'daily_analytics' AND status = 'failed' AND created_at >= ${start} AND created_at < ${end}`),
+      count(Prisma.raw("anonymous_topics")),
+      count(Prisma.raw("anonymous_topic_messages")),
+      this.count(Prisma.sql`SELECT COUNT(*) AS value FROM anonymous_topic_reactions WHERE value = 'up' AND created_at >= ${start} AND created_at < ${end}`),
+      count(Prisma.raw("anonymous_topic_favorites")),
       this.prisma.$queryRaw<CountRow[]>(Prisma.sql`
         SELECT COUNT(DISTINCT user_id) AS value FROM (
           SELECT id AS user_id FROM users WHERE last_login_at >= ${start} AND last_login_at < ${end}
@@ -218,6 +232,10 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       disabledUsers,
       loginRisks,
       failedJobs: failedMailJobs + failedStorageJobs + failedMediaJobs + failedOperationJobs,
+      anonymousTopics,
+      anonymousMessages,
+      anonymousLikes,
+      anonymousFavorites,
       generatedAt: new Date(),
     };
     await this.prisma.dailyOperationMetric.upsert({ where: { metricDate }, create: { metricDate, ...data }, update: data });
@@ -229,7 +247,7 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async collectRankings(start: Date, end: Date) {
-    const [authors, articles, searches, subscriptionGrowth] = await Promise.all([
+    const [authors, articles, searches, subscriptionGrowth, anonymousTopics] = await Promise.all([
       this.prisma.$queryRaw<RankingRow[]>(Prisma.sql`
         SELECT CAST(u.id AS CHAR) entityKey, u.nickname label, CONCAT('@', u.username) secondary,
           COUNT(DISTINCT a.id) * 5 + COALESCE(SUM(a.view_count + a.like_count * 3 + a.favorite_count * 3 + a.comment_count * 4), 0) score
@@ -256,12 +274,46 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
         WHERE s.created_at >= ${start} AND s.created_at < ${end}
         GROUP BY u.id, u.nickname, u.username ORDER BY score DESC LIMIT 10
       `),
+      // Daily topic ranking uses activity created in the day, preventing a popular old topic from being counted again every day.
+      this.prisma.$queryRaw<RankingRow[]>(Prisma.sql`
+        SELECT CAST(t.id AS CHAR) entityKey, t.title label,
+          CONCAT(t.message_count, ' 条讨论 · ', t.favorite_count, ' 次喜欢') secondary,
+          (CASE WHEN t.created_at >= ${start} AND t.created_at < ${end} THEN 1 ELSE 0 END)
+            + COALESCE(m.daily_messages, 0) * 2
+            + COALESCE(l.daily_likes, 0) * 3
+            + COALESCE(f.daily_favorites, 0) * 4 score,
+          JSON_OBJECT('topicId', t.id) metadata
+        FROM anonymous_topics t
+        LEFT JOIN (
+          SELECT topic_id, COUNT(*) daily_messages FROM anonymous_topic_messages
+          WHERE created_at >= ${start} AND created_at < ${end} GROUP BY topic_id
+        ) m ON m.topic_id = t.id
+        LEFT JOIN (
+          SELECT message.topic_id, COUNT(*) daily_likes
+          FROM anonymous_topic_reactions reaction
+          JOIN anonymous_topic_messages message ON message.id = reaction.message_id
+          WHERE reaction.value = 'up' AND reaction.created_at >= ${start} AND reaction.created_at < ${end}
+          GROUP BY message.topic_id
+        ) l ON l.topic_id = t.id
+        LEFT JOIN (
+          SELECT topic_id, COUNT(*) daily_favorites FROM anonymous_topic_favorites
+          WHERE created_at >= ${start} AND created_at < ${end} GROUP BY topic_id
+        ) f ON f.topic_id = t.id
+        WHERE t.is_hidden = false AND (
+          (t.created_at >= ${start} AND t.created_at < ${end})
+          OR COALESCE(m.daily_messages, 0) > 0
+          OR COALESCE(l.daily_likes, 0) > 0
+          OR COALESCE(f.daily_favorites, 0) > 0
+        )
+        ORDER BY score DESC, t.updated_at DESC LIMIT 10
+      `),
     ]);
     return [
       ...this.mapRankings("author", authors),
       ...this.mapRankings("article", articles),
       ...this.mapRankings("search", searches),
       ...this.mapRankings("subscription_growth", subscriptionGrowth),
+      ...this.mapRankings("anonymous_topic", anonymousTopics),
     ];
   }
 
@@ -313,6 +365,10 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       { key: "disabledUsers", label: "封禁", definition: "当天被更新为停用状态的账号数量。" },
       { key: "loginRisks", label: "登录风险", definition: "当天记录的中风险和高风险登录安全事件。" },
       { key: "failedJobs", label: "异常任务", definition: "当天失败的邮件、存储扫描、媒体备份和运营后台任务总数。" },
+      { key: "anonymousTopics", label: "匿名话题", definition: "当天新发起的匿名话题数量。" },
+      { key: "anonymousMessages", label: "匿名发言", definition: "当天在匿名话题中发送的点评数量。" },
+      { key: "anonymousLikes", label: "点评获赞", definition: "当天新增且当前仍有效的匿名点评点赞记录数量。" },
+      { key: "anonymousFavorites", label: "话题喜欢", definition: "当天新增且当前仍有效的话题喜欢记录数量。" },
     ];
   }
 

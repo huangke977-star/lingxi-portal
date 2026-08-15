@@ -1,6 +1,15 @@
 import { requestJson } from "./auth-api";
 
 export type AnonymousTopicStatus = "active" | "closed";
+export type AnonymousTopicSort = "time" | "participation" | "likes" | "favorites" | "home";
+
+export interface AnonymousTopicHighlight {
+  id: number;
+  sequence: number;
+  body: string;
+  nickname: string | null;
+  count: number;
+}
 
 export interface AnonymousTopicSummary {
   id: number;
@@ -8,6 +17,11 @@ export interface AnonymousTopicSummary {
   status: AnonymousTopicStatus;
   isHidden: boolean;
   messageCount: number;
+  messageLikeCount: number;
+  favoriteCount: number;
+  favorited: boolean;
+  topLikedMessage: AnonymousTopicHighlight | null;
+  topDislikedMessage: AnonymousTopicHighlight | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -68,10 +82,17 @@ export function saveAnonymousIdentity(topicId: number, identity: AnonymousIdenti
   if (typeof window !== "undefined") window.localStorage.setItem(`${IDENTITY_STORAGE_PREFIX}${topicId}`, JSON.stringify(identity));
 }
 
-export function listAnonymousTopics(page = 1, pageSize = 8, q = ""): Promise<AnonymousTopicPage> {
-  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-  if (q.trim()) params.set("q", q.trim());
-  return requestJson(`/anonymous-topics?${params.toString()}`, { cache: "no-store" });
+export function listAnonymousTopics(input: { page?: number; pageSize?: number; q?: string; sort?: AnonymousTopicSort } = {}): Promise<AnonymousTopicPage> {
+  const params = new URLSearchParams({
+    page: String(input.page ?? 1),
+    pageSize: String(input.pageSize ?? 8),
+    sort: input.sort ?? "time",
+  });
+  if (input.q?.trim()) params.set("q", input.q.trim());
+  return requestJson(`/anonymous-topics?${params.toString()}`, {
+    cache: "no-store",
+    headers: { "X-Anonymous-Visitor-Key": getAnonymousVisitorKey() },
+  });
 }
 
 export function getAnonymousTopic(id: number, input: { limit?: number; beforeSequence?: number } = {}): Promise<AnonymousTopicDetail> {
@@ -79,13 +100,27 @@ export function getAnonymousTopic(id: number, input: { limit?: number; beforeSeq
   if (input.limit) params.set("limit", String(input.limit));
   if (input.beforeSequence) params.set("beforeSequence", String(input.beforeSequence));
   const query = params.toString();
-  return requestJson(`/anonymous-topics/${id}${query ? `?${query}` : ""}`, { cache: "no-store" });
+  return requestJson(`/anonymous-topics/${id}${query ? `?${query}` : ""}`, {
+    cache: "no-store",
+    headers: { "X-Anonymous-Visitor-Key": getAnonymousVisitorKey() },
+  });
 }
 
-export function listAnonymousTopicsAdmin(accessToken: string, page = 1, pageSize = 20, q = ""): Promise<AnonymousTopicPage> {
-  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-  if (q.trim()) params.set("q", q.trim());
+export function listAnonymousTopicsAdmin(accessToken: string, input: { page?: number; pageSize?: number; q?: string; sort?: AnonymousTopicSort } = {}): Promise<AnonymousTopicPage> {
+  const params = new URLSearchParams({
+    page: String(input.page ?? 1),
+    pageSize: String(input.pageSize ?? 20),
+    sort: input.sort ?? "time",
+  });
+  if (input.q?.trim()) params.set("q", input.q.trim());
   return requestJson(`/anonymous-topics/admin?${params.toString()}`, { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } });
+}
+
+export function toggleAnonymousTopicFavorite(id: number): Promise<{ id: number; favorited: boolean; favoriteCount: number; updatedAt: string }> {
+  return requestJson(`/anonymous-topics/${id}/favorite`, {
+    method: "POST",
+    body: JSON.stringify({ visitorKey: getAnonymousVisitorKey() }),
+  });
 }
 
 export function getAnonymousTopicAdmin(accessToken: string, id: number, input: { limit?: number; beforeSequence?: number } = {}): Promise<AnonymousTopicDetail> {

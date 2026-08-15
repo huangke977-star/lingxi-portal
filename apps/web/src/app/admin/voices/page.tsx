@@ -38,7 +38,7 @@ export default function AnonymousTopicManagementPage() {
       <header className="p8-page-heading">
         <div><span className="section-label">MODERATION</span><h1>匿名话题管理</h1></div>
       </header>
-      {isReady ? <AnonymousTopicsPanel management pageSize={20} showLoadMore showSearch title="全部匿名话题" /> : !error ? <div className="article-empty-state">正在读取匿名话题。</div> : null}
+      {isReady ? <AnonymousTopicsPanel management pageSize={20} showLoadMore showSearch showSort title="全部匿名话题" /> : !error ? <div className="article-empty-state">正在读取匿名话题。</div> : null}
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );

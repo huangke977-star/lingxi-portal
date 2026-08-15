@@ -157,7 +157,7 @@ export function HomeWorkspace() {
                 </Link>)}
               </div> : <P8Empty text="暂时没有可展示的文章。" />}
             </section>
-            <AnonymousTopicsPanel moreHref="/voices" />
+            <AnonymousTopicsPanel initialSort="home" moreHref="/voices" />
           </div>
 
           <aside className="p8-home-side">

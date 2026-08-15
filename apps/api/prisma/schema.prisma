@@ -937,30 +937,34 @@ model SiteSuggestionReply {
 }
 
 model AnonymousTopic {
-  id           Int                  @id @default(autoincrement())
-  title        String               @db.VarChar(120)
-  status       AnonymousTopicStatus @default(active)
-  isHidden     Boolean              @default(false) @map("is_hidden")
-  messageCount Int                  @default(0) @map("message_count")
-  identities   AnonymousTopicIdentity[]
-  messages     AnonymousTopicMessage[]
-  createdAt    DateTime             @default(now()) @map("created_at")
-  updatedAt    DateTime             @updatedAt @map("updated_at")
+  id               Int                      @id @default(autoincrement())
+  title            String                   @db.VarChar(120)
+  status           AnonymousTopicStatus     @default(active)
+  isHidden         Boolean                  @default(false) @map("is_hidden")
+  messageCount     Int                      @default(0) @map("message_count")
+  messageLikeCount Int                      @default(0) @map("message_like_count")
+  favoriteCount    Int                      @default(0) @map("favorite_count")
+  identities       AnonymousTopicIdentity[]
+  messages         AnonymousTopicMessage[]
+  favorites        AnonymousTopicFavorite[]
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  updatedAt        DateTime                 @updatedAt @map("updated_at")
 
   @@index([status, isHidden, updatedAt])
+  @@index([isHidden, favoriteCount, messageCount, messageLikeCount, updatedAt], map: "anonymous_topics_engagement_sort_idx")
   @@map("anonymous_topics")
 }
 
 model AnonymousTopicIdentity {
-  id           Int            @id @default(autoincrement())
-  topicId      Int            @map("topic_id")
-  topic        AnonymousTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  nickname     String         @db.VarChar(32)
-  passwordHash String         @map("password_hash") @db.VarChar(255)
-  isCreator    Boolean        @default(false) @map("is_creator")
+  id           Int                     @id @default(autoincrement())
+  topicId      Int                     @map("topic_id")
+  topic        AnonymousTopic          @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  nickname     String                  @db.VarChar(32)
+  passwordHash String                  @map("password_hash") @db.VarChar(255)
+  isCreator    Boolean                 @default(false) @map("is_creator")
   messages     AnonymousTopicMessage[]
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
 
   @@unique([topicId, nickname])
   @@index([topicId, createdAt])
@@ -968,19 +972,19 @@ model AnonymousTopicIdentity {
 }
 
 model AnonymousTopicMessage {
-  id           Int            @id @default(autoincrement())
-  topicId      Int            @map("topic_id")
-  topic        AnonymousTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  id           Int                      @id @default(autoincrement())
+  topicId      Int                      @map("topic_id")
+  topic        AnonymousTopic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
   sequence     Int
-  identityId   Int?           @map("identity_id")
-  identity     AnonymousTopicIdentity? @relation(fields: [identityId], references: [id], onDelete: SetNull)
-  body         String         @db.Text
-  isHidden     Boolean        @default(false) @map("is_hidden")
-  likeCount    Int            @default(0) @map("like_count")
-  dislikeCount Int            @default(0) @map("dislike_count")
+  identityId   Int?                     @map("identity_id")
+  identity     AnonymousTopicIdentity?  @relation(fields: [identityId], references: [id], onDelete: SetNull)
+  body         String                   @db.Text
+  isHidden     Boolean                  @default(false) @map("is_hidden")
+  likeCount    Int                      @default(0) @map("like_count")
+  dislikeCount Int                      @default(0) @map("dislike_count")
   reactions    AnonymousTopicReaction[]
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
+  createdAt    DateTime                 @default(now()) @map("created_at")
+  updatedAt    DateTime                 @updatedAt @map("updated_at")
 
   @@unique([topicId, sequence])
   @@index([topicId, isHidden, sequence])
@@ -998,6 +1002,17 @@ model AnonymousTopicReaction {
   @@id([messageId, visitorKey])
   @@index([visitorKey, updatedAt])
   @@map("anonymous_topic_reactions")
+}
+
+model AnonymousTopicFavorite {
+  topicId    Int            @map("topic_id")
+  topic      AnonymousTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  visitorKey String         @map("visitor_key") @db.Char(64)
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  @@id([topicId, visitorKey])
+  @@index([visitorKey, createdAt])
+  @@map("anonymous_topic_favorites")
 }
 
 model PortalEntryRole {
@@ -1753,24 +1768,28 @@ model UserNotification {
 }
 
 model DailyOperationMetric {
-  id                Int      @id @default(autoincrement())
-  metricDate        DateTime @unique @map("metric_date") @db.Date
-  newUsers          Int      @default(0) @map("new_users")
-  activeUsers       Int      @default(0) @map("active_users")
-  publishedArticles Int      @default(0) @map("published_articles")
-  comments          Int      @default(0)
-  messages          Int      @default(0)
-  articleViews      Int      @default(0) @map("article_views")
-  likes             Int      @default(0)
-  favorites         Int      @default(0)
-  subscriptions     Int      @default(0)
-  articleReports    Int      @default(0) @map("article_reports")
-  groupReports      Int      @default(0) @map("group_reports")
-  disabledUsers     Int      @default(0) @map("disabled_users")
-  loginRisks        Int      @default(0) @map("login_risks")
-  failedJobs        Int      @default(0) @map("failed_jobs")
-  generatedAt       DateTime @default(now()) @map("generated_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id                 Int      @id @default(autoincrement())
+  metricDate         DateTime @unique @map("metric_date") @db.Date
+  newUsers           Int      @default(0) @map("new_users")
+  activeUsers        Int      @default(0) @map("active_users")
+  publishedArticles  Int      @default(0) @map("published_articles")
+  comments           Int      @default(0)
+  messages           Int      @default(0)
+  articleViews       Int      @default(0) @map("article_views")
+  likes              Int      @default(0)
+  favorites          Int      @default(0)
+  subscriptions      Int      @default(0)
+  articleReports     Int      @default(0) @map("article_reports")
+  groupReports       Int      @default(0) @map("group_reports")
+  disabledUsers      Int      @default(0) @map("disabled_users")
+  loginRisks         Int      @default(0) @map("login_risks")
+  failedJobs         Int      @default(0) @map("failed_jobs")
+  anonymousTopics    Int      @default(0) @map("anonymous_topics")
+  anonymousMessages  Int      @default(0) @map("anonymous_messages")
+  anonymousLikes     Int      @default(0) @map("anonymous_likes")
+  anonymousFavorites Int      @default(0) @map("anonymous_favorites")
+  generatedAt        DateTime @default(now()) @map("generated_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   @@index([metricDate])
   @@map("daily_operation_metrics")

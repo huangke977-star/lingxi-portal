@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ChatAttachmentKind, FriendshipStatus } from "../src/generated/prisma/client";
+import { AuthenticatedUser } from "../src/auth/auth.types";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { UploadedChatAttachment } from "../src/social/chat-attachment.storage";
 import { ChatAttachmentsService } from "../src/social/chat-attachments.service";
@@ -159,7 +160,8 @@ describe("ChatAttachmentsService", () => {
     };
     const service = new ChatAttachmentsService(prisma as unknown as PrismaService);
 
-    await expect(service.getDownload(1, 8)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.getDownload(1, { id: 8, isSuperAdmin: false, role: { level: 10 } } as AuthenticatedUser))
+      .rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it("restores UTF-8 Chinese names decoded as latin1 by multipart parsing", () => {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -7,6 +7,7 @@ import {
   ClaimAnonymousIdentityDto,
   CreateAnonymousMessageDto,
   CreateAnonymousTopicDto,
+  FavoriteAnonymousTopicDto,
   GetAnonymousTopicQueryDto,
   ListAnonymousTopicsQueryDto,
   ReactAnonymousMessageDto,
@@ -20,13 +21,20 @@ export class AnonymousTopicsController {
   constructor(private readonly anonymousTopicsService: AnonymousTopicsService) {}
 
   @Get()
-  list(@Query() query: ListAnonymousTopicsQueryDto) { return this.anonymousTopicsService.list(query); }
+  list(@Query() query: ListAnonymousTopicsQueryDto, @Headers("x-anonymous-visitor-key") visitorKey?: string) {
+    return this.anonymousTopicsService.list(query, visitorKey);
+  }
 
   @Post()
   create(@Body() dto: CreateAnonymousTopicDto) { return this.anonymousTopicsService.create(dto); }
 
   @Post("messages/:messageId/reaction")
   react(@Param("messageId", ParseIntPipe) messageId: number, @Body() dto: ReactAnonymousMessageDto) { return this.anonymousTopicsService.react(messageId, dto); }
+
+  @Post(":id/favorite")
+  favorite(@Param("id", ParseIntPipe) id: number, @Body() dto: FavoriteAnonymousTopicDto) {
+    return this.anonymousTopicsService.favorite(id, dto);
+  }
 
   @Get("admin")
   @UseGuards(JwtAuthGuard)
@@ -48,7 +56,11 @@ export class AnonymousTopicsController {
   updateTopicByCreator(@Param("id", ParseIntPipe) id: number, @Body() dto: UpdateAnonymousTopicByCreatorDto) { return this.anonymousTopicsService.updateTopicByCreator(id, dto); }
 
   @Get(":id")
-  get(@Param("id", ParseIntPipe) id: number, @Query() query: GetAnonymousTopicQueryDto) { return this.anonymousTopicsService.get(id, query); }
+  get(
+    @Param("id", ParseIntPipe) id: number,
+    @Query() query: GetAnonymousTopicQueryDto,
+    @Headers("x-anonymous-visitor-key") visitorKey?: string,
+  ) { return this.anonymousTopicsService.get(id, query, visitorKey); }
 
   @Post(":id/identity")
   claimIdentity(@Param("id", ParseIntPipe) id: number, @Body() dto: ClaimAnonymousIdentityDto) { return this.anonymousTopicsService.claimIdentity(id, dto); }

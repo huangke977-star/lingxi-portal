@@ -13,6 +13,10 @@ export interface AnalyticsTrendPoint {
   disabledUsers: number;
   loginRisks: number;
   failedJobs: number;
+  anonymousTopics: number;
+  anonymousMessages: number;
+  anonymousLikes: number;
+  anonymousFavorites: number;
 }
 export interface AnalyticsRankingItem {
   key: string;
@@ -33,6 +37,7 @@ export interface AdminAnalyticsResponse {
     articles: AnalyticsRankingItem[];
     searches: AnalyticsRankingItem[];
     subscriptionGrowth: AnalyticsRankingItem[];
+    anonymousTopics: AnalyticsRankingItem[];
   };
   definitions: Array<{ key: string; label: string; definition: string }>;
 }

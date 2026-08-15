@@ -26,6 +26,10 @@ describe("admin analytics", () => {
           disabledUsers: 1,
           loginRisks: 2,
           failedJobs: 1,
+          anonymousTopics: 2,
+          anonymousMessages: 6,
+          anonymousLikes: 4,
+          anonymousFavorites: 3,
         }]),
       },
       dailyOperationRanking: {
@@ -52,15 +56,31 @@ describe("admin analytics", () => {
       activeUsers: 5,
       articles: 1,
       messages: 8,
+      anonymousTopics: 2,
+      anonymousMessages: 6,
       reports: 3,
     });
-    expect(result.summary).toMatchObject({ newUsers: 2, activeUsers: 5, articles: 1, messages: 8, reports: 3 });
+    expect(result.summary).toMatchObject({
+      newUsers: 2,
+      activeUsers: 5,
+      articles: 1,
+      messages: 8,
+      reports: 3,
+      anonymousTopics: 2,
+      anonymousMessages: 6,
+      anonymousLikes: 4,
+      anonymousFavorites: 3,
+    });
     expect(result.latestAggregateAt).toBe(generatedAt.toISOString());
     expect(result.rankings.authors).toEqual([expect.objectContaining({ key: "7", score: 30 })]);
     expect(result.rankings.searches).toEqual([expect.objectContaining({ key: "redis", score: 8 })]);
     expect(result.rankings.articles[0]).toMatchObject({ key: "article-1", metadata: { slug: "article-1" } });
     expect(result.definitions.map((item) => item.key).sort()).toEqual([
       "activeUsers",
+      "anonymousFavorites",
+      "anonymousLikes",
+      "anonymousMessages",
+      "anonymousTopics",
       "articles",
       "comments",
       "disabledUsers",

@@ -457,10 +457,9 @@ export default function ArticleDetailPage() {
           <div aria-hidden={!replyingTo} className={`article-composer-context${replyingTo ? " active" : ""}`}>
             {replyingTo ? <><span title={`回复 @${replyingTo.author.nickname}`}>回复 <strong>@{replyingTo.author.nickname}</strong></span><button aria-label="取消回复" onClick={() => setReplyingTo(null)} title="取消回复" type="button"><X aria-hidden="true" size={14} /></button></> : null}
           </div>
-          <textarea aria-label={replyingTo ? `回复 ${replyingTo.author.nickname}` : "评论文章"} maxLength={2000} onChange={(event) => setCommentDraft(event.target.value)} placeholder={replyingTo ? `回复 @${replyingTo.author.nickname}` : "写下你的想法"} ref={composerRef} rows={3} value={commentDraft} />
+          <div className="article-comment-input-wrap"><textarea aria-label={replyingTo ? `回复 ${replyingTo.author.nickname}` : "评论文章"} maxLength={2000} onChange={(event) => setCommentDraft(event.target.value)} placeholder={replyingTo ? `回复 @${replyingTo.author.nickname}` : "写下你的想法"} ref={composerRef} rows={3} value={commentDraft} /><button aria-label={replyingTo ? "发送回复" : "发送评论"} disabled={isSubmittingComment || !commentDraft.trim()} title={replyingTo ? "发送回复" : "发送评论"} type="submit"><Send aria-hidden="true" size={17} /></button></div>
           <div className="article-composer-footer">
             <span className="article-composer-count">{commentDraft.length} / 2000</span>
-            <button className="button" disabled={isSubmittingComment || !commentDraft.trim()} type="submit"><Send aria-hidden="true" size={16} />{isSubmittingComment ? "发布中" : replyingTo ? "发布回复" : "发布评论"}</button>
           </div>
         </form>}
         {commentThreads.length ? <>

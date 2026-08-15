@@ -10,6 +10,7 @@ import {
   ClaimAnonymousIdentityDto,
   CreateAnonymousMessageDto,
   CreateAnonymousTopicDto,
+  FavoriteAnonymousTopicDto,
   GetAnonymousTopicQueryDto,
   ListAnonymousTopicsQueryDto,
   ReactAnonymousMessageDto,
@@ -33,7 +34,7 @@ export class AnonymousTopicsService {
     private readonly redis: RedisService,
   ) {}
 
-  async list(query: ListAnonymousTopicsQueryDto) {
+  async list(query: ListAnonymousTopicsQueryDto, visitorKey?: string) {
     const keyword = query.q?.trim();
     const where: Prisma.AnonymousTopicWhereInput = {
       isHidden: false,
@@ -43,13 +44,13 @@ export class AnonymousTopicsService {
       this.prisma.anonymousTopic.count({ where }),
       this.prisma.anonymousTopic.findMany({
         where,
-        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        orderBy: this.topicOrder(query.sort),
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
       }),
     ]);
     return {
-      items: items.map((topic) => this.toTopicSummary(topic)),
+      items: await this.toTopicSummaries(items, visitorKey),
       total,
       page: query.page,
       pageSize: query.pageSize,
@@ -65,13 +66,13 @@ export class AnonymousTopicsService {
       this.prisma.anonymousTopic.count({ where }),
       this.prisma.anonymousTopic.findMany({
         where,
-        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        orderBy: this.topicOrder(query.sort),
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
       }),
     ]);
     return {
-      items: items.map((topic) => this.toTopicSummary(topic)),
+      items: await this.toTopicSummaries(items),
       total,
       page: query.page,
       pageSize: query.pageSize,
@@ -79,7 +80,7 @@ export class AnonymousTopicsService {
     };
   }
 
-  async get(id: number, query: GetAnonymousTopicQueryDto) {
+  async get(id: number, query: GetAnonymousTopicQueryDto, visitorKey?: string) {
     const topic = await this.prisma.anonymousTopic.findFirst({ where: { id, isHidden: false } });
     if (!topic) throw new NotFoundException("话题不存在或已隐藏。");
     const messages = await this.prisma.anonymousTopicMessage.findMany({
@@ -90,7 +91,7 @@ export class AnonymousTopicsService {
     });
     const hasMore = messages.length > query.limit;
     return {
-      ...this.toTopicSummary(topic),
+      ...this.toTopicSummary(topic, { favorited: await this.isTopicFavorited(id, visitorKey) }),
       messages: messages.slice(0, query.limit).reverse().map((message) => this.toMessage(message)),
       hasMore,
     };
@@ -219,13 +220,44 @@ export class AnonymousTopicsService {
       } else {
         await transaction.anonymousTopicReaction.create({ data: { messageId, visitorKey, value } });
       }
-      return transaction.anonymousTopicMessage.update({
+      const updated = await transaction.anonymousTopicMessage.update({
         where: { id: messageId },
         data: { likeCount: Math.max(0, likes), dislikeCount: Math.max(0, dislikes) },
         include: messageInclude,
       });
+      const likeDelta = Math.max(0, likes) - current.likeCount;
+      if (likeDelta) {
+        // List sorting reads the denormalized topic total, so every reaction transition must update it in the same transaction.
+        await transaction.anonymousTopic.update({
+          where: { id: current.topicId },
+          data: { messageLikeCount: { increment: likeDelta } },
+        });
+      }
+      return updated;
     });
     return this.toMessage(message);
+  }
+
+  async favorite(id: number, dto: FavoriteAnonymousTopicDto) {
+    this.assertVisitorKey(dto.visitorKey);
+    const visitorKey = this.digestVisitorKey(dto.visitorKey);
+    return this.prisma.$transaction(async (transaction) => {
+      const topic = await transaction.anonymousTopic.findFirst({ where: { id, isHidden: false } });
+      if (!topic) throw new NotFoundException("话题不存在或已隐藏。");
+      const previous = await transaction.anonymousTopicFavorite.findUnique({
+        where: { topicId_visitorKey: { topicId: id, visitorKey } },
+      });
+      if (previous) {
+        await transaction.anonymousTopicFavorite.delete({ where: { topicId_visitorKey: { topicId: id, visitorKey } } });
+      } else {
+        await transaction.anonymousTopicFavorite.create({ data: { topicId: id, visitorKey } });
+      }
+      const updated = await transaction.anonymousTopic.update({
+        where: { id },
+        data: { favoriteCount: { increment: previous ? -1 : 1 } },
+      });
+      return { id, favorited: !previous, favoriteCount: updated.favoriteCount, updatedAt: updated.updatedAt.toISOString() };
+    });
   }
 
   async updateTopic(user: AuthenticatedUser, id: number, dto: UpdateAnonymousTopicDto) {
@@ -251,7 +283,19 @@ export class AnonymousTopicsService {
 
   async updateMessage(user: AuthenticatedUser, id: number, dto: UpdateAnonymousMessageDto) {
     this.assertManager(user);
-    const message = await this.prisma.anonymousTopicMessage.update({ where: { id }, data: { isHidden: dto.isHidden }, include: messageInclude });
+    const message = await this.prisma.$transaction(async (transaction) => {
+      const current = await transaction.anonymousTopicMessage.findUnique({ where: { id }, include: messageInclude });
+      if (!current) throw new NotFoundException("消息不存在。");
+      if (current.isHidden === dto.isHidden) return current;
+      const updated = await transaction.anonymousTopicMessage.update({ where: { id }, data: { isHidden: dto.isHidden }, include: messageInclude });
+      if (current.likeCount) {
+        await transaction.anonymousTopic.update({
+          where: { id: current.topicId },
+          data: { messageLikeCount: { increment: dto.isHidden ? -current.likeCount : current.likeCount } },
+        });
+      }
+      return updated;
+    });
     return this.toMessage(message);
   }
 
@@ -276,13 +320,141 @@ export class AnonymousTopicsService {
     });
   }
 
-  private toTopicSummary(topic: { id: number; title: string; status: AnonymousTopicStatus; isHidden: boolean; messageCount: number; createdAt: Date; updatedAt: Date }) {
+  private topicOrder(sort: ListAnonymousTopicsQueryDto["sort"]): Prisma.AnonymousTopicOrderByWithRelationInput[] {
+    if (sort === "participation") return [{ messageCount: "desc" }, { updatedAt: "desc" }, { id: "desc" }];
+    if (sort === "likes") return [{ messageLikeCount: "desc" }, { updatedAt: "desc" }, { id: "desc" }];
+    if (sort === "favorites") return [{ favoriteCount: "desc" }, { updatedAt: "desc" }, { id: "desc" }];
+    if (sort === "home") {
+      return [
+        { favoriteCount: "desc" },
+        { messageCount: "desc" },
+        { messageLikeCount: "desc" },
+        { updatedAt: "desc" },
+        { id: "desc" },
+      ];
+    }
+    return [{ updatedAt: "desc" }, { id: "desc" }];
+  }
+
+  private async toTopicSummaries(
+    topics: Array<{
+      id: number;
+      title: string;
+      status: AnonymousTopicStatus;
+      isHidden: boolean;
+      messageCount: number;
+      messageLikeCount: number;
+      favoriteCount: number;
+      createdAt: Date;
+      updatedAt: Date;
+    }>,
+    visitorKey?: string,
+  ) {
+    const topicIds = topics.map(({ id }) => id);
+    if (!topicIds.length) return [];
+    const validVisitorKey = visitorKey && visitorKey.trim().length >= 16 && visitorKey.trim().length <= 128
+      ? this.digestVisitorKey(visitorKey)
+      : null;
+    const messageSelect = {
+      id: true,
+      sequence: true,
+      body: true,
+      likeCount: true,
+      dislikeCount: true,
+      identity: { select: { nickname: true } },
+    } satisfies Prisma.AnonymousTopicMessageSelect;
+    // Two bounded relation queries avoid loading every message body while still returning one highlight of each kind per topic.
+    const [likedTopics, dislikedTopics, favoriteRows] = await Promise.all([
+      this.prisma.anonymousTopic.findMany({
+        where: { id: { in: topicIds } },
+        select: {
+          id: true,
+          messages: {
+            where: { isHidden: false, likeCount: { gt: 0 } },
+            orderBy: [{ likeCount: "desc" }, { sequence: "asc" }],
+            take: 1,
+            select: messageSelect,
+          },
+        },
+      }),
+      this.prisma.anonymousTopic.findMany({
+        where: { id: { in: topicIds } },
+        select: {
+          id: true,
+          messages: {
+            where: { isHidden: false, dislikeCount: { gt: 0 } },
+            orderBy: [{ dislikeCount: "desc" }, { sequence: "asc" }],
+            take: 1,
+            select: messageSelect,
+          },
+        },
+      }),
+      validVisitorKey
+        ? this.prisma.anonymousTopicFavorite.findMany({
+          where: { topicId: { in: topicIds }, visitorKey: validVisitorKey },
+          select: { topicId: true },
+        })
+        : Promise.resolve([]),
+    ]);
+    const likedByTopic = new Map(likedTopics.map((item) => [item.id, item.messages[0]]));
+    const dislikedByTopic = new Map(dislikedTopics.map((item) => [item.id, item.messages[0]]));
+    const favoriteTopicIds = new Set(favoriteRows.map(({ topicId }) => topicId));
+    return topics.map((topic) => this.toTopicSummary(topic, {
+      favorited: favoriteTopicIds.has(topic.id),
+      topLikedMessage: this.toTopicHighlight(likedByTopic.get(topic.id), "like"),
+      topDislikedMessage: this.toTopicHighlight(dislikedByTopic.get(topic.id), "dislike"),
+    }));
+  }
+
+  private async isTopicFavorited(topicId: number, visitorKey?: string): Promise<boolean> {
+    if (!visitorKey || visitorKey.trim().length < 16 || visitorKey.trim().length > 128) return false;
+    const favorite = await this.prisma.anonymousTopicFavorite.findUnique({
+      where: { topicId_visitorKey: { topicId, visitorKey: this.digestVisitorKey(visitorKey) } },
+      select: { topicId: true },
+    });
+    return Boolean(favorite);
+  }
+
+  private toTopicHighlight(
+    message: { id: number; sequence: number; body: string; likeCount: number; dislikeCount: number; identity: { nickname: string } | null } | undefined,
+    kind: "like" | "dislike",
+  ) {
+    if (!message) return null;
+    return {
+      id: message.id,
+      sequence: message.sequence,
+      body: message.body,
+      nickname: message.identity?.nickname ?? null,
+      count: kind === "like" ? message.likeCount : message.dislikeCount,
+    };
+  }
+
+  private toTopicSummary(topic: {
+    id: number;
+    title: string;
+    status: AnonymousTopicStatus;
+    isHidden: boolean;
+    messageCount: number;
+    messageLikeCount: number;
+    favoriteCount: number;
+    createdAt: Date;
+    updatedAt: Date;
+  }, context: {
+    favorited?: boolean;
+    topLikedMessage?: ReturnType<AnonymousTopicsService["toTopicHighlight"]>;
+    topDislikedMessage?: ReturnType<AnonymousTopicsService["toTopicHighlight"]>;
+  } = {}) {
     return {
       id: topic.id,
       title: topic.title,
       status: topic.status,
       isHidden: topic.isHidden,
       messageCount: topic.messageCount,
+      messageLikeCount: topic.messageLikeCount,
+      favoriteCount: topic.favoriteCount,
+      favorited: context.favorited ?? false,
+      topLikedMessage: context.topLikedMessage ?? null,
+      topDislikedMessage: context.topDislikedMessage ?? null,
       createdAt: topic.createdAt.toISOString(),
       updatedAt: topic.updatedAt.toISOString(),
     };
