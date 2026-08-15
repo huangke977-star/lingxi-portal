@@ -15738,17 +15738,17 @@ button.anonymous-identity-note { cursor: pointer; }
 .anonymous-topic-list > article:hover { background: color-mix(in srgb, var(--accent-soft) 42%, transparent); }
 .anonymous-topic-list > article.hidden { opacity: 0.58; }
 .anonymous-topic-open { min-width: 0; border: 0; background: transparent; color: var(--foreground); cursor: pointer; font: inherit; padding: 9px 8px 9px 12px; text-align: left; }
-.anonymous-topic-list-copy { display: grid; min-width: 0; gap: 5px; }
-.anonymous-topic-list-copy > span:first-child { display: grid; min-width: 0; gap: 2px; }
+.anonymous-topic-list-copy { display: grid; min-width: 0; gap: 2px; }
 .anonymous-topic-list-copy strong,
 .anonymous-topic-list-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .anonymous-topic-list-copy strong { font-size: 0.72rem; }
-.anonymous-topic-list-copy > span:first-child small { color: var(--muted); font-size: 0.61rem; }
-.anonymous-topic-highlights { display: grid; min-width: 0; gap: 2px; }
-.anonymous-topic-highlights small { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px; color: var(--muted-strong); font-size: 0.59rem; }
+.anonymous-topic-subline { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.anonymous-topic-subline > small { flex: 0 0 auto; color: var(--muted); font-size: 0.61rem; }
+.anonymous-topic-highlights { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 8px; overflow: hidden; }
+.anonymous-topic-highlights small { display: flex; min-width: 0; flex: 1 1 0; align-items: center; gap: 4px; color: var(--muted-strong); font-size: 0.59rem; }
 .anonymous-topic-highlights small > svg { color: var(--accent-strong); }
 .anonymous-topic-highlights small.down > svg { color: #a15a68; }
-.anonymous-topic-highlights small b { color: var(--muted); font-size: 0.58rem; font-weight: 620; }
+.anonymous-topic-highlights small > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .anonymous-topic-metrics { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 8px; padding-right: 10px; }
 .anonymous-topic-metrics em { border-radius: 4px; background: color-mix(in srgb, var(--accent-soft) 68%, transparent); color: var(--accent-strong); font-size: 0.6rem; font-style: normal; line-height: 1; padding: 4px 5px; white-space: nowrap; }
 .anonymous-topic-metrics em.closed { background: rgba(116, 105, 118, 0.14); color: var(--muted-strong); }
@@ -15770,6 +15770,19 @@ button.anonymous-identity-note { cursor: pointer; }
 .article-comment-input-wrap > button:hover:not(:disabled) { background: var(--accent-soft); }
 .article-comment-input-wrap > button:disabled { color: var(--muted); cursor: default; opacity: 0.48; }
 .article-comment-form > .article-composer-footer { justify-content: flex-end; }
+
+/* Dashboard cards use the same single content surface as the suggestions panel. */
+.p8-dashboard-card .p8-dashboard-links,
+.p8-dashboard-card .p8-card-footer-link,
+.p8-dashboard-card .p8-dashboard-links a,
+.p8-dashboard-card .p8-dashboard-links button { background: transparent; }
+
+/* Textareas remain scrollable while keeping compact composers visually quiet. */
+textarea { scrollbar-width: none !important; -ms-overflow-style: none; }
+textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* Comment text should use the available card width instead of the global paragraph cap. */
+.article-comment > p { width: auto; max-width: none; }
 
 .analytics-rankings { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
 

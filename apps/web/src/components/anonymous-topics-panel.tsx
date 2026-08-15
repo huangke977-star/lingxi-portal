@@ -236,11 +236,11 @@ function AnonymousTopicListRow({ item, onFavorite, onOpen }: {
   return <article className={item.isHidden ? "hidden" : undefined}>
     <button className="anonymous-topic-open" onClick={() => void onOpen(item.id)} type="button">
       <span className="anonymous-topic-list-copy">
-        <span><strong>{item.title}</strong><small>{formatTime(item.updatedAt)}{item.isHidden ? " · 已隐藏" : ""}</small></span>
-        {item.topLikedMessage || item.topDislikedMessage ? <span className="anonymous-topic-highlights">
-          {item.topLikedMessage ? <small className="up" title={item.topLikedMessage.body}><ThumbsUp aria-hidden="true" size={12} />{topicHighlightLabel(item.topLikedMessage)}<b>{item.topLikedMessage.count}</b></small> : null}
-          {item.topDislikedMessage ? <small className="down" title={item.topDislikedMessage.body}><ThumbsDown aria-hidden="true" size={12} />{topicHighlightLabel(item.topDislikedMessage)}<b>{item.topDislikedMessage.count}</b></small> : null}
-        </span> : null}
+        <strong>{item.title}</strong>
+        <span className="anonymous-topic-subline"><small>{formatTime(item.updatedAt)}{item.isHidden ? " · 已隐藏" : ""}</small>{item.topLikedMessage || item.topDislikedMessage ? <span className="anonymous-topic-highlights">
+          {item.topLikedMessage ? <small className="up" title={item.topLikedMessage.body}><ThumbsUp aria-hidden="true" size={12} /><span>{topicHighlightLabel(item.topLikedMessage)}</span></small> : null}
+          {item.topDislikedMessage ? <small className="down" title={item.topDislikedMessage.body}><ThumbsDown aria-hidden="true" size={12} /><span>{topicHighlightLabel(item.topDislikedMessage)}</span></small> : null}
+        </span> : null}</span>
       </span>
     </button>
     <span className="anonymous-topic-metrics">
