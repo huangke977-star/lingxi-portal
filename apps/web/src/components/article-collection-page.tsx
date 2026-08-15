@@ -134,6 +134,33 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
     }
   }
 
+  function renderReadingAccessory(article: Article) {
+    if (mode === "history") {
+      const progress = article.readingProgress ?? 1;
+      return (
+        <span className="article-reading-inline">
+          <b>{progress}%</b>
+          <i aria-label={`阅读进度 ${progress}%`}><span style={{ width: `${progress}%` }} /></i>
+          <small>上次阅读 {formatArticleDate(article.lastReadAt)}</small>
+          <button aria-label="移除阅读记录" onClick={() => void removeItem(article)} title="移除阅读记录" type="button">
+            <Trash2 aria-hidden="true" size={14} />
+          </button>
+        </span>
+      );
+    }
+    if (mode === "read-later") {
+      return (
+        <span className="article-reading-inline compact">
+          <small>已加入稍后读</small>
+          <button aria-label="移出稍后读" onClick={() => void removeItem(article)} title="移出稍后读" type="button">
+            <X aria-hidden="true" size={14} />
+          </button>
+        </span>
+      );
+    }
+    return null;
+  }
+
   const config = readingConfig(mode);
   return (
     <section className="page-shell articles-page article-collection-page">
@@ -151,7 +178,7 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
         {mode === "history" && list.total ? <button className="article-clear-history" onClick={() => void clearHistory()} type="button"><Trash2 aria-hidden="true" size={15} />清空历史</button> : null}
       </div>
       {isLoading ? <div className="article-empty-state">正在读取内容。</div>
-        : list.items.length ? <div className="article-reading-list">{list.items.map((article) => <div className="article-reading-list-item" key={article.id}><ArticleCard article={article} href={mode === "history" ? `/articles/${article.slug}?resume=1` : undefined} taxonomyPlacement="after-stats" />{mode === "history" ? <div className="article-reading-record"><span><b>{article.readingProgress ?? 1}%</b><i><span style={{ width: `${article.readingProgress ?? 1}%` }} /></i><small>上次阅读 {formatArticleDate(article.lastReadAt)}</small></span><button aria-label="移除阅读记录" onClick={() => void removeItem(article)} title="移除阅读记录" type="button"><Trash2 aria-hidden="true" size={14} /></button></div> : mode === "read-later" ? <div className="article-reading-record compact"><span><small>已加入稍后读</small></span><button aria-label="移出稍后读" onClick={() => void removeItem(article)} title="移出稍后读" type="button"><X aria-hidden="true" size={14} /></button></div> : null}</div>)}</div>
+        : list.items.length ? <div className="article-reading-list">{list.items.map((article) => <ArticleCard article={article} href={mode === "history" ? `/articles/${article.slug}?resume=1` : undefined} key={article.id} metaAccessory={renderReadingAccessory(article)} taxonomyPlacement="after-stats" />)}</div>
           : <div className="article-empty-state"><config.Icon aria-hidden="true" size={24} /><strong>{querySearch ? "没有匹配的文章" : config.emptyTitle}</strong><span>{querySearch ? "试试其他关键词。" : config.emptyText}</span></div>}
       {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
       <AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />

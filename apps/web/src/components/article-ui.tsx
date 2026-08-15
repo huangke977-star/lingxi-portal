@@ -9,7 +9,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { memo } from "react";
-import type { MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import type { Article, ArticleAuthor } from "@/lib/article-api";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
@@ -95,10 +95,12 @@ export function RecentCommenters({ article }: { article: Article }) {
 export function ArticleCard({
   article,
   href,
+  metaAccessory,
   taxonomyPlacement = "meta",
 }: {
   article: Article;
   href?: string;
+  metaAccessory?: ReactNode;
   taxonomyPlacement?: "meta" | "after-stats";
 }) {
   return (
@@ -111,6 +113,7 @@ export function ArticleCard({
           <ArticleAuthorLine author={article.author} interactive />
           <span className="article-card-date">{formatArticleDate(article.publishedAt)}</span>
           {taxonomyPlacement === "meta" ? <ArticleTaxonomy article={article} /> : null}
+          {metaAccessory ? <span className="article-card-meta-accessory">{metaAccessory}</span> : null}
         </div>
       </div>
       <div className="article-card-aside">

@@ -907,49 +907,51 @@ function EntryDialog({
             </fieldset>
           ) : null}
 
-          <label className="portal-checkbox-row">
-            <input
-              checked={dialog.draft.openInNewTab}
-              disabled={isSaving || !dialog.draft.url}
-              onChange={(event) =>
-                onChange({
-                  ...dialog.draft,
-                  openInNewTab: event.target.checked,
-                })
-              }
-              type="checkbox"
-            />
-            <span>在新标签页打开</span>
-          </label>
-          {!isServer ? (
-            <div className="portal-form-columns portal-featured-fields">
-              <label className="portal-checkbox-row">
-                <input
-                  checked={dialog.draft.isFeatured}
-                  disabled={isSaving}
-                  onChange={(event) =>
-                    onChange({ ...dialog.draft, isFeatured: event.target.checked })
-                  }
-                  type="checkbox"
-                />
-                <span><Star aria-hidden="true" size={14} />首页推荐</span>
-              </label>
-              <label>
-                推荐排序
-                <input
-                  disabled={isSaving || !dialog.draft.isFeatured}
-                  onChange={(event) =>
-                    onChange({
-                      ...dialog.draft,
-                      featuredSortOrder: Number(event.target.value),
-                    })
-                  }
-                  type="number"
-                  value={dialog.draft.featuredSortOrder}
-                />
-              </label>
-            </div>
-          ) : null}
+          <div className={`portal-entry-options${isServer ? " server-only" : ""}`}>
+            <label className="portal-checkbox-row">
+              <input
+                checked={dialog.draft.openInNewTab}
+                disabled={isSaving || !dialog.draft.url}
+                onChange={(event) =>
+                  onChange({
+                    ...dialog.draft,
+                    openInNewTab: event.target.checked,
+                  })
+                }
+                type="checkbox"
+              />
+              <span>在新标签页打开</span>
+            </label>
+            {!isServer ? (
+              <>
+                <label className="portal-checkbox-row">
+                  <input
+                    checked={dialog.draft.isFeatured}
+                    disabled={isSaving}
+                    onChange={(event) =>
+                      onChange({ ...dialog.draft, isFeatured: event.target.checked })
+                    }
+                    type="checkbox"
+                  />
+                  <span><Star aria-hidden="true" size={14} />首页推荐</span>
+                </label>
+                <label className="portal-featured-sort">
+                  推荐排序
+                  <input
+                    disabled={isSaving || !dialog.draft.isFeatured}
+                    onChange={(event) =>
+                      onChange({
+                        ...dialog.draft,
+                        featuredSortOrder: Number(event.target.value),
+                      })
+                    }
+                    type="number"
+                    value={dialog.draft.featuredSortOrder}
+                  />
+                </label>
+              </>
+            ) : null}
+          </div>
           <div className="actions">
             <button className="button" disabled={isSaving} type="submit">
               {isSaving ? "保存中" : "保存"}
