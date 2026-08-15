@@ -7,6 +7,7 @@ import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleCard } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
+import { GlassSelect } from "@/components/glass-select";
 import {
   ArticleList,
   listPublicArticles,
@@ -19,6 +20,15 @@ type DiscoverFeed = "recommended" | "latest" | "popular";
 type DiscoverOrder = "default" | "latest" | "popular" | "views" | "likes" | "favorites" | "comments";
 
 const emptyList: ArticleList = { items: [], total: 0, page: 1, pageSize: 12, totalPages: 1 };
+const ARTICLE_ORDER_OPTIONS: ReadonlyArray<{ label: string; value: DiscoverOrder }> = [
+  { label: "默认", value: "default" },
+  { label: "最新发布", value: "latest" },
+  { label: "综合热度", value: "popular" },
+  { label: "浏览最多", value: "views" },
+  { label: "点赞最多", value: "likes" },
+  { label: "收藏最多", value: "favorites" },
+  { label: "评论最多", value: "comments" },
+];
 
 export default function ArticlesPage() {
   return <Suspense fallback={<section className="page-shell articles-page"><div className="article-empty-state">正在读取文章。</div></section>}><ArticlesContent /></Suspense>;
@@ -135,7 +145,7 @@ function ArticlesContent() {
           <input aria-label="搜索文章" name="search" onChange={(event) => setSearchInput(event.target.value)} onCompositionEnd={(event) => { composingRef.current = false; setSearchInput(event.currentTarget.value); }} onCompositionStart={() => { composingRef.current = true; }} placeholder="搜索标题、正文、标签或作者" value={searchInput} />
           {searchInput ? <button aria-label="清除搜索" onClick={() => setSearchInput("")} title="清除搜索" type="button"><X aria-hidden="true" size={16} /></button> : null}
         </label>
-        <label className="article-order-select"><SlidersHorizontal aria-hidden="true" size={16} /><span>排序</span><select aria-label="文章排序" onChange={(event) => replaceQuery({ order: event.target.value as DiscoverOrder })} value={order}><option value="default">默认</option><option value="latest">最新发布</option><option value="popular">综合热度</option><option value="views">浏览最多</option><option value="likes">点赞最多</option><option value="favorites">收藏最多</option><option value="comments">评论最多</option></select></label>
+        <div className="article-order-select"><SlidersHorizontal aria-hidden="true" size={16} /><span>排序</span><GlassSelect ariaLabel="文章排序" onChange={(value) => replaceQuery({ order: value })} options={ARTICLE_ORDER_OPTIONS} value={order} /></div>
       </div>
       {isLoading ? <div className="article-empty-state">正在读取文章。</div>
         : list.items.length ? <div className="article-feed-list">{list.items.map((article) => <ArticleCard article={article} key={article.id} />)}</div>

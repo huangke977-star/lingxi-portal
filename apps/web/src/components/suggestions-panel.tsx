@@ -5,6 +5,7 @@ import { FormEvent, type ReactNode, useCallback, useEffect, useState } from "rea
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { AppToast } from "@/components/app-toast";
+import { GlassSelect } from "@/components/glass-select";
 import { readAccessToken } from "@/lib/auth-storage";
 import {
   createSuggestion,
@@ -30,7 +31,7 @@ const STATUS_LABEL: Record<SuggestionStatus, string> = {
   rejected: "已驳回",
 };
 
-export function SuggestionsPanel({ mode = "public", pageSize = 5, title = "建议", moreHref, showLoadMore = false, showSearch = false }: { mode?: SuggestionsPanelMode; pageSize?: number; title?: string; moreHref?: string; showLoadMore?: boolean; showSearch?: boolean }) {
+export function SuggestionsPanel({ className = "", mode = "public", pageSize = 5, title = "建议", moreHref, showLoadMore = false, showSearch = false }: { className?: string; mode?: SuggestionsPanelMode; pageSize?: number; title?: string; moreHref?: string; showLoadMore?: boolean; showSearch?: boolean }) {
   const [items, setItems] = useState<SuggestionSummary[]>([]);
   const [pageInfo, setPageInfo] = useState({ page: 1, totalPages: 1 });
   const [detail, setDetail] = useState<SuggestionDetail | null>(null);
@@ -121,7 +122,7 @@ export function SuggestionsPanel({ mode = "public", pageSize = 5, title = "建�
     finally { setIsSaving(false); }
   }
 
-  return <section className="p8-surface suggestions-panel">
+  return <section className={`p8-surface suggestions-panel${className ? ` ${className}` : ""}`}>
     <div className="p8-section-heading">
       <div><Lightbulb aria-hidden="true" size={17} /><h2>{title}</h2></div>
       {mode === "public" ? <span className="p8-heading-actions-compact">{moreHref ? <Link href={moreHref}>全部</Link> : null}<button aria-label="提交建议" className="p8-heading-icon" onClick={() => setIsCreateOpen(true)} title="提交建议" type="button"><Plus aria-hidden="true" size={17} /></button></span> : <small>{mode === "inbox" ? "全站用户建议" : "仅自己可见"}</small>}
@@ -135,7 +136,7 @@ export function SuggestionsPanel({ mode = "public", pageSize = 5, title = "建�
 }
 
 function SuggestionDetailDialog({ detail, isSaving, mode, onChangeStatus, onClose, onReply, reply, setReply }: { detail: SuggestionDetail; isSaving: boolean; mode: SuggestionsPanelMode; onChangeStatus: (status: SuggestionStatus) => void; onClose: () => void; onReply: (event: FormEvent<HTMLFormElement>) => void; reply: string; setReply: (value: string) => void }) {
-  return <ModalPortal><div className="modal-backdrop suggestion-modal-backdrop" role="presentation"><section aria-modal="true" className="suggestion-modal suggestion-detail-modal" role="dialog"><header><span><Lightbulb aria-hidden="true" size={18} /><strong>建议详情</strong></span><button aria-label="关闭" onClick={onClose} type="button"><X aria-hidden="true" size={17} /></button></header><main><div className="suggestion-detail-heading"><span><h2>{detail.title}</h2><small>{detail.user.nickname} · {formatTime(detail.createdAt)}</small></span>{mode === "inbox" ? <label className="suggestion-status-select"><span>进度</span><select disabled={isSaving} onChange={(event) => onChangeStatus(event.target.value as SuggestionStatus)} value={detail.status}>{SUGGESTION_STATUSES.map((status) => <option key={status} value={status}>{STATUS_LABEL[status]}</option>)}</select></label> : <em className={`suggestion-status ${detail.status}`}>{STATUS_LABEL[detail.status]}</em>}</div><p className="suggestion-content">{detail.content}</p><div className="suggestion-replies"><span><MessageCircleMore aria-hidden="true" size={15} />回复 {detail.replies.length}</span>{detail.replies.length ? detail.replies.map((item) => <article key={item.id}><strong>{item.author.nickname}</strong><time>{formatTime(item.createdAt)}</time><p>{item.content}</p></article>) : <p>暂未回复。</p>}</div>{mode === "inbox" ? <form className="suggestion-reply-form" onSubmit={onReply}><div><textarea maxLength={2000} onChange={(event) => setReply(event.target.value)} placeholder="回复后会通知建议提交者" rows={3} value={reply} /><button aria-label="发送回复" disabled={isSaving || !reply.trim()} title="发送回复" type="submit"><Send aria-hidden="true" size={16} /></button></div></form> : null}</main></section></div></ModalPortal>;
+  return <ModalPortal><div className="modal-backdrop suggestion-modal-backdrop" role="presentation"><section aria-modal="true" className="suggestion-modal suggestion-detail-modal" role="dialog"><header><span><Lightbulb aria-hidden="true" size={18} /><strong>建议详情</strong></span><button aria-label="关闭" onClick={onClose} type="button"><X aria-hidden="true" size={17} /></button></header><main><div className="suggestion-detail-heading"><span><h2>{detail.title}</h2><small>{detail.user.nickname} · {formatTime(detail.createdAt)}</small></span>{mode === "inbox" ? <label className="suggestion-status-select"><span>进度</span><GlassSelect ariaLabel="建议进度" disabled={isSaving} onChange={onChangeStatus} options={SUGGESTION_STATUSES.map((status) => ({ label: STATUS_LABEL[status], value: status }))} value={detail.status} /></label> : <em className={`suggestion-status ${detail.status}`}>{STATUS_LABEL[detail.status]}</em>}</div><p className="suggestion-content">{detail.content}</p><div className="suggestion-replies"><span><MessageCircleMore aria-hidden="true" size={15} />回复 {detail.replies.length}</span>{detail.replies.length ? detail.replies.map((item) => <article key={item.id}><strong>{item.author.nickname}</strong><time>{formatTime(item.createdAt)}</time><p>{item.content}</p></article>) : <p>暂未回复。</p>}</div>{mode === "inbox" ? <form className="suggestion-reply-form" onSubmit={onReply}><div><textarea maxLength={2000} onChange={(event) => setReply(event.target.value)} placeholder="回复后会通知建议提交者" rows={3} value={reply} /><button aria-label="发送回复" disabled={isSaving || !reply.trim()} title="发送回复" type="submit"><Send aria-hidden="true" size={16} /></button></div></form> : null}</main></section></div></ModalPortal>;
 }
 
 function ModalPortal({ children }: { children: ReactNode }) {

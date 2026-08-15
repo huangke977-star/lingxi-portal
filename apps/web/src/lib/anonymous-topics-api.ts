@@ -6,6 +6,7 @@ export interface AnonymousTopicSummary {
   id: number;
   title: string;
   status: AnonymousTopicStatus;
+  isHidden: boolean;
   messageCount: number;
   createdAt: string;
   updatedAt: string;
@@ -16,6 +17,7 @@ export interface AnonymousTopicMessage {
   sequence: number;
   body: string;
   nickname: string | null;
+  isHidden: boolean;
   likeCount: number;
   dislikeCount: number;
   createdAt: string;
@@ -80,6 +82,20 @@ export function getAnonymousTopic(id: number, input: { limit?: number; beforeSeq
   return requestJson(`/anonymous-topics/${id}${query ? `?${query}` : ""}`, { cache: "no-store" });
 }
 
+export function listAnonymousTopicsAdmin(accessToken: string, page = 1, pageSize = 20, q = ""): Promise<AnonymousTopicPage> {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (q.trim()) params.set("q", q.trim());
+  return requestJson(`/anonymous-topics/admin?${params.toString()}`, { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } });
+}
+
+export function getAnonymousTopicAdmin(accessToken: string, id: number, input: { limit?: number; beforeSequence?: number } = {}): Promise<AnonymousTopicDetail> {
+  const params = new URLSearchParams();
+  if (input.limit) params.set("limit", String(input.limit));
+  if (input.beforeSequence) params.set("beforeSequence", String(input.beforeSequence));
+  const query = params.toString();
+  return requestJson(`/anonymous-topics/admin/${id}${query ? `?${query}` : ""}`, { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } });
+}
+
 export function createAnonymousTopic(input: { title: string; nickname: string; password: string }): Promise<AnonymousTopicSummary & AnonymousIdentity> {
   return requestJson("/anonymous-topics", { method: "POST", body: JSON.stringify({ ...input, visitorKey: getAnonymousVisitorKey() }) });
 }
@@ -98,6 +114,10 @@ export function reactToAnonymousMessage(messageId: number, value: "up" | "down")
 
 export function updateAnonymousTopic(accessToken: string, id: number, input: Partial<{ status: AnonymousTopicStatus; isHidden: boolean }>): Promise<AnonymousTopicSummary> {
   return requestJson(`/anonymous-topics/admin/${id}`, { method: "PATCH", headers: { Authorization: `Bearer ${accessToken}` }, body: JSON.stringify(input) });
+}
+
+export function updateAnonymousTopicAsCreator(id: number, status: AnonymousTopicStatus, identityToken: string): Promise<AnonymousTopicSummary> {
+  return requestJson(`/anonymous-topics/${id}/status`, { method: "PATCH", body: JSON.stringify({ status, identityToken }) });
 }
 
 export function updateAnonymousMessage(accessToken: string, id: number, isHidden: boolean): Promise<AnonymousTopicMessage> {

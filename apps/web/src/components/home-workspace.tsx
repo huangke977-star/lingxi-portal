@@ -58,6 +58,7 @@ const emptyData: HomeData = {
 export function HomeWorkspace() {
   const [data, setData] = useState<HomeData>(emptyData);
   const [error, setError] = useState("");
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -94,6 +95,7 @@ export function HomeWorkspace() {
         topics,
       });
       setError(content.categories.length || announcements.length || articles.length ? "" : "暂时无法读取首页内容，请稍后重试。");
+      setHasLoaded(true);
       setIsLoading(false);
     }
 
@@ -125,7 +127,7 @@ export function HomeWorkspace() {
         <HomeStats summary={data.homeSummary} />
       </header>
 
-      {isLoading ? <div className="status-row compact-status-row"><span className="status">正在整理首页</span></div> : (
+      {!hasLoaded ? <div className="status-row compact-status-row"><span className="status">正在整理首页</span></div> : (
         <div className="p8-home-layout">
           <div className="p8-home-main">
             <section className="p8-surface p8-announcement-panel">
@@ -178,6 +180,7 @@ export function HomeWorkspace() {
           </aside>
         </div>
       )}
+      {hasLoaded && isLoading ? <span aria-live="polite" className="p8-background-refresh">正在刷新首页数据</span> : null}
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );

@@ -116,7 +116,6 @@ const BUILTIN_PWA_ICON_OPTIONS = [
 
 const BUILTIN_BACKGROUND_OPTIONS = [
   { label: "浅云蓝白", path: "/images/hlovet-cloud-blue.jpeg" },
-  { label: "浅樱暖雾", path: "/images/hlovet-sakura-mist.webp" },
   { label: "城市灯火", path: "/images/hlovet-city-lights.jpg" },
 ] as const;
 

@@ -113,6 +113,16 @@ export class UpdateAnonymousTopicDto {
   isHidden?: boolean;
 }
 
+export class UpdateAnonymousTopicByCreatorDto {
+  @IsIn(["active", "closed"])
+  status!: "active" | "closed";
+
+  @IsString()
+  @MinLength(16)
+  @MaxLength(2000)
+  identityToken!: string;
+}
+
 export class UpdateAnonymousMessageDto {
   @IsBoolean()
   isHidden!: boolean;

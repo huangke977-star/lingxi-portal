@@ -14,6 +14,7 @@ import {
   ListAnonymousTopicsQueryDto,
   ReactAnonymousMessageDto,
   UpdateAnonymousMessageDto,
+  UpdateAnonymousTopicByCreatorDto,
   UpdateAnonymousTopicDto,
 } from "./dto/anonymous-topic.dto";
 
@@ -56,11 +57,51 @@ export class AnonymousTopicsService {
     };
   }
 
+  async listAdmin(user: AuthenticatedUser, query: ListAnonymousTopicsQueryDto) {
+    this.assertManager(user);
+    const keyword = query.q?.trim();
+    const where: Prisma.AnonymousTopicWhereInput = keyword ? { title: { contains: keyword } } : {};
+    const [total, items] = await Promise.all([
+      this.prisma.anonymousTopic.count({ where }),
+      this.prisma.anonymousTopic.findMany({
+        where,
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+    ]);
+    return {
+      items: items.map((topic) => this.toTopicSummary(topic)),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+      totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
+    };
+  }
+
   async get(id: number, query: GetAnonymousTopicQueryDto) {
     const topic = await this.prisma.anonymousTopic.findFirst({ where: { id, isHidden: false } });
     if (!topic) throw new NotFoundException("话题不存在或已隐藏。");
     const messages = await this.prisma.anonymousTopicMessage.findMany({
       where: { topicId: id, isHidden: false, ...(query.beforeSequence ? { sequence: { lt: query.beforeSequence } } : {}) },
+      orderBy: { sequence: "desc" },
+      take: query.limit + 1,
+      include: messageInclude,
+    });
+    const hasMore = messages.length > query.limit;
+    return {
+      ...this.toTopicSummary(topic),
+      messages: messages.slice(0, query.limit).reverse().map((message) => this.toMessage(message)),
+      hasMore,
+    };
+  }
+
+  async getAdmin(user: AuthenticatedUser, id: number, query: GetAnonymousTopicQueryDto) {
+    this.assertManager(user);
+    const topic = await this.prisma.anonymousTopic.findUnique({ where: { id } });
+    if (!topic) throw new NotFoundException("话题不存在。");
+    const messages = await this.prisma.anonymousTopicMessage.findMany({
+      where: { topicId: id, ...(query.beforeSequence ? { sequence: { lt: query.beforeSequence } } : {}) },
       orderBy: { sequence: "desc" },
       take: query.limit + 1,
       include: messageInclude,
@@ -86,7 +127,12 @@ export class AnonymousTopicsService {
       });
       return { topic, identity };
     });
-    return { ...this.toTopicSummary(topic), identityToken: await this.signIdentity(topic.id, identity.id), nickname: identity.nickname };
+    return {
+      ...this.toTopicSummary(topic),
+      identityToken: await this.signIdentity(topic.id, identity.id),
+      nickname: identity.nickname,
+      isCreator: true,
+    };
   }
 
   async claimIdentity(topicId: number, dto: ClaimAnonymousIdentityDto) {
@@ -183,14 +229,28 @@ export class AnonymousTopicsService {
   }
 
   async updateTopic(user: AuthenticatedUser, id: number, dto: UpdateAnonymousTopicDto) {
-    this.assertSuperAdmin(user);
+    this.assertManager(user);
     if (dto.status === undefined && dto.isHidden === undefined) throw new BadRequestException("没有可更新的内容。");
     const topic = await this.prisma.anonymousTopic.update({ where: { id }, data: dto });
     return this.toTopicSummary(topic);
   }
 
+  async updateTopicByCreator(id: number, dto: UpdateAnonymousTopicByCreatorDto) {
+    const identityId = await this.resolveIdentityToken(id, dto.identityToken);
+    if (!identityId) throw new UnauthorizedException("请先获取话题创建者昵称。");
+    const creator = await this.prisma.anonymousTopicIdentity.findFirst({
+      where: { id: identityId, topicId: id, isCreator: true },
+      select: { id: true },
+    });
+    if (!creator) throw new ForbiddenException("只有话题创建者可以关闭或重新开放话题。");
+    const topic = await this.prisma.anonymousTopic.findFirst({ where: { id, isHidden: false } });
+    if (!topic) throw new NotFoundException("话题不存在或已隐藏。");
+    const updated = await this.prisma.anonymousTopic.update({ where: { id }, data: { status: dto.status } });
+    return this.toTopicSummary(updated);
+  }
+
   async updateMessage(user: AuthenticatedUser, id: number, dto: UpdateAnonymousMessageDto) {
-    this.assertSuperAdmin(user);
+    this.assertManager(user);
     const message = await this.prisma.anonymousTopicMessage.update({ where: { id }, data: { isHidden: dto.isHidden }, include: messageInclude });
     return this.toMessage(message);
   }
@@ -221,6 +281,7 @@ export class AnonymousTopicsService {
       id: topic.id,
       title: topic.title,
       status: topic.status,
+      isHidden: topic.isHidden,
       messageCount: topic.messageCount,
       createdAt: topic.createdAt.toISOString(),
       updatedAt: topic.updatedAt.toISOString(),
@@ -233,6 +294,7 @@ export class AnonymousTopicsService {
       sequence: message.sequence,
       body: message.body,
       nickname: message.identity?.nickname ?? null,
+      isHidden: message.isHidden,
       likeCount: message.likeCount,
       dislikeCount: message.dislikeCount,
       createdAt: message.createdAt.toISOString(),
@@ -264,7 +326,7 @@ export class AnonymousTopicsService {
     return process.env.ANONYMOUS_TOPIC_SECRET ?? process.env.JWT_ACCESS_SECRET ?? "dev-anonymous-topic-secret";
   }
 
-  private assertSuperAdmin(user: AuthenticatedUser): void {
-    if (!user.isSuperAdmin) throw new ForbiddenException("仅超级管理员可以管理匿名话题。");
+  private assertManager(user: AuthenticatedUser): void {
+    if (!user.isSuperAdmin && user.role.level < 90) throw new ForbiddenException("仅超级管理员和管理员可以管理匿名话题。");
   }
 }
