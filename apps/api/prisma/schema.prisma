@@ -113,6 +113,10 @@ enum UserNotificationType {
   comment_report_resolved
   comment_report_rejected
   comment_author_moderated
+  article_report_received
+  article_report_resolved
+  article_report_rejected
+  article_author_moderated
   article_liked
   article_favorited
   article_commented
@@ -438,6 +442,8 @@ model User {
   articleCommentLikes       ArticleCommentLike[]
   articleCommentReports     ArticleCommentReport[]         @relation("ArticleCommentReporter")
   handledCommentReports     ArticleCommentReport[]         @relation("ArticleCommentReportHandler")
+  articleReports            ArticleReport[]                @relation("ArticleReporter")
+  handledArticleReports     ArticleReport[]                @relation("ArticleReportHandler")
   friendshipsAsOne          Friendship[]                   @relation("FriendshipUserOne")
   friendshipsAsTwo          Friendship[]                   @relation("FriendshipUserTwo")
   friendshipRequests        Friendship[]                   @relation("FriendshipRequester")
@@ -1071,6 +1077,7 @@ model Article {
   allowedRoles          ArticleAllowedRole[]
   images                ArticleImage[]
   comments              ArticleComment[]
+  reports               ArticleReport[]
   likes                 ArticleLike[]
   favorites             ArticleFavorite[]
   views                 ArticleView[]
@@ -1131,10 +1138,13 @@ model UserReputationLedger {
   eventKey        String           @map("event_key") @db.VarChar(191)
   experienceDelta Int              @default(0) @map("experience_delta")
   pointDelta      Int              @default(0) @map("point_delta")
+  pendingPointDelta Int            @default(0) @map("pending_point_delta")
   experienceAfter Int              @map("experience_after")
   pointsAfter     Int              @map("points_after")
   description     String           @db.VarChar(255)
   metadata        Json?
+  availableAt     DateTime?        @map("available_at")
+  settledAt       DateTime?        @map("settled_at")
   createdAt       DateTime         @default(now()) @map("created_at")
 
   @@unique([userId, eventKey])
@@ -1144,19 +1154,22 @@ model UserReputationLedger {
 }
 
 model ArticleResourceExchange {
-  id        Int      @id @default(autoincrement())
-  articleId Int      @map("article_id")
-  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  buyerId   Int      @map("buyer_id")
-  buyer     User     @relation("ArticleResourceBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
-  authorId  Int      @map("author_id")
-  author    User     @relation("ArticleResourceAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  pointCost Int      @map("point_cost")
-  createdAt DateTime @default(now()) @map("created_at")
+  id                Int       @id @default(autoincrement())
+  articleId         Int       @map("article_id")
+  article           Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  buyerId           Int       @map("buyer_id")
+  buyer             User      @relation("ArticleResourceBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  authorId          Int       @map("author_id")
+  author            User      @relation("ArticleResourceAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  blockKey          String    @default("legacy") @map("block_key") @db.VarChar(80)
+  pointCost         Int       @map("point_cost")
+  sellerAvailableAt DateTime  @map("seller_available_at")
+  sellerSettledAt   DateTime? @map("seller_settled_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
 
-  @@unique([articleId, buyerId])
+  @@unique([articleId, buyerId, blockKey])
   @@index([buyerId, createdAt])
-  @@index([authorId, createdAt])
+  @@index([authorId, sellerSettledAt, sellerAvailableAt])
   @@map("article_resource_exchanges")
 }
 
@@ -1271,6 +1284,30 @@ model ArticleCommentReport {
   @@index([reporterId])
   @@index([handledById])
   @@map("article_comment_reports")
+}
+
+model ArticleReport {
+  id            Int                        @id @default(autoincrement())
+  articleId     Int                        @map("article_id")
+  article       Article                    @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  reporterId    Int                        @map("reporter_id")
+  reporter      User                       @relation("ArticleReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reason        ArticleCommentReportReason
+  detail        String?                    @db.VarChar(500)
+  status        ArticleCommentReportStatus @default(pending)
+  handledById   Int?                       @map("handled_by_id")
+  handledBy     User?                      @relation("ArticleReportHandler", fields: [handledById], references: [id], onDelete: SetNull)
+  handledAt     DateTime?                  @map("handled_at")
+  resolution    String?                    @db.VarChar(500)
+  createdAt     DateTime                   @default(now()) @map("created_at")
+  updatedAt     DateTime                   @updatedAt @map("updated_at")
+  notifications UserNotification[]
+
+  @@unique([articleId, reporterId])
+  @@index([status, createdAt])
+  @@index([reporterId])
+  @@index([handledById])
+  @@map("article_reports")
 }
 
 model ArticleLike {
@@ -1804,6 +1841,8 @@ model UserNotification {
   friendship      Friendship?             @relation(fields: [friendshipId], references: [id], onDelete: SetNull)
   commentReportId Int?                    @map("comment_report_id")
   commentReport   ArticleCommentReport?   @relation(fields: [commentReportId], references: [id], onDelete: SetNull)
+  articleReportId Int?                    @map("article_report_id")
+  articleReport   ArticleReport?          @relation(fields: [articleReportId], references: [id], onDelete: SetNull)
   announcementId  Int?                    @map("announcement_id")
   announcement    Announcement?           @relation(fields: [announcementId], references: [id], onDelete: SetNull)
   aggregateCount  Int                     @default(1) @map("aggregate_count")
@@ -1822,6 +1861,7 @@ model UserNotification {
   @@index([commentId])
   @@index([friendshipId])
   @@index([commentReportId])
+  @@index([articleReportId])
   @@map("user_notifications")
 }
 

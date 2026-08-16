@@ -1,13 +1,29 @@
-import {
-  ArticleStatus,
-  ArticleVisibility,
-} from "../src/generated/prisma/client";
+import { ArticleStatus, ArticleVisibility } from "../src/generated/prisma/client";
 import { ArticlesService } from "../src/articles/articles.service";
 import { AuthenticatedUser } from "../src/auth/auth.types";
+import { parseArticleContent } from "../src/articles/article-resources";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { RedisService } from "../src/redis/redis.service";
 import { ReputationService } from "../src/reputation/reputation.service";
 import { SiteSettingsService } from "../src/site-settings/site-settings.service";
+
+const sourceContent = [
+  "公开正文。",
+  "",
+  ":::resource{points=10}",
+  "第一段需要兑换的内容。",
+  ":::",
+  "",
+  "中间公开正文。",
+  "",
+  ":::resource{points=5}",
+  "第二段需要兑换的内容。",
+  ":::",
+].join("\n");
+
+const parsedContent = parseArticleContent(sourceContent);
+const firstBlock = parsedContent.blocks[0];
+const secondBlock = parsedContent.blocks[1];
 
 const viewer: AuthenticatedUser = {
   id: 7,
@@ -40,7 +56,7 @@ function resourceArticle() {
     title: "积分资源文章",
     slug: "resource-article",
     summary: "兑换前可以看到这段摘要。",
-    content: "只有兑换后才能返回的完整正文。",
+    content: sourceContent,
     coverPath: null,
     category: "资源",
     tags: "资源",
@@ -55,8 +71,8 @@ function resourceArticle() {
     likeCount: 0,
     favoriteCount: 0,
     commentCount: 0,
-    isPointResource: true,
-    pointCost: 10,
+    isPointResource: false,
+    pointCost: 0,
     searchText: "",
     searchPinyin: "",
     createdAt: new Date("2026-08-16T00:00:00.000Z"),
@@ -88,13 +104,32 @@ function createService(prisma: object, reputation: object = {}) {
   );
 }
 
-describe("article point resources", () => {
-  it("never returns the protected body to a visitor before redemption", async () => {
+function readerStateDelegates(unlockedKeys: string[] = []) {
+  return {
+    articleReadLater: { findUnique: jest.fn(async () => null) },
+    articleReadingHistory: { findUnique: jest.fn(async () => null) },
+    articleResourceExchange: {
+      findMany: jest.fn(async () => unlockedKeys.map((blockKey) => ({ blockKey }))),
+    },
+  };
+}
+
+type ExchangeCreateArgs = {
+  data: {
+    articleId: number;
+    buyerId: number;
+    authorId: number;
+    blockKey: string;
+    pointCost: number;
+    sellerAvailableAt: Date;
+  };
+};
+
+describe("article resource blocks", () => {
+  it("does not return locked resource bodies to a visitor", async () => {
     const article = resourceArticle();
     const prisma = {
-      article: {
-        findUnique: jest.fn(async () => article),
-      },
+      article: { findUnique: jest.fn(async () => article) },
       $transaction: jest.fn(
         async (callback: (transaction: object) => Promise<void>) =>
           callback({
@@ -105,81 +140,41 @@ describe("article point resources", () => {
     };
     const service = createService(prisma);
 
-    await expect(
-      service.getPublicBySlug(article.slug, "visitor-key"),
-    ).resolves.toMatchObject({
-      content: "",
+    await expect(service.getPublicBySlug(article.slug, "visitor-key")).resolves.toMatchObject({
+      content: "公开正文。\n\n中间公开正文。",
       summary: article.summary,
-      resource: {
-        enabled: true,
-        pointCost: 10,
-        redeemed: false,
-        accessible: false,
-      },
-    });
-  });
-
-  it("permanently unlocks the body after one atomic exchange", async () => {
-    const article = resourceArticle();
-    const createExchange = jest.fn(async () => ({ count: 1 }));
-    const transferResourcePoints = jest.fn(async () => undefined);
-    const prisma = {
-      article: { findUnique: jest.fn(async () => article) },
-      articleResourceExchange: { findUnique: jest.fn(async () => ({ id: 1 })) },
-      articleReadLater: { findUnique: jest.fn(async () => null) },
-      articleReadingHistory: { findUnique: jest.fn(async () => null) },
-      $transaction: jest.fn(
-        async (callback: (transaction: object) => Promise<void>) =>
-          callback({
-            articleResourceExchange: { createMany: createExchange },
-          }),
-      ),
-    };
-    const service = createService(prisma, { transferResourcePoints });
-
-    await expect(
-      service.redeemResource(article.id, viewer),
-    ).resolves.toMatchObject({
-      content: article.content,
-      resource: {
-        enabled: true,
-        pointCost: 10,
-        redeemed: true,
-        accessible: true,
-      },
-    });
-    expect(createExchange).toHaveBeenCalledWith({
-      data: [
-        {
-          articleId: article.id,
-          buyerId: viewer.id,
-          authorId: article.authorId,
-          pointCost: article.pointCost,
-        },
+      contentSegments: [
+        { type: "markdown", content: "公开正文。" },
+        { type: "resource", key: firstBlock.key, pointCost: 10, unlocked: false },
+        { type: "markdown", content: "中间公开正文。" },
+        { type: "resource", key: secondBlock.key, pointCost: 5, unlocked: false },
       ],
-      skipDuplicates: true,
-    });
-    expect(transferResourcePoints).toHaveBeenCalledWith(expect.anything(), {
-      buyerId: viewer.id,
-      authorId: article.authorId,
-      articleId: article.id,
-      pointCost: article.pointCost,
+      resource: {
+        enabled: true,
+        blocks: [
+          { key: firstBlock.key, pointCost: 10, unlocked: false },
+          { key: secondBlock.key, pointCost: 5, unlocked: false },
+        ],
+      },
     });
   });
 
-  it("does not transfer points again when the exchange already exists", async () => {
+  it("redeems one block and leaves the other block locked", async () => {
     const article = resourceArticle();
+    const createExchange = jest.fn(async (args: ExchangeCreateArgs) => {
+      void args.data;
+      return { id: 1 };
+    });
     const transferResourcePoints = jest.fn(async () => undefined);
     const prisma = {
       article: { findUnique: jest.fn(async () => article) },
-      articleResourceExchange: { findUnique: jest.fn(async () => ({ id: 1 })) },
-      articleReadLater: { findUnique: jest.fn(async () => null) },
-      articleReadingHistory: { findUnique: jest.fn(async () => null) },
+      ...readerStateDelegates([firstBlock.key]),
       $transaction: jest.fn(
         async (callback: (transaction: object) => Promise<void>) =>
           callback({
             articleResourceExchange: {
-              createMany: jest.fn(async () => ({ count: 0 })),
+              findUnique: jest.fn(async () => null),
+              create: createExchange,
             },
           }),
       ),
@@ -187,31 +182,71 @@ describe("article point resources", () => {
     const service = createService(prisma, { transferResourcePoints });
 
     await expect(
-      service.redeemResource(article.id, viewer),
+      service.redeemResource(article.id, viewer, { blockKey: firstBlock.key }),
     ).resolves.toMatchObject({
-      content: article.content,
-      resource: { redeemed: true, accessible: true },
+      content: "公开正文。\n\n中间公开正文。",
+      contentSegments: [
+        { type: "markdown", content: "公开正文。" },
+        { type: "resource", key: firstBlock.key, pointCost: 10, unlocked: true, content: firstBlock.content },
+        { type: "markdown", content: "中间公开正文。" },
+        { type: "resource", key: secondBlock.key, pointCost: 5, unlocked: false },
+      ],
     });
+    expect(createExchange).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        articleId: article.id,
+        buyerId: viewer.id,
+        authorId: article.authorId,
+        blockKey: firstBlock.key,
+        pointCost: 10,
+        sellerAvailableAt: expect.any(Date),
+      }),
+    });
+    const availableAt = createExchange.mock.calls[0]![0].data.sellerAvailableAt;
+    expect(availableAt.getTime()).toBeGreaterThan(Date.now() + 71 * 60 * 60 * 1000);
+    expect(availableAt.getTime()).toBeLessThan(Date.now() + 73 * 60 * 60 * 1000);
+    expect(transferResourcePoints).toHaveBeenCalledWith(expect.anything(), {
+      buyerId: viewer.id,
+      authorId: article.authorId,
+      articleId: article.id,
+      blockKey: firstBlock.key,
+      pointCost: 10,
+    });
+  });
+
+  it("does not charge a block twice after it has already been exchanged", async () => {
+    const article = resourceArticle();
+    const createExchange = jest.fn(async (args: ExchangeCreateArgs) => {
+      void args.data;
+      return { id: 1 };
+    });
+    const transferResourcePoints = jest.fn(async () => undefined);
+    const prisma = {
+      article: { findUnique: jest.fn(async () => article) },
+      ...readerStateDelegates([secondBlock.key]),
+      $transaction: jest.fn(
+        async (callback: (transaction: object) => Promise<void>) =>
+          callback({
+            articleResourceExchange: {
+              findUnique: jest.fn(async () => ({ id: 8 })),
+              create: createExchange,
+            },
+          }),
+      ),
+    };
+    const service = createService(prisma, { transferResourcePoints });
+
+    const response = await service.redeemResource(article.id, viewer, { blockKey: secondBlock.key });
+    expect(response.contentSegments.find((segment) => segment.type === "resource" && segment.key === secondBlock.key))
+      .toMatchObject({ type: "resource", key: secondBlock.key, unlocked: true, content: secondBlock.content });
+    expect(createExchange).not.toHaveBeenCalled();
     expect(transferResourcePoints).not.toHaveBeenCalled();
   });
 
-  it("rejects publishing an autosaved resource without a valid point cost", async () => {
-    const article = {
-      ...resourceArticle(),
-      authorId: viewer.id,
-      status: ArticleStatus.draft,
-      publishedAt: null,
-      pointCost: 0,
-    };
-    const transaction = jest.fn();
-    const service = createService({
-      article: { findUnique: jest.fn(async () => article) },
-      $transaction: transaction,
-    });
-
-    await expect(service.publish(article.id, viewer)).rejects.toThrow(
-      "积分资源的兑换价格必须是 1 到 10000 的整数。",
-    );
-    expect(transaction).not.toHaveBeenCalled();
+  it("rejects malformed resource syntax before an article can be saved", () => {
+    expect(() => parseArticleContent(":::resource{points=0}\nsecret\n:::"))
+      .toThrow("资源块积分必须是 1 到 10000 的整数。");
+    expect(() => parseArticleContent(":::resource{points=10}\nsecret"))
+      .toThrow("资源块缺少结束标记 :::。");
   });
 });

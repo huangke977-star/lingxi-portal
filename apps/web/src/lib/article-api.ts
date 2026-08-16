@@ -25,12 +25,21 @@ export interface ArticleGrouping {
   href: string;
 }
 
+export interface ArticleContentSegment {
+  type: "markdown" | "resource";
+  content?: string;
+  key?: string;
+  pointCost?: number;
+  unlocked?: boolean;
+}
+
 export interface Article {
   id: number;
   title: string;
   slug: string;
   summary: string;
   content: string;
+  contentSegments: ArticleContentSegment[];
   coverPath: string | null;
   category: string;
   tags: string[];
@@ -47,9 +56,7 @@ export interface Article {
   commentCount: number;
   resource: {
     enabled: boolean;
-    pointCost: number;
-    redeemed: boolean;
-    accessible: boolean;
+    blocks: Array<{ key: string; pointCost: number; unlocked: boolean }>;
   };
   author: ArticleAuthor;
   recentCommenters: ArticleAuthor[];
@@ -145,8 +152,6 @@ export interface ArticleInput {
   visibility: ArticleVisibility;
   status?: ArticleStatus;
   roleCodes: string[];
-  isPointResource: boolean;
-  pointCost: number;
 }
 
 export type ArticleVersionSource = "autosave" | "manual" | "publish" | "restore";
@@ -170,8 +175,6 @@ export interface ArticleVersion extends ArticleVersionSummary {
   visibility: ArticleVisibility;
   status: ArticleStatus;
   roleCodes: string[];
-  isPointResource: boolean;
-  pointCost: number;
 }
 
 export const ARTICLE_STATUS_LABEL: Record<ArticleStatus, string> = {
@@ -402,10 +405,38 @@ export function favoriteArticle(accessToken: string, id: number, favorited: bool
   });
 }
 
-export function redeemArticleResource(accessToken: string, id: number): Promise<Article> {
+export function redeemArticleResource(accessToken: string, id: number, blockKey: string): Promise<Article> {
   return requestJson<Article>(`/articles/${id}/redeem`, {
     method: "POST",
     headers: authHeaders(accessToken),
+    body: JSON.stringify({ blockKey }),
+  });
+}
+
+export type ArticleReportReason = ArticleCommentReportReason;
+export type ArticleReportStatus = ArticleCommentReportStatus;
+
+export interface ArticleReport {
+  id: number;
+  article: { id: number; title: string; slug: string };
+  reporter: ArticleAuthor;
+  reason: ArticleReportReason;
+  detail: string | null;
+  status: ArticleReportStatus;
+  resolution: string | null;
+  createdAt: string;
+  handledAt: string | null;
+}
+
+export function reportArticle(
+  accessToken: string,
+  id: number,
+  input: { reason: ArticleReportReason; detail?: string },
+): Promise<{ reported: true }> {
+  return requestJson(`/articles/${id}/report`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(input),
   });
 }
 
@@ -490,6 +521,36 @@ export function getCommentReportSummary(accessToken: string): Promise<{ pending:
   return requestJson("/articles/admin/comment-reports/summary", {
     cache: "no-store",
     headers: authHeaders(accessToken),
+  });
+}
+
+export function getArticleReportSummary(accessToken: string): Promise<{ pending: number }> {
+  return requestJson("/articles/admin/article-reports/summary", {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function listArticleReports(
+  accessToken: string,
+  status?: ArticleReportStatus,
+): Promise<{ items: ArticleReport[] }> {
+  const query = status ? `?status=${status}` : "";
+  return requestJson(`/articles/admin/article-reports${query}`, {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function moderateArticleReport(
+  accessToken: string,
+  id: number,
+  input: { status: "resolved" | "rejected"; articleStatus?: "blocked" | "deleted"; resolution?: string },
+): Promise<void> {
+  return requestJson<void>(`/articles/admin/article-reports/${id}`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(input),
   });
 }
 

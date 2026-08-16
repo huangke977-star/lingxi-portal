@@ -37,6 +37,9 @@ import {
   ModerateArticleCommentDto,
   ModerateArticleCommentReportDto,
   ModerateArticleDto,
+  ModerateArticleReportDto,
+  RedeemArticleResourceDto,
+  ReportArticleDto,
   ReportArticleCommentDto,
   UpdateArticleDto,
 } from "./dto/article.dto";
@@ -45,6 +48,7 @@ import {
   ArticleCenterSummaryResponse,
   ArticleCommentResponse,
   ArticleCommentReportResponse,
+  ArticleReportResponse,
   ArticleCommentReportSummaryResponse,
   ArticleCommentsResponse,
   ArticleInteractionResponse,
@@ -56,6 +60,7 @@ import {
   ArticleVersionSummaryResponse,
   ReadingProgressResponse,
 } from "./articles.types";
+import { parseArticleContent } from "./article-resources";
 
 export const ARTICLE_IMAGE_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 export const ARTICLE_IMAGE_MAX_FILES_PER_ARTICLE = 20;
@@ -206,7 +211,7 @@ interface ArticleReaderState {
   readLater: boolean;
   readingProgress: number | null;
   lastReadAt: Date | null;
-  resourceRedeemed: boolean;
+  unlockedResourceKeys: Set<string>;
 }
 
 interface RecommendationCandidate {
@@ -242,8 +247,26 @@ const commentReportInclude = {
   },
 } satisfies Prisma.ArticleCommentReportInclude;
 
+const articleReportInclude = {
+  article: { select: { id: true, title: true, slug: true } },
+  reporter: {
+    select: {
+      id: true,
+      nickname: true,
+      username: true,
+      avatarStoredName: true,
+      isSuperAdmin: true,
+      role: { select: { code: true, name: true, level: true } },
+    },
+  },
+} satisfies Prisma.ArticleReportInclude;
+
 type CommentReportRecord = Prisma.ArticleCommentReportGetPayload<{
   include: typeof commentReportInclude;
+}>;
+
+type ArticleReportRecord = Prisma.ArticleReportGetPayload<{
+  include: typeof articleReportInclude;
 }>;
 
 @Injectable()
@@ -351,7 +374,7 @@ export class ArticlesService {
         readLater: true,
         readingProgress: null,
         lastReadAt: null,
-        resourceRedeemed: false,
+        unlockedResourceKeys: new Set<string>(),
       })),
       total,
       page,
@@ -382,7 +405,7 @@ export class ArticlesService {
         readLater: false,
         readingProgress: progress,
         lastReadAt,
-        resourceRedeemed: false,
+        unlockedResourceKeys: new Set<string>(),
       })),
       total,
       page,
@@ -502,13 +525,13 @@ export class ArticlesService {
     if (!title || !content) {
       throw new BadRequestException("文章标题和正文不能为空。");
     }
+    parseArticleContent(content);
 
     const visibility = dto.visibility ?? publishPolicy.defaultArticleVisibility;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
     const status = this.normalizeAuthorStatus(dto.status);
     const slug = await this.createUniqueSlug(title);
     const tags = this.normalizeTags(dto.tags);
-    const resource = this.normalizePointResource(dto.isPointResource, dto.pointCost);
     const article = await this.prisma.$transaction(async (transaction) => {
       const created = await transaction.article.create({ data: {
         authorId: user.id,
@@ -522,7 +545,8 @@ export class ArticlesService {
         visibility,
         status,
         publishedAt: status === ArticleStatus.published ? new Date() : null,
-        ...resource,
+        isPointResource: false,
+        pointCost: 0,
         ...buildSearchFields([title, dto.category?.trim() ?? "", tags]),
         allowedRoles: { create: roles.map((role) => ({ roleId: role.id })) },
       }, include: articleInclude });
@@ -541,9 +565,9 @@ export class ArticlesService {
     const title = dto.title?.trim() ?? "";
     const category = dto.category?.trim() ?? "";
     const tags = this.normalizeTags(dto.tags);
+    parseArticleContent(dto.content ?? "");
     const visibility = dto.visibility ?? publishPolicy.defaultArticleVisibility;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
-    const resource = this.normalizePointResource(dto.isPointResource, dto.pointCost, undefined, true);
     const slug = await this.createUniqueSlug(title || "untitled-article");
     const article = await this.prisma.$transaction(async (transaction) => {
       const created = await transaction.article.create({
@@ -558,7 +582,8 @@ export class ArticlesService {
           titleColor: this.normalizeTitleColor(dto.titleColor),
           visibility,
           status: ArticleStatus.draft,
-          ...resource,
+          isPointResource: false,
+          pointCost: 0,
           ...buildSearchFields([title, category, tags]),
           allowedRoles: { create: roles.map((role) => ({ roleId: role.id })) },
         },
@@ -582,11 +607,11 @@ export class ArticlesService {
     }
     const title = dto.title === undefined ? existing.title : dto.title.trim();
     const content = dto.content === undefined ? existing.content : dto.content;
+    parseArticleContent(content);
     const category = dto.category === undefined ? existing.category : dto.category.trim();
     const tags = dto.tags === undefined ? existing.tags : this.normalizeTags(dto.tags);
     const visibility = dto.visibility ?? existing.visibility;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? this.roleCodes(existing));
-    const resource = this.normalizePointResource(dto.isPointResource, dto.pointCost, existing, true);
     const article = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.article.update({
         where: { id },
@@ -598,7 +623,8 @@ export class ArticlesService {
           tags,
           titleColor: dto.titleColor === undefined ? existing.titleColor : this.normalizeTitleColor(dto.titleColor),
           visibility,
-          ...resource,
+          isPointResource: false,
+          pointCost: 0,
           ...buildSearchFields([title, category, tags]),
           allowedRoles: {
             deleteMany: {},
@@ -640,6 +666,7 @@ export class ArticlesService {
       include: { editor: { select: { id: true, username: true, nickname: true } } },
     });
     if (!version) throw new NotFoundException("文章版本不存在。");
+    parseArticleContent(version.content);
     return this.toVersionResponse(version);
   }
 
@@ -672,8 +699,8 @@ export class ArticlesService {
           titleColor: version.titleColor,
           visibility: version.visibility,
           status: restoredStatus,
-          isPointResource: version.isPointResource,
-          pointCost: version.isPointResource ? version.pointCost : 0,
+          isPointResource: false,
+          pointCost: 0,
           ...buildSearchFields([version.title, version.category, version.tags]),
           allowedRoles: {
             deleteMany: {},
@@ -704,7 +731,7 @@ export class ArticlesService {
     const title = dto.title?.trim() || existing.title;
     const category = dto.category === undefined ? existing.category : dto.category.trim();
     const tags = dto.tags === undefined ? existing.tags : this.normalizeTags(dto.tags);
-    const resource = this.normalizePointResource(dto.isPointResource, dto.pointCost, existing);
+    parseArticleContent(dto.content === undefined ? existing.content : dto.content.trim());
     const article = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.article.update({ where: { id }, data: {
         title,
@@ -715,7 +742,8 @@ export class ArticlesService {
         titleColor: dto.titleColor === undefined ? existing.titleColor : this.normalizeTitleColor(dto.titleColor),
         visibility,
         status,
-        ...resource,
+        isPointResource: false,
+        pointCost: 0,
         ...buildSearchFields([title, category, tags]),
         publishedAt:
           status === ArticleStatus.published
@@ -747,7 +775,7 @@ export class ArticlesService {
     if (!existing.title.trim() || !existing.content.trim()) {
       throw new BadRequestException("文章标题和正文不能为空。");
     }
-    this.normalizePointResource(existing.isPointResource, existing.pointCost);
+    parseArticleContent(existing.content);
     const isFirstPublication = existing.publishedAt === null;
     const article = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.article.update({
@@ -951,31 +979,41 @@ export class ArticlesService {
     return { favorited, likeCount: article.likeCount, favoriteCount: Math.max(0, article.favoriteCount) };
   }
 
-  async redeemResource(id: number, user: AuthenticatedUser): Promise<ArticleResponse> {
+  async redeemResource(
+    id: number,
+    user: AuthenticatedUser,
+    dto: RedeemArticleResourceDto,
+  ): Promise<ArticleResponse> {
     const article = await this.getArticleOrThrow(id);
     this.assertCanRead(article, user);
-    if (article.status !== ArticleStatus.published || !article.isPointResource) {
-      throw new BadRequestException("这篇文章当前不是可兑换资源。");
-    }
+    if (article.status !== ArticleStatus.published) throw new BadRequestException("文章当前不能兑换资源。");
+    const parsed = parseArticleContent(article.content);
+    const block = parsed.blocks.find((candidate) => candidate.key === dto.blockKey);
+    if (!block) throw new BadRequestException("资源区域不存在或已经更新，请刷新文章后重试。");
     if (article.authorId !== user.id && !this.canManageContent(user)) {
       await this.prisma.$transaction(async (transaction) => {
-        const exchange = await transaction.articleResourceExchange.createMany({
-          data: [{
-            articleId: id,
-            buyerId: user.id,
-            authorId: article.authorId,
-            pointCost: article.pointCost,
-          }],
-          skipDuplicates: true,
+        const existing = await transaction.articleResourceExchange.findUnique({
+          where: { articleId_buyerId_blockKey: { articleId: id, buyerId: user.id, blockKey: block.key } },
+          select: { id: true },
         });
-        if (exchange.count === 1) {
-          await this.reputationService.transferResourcePoints(transaction, {
+        if (existing) return;
+        await transaction.articleResourceExchange.create({
+          data: {
+            articleId: id,
             buyerId: user.id,
             authorId: article.authorId,
-            articleId: id,
-            pointCost: article.pointCost,
-          });
-        }
+            blockKey: block.key,
+            pointCost: block.pointCost,
+            sellerAvailableAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+          },
+        });
+        await this.reputationService.transferResourcePoints(transaction, {
+          buyerId: user.id,
+          authorId: article.authorId,
+          articleId: id,
+          blockKey: block.key,
+          pointCost: block.pointCost,
+        });
       });
     }
     const [refreshed, readerState] = await Promise.all([
@@ -1183,6 +1221,67 @@ export class ArticlesService {
     return { reported: true };
   }
 
+  async reportArticle(
+    id: number,
+    user: AuthenticatedUser,
+    dto: ReportArticleDto,
+  ): Promise<{ reported: true }> {
+    const publishPolicy = await this.siteSettingsService.getArticlePublishPolicy();
+    if (!publishPolicy.reportsEnabled) throw new BadRequestException("举报功能暂未开放。");
+    const article = await this.getArticleOrThrow(id);
+    this.assertCanRead(article, user);
+    if (article.status !== ArticleStatus.published) throw new BadRequestException("文章当前不可举报。");
+    if (article.authorId === user.id) throw new BadRequestException("不能举报自己的文章。");
+
+    const current = await this.prisma.articleReport.findUnique({
+      where: { articleId_reporterId: { articleId: id, reporterId: user.id } },
+      select: { status: true },
+    });
+    const report = await this.prisma.articleReport.upsert({
+      where: { articleId_reporterId: { articleId: id, reporterId: user.id } },
+      create: {
+        articleId: id,
+        reporterId: user.id,
+        reason: dto.reason as ArticleCommentReportReason,
+        detail: dto.detail?.trim() || null,
+      },
+      update: {
+        reason: dto.reason as ArticleCommentReportReason,
+        detail: dto.detail?.trim() || null,
+        status: ArticleCommentReportStatus.pending,
+        handledById: null,
+        handledAt: null,
+        resolution: null,
+      },
+      select: { id: true, status: true },
+    });
+    if (!current || current.status !== ArticleCommentReportStatus.pending) {
+      const notificationSettings = await this.siteSettingsService.getNotificationSettings();
+      if (notificationSettings.notifyCommentReport) {
+        const administrators = await this.prisma.user.findMany({
+          where: { status: "active", OR: [{ isSuperAdmin: true }, { role: { level: { gte: 90 } } }] },
+          select: { id: true },
+        });
+        if (administrators.length) {
+          await this.prisma.userNotification.createMany({
+            data: administrators.map(({ id: administratorId }) => ({
+              userId: administratorId,
+              actorId: user.id,
+              type: UserNotificationType.article_report_received,
+              channel: UserNotificationChannel.system,
+              title: "收到文章举报",
+              body: `${user.nickname || user.username} 举报了《${article.title}》，请前往文章管理处理。`.slice(0, 500),
+              actionUrl: `/admin/articles?tab=articles&report=${report.id}`,
+              articleId: article.id,
+              articleReportId: report.id,
+            })),
+          });
+        }
+      }
+    }
+    return { reported: true };
+  }
+
   async moderateArticle(id: number, actor: AuthenticatedUser, dto: ModerateArticleDto): Promise<ArticleResponse> {
     this.assertCanManageContent(actor);
     const existing = await this.getArticleOrThrow(id);
@@ -1262,6 +1361,23 @@ export class ArticlesService {
       include: commentReportInclude,
     });
     return { items: reports.map((report) => this.toCommentReportResponse(report)) };
+  }
+
+  async getArticleReportSummary(): Promise<{ pending: number }> {
+    return { pending: await this.prisma.articleReport.count({ where: { status: ArticleCommentReportStatus.pending } }) };
+  }
+
+  async listArticleReports(status?: string): Promise<{ items: ArticleReportResponse[] }> {
+    const normalizedStatus = status && Object.values(ArticleCommentReportStatus).includes(status as ArticleCommentReportStatus)
+      ? status as ArticleCommentReportStatus
+      : undefined;
+    const reports = await this.prisma.articleReport.findMany({
+      where: normalizedStatus ? { status: normalizedStatus } : undefined,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 100,
+      include: articleReportInclude,
+    });
+    return { items: reports.map((report) => this.toArticleReportResponse(report)) };
   }
 
   async getAdminArticle(id: number, actor: AuthenticatedUser): Promise<ArticleResponse> {
@@ -1374,6 +1490,82 @@ export class ArticlesService {
             commentReportId: id,
           },
         });
+      }
+    });
+    return { success: true };
+  }
+
+  async moderateArticleReport(
+    id: number,
+    actor: AuthenticatedUser,
+    dto: ModerateArticleReportDto,
+  ): Promise<{ success: true }> {
+    this.assertCanManageContent(actor);
+    const notificationSettings = await this.siteSettingsService.getNotificationSettings();
+    await this.prisma.$transaction(async (transaction) => {
+      const report = await transaction.articleReport.findUnique({
+        where: { id },
+        select: {
+          articleId: true,
+          reporterId: true,
+          status: true,
+          article: { select: { authorId: true, title: true, slug: true, status: true } },
+        },
+      });
+      if (!report) throw new NotFoundException("文章举报记录不存在。");
+      if (report.status !== ArticleCommentReportStatus.pending) throw new BadRequestException("这条文章举报已经处理，不能重复操作。");
+      if (dto.articleStatus) {
+        await transaction.article.update({
+          where: { id: report.articleId },
+          data: {
+            status: dto.articleStatus === "blocked" ? ArticleStatus.blocked : ArticleStatus.deleted,
+            blockedReason: dto.articleStatus === "blocked" ? dto.resolution?.trim() || "文章举报处理" : null,
+          },
+        });
+      }
+      const updated = await transaction.articleReport.updateMany({
+        where: { id, status: ArticleCommentReportStatus.pending },
+        data: {
+          status: dto.status as ArticleCommentReportStatus,
+          resolution: dto.resolution?.trim() || null,
+          handledById: actor.id,
+          handledAt: new Date(),
+        },
+      });
+      if (updated.count !== 1) throw new BadRequestException("这条文章举报已经由其他管理员处理。");
+      if (notificationSettings.notifyCommentReport) {
+        const resolved = dto.status === "resolved";
+        await transaction.userNotification.create({
+          data: {
+            userId: report.reporterId,
+            actorId: actor.id,
+            type: resolved ? UserNotificationType.article_report_resolved : UserNotificationType.article_report_rejected,
+            channel: UserNotificationChannel.system,
+            title: resolved ? "文章举报已处理" : "文章举报已驳回",
+            body: (dto.resolution?.trim() || `你对《${report.article.title}》的举报已${resolved ? "处理" : "驳回"}。`).slice(0, 500),
+            actionUrl: `/articles/${report.article.slug}`,
+            articleId: report.articleId,
+            articleReportId: id,
+          },
+        });
+        if (
+          report.article.authorId !== report.reporterId &&
+          (dto.articleStatus === "blocked" || dto.articleStatus === "deleted")
+        ) {
+          await transaction.userNotification.create({
+            data: {
+              userId: report.article.authorId,
+              actorId: actor.id,
+              type: UserNotificationType.article_author_moderated,
+              channel: UserNotificationChannel.system,
+              title: dto.articleStatus === "deleted" ? "你的文章已删除" : "你的文章已屏蔽",
+              body: `《${report.article.title}》已因举报被${dto.articleStatus === "deleted" ? "删除" : "屏蔽"}${dto.resolution ? `：${dto.resolution.trim()}` : "。"}`.slice(0, 500),
+              actionUrl: `/articles/${report.article.slug}`,
+              articleId: report.articleId,
+              articleReportId: id,
+            },
+          });
+        }
       }
     });
     return { success: true };
@@ -1857,22 +2049,6 @@ export class ArticlesService {
     return normalized;
   }
 
-  private normalizePointResource(
-    enabled: boolean | undefined,
-    cost: number | undefined,
-    existing?: Pick<ArticleRecord, "isPointResource" | "pointCost">,
-    allowIncomplete = false,
-  ): { isPointResource: boolean; pointCost: number } {
-    const isPointResource = enabled ?? existing?.isPointResource ?? false;
-    if (!isPointResource) return { isPointResource: false, pointCost: 0 };
-    const pointCost = cost ?? existing?.pointCost ?? 0;
-    if (allowIncomplete && pointCost === 0) return { isPointResource: true, pointCost: 0 };
-    if (!Number.isInteger(pointCost) || pointCost < 1 || pointCost > 10000) {
-      throw new BadRequestException("积分资源的兑换价格必须是 1 到 10000 的整数。");
-    }
-    return { isPointResource: true, pointCost };
-  }
-
   private async resolveRoles(visibility: ArticleVisibility | string, roleCodes: string[]) {
     const normalizedCodes = [...new Set(roleCodes.map((code) => code.trim()).filter(Boolean))];
     if (visibility !== ArticleVisibility.role_restricted) return [];
@@ -1923,16 +2099,16 @@ export class ArticlesService {
         where: { articleId_userId: { articleId, userId } },
         select: { progress: true, lastReadAt: true },
       }),
-      this.prisma.articleResourceExchange.findUnique({
-        where: { articleId_buyerId: { articleId, buyerId: userId } },
-        select: { id: true },
+      this.prisma.articleResourceExchange.findMany({
+        where: { articleId, buyerId: userId },
+        select: { blockKey: true },
       }),
     ]);
     return {
       readLater: Boolean(readLater),
       readingProgress: history?.progress ?? null,
       lastReadAt: history?.lastReadAt ?? null,
-      resourceRedeemed: Boolean(exchange),
+      unlockedResourceKeys: new Set(exchange.map(({ blockKey }) => blockKey)),
     };
   }
 
@@ -2089,19 +2265,29 @@ export class ArticlesService {
       recentCommenters.push(this.toAuthor(comment.author));
       if (recentCommenters.length === 5) break;
     }
-    const resourceAccessible = !article.isPointResource || Boolean(
-      viewer && (
-        viewer.id === article.authorId ||
-        this.canManageContent(viewer) ||
-        readerState?.resourceRedeemed
-      )
-    );
+    const parsedContent = parseArticleContent(article.content);
+    const fullContentAccess = Boolean(viewer && (viewer.id === article.authorId || this.canManageContent(viewer)));
+    const unlockedKeys = fullContentAccess
+      ? new Set(parsedContent.blocks.map((block) => block.key))
+      : readerState?.unlockedResourceKeys ?? new Set<string>();
+    const contentSegments = parsedContent.segments.map((segment) => {
+      if (segment.type === "markdown") return { type: "markdown" as const, content: segment.content };
+      const unlocked = unlockedKeys.has(segment.key);
+      return unlocked
+        ? { type: "resource" as const, key: segment.key, pointCost: segment.pointCost, unlocked: true, content: segment.content }
+        : { type: "resource" as const, key: segment.key, pointCost: segment.pointCost, unlocked: false };
+    });
+    const publicContent = parsedContent.segments
+      .filter((segment): segment is Extract<typeof segment, { type: "markdown" }> => segment.type === "markdown")
+      .map((segment) => segment.content)
+      .join("\n\n");
     return {
       id: article.id,
       title: article.title,
       slug: article.slug,
       summary: article.summary,
-      content: resourceAccessible ? article.content : "",
+      content: fullContentAccess ? article.content : publicContent,
+      contentSegments,
       coverPath: article.coverPath,
       category: article.category,
       tags: article.tags ? article.tags.split(",").filter(Boolean) : [],
@@ -2117,10 +2303,12 @@ export class ArticlesService {
       favoriteCount: article.favoriteCount,
       commentCount: article.commentCount,
       resource: {
-        enabled: article.isPointResource,
-        pointCost: article.pointCost,
-        redeemed: Boolean(readerState?.resourceRedeemed),
-        accessible: resourceAccessible,
+        enabled: parsedContent.blocks.length > 0,
+        blocks: parsedContent.blocks.map((block) => ({
+          key: block.key,
+          pointCost: block.pointCost,
+          unlocked: unlockedKeys.has(block.key),
+        })),
       },
       author: this.toAuthor(article.author),
       recentCommenters,
@@ -2237,6 +2425,20 @@ export class ArticlesService {
       commentBody: report.comment.body,
       commentStatus: report.comment.status,
       article: report.comment.article,
+      reporter: this.toAuthor(report.reporter),
+      reason: report.reason,
+      detail: report.detail,
+      status: report.status,
+      resolution: report.resolution,
+      createdAt: report.createdAt.toISOString(),
+      handledAt: report.handledAt?.toISOString() ?? null,
+    };
+  }
+
+  private toArticleReportResponse(report: ArticleReportRecord): ArticleReportResponse {
+    return {
+      id: report.id,
+      article: report.article,
       reporter: this.toAuthor(report.reporter),
       reason: report.reason,
       detail: report.detail,

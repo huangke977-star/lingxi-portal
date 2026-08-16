@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Prisma, ReputationReason } from "../generated/prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type {
@@ -27,18 +27,18 @@ interface AwardInput {
 
 export const REPUTATION_LEVELS: ReputationLevelResponse[] = [
   { code: "qi_refining", name: "练气", level: 10, minExperience: 0 },
-  { code: "foundation_building", name: "筑基", level: 20, minExperience: 100 },
-  { code: "golden_core", name: "金丹", level: 30, minExperience: 300 },
-  { code: "nascent_soul", name: "元婴", level: 40, minExperience: 600 },
+  { code: "foundation_building", name: "筑基", level: 20, minExperience: 200 },
+  { code: "golden_core", name: "金丹", level: 30, minExperience: 500 },
+  { code: "nascent_soul", name: "元婴", level: 40, minExperience: 1000 },
   {
     code: "spirit_transformation",
     name: "化神",
     level: 50,
-    minExperience: 1000,
+    minExperience: 2000,
   },
-  { code: "void_refining", name: "炼虚", level: 60, minExperience: 1500 },
-  { code: "body_integration", name: "合体", level: 70, minExperience: 2200 },
-  { code: "mahayana", name: "大乘", level: 80, minExperience: 3000 },
+  { code: "void_refining", name: "炼虚", level: 60, minExperience: 5000 },
+  { code: "body_integration", name: "合体", level: 70, minExperience: 10000 },
+  { code: "mahayana", name: "大乘", level: 80, minExperience: 20000 },
 ];
 
 export const REPUTATION_RULES: ReputationRule[] = [
@@ -52,7 +52,7 @@ export const REPUTATION_RULES: ReputationRule[] = [
   {
     reason: ReputationReason.article_comment,
     label: "发布一条评论或回复",
-    experience: 3,
+    experience: 2,
     points: 0,
     dailyExperienceCap: 30,
   },
@@ -67,7 +67,7 @@ export const REPUTATION_RULES: ReputationRule[] = [
     reason: ReputationReason.article_liked,
     label: "文章首次获得一位用户点赞",
     experience: 0,
-    points: 2,
+    points: 1,
     dailyExperienceCap: null,
   },
   {
@@ -80,10 +80,22 @@ export const REPUTATION_RULES: ReputationRule[] = [
 ];
 
 @Injectable()
-export class ReputationService {
+export class ReputationService implements OnModuleInit, OnModuleDestroy {
+  private settlementTimer: NodeJS.Timeout | null = null;
+
   constructor(private readonly prisma: PrismaService) {}
 
+  onModuleInit(): void {
+    this.settlementTimer = setInterval(() => void this.settlePendingPoints(), 60_000);
+    setTimeout(() => void this.settlePendingPoints(), 5_000).unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.settlementTimer) clearInterval(this.settlementTimer);
+  }
+
   async getMySummary(userId: number): Promise<ReputationSummaryResponse> {
+    await this.settlePendingPoints();
     const [user, recent] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: userId },
@@ -101,9 +113,14 @@ export class ReputationService {
     if (!user) throw new BadRequestException("用户不存在。");
     const { level, nextLevel, experienceToNext, progressPercent } =
       this.levelProgress(user.experience);
+    const pending = await this.prisma.userReputationLedger.aggregate({
+      where: { userId, pendingPointDelta: { gt: 0 }, settledAt: null },
+      _sum: { pendingPointDelta: true },
+    });
     return {
       experience: user.experience,
       points: user.points,
+      pendingPoints: pending._sum.pendingPointDelta ?? 0,
       level,
       nextLevel,
       experienceToNext,
@@ -115,8 +132,11 @@ export class ReputationService {
         description: item.description,
         experienceDelta: item.experienceDelta,
         pointDelta: item.pointDelta,
+        pendingPointDelta: item.pendingPointDelta,
         experienceAfter: item.experienceAfter,
         pointsAfter: item.pointsAfter,
+        availableAt: item.availableAt?.toISOString() ?? null,
+        settledAt: item.settledAt?.toISOString() ?? null,
         createdAt: item.createdAt.toISOString(),
       })),
     };
@@ -214,6 +234,7 @@ export class ReputationService {
       buyerId: number;
       authorId: number;
       articleId: number;
+      blockKey: string;
       pointCost: number;
     },
   ): Promise<void> {
@@ -242,32 +263,85 @@ export class ReputationService {
       data: {
         userId: input.buyerId,
         reason: ReputationReason.resource_redeemed,
-        eventKey: `resource-redeemed:${input.articleId}`,
+        eventKey: `resource-redeemed:${input.articleId}:${input.blockKey}`,
         description: "兑换文章资源",
         pointDelta: -input.pointCost,
+        pendingPointDelta: 0,
         experienceAfter: buyer.experience,
         pointsAfter: buyerAfter.points,
-        metadata: { articleId: input.articleId, authorId: input.authorId },
+        settledAt: new Date(),
+        metadata: { articleId: input.articleId, authorId: input.authorId, blockKey: input.blockKey },
       },
     });
 
-    const author = await transaction.user.update({
+    const author = await transaction.user.findUnique({
       where: { id: input.authorId },
-      data: { points: { increment: input.pointCost } },
       select: { experience: true, points: true },
     });
+    if (!author) throw new BadRequestException("作者不存在。");
+    const availableAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
     await transaction.userReputationLedger.create({
       data: {
         userId: input.authorId,
         reason: ReputationReason.resource_sold,
-        eventKey: `resource-sold:${input.articleId}:${input.buyerId}`,
-        description: "文章资源被兑换",
-        pointDelta: input.pointCost,
+        eventKey: `resource-sold:${input.articleId}:${input.buyerId}:${input.blockKey}`,
+        description: "文章资源兑换待入账",
+        pendingPointDelta: input.pointCost,
+        pointDelta: 0,
         experienceAfter: author.experience,
         pointsAfter: author.points,
-        metadata: { articleId: input.articleId, buyerId: input.buyerId },
+        availableAt,
+        metadata: { articleId: input.articleId, buyerId: input.buyerId, blockKey: input.blockKey },
       },
     });
+  }
+
+  /** Settles author earnings after the dispute window without double-crediting a ledger row. */
+  async settlePendingPoints(): Promise<number> {
+    // Some lightweight service tests use a partial Prisma double without the optional ledger delegate.
+    // The production client always has it after the reputation migration is applied.
+    if (!(this.prisma as unknown as { userReputationLedger?: unknown }).userReputationLedger) return 0;
+    const pending = await this.prisma.userReputationLedger.findMany({
+      where: { pendingPointDelta: { gt: 0 }, settledAt: null, availableAt: { lte: new Date() } },
+      orderBy: [{ availableAt: "asc" }, { id: "asc" }],
+      take: 100,
+      select: { id: true, userId: true, pendingPointDelta: true, metadata: true },
+    });
+    let settled = 0;
+    for (const item of pending) {
+      await this.prisma.$transaction(async (transaction) => {
+        const claimed = await transaction.userReputationLedger.updateMany({
+          where: { id: item.id, pendingPointDelta: { gt: 0 }, settledAt: null },
+          data: { settledAt: new Date() },
+        });
+        if (claimed.count !== 1) return;
+        const user = await transaction.user.update({
+          where: { id: item.userId },
+          data: { points: { increment: item.pendingPointDelta } },
+          select: { points: true },
+        });
+        await transaction.userReputationLedger.update({
+          where: { id: item.id },
+          data: { pointDelta: item.pendingPointDelta, pendingPointDelta: 0, pointsAfter: user.points },
+        });
+        const metadata = item.metadata && typeof item.metadata === "object" && !Array.isArray(item.metadata)
+          ? item.metadata as { articleId?: number; buyerId?: number; blockKey?: string }
+          : {};
+        if (metadata.articleId && metadata.buyerId) {
+          await transaction.articleResourceExchange.updateMany({
+            where: {
+              articleId: metadata.articleId,
+              buyerId: metadata.buyerId,
+              authorId: item.userId,
+              ...(metadata.blockKey ? { blockKey: metadata.blockKey } : {}),
+            },
+            data: { sellerSettledAt: new Date() },
+          });
+        }
+        settled += 1;
+      });
+    }
+    return settled;
   }
 
   private async award(
@@ -329,6 +403,7 @@ export class ReputationService {
         eventKey: input.eventKey,
         experienceDelta,
         pointDelta,
+        pendingPointDelta: 0,
         experienceAfter: updated.experience,
         pointsAfter: updated.points,
         description: input.description,

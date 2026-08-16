@@ -214,6 +214,10 @@ export interface SocialNotification {
     | "comment_report_resolved"
     | "comment_report_rejected"
     | "comment_author_moderated"
+    | "article_report_received"
+    | "article_report_resolved"
+    | "article_report_rejected"
+    | "article_author_moderated"
     | "article_liked"
     | "article_favorited"
     | "article_commented"
@@ -229,10 +233,11 @@ export interface SocialNotification {
   actionUrl: string | null;
   friendshipId: number | null;
   commentReportId: number | null;
+  articleReportId: number | null;
   announcementId: number | null;
   actor: SocialUser | null;
   context: {
-    kind: "comment_report" | "article" | "article_comment" | "friend_request" | "group_invitation" | "group_join_request" | "group_report" | "group_ban" | "announcement";
+    kind: "comment_report" | "article_report" | "article" | "article_comment" | "friend_request" | "group_invitation" | "group_join_request" | "group_report" | "group_ban" | "announcement";
     announcementId?: number;
     announcement?: { id: number; title: string; summary: string };
     article?: { id: number; title: string; slug: string };

@@ -29,17 +29,21 @@ import {
   Article,
   ArticleComment,
   ArticleCommentReport,
+  ArticleReport,
   ArticleList,
   ARTICLE_STATUS_LABEL,
   ARTICLE_VISIBILITY_LABEL,
   getAdminArticle,
+  getArticleReportSummary,
   getCommentReportSummary,
   listAdminArticles,
   listAdminComments,
   listCommentReports,
+  listArticleReports,
   moderateArticle,
   moderateArticleComment,
   moderateCommentReport,
+  moderateArticleReport,
 } from "@/lib/article-api";
 import { buildArticleCommentThreads } from "@/lib/article-comments";
 import type { ArticleCommentThread } from "@/lib/article-comments";
@@ -64,6 +68,7 @@ function AdminArticlesWorkspace() {
   const [articleList, setArticleList] = useState<ArticleList>(emptyArticleList);
   const [comments, setComments] = useState<ArticleComment[]>([]);
   const [reports, setReports] = useState<ArticleCommentReport[]>([]);
+  const [articleReports, setArticleReports] = useState<ArticleReport[]>([]);
   const [pendingReportCount, setPendingReportCount] = useState(0);
   const [commentFilter, setCommentFilter] = useState<"all" | "reported" | "pending">("all");
   const [highlightCommentId, setHighlightCommentId] = useState<number | null>(null);
@@ -127,13 +132,16 @@ function AdminArticlesWorkspace() {
   }
 
   async function loadReportQueue(token: string) {
-    const [summary, reportResult] = await Promise.all([
+    const [summary, reportResult, articleSummary, articleReportResult] = await Promise.all([
       getCommentReportSummary(token),
       listCommentReports(token, "pending"),
+      getArticleReportSummary(token),
+      listArticleReports(token),
     ]);
-    setPendingReportCount(summary.pending);
+    setPendingReportCount(summary.pending + articleSummary.pending);
     setReports(reportResult.items);
-    return reportResult;
+    setArticleReports(articleReportResult.items);
+    return { reportResult, articleReportResult: { items: articleReportResult.items.filter((report) => report.status === "pending") } };
   }
 
   async function loadArticles(token: string, page: number, search = searchQuery) {
@@ -172,7 +180,7 @@ function AdminArticlesWorkspace() {
     // Initial route hydration starts the protected article workspace.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     Promise.all([getMe(token), loadArticles(token, 1, ""), loadReportQueue(token)])
-      .then(([currentUser, articleResult, reportResult]) => {
+      .then(([currentUser, articleResult, reportQueue]) => {
         if (!currentUser.isSuperAdmin && currentUser.role.level < 90) {
           window.location.href = "/";
           return;
@@ -180,10 +188,16 @@ function AdminArticlesWorkspace() {
         setUser(currentUser);
         initializedRef.current = true;
         if (requestedReportId > 0) {
-          const requestedReport = reportResult.items.find((report) => report.id === requestedReportId);
+          const requestedReport = reportQueue.reportResult.items.find((report) => report.id === requestedReportId);
+          const requestedArticleReport = reportQueue.articleReportResult.items.find((report) => report.id === requestedReportId);
           if (requestedReport) {
             lastLocatedReportIdRef.current = requestedReportId;
             void locateReportedComment(requestedReport);
+            return;
+          }
+          if (requestedArticleReport) {
+            lastLocatedReportIdRef.current = requestedReportId;
+            void locateArticleReport(requestedArticleReport);
             return;
           }
         }
@@ -201,12 +215,13 @@ function AdminArticlesWorkspace() {
   useEffect(() => {
     if (!initializedRef.current || requestedReportId <= 0 || lastLocatedReportIdRef.current === requestedReportId) return;
     const requestedReport = reports.find((report) => report.id === requestedReportId);
-    if (!requestedReport) return;
+    const requestedArticleReport = articleReports.find((report) => report.id === requestedReportId);
+    if (!requestedReport && !requestedArticleReport) return;
     lastLocatedReportIdRef.current = requestedReportId;
-    void locateReportedComment(requestedReport);
+    void (requestedReport ? locateReportedComment(requestedReport) : locateArticleReport(requestedArticleReport!));
     // The report query is an external navigation target and should retrigger when only its id changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reports, requestedReportId]);
+  }, [articleReports, reports, requestedReportId]);
 
   useEffect(() => {
     if (!isReportQueueOpen) return;
@@ -398,6 +413,20 @@ function AdminArticlesWorkspace() {
     }
   }
 
+  async function locateArticleReport(report: ArticleReport) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      const article = await getAdminArticle(token, report.article.id);
+      applyArticleSelection(article);
+      setActiveTab("articles");
+      setIsReportQueueOpen(false);
+      setNotice("已定位到被举报文章。");
+    } catch (locateError) {
+      setError(locateError instanceof Error ? locateError.message : "无法定位被举报的文章。");
+    }
+  }
+
   function cancelReportQueueClose() {
     if (reportQueueCloseTimerRef.current !== null) {
       window.clearTimeout(reportQueueCloseTimerRef.current);
@@ -433,6 +462,33 @@ function AdminArticlesWorkspace() {
     } catch (reportError) {
       setError(reportError instanceof Error ? reportError.message : "举报处理失败。");
     }
+  }
+
+  async function handleArticleReport(
+    report: ArticleReport,
+    action: "rejected" | "resolved" | "blocked" | "deleted",
+  ) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      await moderateArticleReport(token, report.id, {
+        status: action === "rejected" ? "rejected" : "resolved",
+        articleStatus: action === "blocked" || action === "deleted" ? action : undefined,
+      });
+      const refreshed = await getAdminArticle(token, report.article.id);
+      applyArticleSelection(refreshed);
+      setArticleList((current) => ({ ...current, items: current.items.map((item) => item.id === refreshed.id ? refreshed : item) }));
+      await loadReportQueue(token);
+      setNotice(action === "rejected" ? "文章举报已驳回。" : action === "resolved" ? "举报已处理，文章未修改。" : action === "blocked" ? "文章已屏蔽并处理举报。" : "文章已删除并处理举报。");
+    } catch (reportError) {
+      setError(reportError instanceof Error ? reportError.message : "文章举报处理失败。");
+    }
+  }
+
+  function renderArticleReports(articleId: number) {
+    const reportsForArticle = articleReports.filter((report) => report.article.id === articleId);
+    if (!reportsForArticle.length) return null;
+    return <section className="admin-article-reports"><div className="admin-section-heading"><span><AlertTriangle aria-hidden="true" size={15} />文章举报</span><small>{reportsForArticle.length} 条</small></div>{reportsForArticle.map((report) => <article className={`admin-article-report ${report.status}`} key={report.id}><div><strong>{report.reason === "spam" ? "垃圾广告" : report.reason === "harassment" ? "辱骂骚扰" : report.reason === "illegal" ? "违法违规" : report.reason === "privacy" ? "隐私泄露" : report.reason === "misinformation" ? "不实内容" : "其他"}</strong><span>{report.reporter.nickname} · {formatArticleDate(report.createdAt)}</span></div>{report.detail ? <p>{report.detail}</p> : null}{report.status === "pending" ? <div className="admin-article-report-actions"><button onClick={() => void handleArticleReport(report, "rejected")} type="button">驳回</button><button onClick={() => void handleArticleReport(report, "resolved")} type="button">处理但不改文章</button><button onClick={() => void handleArticleReport(report, "blocked")} type="button">屏蔽文章</button><button className="text-danger-action" onClick={() => void handleArticleReport(report, "deleted")} type="button">删除文章</button></div> : <em>{report.status === "resolved" ? "已处理" : "已驳回"}{report.resolution ? ` · ${report.resolution}` : ""}</em>}</article>)}</section>;
   }
 
   function renderArticleList() {
@@ -523,7 +579,7 @@ function AdminArticlesWorkspace() {
             <AlertTriangle aria-hidden="true" size={15} />待处理举报 <span>{pendingReportCount}</span>
           </button>
           <div className="admin-report-popover" onFocus={cancelReportQueueClose}>
-            {reports.length ? reports.map((report) => <button key={report.id} onClick={() => void locateReportedComment(report)} type="button"><strong>{report.article.title}</strong><span>{report.reporter.nickname} · {formatArticleDate(report.createdAt)}</span></button>) : <span>暂无待处理举报。</span>}
+            {reports.length || articleReports.length ? <>{articleReports.map((report) => <button key={`article-${report.id}`} onClick={() => void locateArticleReport(report)} type="button"><strong>文章举报 · {report.article.title}</strong><span>{report.reporter.nickname} · {formatArticleDate(report.createdAt)}</span></button>)}{reports.map((report) => <button key={`comment-${report.id}`} onClick={() => void locateReportedComment(report)} type="button"><strong>评论举报 · {report.article.title}</strong><span>{report.reporter.nickname} · {formatArticleDate(report.createdAt)}</span></button>)}</> : <span>暂无待处理举报。</span>}
           </div>
         </div>
         <label className="article-search admin-article-search">
@@ -543,8 +599,9 @@ function AdminArticlesWorkspace() {
               <div className="admin-article-controls"><label>文章状态<select onChange={(event) => setStatus(event.target.value as Article["status"])} value={status}>{Object.entries(ARTICLE_STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>阅读权限<select onChange={(event) => setVisibility(event.target.value as Article["visibility"])} value={visibility}>{Object.entries(ARTICLE_VISIBILITY_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>标题颜色<input aria-label="标题颜色" onChange={(event) => setTitleColor(event.target.value)} type="color" value={titleColor || "#2b2530"} /></label><label>置顶顺序<input min={0} onChange={(event) => setPinOrder(Number(event.target.value))} type="number" value={pinOrder} /></label></div>
               {visibility === "role_restricted" ? <input className="admin-role-input" onChange={(event) => setRoleCodes(event.target.value)} placeholder="角色代码，用逗号分隔" value={roleCodes} /> : null}
               <label className="admin-pin-check"><input checked={isPinned} onChange={(event) => setIsPinned(event.target.checked)} type="checkbox" /><Pin aria-hidden="true" size={16} />置顶文章</label>
-              <label className="admin-reason-field">屏蔽说明<textarea maxLength={255} onChange={(event) => setBlockedReason(event.target.value)} placeholder="文章被屏蔽时可以记录原因" rows={3} value={blockedReason} /></label>
-              <div className="admin-inspector-footer"><span>更新于 {formatArticleDate(selected.updatedAt)}</span><button className="button" disabled={isSaving} onClick={() => void saveArticleModeration()} type="button"><Save aria-hidden="true" size={16} />{isSaving ? "保存中" : "保存设置"}</button></div>
+               <label className="admin-reason-field">屏蔽说明<textarea maxLength={255} onChange={(event) => setBlockedReason(event.target.value)} placeholder="文章被屏蔽时可以记录原因" rows={3} value={blockedReason} /></label>
+               {renderArticleReports(selected.id)}
+               <div className="admin-inspector-footer"><span>更新于 {formatArticleDate(selected.updatedAt)}</span><button className="button" disabled={isSaving} onClick={() => void saveArticleModeration()} type="button"><Save aria-hidden="true" size={16} />{isSaving ? "保存中" : "保存设置"}</button></div>
             </> : <div className="article-empty-state">选择一篇文章查看管理项。</div>}
           </section>
         </div>

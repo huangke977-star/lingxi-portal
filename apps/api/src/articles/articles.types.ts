@@ -25,12 +25,21 @@ export interface ArticleGroupingResponse {
   href: string;
 }
 
+export interface ArticleContentSegmentResponse {
+  type: "markdown" | "resource";
+  content?: string;
+  key?: string;
+  pointCost?: number;
+  unlocked?: boolean;
+}
+
 export interface ArticleResponse {
   id: number;
   title: string;
   slug: string;
   summary: string;
   content: string;
+  contentSegments: ArticleContentSegmentResponse[];
   coverPath: string | null;
   category: string;
   tags: string[];
@@ -47,9 +56,7 @@ export interface ArticleResponse {
   commentCount: number;
   resource: {
     enabled: boolean;
-    pointCost: number;
-    redeemed: boolean;
-    accessible: boolean;
+    blocks: Array<{ key: string; pointCost: number; unlocked: boolean }>;
   };
   author: ArticleAuthorResponse;
   recentCommenters: ArticleAuthorResponse[];
@@ -102,6 +109,22 @@ export interface ArticleCommentReportResponse {
 }
 
 export interface ArticleCommentReportSummaryResponse {
+  pending: number;
+}
+
+export interface ArticleReportResponse {
+  id: number;
+  article: { id: number; title: string; slug: string };
+  reporter: ArticleAuthorResponse;
+  reason: string;
+  detail: string | null;
+  status: string;
+  resolution: string | null;
+  createdAt: string;
+  handledAt: string | null;
+}
+
+export interface ArticleReportSummaryResponse {
   pending: number;
 }
 

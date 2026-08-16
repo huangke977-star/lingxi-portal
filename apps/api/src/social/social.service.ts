@@ -148,6 +148,13 @@ const notificationInclude = {
       },
     },
   },
+  articleReport: {
+    select: {
+      id: true,
+      status: true,
+      article: { select: { id: true, title: true, slug: true } },
+    },
+  },
   announcement: { select: { id: true, title: true, summary: true } },
 } satisfies Prisma.UserNotificationInclude;
 
@@ -1759,9 +1766,15 @@ export class SocialService {
       actionUrl: notification.actionUrl,
       friendshipId: notification.friendshipId,
       commentReportId: notification.commentReportId,
+      articleReportId: notification.articleReportId,
       announcementId: notification.announcementId,
       actor: notification.actor ? this.toSocialUser(notification.actor) : null,
-      context: notification.commentReport ? {
+      context: notification.articleReport ? {
+        kind: "article_report",
+        reportId: notification.articleReport.id,
+        status: notification.articleReport.status,
+        article: notification.articleReport.article,
+      } : notification.commentReport ? {
         kind: "comment_report",
         commentId: notification.commentReport.comment.id,
         commentBody: notification.commentReport.comment.body,

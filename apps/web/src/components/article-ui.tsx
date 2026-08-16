@@ -3,14 +3,14 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { Bookmark, Coins, Eye, Heart, MessageCircle, Pin } from "lucide-react";
+import { Bookmark, Coins, Eye, Heart, LockKeyhole, MessageCircle, Pin } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { memo } from "react";
 import type { MouseEvent, ReactNode } from "react";
-import type { Article, ArticleAuthor } from "@/lib/article-api";
+import type { Article, ArticleAuthor, ArticleContentSegment } from "@/lib/article-api";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
 import { PublicProfilePopover } from "@/components/public-profile-popover";
@@ -61,7 +61,7 @@ export function ArticleTaxonomy({ article, limit = 3 }: { article: Article; limi
   return (
     <span className="article-taxonomy">
       <span className="article-category">{article.category || "随笔"}</span>
-      {article.resource.enabled ? <span className="article-resource-chip" title={`${article.resource.pointCost} 积分兑换`}><Coins aria-hidden="true" size={12} />{article.resource.pointCost}</span> : null}
+      {article.resource.enabled ? <span className="article-resource-chip" title={`${article.resource.blocks.length} 个积分资源区域`}><Coins aria-hidden="true" size={12} />资源</span> : null}
       {visibleTags.map((tag) => <span className="article-tag-chip" key={tag}>#{tag}</span>)}
       {hiddenCount ? <span className="article-tag-more">+{hiddenCount}</span> : null}
       {(article.collections ?? []).slice(0, 2).map((collection) => (
@@ -128,34 +128,89 @@ export function ArticleCard({
 
 export const ArticleBody = memo(function ArticleBody({
   content,
+  contentSegments,
   pendingImageUrls,
+  onRedeemResource,
 }: {
   content: string;
+  contentSegments?: ArticleContentSegment[];
   pendingImageUrls?: Record<string, string>;
+  onRedeemResource?: (blockKey: string) => void;
 }) {
+  const segments = contentSegments?.length ? contentSegments : parseArticleContentForDisplay(content);
   return (
     <div className="article-body">
-      <ReactMarkdown
-        components={{
-          a: ({ href, children }) => safeArticleUrl(href)
-            ? <a href={href} rel="noreferrer" target="_blank">{children}</a>
-            : <span>{children}</span>,
-          img: ({ alt, src }) => {
-            if (!safeArticleUrl(src)) return null;
-            const resolvedSource = pendingImageUrls?.[src] ?? resolveApiUrl(src);
-            return <img alt={alt ?? ""} className="article-body-image" src={resolvedSource} />;
-          },
-          pre: ({ children }) => <pre className="article-code">{children}</pre>,
-          table: ({ children }) => <div className="article-table-wrap"><table>{children}</table></div>,
-        }}
-        rehypePlugins={[rehypeSanitize]}
-        remarkPlugins={[remarkGfm, remarkBreaks]}
-      >
-        {content.replaceAll("\r\n", "\n")}
-      </ReactMarkdown>
+      {segments.map((segment, index) => segment.type === "resource" ? (
+        segment.unlocked && segment.content ? (
+          <MarkdownSegment content={segment.content} key={segment.key ?? `resource-${index}`} pendingImageUrls={pendingImageUrls} />
+        ) : (
+          <section className="article-resource-lock" key={segment.key ?? `resource-${index}`}>
+            <LockKeyhole aria-hidden="true" size={24} />
+            <div><span>积分资源</span><strong>需要 {segment.pointCost ?? 0} 积分开启该区域内容</strong><p>兑换后永久解锁，积分将在 72 小时后入账作者账户。</p></div>
+            {segment.key && onRedeemResource ? <button onClick={() => onRedeemResource(segment.key!)} type="button"><Coins aria-hidden="true" size={16} />兑换</button> : null}
+          </section>
+        )
+      ) : <MarkdownSegment content={segment.content ?? ""} key={`markdown-${index}`} pendingImageUrls={pendingImageUrls} />)}
     </div>
   );
 });
+
+function MarkdownSegment({ content, pendingImageUrls }: { content: string; pendingImageUrls?: Record<string, string> }) {
+  return <ReactMarkdown
+    components={{
+      a: ({ href, children }) => safeArticleUrl(href)
+        ? <a href={href} rel="noreferrer" target="_blank">{children}</a>
+        : <span>{children}</span>,
+      img: ({ alt, src }) => {
+        if (!safeArticleUrl(src)) return null;
+        const resolvedSource = pendingImageUrls?.[src] ?? resolveApiUrl(src);
+        return <img alt={alt ?? ""} className="article-body-image" src={resolvedSource} />;
+      },
+      pre: ({ children }) => <pre className="article-code">{children}</pre>,
+      table: ({ children }) => <div className="article-table-wrap"><table>{children}</table></div>,
+    }}
+    rehypePlugins={[rehypeSanitize]}
+    remarkPlugins={[remarkGfm, remarkBreaks]}
+  >
+    {content.replaceAll("\r\n", "\n")}
+  </ReactMarkdown>;
+}
+
+function parseArticleContentForDisplay(source: string): ArticleContentSegment[] {
+  const lines = source.replaceAll("\r\n", "\n").split("\n");
+  const segments: ArticleContentSegment[] = [];
+  let markdown: string[] = [];
+  let resource: string[] | null = null;
+  let pointCost = 0;
+  const flushMarkdown = () => {
+    const value = markdown.join("\n");
+    if (value.trim()) segments.push({ type: "markdown", content: value });
+    markdown = [];
+  };
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const opening = /^:::resource\{points=(\d+)\}\s*$/.exec(trimmed);
+    if (resource === null && opening) {
+      flushMarkdown();
+      resource = [];
+      pointCost = Number(opening[1]);
+      continue;
+    }
+    if (resource !== null) {
+      if (/^:::\s*$/.test(trimmed)) {
+        const value = resource.join("\n").trim();
+        segments.push({ type: "resource", content: value, pointCost, unlocked: true, key: `preview-resource-${segments.length}` });
+        resource = null;
+        pointCost = 0;
+      } else resource.push(line);
+      continue;
+    }
+    markdown.push(line);
+  }
+  if (resource !== null) markdown.push(":::resource{points=" + pointCost + "}", ...resource);
+  flushMarkdown();
+  return segments.length ? segments : [{ type: "markdown", content: source }];
+}
 
 function safeArticleUrl(value: unknown): value is string {
   return typeof value === "string" && (value.startsWith("/") || /^https?:\/\//i.test(value));

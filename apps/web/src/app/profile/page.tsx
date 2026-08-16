@@ -93,13 +93,13 @@ const AVATAR_OUTPUT_SIZE = 512;
 
 const levelRoadmap = [
   { code: "qi_refining", name: "练气", level: 10, minExperience: 0 },
-  { code: "foundation_building", name: "筑基", level: 20, minExperience: 100 },
-  { code: "golden_core", name: "金丹", level: 30, minExperience: 300 },
-  { code: "nascent_soul", name: "元婴", level: 40, minExperience: 600 },
-  { code: "spirit_transformation", name: "化神", level: 50, minExperience: 1000 },
-  { code: "void_refining", name: "炼虚", level: 60, minExperience: 1500 },
-  { code: "body_integration", name: "合体", level: 70, minExperience: 2200 },
-  { code: "mahayana", name: "大乘", level: 80, minExperience: 3000 },
+  { code: "foundation_building", name: "筑基", level: 20, minExperience: 200 },
+  { code: "golden_core", name: "金丹", level: 30, minExperience: 500 },
+  { code: "nascent_soul", name: "元婴", level: 40, minExperience: 1000 },
+  { code: "spirit_transformation", name: "化神", level: 50, minExperience: 2000 },
+  { code: "void_refining", name: "炼虚", level: 60, minExperience: 5000 },
+  { code: "body_integration", name: "合体", level: 70, minExperience: 10000 },
+  { code: "mahayana", name: "大乘", level: 80, minExperience: 20000 },
 ];
 
 const defaultProfileSettings: ProfileSettings = {

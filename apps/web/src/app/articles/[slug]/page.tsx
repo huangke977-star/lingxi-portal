@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bookmark, CalendarDays, Clock3, Coins, CornerDownRight, Flag, Heart, LockKeyhole, MessageCircle, Reply, Rss, Send, Tag, ThumbsUp, Trash2, X } from "lucide-react";
+import { Bookmark, CalendarDays, Clock3, Coins, CornerDownRight, Flag, Heart, MessageCircle, Reply, Rss, Send, Tag, ThumbsUp, Trash2, X } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
@@ -14,6 +14,7 @@ import {
   Article,
   ArticleComment,
   ArticleCommentReportReason,
+  ArticleReportReason,
   createArticleComment,
   deleteArticleComment,
   favoriteArticle,
@@ -23,6 +24,7 @@ import {
   likeArticleComment,
   listArticleComments,
   reportArticleComment,
+  reportArticle,
   redeemArticleResource,
   setArticleReadLater,
   updateArticleReadingProgress,
@@ -50,8 +52,11 @@ export default function ArticleDetailPage() {
   const [commentDraft, setCommentDraft] = useState("");
   const [replyingTo, setReplyingTo] = useState<ArticleComment | null>(null);
   const [reportingComment, setReportingComment] = useState<ArticleComment | null>(null);
+  const [reportingArticle, setReportingArticle] = useState(false);
   const [reportReason, setReportReason] = useState<ArticleCommentReportReason>("spam");
   const [reportDetail, setReportDetail] = useState("");
+  const [articleReportReason, setArticleReportReason] = useState<ArticleReportReason>("spam");
+  const [articleReportDetail, setArticleReportDetail] = useState("");
   const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
@@ -122,7 +127,7 @@ export default function ArticleDetailPage() {
   }, [params.slug, requestedCommentId]);
 
   useEffect(() => {
-    if (!readingArticleId || !isLoggedIn || !article?.resource.accessible || !readingContentRef.current) return;
+    if (!readingArticleId || !isLoggedIn || !readingContentRef.current) return;
     const token = readAccessToken();
     if (!token) return;
     let timer: number | null = null;
@@ -159,7 +164,7 @@ export default function ArticleDetailPage() {
       window.removeEventListener("pagehide", sendProgress);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [article?.resource.accessible, initialReadingProgress, isLoggedIn, readingArticleId]);
+  }, [initialReadingProgress, isLoggedIn, readingArticleId]);
 
   useEffect(() => {
     restoredReadingPositionRef.current = false;
@@ -293,24 +298,52 @@ export default function ArticleDetailPage() {
     }
   }
 
-  async function handleResourceRedeem() {
+  async function handleResourceRedeem(blockKey: string) {
     if (!article) return;
+    if (isRedeemingResource) return;
     const token = readAccessToken();
     if (!token) {
       router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
       return;
     }
-    if (!window.confirm(`确定使用 ${article.resource.pointCost} 积分永久解锁这篇资源文章吗？`)) return;
+    const block = article.resource.blocks.find((item) => item.key === blockKey);
+    if (!block || block.unlocked) return;
+    if (!window.confirm(`确定使用 ${block.pointCost} 积分永久解锁这段内容吗？`)) return;
     setIsRedeemingResource(true);
     setError("");
     try {
-      const unlocked = await redeemArticleResource(token, article.id);
+      const unlocked = await redeemArticleResource(token, article.id, blockKey);
       setArticle(unlocked);
-      setNotice(`已使用 ${article.resource.pointCost} 积分兑换，资源已永久解锁。`);
+      setNotice(`已使用 ${block.pointCost} 积分兑换，内容已永久解锁。`);
     } catch (redeemError) {
       setError(redeemError instanceof Error ? redeemError.message : "资源兑换失败。");
     } finally {
       setIsRedeemingResource(false);
+    }
+  }
+
+  async function handleArticleReportSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!article || !reportingArticle) return;
+    const token = readAccessToken();
+    if (!token) {
+      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      return;
+    }
+    if (siteSettings && !siteSettings.reportsEnabled) {
+      setError("举报功能暂未开放。");
+      return;
+    }
+    setIsSubmittingReport(true);
+    try {
+      await reportArticle(token, article.id, { reason: articleReportReason, detail: articleReportDetail.trim() || undefined });
+      setReportingArticle(false);
+      setArticleReportDetail("");
+      setNotice("文章举报已提交，管理员会尽快处理。");
+    } catch (reportError) {
+      setError(reportError instanceof Error ? reportError.message : "文章举报提交失败。");
+    } finally {
+      setIsSubmittingReport(false);
     }
   }
 
@@ -448,8 +481,8 @@ export default function ArticleDetailPage() {
       <ArticleCenterNav active="discover" isLoggedIn={isLoggedIn} user={user} />
       <article className="article-reading-layout">
         <header className="article-reading-header">
-          <div className="article-reading-title-row"><h1 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h1><button className={article.readLater ? "active" : undefined} onClick={() => void handleReadLater()} type="button"><Clock3 aria-hidden="true" fill={article.readLater ? "currentColor" : "none"} size={16} />{article.readLater ? "已加入稍后读" : "稍后读"}</button></div>
-          <div className="article-reading-author"><ArticleAuthorLine author={article.author} interactive /><span className="article-reading-divider" /><span>发布于 {formatArticleDate(article.publishedAt)}</span></div>
+          <div className="article-reading-title-row"><h1 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h1></div>
+          <div className="article-reading-author"><span className="article-reading-author-main"><ArticleAuthorLine author={article.author} interactive /><span className="article-reading-divider" /><span>发布于 {formatArticleDate(article.publishedAt)}</span></span><span className="article-reading-header-actions"><button className={article.readLater ? "active" : undefined} onClick={() => void handleReadLater()} type="button"><Clock3 aria-hidden="true" fill={article.readLater ? "currentColor" : "none"} size={16} />{article.readLater ? "已加入稍后读" : "稍后读"}</button>{user?.id !== article.author.id ? <button onClick={() => setReportingArticle(true)} type="button"><Flag aria-hidden="true" size={16} />举报</button> : null}</span></div>
         </header>
         <div className="article-reading-grid">
           <aside className="article-reading-aside">
@@ -466,16 +499,16 @@ export default function ArticleDetailPage() {
               <div><dt><Tag aria-hidden="true" size={15} />分类</dt><dd>{article.category || "随笔"}</dd></div>
               <div><dt><CalendarDays aria-hidden="true" size={15} />发布时间</dt><dd>{formatArticleDate(article.publishedAt)}</dd></div>
               <div><dt>更新时间</dt><dd>{formatArticleDate(article.updatedAt)}</dd></div>
-              {article.resource.enabled ? <div><dt><Coins aria-hidden="true" size={15} />积分资源</dt><dd>{article.resource.pointCost} 积分{article.resource.redeemed ? " · 已兑换" : ""}</dd></div> : null}
+              {article.resource.enabled ? <div><dt><Coins aria-hidden="true" size={15} />积分资源</dt><dd>{article.resource.blocks.length} 个区域</dd></div> : null}
             </dl>
             {article.tags.length ? <div className="article-tag-list">{article.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div> : null}
             {article.collections.length || article.topics.length ? <div className="article-group-list">{article.collections.map((collection) => <Link className="article-group-chip collection" href={collection.href} key={`collection-${collection.id}`}>{collection.label}</Link>)}{article.topics.map((topic) => <Link className="article-group-chip topic" href={topic.href} key={`topic-${topic.id}`}>{topic.label}</Link>)}</div> : null}
           </aside>
-          <main className="article-reading-main" ref={readingContentRef}>{article.resource.accessible ? <ArticleBody content={article.content} /> : <section className="article-resource-lock"><LockKeyhole aria-hidden="true" size={28} /><div><span>积分资源</span><h2>{article.resource.pointCost} 积分永久解锁</h2><p>{article.summary || "兑换后可以阅读完整正文。积分会转入作者账户。"}</p></div><button disabled={isRedeemingResource} onClick={() => void handleResourceRedeem()} type="button"><Coins aria-hidden="true" size={17} />{isRedeemingResource ? "兑换中" : isLoggedIn ? "兑换资源" : "登录后兑换"}</button></section>}</main>
+          <main className="article-reading-main" ref={readingContentRef}><ArticleBody content={article.content} contentSegments={article.contentSegments} onRedeemResource={(blockKey) => void handleResourceRedeem(blockKey)} /></main>
         </div>
       </article>
 
-      {article.resource.accessible ? <section className="article-comments-section">
+      <section className="article-comments-section">
         <div className="article-section-heading"><div><span className="section-label">Conversation</span><h2>评论与回复</h2></div><span>{article.commentCount} 条</span></div>
         {siteSettings?.commentsEnabled === false ? <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />评论功能暂未开放。</div> : <form className="article-comment-form" onSubmit={handleCommentSubmit}>
           <div aria-hidden={!replyingTo} className={`article-composer-context${replyingTo ? " active" : ""}`}>
@@ -490,7 +523,8 @@ export default function ArticleDetailPage() {
           <div className="article-comments-list">{commentThreads.map((thread) => <section className="article-comment-thread" key={thread.root.id}>{renderComment(thread.root)}{thread.replies.length ? <div className="article-comment-replies">{thread.replies.map(({ comment, parent }) => renderComment(comment, parent ?? thread.root))}</div> : null}</section>)}</div>
           <ArticleInfiniteFooter hasMore={hasMoreComments} isLoading={isLoadingMoreComments} onLoadMore={() => void loadMoreComments()} />
         </> : <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />还没有评论。</div>}
-      </section> : null}
+      </section>
+      {reportingArticle ? <div className="comment-report-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setReportingArticle(false); }}><form className="comment-report-dialog" onSubmit={handleArticleReportSubmit}><div><strong>举报文章</strong><button aria-label="关闭举报窗口" onClick={() => setReportingArticle(false)} type="button"><X aria-hidden="true" size={17} /></button></div><label>举报原因<select onChange={(event) => setArticleReportReason(event.target.value as ArticleReportReason)} value={articleReportReason}><option value="spam">垃圾广告</option><option value="harassment">辱骂骚扰</option><option value="illegal">违法违规</option><option value="privacy">隐私泄露</option><option value="misinformation">不实内容</option><option value="other">其他</option></select></label><label>补充说明<textarea maxLength={500} onChange={(event) => setArticleReportDetail(event.target.value)} placeholder="可选，帮助管理员判断具体问题" rows={3} value={articleReportDetail} /></label><button className="button" disabled={isSubmittingReport} type="submit">{isSubmittingReport ? "提交中" : "提交举报"}</button></form></div> : null}
       {reportingComment ? <div className="comment-report-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setReportingComment(null); }}><form className="comment-report-dialog" onSubmit={handleReportSubmit}><div><strong>举报评论</strong><button aria-label="关闭举报窗口" onClick={() => setReportingComment(null)} type="button"><X aria-hidden="true" size={17} /></button></div><label>举报原因<select onChange={(event) => setReportReason(event.target.value as ArticleCommentReportReason)} value={reportReason}><option value="spam">垃圾广告</option><option value="harassment">辱骂骚扰</option><option value="illegal">违法违规</option><option value="privacy">隐私泄露</option><option value="misinformation">不实内容</option><option value="other">其他</option></select></label><label>补充说明<textarea maxLength={500} onChange={(event) => setReportDetail(event.target.value)} placeholder="可选，帮助管理员判断具体问题" rows={3} value={reportDetail} /></label><button className="button" disabled={isSubmittingReport} type="submit">{isSubmittingReport ? "提交中" : "提交举报"}</button></form></div> : null}
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>

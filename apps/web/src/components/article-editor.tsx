@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, Cloud, CloudOff, Coins, Eye, History, ImagePlus, RefreshCw, RotateCcw, Save, Send, Tags, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Cloud, CloudOff, Eye, History, ImagePlus, RefreshCw, RotateCcw, Save, Send, Tags, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -86,8 +86,6 @@ const ARTICLE_VERSION_FIELD_LABEL: Record<string, string> = {
   visibility: "阅读权限",
   status: "状态",
   roleCodes: "可见角色",
-  isPointResource: "积分资源",
-  pointCost: "兑换积分",
 };
 
 const emptyDraft: ArticleInput = {
@@ -99,8 +97,6 @@ const emptyDraft: ArticleInput = {
   titleColor: "",
   visibility: "public",
   roleCodes: [],
-  isPointResource: false,
-  pointCost: 10,
 };
 
 export function ArticleEditor({ articleId }: { articleId?: number }) {
@@ -240,8 +236,6 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       titleColor: loaded.titleColor,
       visibility: loaded.visibility,
       roleCodes: loaded.allowedRoles.map((role) => role.code),
-      isPointResource: loaded.resource.enabled,
-      pointCost: loaded.resource.pointCost || 10,
     };
   }
 
@@ -748,16 +742,12 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
               </div>
               <div className="article-editor-grid"><label>阅读权限<select onChange={(event) => setDraft({ ...draft, visibility: event.target.value as ArticleInput["visibility"] })} value={draft.visibility}>{Object.entries(ARTICLE_VISIBILITY_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>标题颜色<input aria-label="标题颜色" onChange={(event) => setDraft({ ...draft, titleColor: event.target.value })} type="color" value={draft.titleColor || "#2b2530"} /></label></div>
               <div className="article-resource-settings">
-                <label className="article-resource-toggle">
-                  <input checked={draft.isPointResource} onChange={(event) => setDraft({ ...draft, isPointResource: event.target.checked, pointCost: event.target.checked ? Math.max(1, draft.pointCost || 10) : 0 })} type="checkbox" />
-                  <Coins aria-hidden="true" size={16} /><span>设为积分资源</span>
-                </label>
-                <label className="article-resource-cost"><span>兑换积分</span><input disabled={!draft.isPointResource} max={10000} min={1} onChange={(event) => setDraft({ ...draft, pointCost: Number(event.target.value) || 0 })} step={1} type="number" value={draft.isPointResource ? draft.pointCost : 0} /></label>
-                <span>{draft.isPointResource ? "读者兑换后永久解锁，作者获得同额积分。" : "普通文章无需积分即可按阅读权限查看。"}</span>
+                <strong>局部积分资源</strong>
+                <span>在正文中使用 <code>:::resource&#123;points=10&#125;</code> 和 <code>:::</code> 包住需要兑换的内容；普通正文仍可直接阅读。</span>
               </div>
               {draft.visibility === "role_restricted" ? <input onChange={(event) => setDraft({ ...draft, roleCodes: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })} placeholder="角色代码，用逗号分隔" value={draft.roleCodes.join(", ")} /> : null}
             </div>
-            <textarea className="article-editor-textarea" onChange={(event) => setDraft({ ...draft, content: event.target.value })} placeholder="支持 Markdown：标题、列表、表格、引用、链接、图片和代码块" ref={textareaRef} value={draft.content} />
+             <textarea className="article-editor-textarea" onChange={(event) => setDraft({ ...draft, content: event.target.value })} placeholder="支持 Markdown：标题、列表、表格、引用、链接、图片、代码块和局部积分资源块" ref={textareaRef} value={draft.content} />
             <div className="article-editor-upload"><label className="text-action"><ImagePlus aria-hidden="true" size={16} />添加图片<input accept="image/jpeg,image/png,image/webp,image/avif" hidden multiple onChange={(event) => { insertImagesAtCursor(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} type="file" /></label><span>{pendingImages.length ? `待上传 ${pendingImages.length} 张，保存时才会上传` : `支持 JPG、PNG、WebP、AVIF，单张不超过 ${imageMaxSizeMb}MB`}</span></div>
             {pendingImages.length ? <div className="article-pending-images">{pendingImages.map((image) => <span key={image.id}>{image.file.name}<button aria-label={`移除 ${image.file.name}`} onClick={() => removePendingImage(image)} title="移除图片" type="button"><X aria-hidden="true" size={14} /></button></span>)}</div> : null}
             <div className="article-editor-actions"><button className="button secondary" disabled={isSaving || autosaveState === "saving"} onClick={() => void saveArticle(false)} type="button"><Save aria-hidden="true" size={16} />{isSaving ? "保存中" : article ? "保存修改" : "保存草稿"}</button><button className="button" disabled={isSaving || autosaveState === "saving" || article?.status === "blocked"} onClick={() => void saveArticle(true)} type="button"><Send aria-hidden="true" size={16} />发布文章</button>{article?.status === "published" ? <button className="text-action" disabled={isSaving} onClick={() => void takeOffline()} type="button">下架</button> : null}{article ? <button className="text-danger-action" disabled={isSaving} onClick={() => void moveToTrash()} type="button"><Trash2 aria-hidden="true" size={16} />删除</button> : null}</div>
@@ -765,7 +755,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
           <aside className="article-editor-preview"><div className="article-editor-preview-heading"><span className="section-label">Preview</span><span>正文预览</span></div><ArticleBody content={draft.content || "开始输入后，这里会显示文章预览。"} pendingImageUrls={pendingImageUrls} /></aside>
         </div>
       )}
-      {isPreviewOpen && typeof document !== "undefined" ? createPortal(<div className="article-preview-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setIsPreviewOpen(false); }}><section aria-label="文章发布预览" aria-modal="true" className="article-publish-preview" role="dialog"><header className="article-preview-toolbar"><span><Eye aria-hidden="true" size={17} /><strong>发布预览</strong></span><button aria-label="关闭预览" onClick={() => setIsPreviewOpen(false)} title="关闭" type="button"><X aria-hidden="true" size={18} /></button></header><article className="article-reading-layout"><header className="article-reading-header"><h1 style={draft.titleColor ? { color: draft.titleColor } : undefined}>{draft.title || "未命名文章"}</h1><div className="article-reading-author"><span>{user?.nickname || user?.username || "当前用户"}</span><span className="article-reading-divider" /><span>预览于 {formatArticleDate(new Date().toISOString())}</span></div></header><div className="article-reading-grid preview"><aside className="article-reading-aside"><dl className="article-aside-meta"><div><dt>分类</dt><dd>{draft.category || "随笔"}</dd></div><div><dt>阅读权限</dt><dd>{ARTICLE_VISIBILITY_LABEL[draft.visibility]}</dd></div>{draft.isPointResource ? <div><dt><Coins aria-hidden="true" size={15} />积分资源</dt><dd>{draft.pointCost} 积分</dd></div> : null}</dl>{selectedTags.length ? <div className="article-tag-list">{selectedTags.map((tag) => <span key={tag}>#{tag}</span>)}</div> : null}</aside><main className="article-reading-main"><ArticleBody content={draft.content || "开始输入后，这里会显示文章预览。"} pendingImageUrls={pendingImageUrls} /></main></div></article></section></div>, document.body) : null}
+      {isPreviewOpen && typeof document !== "undefined" ? createPortal(<div className="article-preview-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setIsPreviewOpen(false); }}><section aria-label="文章发布预览" aria-modal="true" className="article-publish-preview" role="dialog"><header className="article-preview-toolbar"><span><Eye aria-hidden="true" size={17} /><strong>发布预览</strong></span><button aria-label="关闭预览" onClick={() => setIsPreviewOpen(false)} title="关闭" type="button"><X aria-hidden="true" size={18} /></button></header><article className="article-reading-layout"><header className="article-reading-header"><h1 style={draft.titleColor ? { color: draft.titleColor } : undefined}>{draft.title || "未命名文章"}</h1><div className="article-reading-author"><span>{user?.nickname || user?.username || "当前用户"}</span><span className="article-reading-divider" /><span>预览于 {formatArticleDate(new Date().toISOString())}</span></div></header><div className="article-reading-grid preview"><aside className="article-reading-aside"><dl className="article-aside-meta"><div><dt>分类</dt><dd>{draft.category || "随笔"}</dd></div><div><dt>阅读权限</dt><dd>{ARTICLE_VISIBILITY_LABEL[draft.visibility]}</dd></div></dl>{selectedTags.length ? <div className="article-tag-list">{selectedTags.map((tag) => <span key={tag}>#{tag}</span>)}</div> : null}</aside><main className="article-reading-main"><ArticleBody content={draft.content || "开始输入后，这里会显示文章预览。"} pendingImageUrls={pendingImageUrls} /></main></div></article></section></div>, document.body) : null}
       {isVersionsOpen && typeof document !== "undefined" ? createPortal(<div className="article-versions-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setIsVersionsOpen(false); }}><section aria-label="文章历史版本" aria-modal="true" className="article-versions-dialog" role="dialog"><header><span><History aria-hidden="true" size={17} /><strong>历史版本</strong></span><button aria-label="关闭历史版本" onClick={() => setIsVersionsOpen(false)} title="关闭" type="button"><X aria-hidden="true" size={18} /></button></header><div className="article-versions-layout"><nav>{isLoadingVersions && !versions.length ? <span className="article-version-empty">正在读取版本。</span> : versions.map((version) => <button className={selectedVersion?.id === version.id ? "active" : undefined} key={version.id} onClick={() => void selectVersion(version.id)} type="button"><span><strong>版本 {version.versionNumber}</strong><em>{ARTICLE_VERSION_SOURCE_LABEL[version.source]}</em></span><small>{formatVersionTime(version.createdAt)}</small><small>{version.changedFields.map((field) => ARTICLE_VERSION_FIELD_LABEL[field] ?? field).join("、") || "内容未变化"}</small></button>)}</nav><div className="article-version-detail">{selectedVersion ? <><div><span><strong>版本 {selectedVersion.versionNumber}</strong><small>{ARTICLE_VERSION_SOURCE_LABEL[selectedVersion.source]} · {formatVersionTime(selectedVersion.createdAt)}</small></span><button className="button secondary" disabled={isSaving} onClick={() => void restoreSelectedVersion()} type="button"><RotateCcw aria-hidden="true" size={15} />恢复此版本</button></div><h2>{selectedVersion.title || "未命名文章"}</h2><div className="article-version-taxonomy"><span>{selectedVersion.category || "随笔"}</span>{selectedVersion.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div><ArticleBody content={selectedVersion.content || "此版本没有正文内容。"} /></> : <span className="article-version-empty">选择左侧版本查看完整内容。</span>}</div></div></section></div>, document.body) : null}
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>

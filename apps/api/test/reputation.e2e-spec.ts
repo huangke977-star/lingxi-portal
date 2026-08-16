@@ -10,29 +10,32 @@ describe("ReputationService", () => {
         findUnique: jest.fn(async () => ({ experience: 350, points: 42 })),
       },
       userReputationLedger: {
-        findMany: jest.fn(async () => [
-          {
-            id: 1,
-            reason: ReputationReason.article_publish,
-            description: "首次发布文章",
-            experienceDelta: 20,
-            pointDelta: 10,
-            experienceAfter: 350,
-            pointsAfter: 42,
-            createdAt: new Date("2026-08-16T01:00:00.000Z"),
-          },
-        ]),
+        findMany: jest.fn(async (args: { where?: { pendingPointDelta?: unknown } }) =>
+          args.where?.pendingPointDelta
+            ? []
+            : [{
+                id: 1,
+                reason: ReputationReason.article_publish,
+                description: "首次发布文章",
+                experienceDelta: 20,
+                pointDelta: 10,
+                experienceAfter: 350,
+                pointsAfter: 42,
+                createdAt: new Date("2026-08-16T01:00:00.000Z"),
+              }]),
+        aggregate: jest.fn(async () => ({ _sum: { pendingPointDelta: 0 } })),
       },
+      $transaction: jest.fn(),
     };
     const service = new ReputationService(prisma as unknown as PrismaService);
 
     await expect(service.getMySummary(7)).resolves.toMatchObject({
       experience: 350,
       points: 42,
-      level: { code: "golden_core", minExperience: 300 },
-      nextLevel: { code: "nascent_soul", minExperience: 600 },
-      experienceToNext: 250,
-      progressPercent: 17,
+      level: { code: "foundation_building", minExperience: 200 },
+      nextLevel: { code: "golden_core", minExperience: 500 },
+      experienceToNext: 150,
+      progressPercent: 50,
       recent: [{ description: "首次发布文章", pointDelta: 10 }],
     });
   });
@@ -41,7 +44,7 @@ describe("ReputationService", () => {
     const createLedger = jest.fn(async () => ({ id: 1 }));
     const updateUser = jest.fn(
       async (args: { data: { experience?: unknown; roleId?: number } }) =>
-        args.data.roleId ? { id: 7 } : { experience: 100, points: 5 },
+        args.data.roleId ? { id: 7 } : { experience: 200, points: 5 },
     );
     const transaction = {
       userReputationLedger: {
@@ -51,7 +54,7 @@ describe("ReputationService", () => {
       },
       user: {
         findUnique: jest.fn(async () => ({
-          experience: 99,
+        experience: 199,
           points: 5,
           role: { level: 10 },
         })),
@@ -70,7 +73,7 @@ describe("ReputationService", () => {
       data: expect.objectContaining({
         reason: ReputationReason.article_read,
         experienceDelta: 1,
-        experienceAfter: 100,
+        experienceAfter: 200,
       }),
     });
     expect(transaction.role.findUnique).toHaveBeenCalledWith({
@@ -131,6 +134,7 @@ describe("ReputationService", () => {
         buyerId: 7,
         authorId: 8,
         articleId: 12,
+        blockKey: "resource-1-test",
         pointCost: 10,
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -142,7 +146,8 @@ describe("ReputationService", () => {
     const findUser = jest
       .fn()
       .mockResolvedValueOnce({ experience: 20, points: 30 })
-      .mockResolvedValueOnce({ points: 20 });
+      .mockResolvedValueOnce({ points: 20 })
+      .mockResolvedValueOnce({ experience: 40, points: 55 });
     const transaction = {
       user: {
         findUnique: findUser,
@@ -157,6 +162,7 @@ describe("ReputationService", () => {
       buyerId: 7,
       authorId: 8,
       articleId: 12,
+      blockKey: "resource-1-test",
       pointCost: 10,
     });
     expect(createLedger).toHaveBeenNthCalledWith(1, {
@@ -171,7 +177,8 @@ describe("ReputationService", () => {
       data: expect.objectContaining({
         userId: 8,
         reason: ReputationReason.resource_sold,
-        pointDelta: 10,
+        pointDelta: 0,
+        pendingPointDelta: 10,
         pointsAfter: 55,
       }),
     });
