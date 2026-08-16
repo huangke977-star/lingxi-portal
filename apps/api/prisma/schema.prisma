@@ -52,6 +52,16 @@ enum ArticleVersionSource {
   restore
 }
 
+enum ReputationReason {
+  article_read
+  article_comment
+  article_publish
+  article_liked
+  author_subscribed
+  resource_redeemed
+  resource_sold
+}
+
 enum SiteAssetKind {
   logo
   pwa_icon
@@ -402,6 +412,8 @@ model User {
   avatarMimeType            String?                        @map("avatar_mime_type") @db.VarChar(64)
   avatarSizeBytes           Int?                           @map("avatar_size_bytes")
   profileBio                String                         @default("我懒，我不写") @map("profile_bio") @db.VarChar(180)
+  experience                Int                            @default(0)
+  points                    Int                            @default(0)
   searchText                String                         @default("") @map("search_text") @db.VarChar(4096)
   searchPinyin              String                         @default("") @map("search_pinyin") @db.VarChar(4096)
   lastLoginAt               DateTime?                      @map("last_login_at")
@@ -475,6 +487,9 @@ model User {
   suggestionsSubmitted      SiteSuggestion[]             @relation("SiteSuggestionSubmitter")
   suggestionsReviewed       SiteSuggestion[]             @relation("SiteSuggestionReviewer")
   suggestionReplies         SiteSuggestionReply[]        @relation("SiteSuggestionReplyAuthor")
+  reputationLedgers         UserReputationLedger[]
+  resourceExchanges         ArticleResourceExchange[]      @relation("ArticleResourceBuyer")
+  resourceSales             ArticleResourceExchange[]      @relation("ArticleResourceAuthor")
 
   @@index([roleId])
   @@index([createdAt])
@@ -1049,6 +1064,8 @@ model Article {
   likeCount             Int                     @default(0) @map("like_count")
   favoriteCount         Int                     @default(0) @map("favorite_count")
   commentCount          Int                     @default(0) @map("comment_count")
+  isPointResource       Boolean                 @default(false) @map("is_point_resource")
+  pointCost             Int                     @default(0) @map("point_cost")
   searchText            String                  @default("") @map("search_text") @db.VarChar(4096)
   searchPinyin          String                  @default("") @map("search_pinyin") @db.VarChar(4096)
   allowedRoles          ArticleAllowedRole[]
@@ -1065,6 +1082,7 @@ model Article {
   topicItems            ArticleTopicItem[]
   subscriptionFeedReads SubscriptionFeedRead[]
   profilePins           UserProfileSettings[]   @relation("PinnedProfileArticle")
+  resourceExchanges     ArticleResourceExchange[]
   createdAt             DateTime                @default(now()) @map("created_at")
   updatedAt             DateTime                @updatedAt @map("updated_at")
 
@@ -1092,6 +1110,8 @@ model ArticleVersion {
   visibility    ArticleVisibility
   status        ArticleStatus
   roleCodes     String               @default("") @map("role_codes") @db.VarChar(500)
+  isPointResource Boolean              @default(false) @map("is_point_resource")
+  pointCost       Int                  @default(0) @map("point_cost")
   contentHash   String               @map("content_hash") @db.Char(64)
   changedFields Json?                @map("changed_fields")
   createdAt     DateTime             @default(now()) @map("created_at")
@@ -1101,6 +1121,43 @@ model ArticleVersion {
   @@index([editorId])
   @@index([source, createdAt])
   @@map("article_versions")
+}
+
+model UserReputationLedger {
+  id              Int              @id @default(autoincrement())
+  userId          Int              @map("user_id")
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reason          ReputationReason
+  eventKey        String           @map("event_key") @db.VarChar(191)
+  experienceDelta Int              @default(0) @map("experience_delta")
+  pointDelta      Int              @default(0) @map("point_delta")
+  experienceAfter Int              @map("experience_after")
+  pointsAfter     Int              @map("points_after")
+  description     String           @db.VarChar(255)
+  metadata        Json?
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  @@unique([userId, eventKey])
+  @@index([userId, createdAt])
+  @@index([reason, createdAt])
+  @@map("user_reputation_ledgers")
+}
+
+model ArticleResourceExchange {
+  id        Int      @id @default(autoincrement())
+  articleId Int      @map("article_id")
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  buyerId   Int      @map("buyer_id")
+  buyer     User     @relation("ArticleResourceBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  authorId  Int      @map("author_id")
+  author    User     @relation("ArticleResourceAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  pointCost Int      @map("point_cost")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([articleId, buyerId])
+  @@index([buyerId, createdAt])
+  @@index([authorId, createdAt])
+  @@map("article_resource_exchanges")
 }
 
 model SearchHistory {

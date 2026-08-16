@@ -166,8 +166,8 @@ export class ArticlesController {
 
   @Get("admin/:id")
   @UseGuards(JwtAuthGuard, UserManagementGuard)
-  getAdminArticle(@Param("id", ParseIntPipe) id: number) {
-    return this.articlesService.getAdminArticle(id);
+  getAdminArticle(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.getAdminArticle(id, user);
   }
 
   @Get("images/:storedName")
@@ -357,6 +357,12 @@ export class ArticlesController {
   @UseGuards(JwtAuthGuard)
   unfavorite(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
     return this.articlesService.toggleFavorite(id, user, false);
+  }
+
+  @Post(":id/redeem")
+  @UseGuards(JwtAuthGuard)
+  redeemResource(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.redeemResource(id, user);
   }
 
   @Post(":id/read-later")

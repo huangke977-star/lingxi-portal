@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Cropper, { type Area, type CropperProps } from "react-easy-crop";
-import { BookOpen, Eye, EyeOff, KeyRound, LogOut, MonitorSmartphone, Pin, X } from "lucide-react";
+import { BookOpen, Coins, Eye, EyeOff, KeyRound, LogOut, MonitorSmartphone, Pin, Sparkles, TrendingUp, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
 import { AccountSecurityPanel } from "@/components/account-security-panel";
 import { PasswordInput } from "@/components/password-input";
@@ -37,6 +37,7 @@ import {
 } from "@/lib/auth-storage";
 import { getAccountMotto } from "@/lib/account-mottos";
 import { getAvatarFallbackText, getUserDisplayName } from "@/lib/user-display";
+import { getMyReputation, type ReputationSummary } from "@/lib/reputation-api";
 import { listMyArticles, type Article } from "@/lib/article-api";
 import {
   getProfileSettings,
@@ -91,14 +92,14 @@ const AVATAR_UPLOAD_MAX_FILE_SIZE = 2 * 1024 * 1024;
 const AVATAR_OUTPUT_SIZE = 512;
 
 const levelRoadmap = [
-  { code: "qi_refining", name: "练气", level: 10, status: "注册自动获取" },
-  { code: "foundation_building", name: "筑基", level: 20, status: "未开放" },
-  { code: "golden_core", name: "金丹", level: 30, status: "未开放" },
-  { code: "nascent_soul", name: "元婴", level: 40, status: "未开放" },
-  { code: "spirit_transformation", name: "化神", level: 50, status: "未开放" },
-  { code: "void_refining", name: "炼虚", level: 60, status: "未开放" },
-  { code: "body_integration", name: "合体", level: 70, status: "未开放" },
-  { code: "mahayana", name: "大乘", level: 80, status: "未开放" },
+  { code: "qi_refining", name: "练气", level: 10, minExperience: 0 },
+  { code: "foundation_building", name: "筑基", level: 20, minExperience: 100 },
+  { code: "golden_core", name: "金丹", level: 30, minExperience: 300 },
+  { code: "nascent_soul", name: "元婴", level: 40, minExperience: 600 },
+  { code: "spirit_transformation", name: "化神", level: 50, minExperience: 1000 },
+  { code: "void_refining", name: "炼虚", level: 60, minExperience: 1500 },
+  { code: "body_integration", name: "合体", level: 70, minExperience: 2200 },
+  { code: "mahayana", name: "大乘", level: 80, minExperience: 3000 },
 ];
 
 const defaultProfileSettings: ProfileSettings = {
@@ -143,6 +144,7 @@ export default function ProfilePage() {
   const [profileSettings, setProfileSettings] = useState<ProfileSettings>(defaultProfileSettings);
   const [profileArticles, setProfileArticles] = useState<Article[]>([]);
   const [profileCollections, setProfileCollections] = useState<ArticleCollection[]>([]);
+  const [reputation, setReputation] = useState<ReputationSummary | null>(null);
   const [isSavingProfileSettings, setIsSavingProfileSettings] = useState(false);
   const [sessions, setSessions] = useState<AuthSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
@@ -205,10 +207,12 @@ export default function ProfilePage() {
           getProfileSettings(token),
           listMyArticles(token, { page: 1, pageSize: 50, status: "published", sort: "latest" }),
           listMyCollections(token),
-        ]).then(([settings, articleResult, collectionResult]) => {
+          getMyReputation(token),
+        ]).then(([settings, articleResult, collectionResult, reputationResult]) => {
           setProfileSettings(settings);
           setProfileArticles(articleResult.items);
           setProfileCollections(collectionResult.items);
+          setReputation(reputationResult);
         }).catch((profileSettingsError) => {
           setError(profileSettingsError instanceof Error ? profileSettingsError.message : "主页展示设置加载失败。");
         });
@@ -981,6 +985,31 @@ export default function ProfilePage() {
             </form>
           </section>
 
+          <section className="profile-panel reputation-panel">
+            <div className="panel-heading reputation-heading">
+              <span className="section-label">Growth & points</span>
+              <strong>成长与积分</strong>
+            </div>
+            {reputation ? <div className="reputation-layout">
+              <div className="reputation-overview">
+                <div className="reputation-level-summary">
+                  <span className="reputation-symbol"><RoleSymbol code={reputation.level.code} /></span>
+                  <div><span>成长等级</span><strong>{reputation.level.name} <small>Lv.{reputation.level.level}</small></strong><p>{reputation.nextLevel ? `距离 ${reputation.nextLevel.name} 还需 ${reputation.experienceToNext} 经验` : "已达到当前最高成长等级"}</p></div>
+                </div>
+                <div className="reputation-progress" aria-label={`经验进度 ${reputation.progressPercent}%`}><span style={{ width: `${reputation.progressPercent}%` }} /></div>
+                <div className="reputation-balances"><span><TrendingUp aria-hidden="true" size={17} /><small>经验</small><strong>{reputation.experience}</strong></span><span><Coins aria-hidden="true" size={17} /><small>积分</small><strong>{reputation.points}</strong></span></div>
+              </div>
+              <div className="reputation-rules">
+                <strong>获取规则</strong>
+                {reputation.rules.map((rule) => <div key={rule.reason}><span>{rule.label}</span><em>{rule.experience ? `+${rule.experience} 经验` : ""}{rule.experience && rule.points ? " · " : ""}{rule.points ? `+${rule.points} 积分` : ""}</em>{rule.dailyExperienceCap ? <small>每日经验上限 {rule.dailyExperienceCap}</small> : null}</div>)}
+              </div>
+              <div className="reputation-ledger">
+                <strong>最近记录</strong>
+                {reputation.recent.length ? reputation.recent.slice(0, 6).map((item) => <div key={item.id}><span><b>{item.description}</b><small>{formatReputationTime(item.createdAt)}</small></span><em>{item.experienceDelta ? `${item.experienceDelta > 0 ? "+" : ""}${item.experienceDelta} 经验` : ""}{item.experienceDelta && item.pointDelta ? " · " : ""}{item.pointDelta ? `${item.pointDelta > 0 ? "+" : ""}${item.pointDelta} 积分` : ""}</em></div>) : <p>完成阅读、评论或创作后，这里会显示记录。</p>}
+              </div>
+            </div> : <div className="reputation-empty"><Sparkles aria-hidden="true" size={18} />正在读取成长记录</div>}
+          </section>
+
           {isSessionsOpen ? (
             <section
               className="profile-panel account-sessions-panel"
@@ -1267,12 +1296,12 @@ export default function ProfilePage() {
               style={levelPopoverStyle}
             >
               <div className="panel-heading level-popover-heading">
-                <span className="section-label">账号等级</span>
-                <strong>角色说明</strong>
+                <span className="section-label">经验等级</span>
+                <strong>成长规则</strong>
               </div>
               <div className="level-roadmap">
                 {levelRoadmap.map((role) => {
-                  const isCurrent = user.role.code === role.code;
+                  const isCurrent = (reputation?.level.code ?? user.role.code) === role.code;
                   return (
                     <div className={isCurrent ? "current" : ""} key={role.code}>
                       <span className="level-icon" data-role={role.code}>
@@ -1282,7 +1311,7 @@ export default function ProfilePage() {
                         <strong>{role.name}</strong>
                         <small>Lv.{role.level}</small>
                       </span>
-                      <em>{isCurrent ? "当前等级" : role.status}</em>
+                      <em>{isCurrent ? "当前等级" : `${role.minExperience} 经验`}</em>
                     </div>
                   );
                 })}
@@ -1650,6 +1679,15 @@ function formatDuration(value: number): string {
 function formatSessionTime(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatReputationTime(value: string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

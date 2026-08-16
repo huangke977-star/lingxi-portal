@@ -23,6 +23,7 @@ import {
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import { SiteSettingsService } from "../site-settings/site-settings.service";
+import { ReputationService } from "../reputation/reputation.service";
 import { ChatAttachmentsService } from "./chat-attachments.service";
 import {
   ListMessagesQueryDto,
@@ -159,6 +160,7 @@ export class SocialService {
     private readonly prisma: PrismaService,
     private readonly chatAttachmentsService: ChatAttachmentsService,
     private readonly siteSettingsService: SiteSettingsService,
+    private readonly reputationService: ReputationService,
   ) {}
 
   async getProfile(viewer: AuthenticatedUser, userId: number): Promise<PublicProfileResponse> {
@@ -267,6 +269,7 @@ export class SocialService {
       const notificationSettings = await this.siteSettingsService.getNotificationSettings();
       await this.prisma.$transaction(async (transaction) => {
         await transaction.userSubscription.create({ data: { subscriberId: user.id, authorId } });
+        await this.reputationService.awardAuthorSubscribed(transaction, authorId, user.id);
         if (notificationSettings.notifyAuthorSubscribed) {
           await transaction.userNotification.create({ data: {
             userId: authorId,

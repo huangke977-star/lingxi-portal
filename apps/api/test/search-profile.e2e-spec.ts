@@ -3,6 +3,7 @@ import { AuthenticatedUser } from "../src/auth/auth.types";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { SearchService } from "../src/search/search.service";
 import { SiteSettingsService } from "../src/site-settings/site-settings.service";
+import { ReputationService } from "../src/reputation/reputation.service";
 import { ChatAttachmentsService } from "../src/social/chat-attachments.service";
 import { SocialService } from "../src/social/social.service";
 
@@ -133,6 +134,7 @@ describe("global search and public profiles", () => {
       prisma as unknown as PrismaService,
       {} as ChatAttachmentsService,
       {} as SiteSettingsService,
+      {} as ReputationService,
     );
 
     await expect(service.getProfileByUsername(" writer ", null)).resolves.toMatchObject({
@@ -190,6 +192,7 @@ describe("global search and public profiles", () => {
       prisma as unknown as PrismaService,
       {} as ChatAttachmentsService,
       {} as SiteSettingsService,
+      {} as ReputationService,
     );
 
     await expect(service.getProfileByUsername(privateUser.username, null)).resolves.toMatchObject({

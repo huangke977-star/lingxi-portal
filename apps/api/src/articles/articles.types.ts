@@ -45,6 +45,12 @@ export interface ArticleResponse {
   likeCount: number;
   favoriteCount: number;
   commentCount: number;
+  resource: {
+    enabled: boolean;
+    pointCost: number;
+    redeemed: boolean;
+    accessible: boolean;
+  };
   author: ArticleAuthorResponse;
   recentCommenters: ArticleAuthorResponse[];
   allowedRoles: ArticleRoleResponse[];
@@ -170,4 +176,6 @@ export interface ArticleVersionResponse extends ArticleVersionSummaryResponse {
   visibility: ArticleVisibilityValue;
   status: ArticleStatusValue;
   roleCodes: string[];
+  isPointResource: boolean;
+  pointCost: number;
 }

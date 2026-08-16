@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { Bookmark, Eye, Heart, MessageCircle, Pin } from "lucide-react";
+import { Bookmark, Coins, Eye, Heart, MessageCircle, Pin } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
@@ -61,6 +61,7 @@ export function ArticleTaxonomy({ article, limit = 3 }: { article: Article; limi
   return (
     <span className="article-taxonomy">
       <span className="article-category">{article.category || "随笔"}</span>
+      {article.resource.enabled ? <span className="article-resource-chip" title={`${article.resource.pointCost} 积分兑换`}><Coins aria-hidden="true" size={12} />{article.resource.pointCost}</span> : null}
       {visibleTags.map((tag) => <span className="article-tag-chip" key={tag}>#{tag}</span>)}
       {hiddenCount ? <span className="article-tag-more">+{hiddenCount}</span> : null}
       {(article.collections ?? []).slice(0, 2).map((collection) => (

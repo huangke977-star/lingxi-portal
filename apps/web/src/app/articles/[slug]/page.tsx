@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bookmark, CalendarDays, Clock3, CornerDownRight, Flag, Heart, MessageCircle, Reply, Rss, Send, Tag, ThumbsUp, Trash2, X } from "lucide-react";
+import { Bookmark, CalendarDays, Clock3, Coins, CornerDownRight, Flag, Heart, LockKeyhole, MessageCircle, Reply, Rss, Send, Tag, ThumbsUp, Trash2, X } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
@@ -23,6 +23,7 @@ import {
   likeArticleComment,
   listArticleComments,
   reportArticleComment,
+  redeemArticleResource,
   setArticleReadLater,
   updateArticleReadingProgress,
 } from "@/lib/article-api";
@@ -55,6 +56,7 @@ export default function ArticleDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [isRedeemingResource, setIsRedeemingResource] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [articleLikeBurst, setArticleLikeBurst] = useState(0);
@@ -120,7 +122,7 @@ export default function ArticleDetailPage() {
   }, [params.slug, requestedCommentId]);
 
   useEffect(() => {
-    if (!readingArticleId || !isLoggedIn || !readingContentRef.current) return;
+    if (!readingArticleId || !isLoggedIn || !article?.resource.accessible || !readingContentRef.current) return;
     const token = readAccessToken();
     if (!token) return;
     let timer: number | null = null;
@@ -157,7 +159,7 @@ export default function ArticleDetailPage() {
       window.removeEventListener("pagehide", sendProgress);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [initialReadingProgress, isLoggedIn, readingArticleId]);
+  }, [article?.resource.accessible, initialReadingProgress, isLoggedIn, readingArticleId]);
 
   useEffect(() => {
     restoredReadingPositionRef.current = false;
@@ -288,6 +290,27 @@ export default function ArticleDetailPage() {
       setNotice(result.readLater ? "已加入稍后读。" : "已从稍后读移除。");
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "稍后读操作失败。");
+    }
+  }
+
+  async function handleResourceRedeem() {
+    if (!article) return;
+    const token = readAccessToken();
+    if (!token) {
+      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      return;
+    }
+    if (!window.confirm(`确定使用 ${article.resource.pointCost} 积分永久解锁这篇资源文章吗？`)) return;
+    setIsRedeemingResource(true);
+    setError("");
+    try {
+      const unlocked = await redeemArticleResource(token, article.id);
+      setArticle(unlocked);
+      setNotice(`已使用 ${article.resource.pointCost} 积分兑换，资源已永久解锁。`);
+    } catch (redeemError) {
+      setError(redeemError instanceof Error ? redeemError.message : "资源兑换失败。");
+    } finally {
+      setIsRedeemingResource(false);
     }
   }
 
@@ -443,15 +466,16 @@ export default function ArticleDetailPage() {
               <div><dt><Tag aria-hidden="true" size={15} />分类</dt><dd>{article.category || "随笔"}</dd></div>
               <div><dt><CalendarDays aria-hidden="true" size={15} />发布时间</dt><dd>{formatArticleDate(article.publishedAt)}</dd></div>
               <div><dt>更新时间</dt><dd>{formatArticleDate(article.updatedAt)}</dd></div>
+              {article.resource.enabled ? <div><dt><Coins aria-hidden="true" size={15} />积分资源</dt><dd>{article.resource.pointCost} 积分{article.resource.redeemed ? " · 已兑换" : ""}</dd></div> : null}
             </dl>
             {article.tags.length ? <div className="article-tag-list">{article.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div> : null}
             {article.collections.length || article.topics.length ? <div className="article-group-list">{article.collections.map((collection) => <Link className="article-group-chip collection" href={collection.href} key={`collection-${collection.id}`}>{collection.label}</Link>)}{article.topics.map((topic) => <Link className="article-group-chip topic" href={topic.href} key={`topic-${topic.id}`}>{topic.label}</Link>)}</div> : null}
           </aside>
-          <main className="article-reading-main" ref={readingContentRef}><ArticleBody content={article.content} /></main>
+          <main className="article-reading-main" ref={readingContentRef}>{article.resource.accessible ? <ArticleBody content={article.content} /> : <section className="article-resource-lock"><LockKeyhole aria-hidden="true" size={28} /><div><span>积分资源</span><h2>{article.resource.pointCost} 积分永久解锁</h2><p>{article.summary || "兑换后可以阅读完整正文。积分会转入作者账户。"}</p></div><button disabled={isRedeemingResource} onClick={() => void handleResourceRedeem()} type="button"><Coins aria-hidden="true" size={17} />{isRedeemingResource ? "兑换中" : isLoggedIn ? "兑换资源" : "登录后兑换"}</button></section>}</main>
         </div>
       </article>
 
-      <section className="article-comments-section">
+      {article.resource.accessible ? <section className="article-comments-section">
         <div className="article-section-heading"><div><span className="section-label">Conversation</span><h2>评论与回复</h2></div><span>{article.commentCount} 条</span></div>
         {siteSettings?.commentsEnabled === false ? <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />评论功能暂未开放。</div> : <form className="article-comment-form" onSubmit={handleCommentSubmit}>
           <div aria-hidden={!replyingTo} className={`article-composer-context${replyingTo ? " active" : ""}`}>
@@ -466,7 +490,7 @@ export default function ArticleDetailPage() {
           <div className="article-comments-list">{commentThreads.map((thread) => <section className="article-comment-thread" key={thread.root.id}>{renderComment(thread.root)}{thread.replies.length ? <div className="article-comment-replies">{thread.replies.map(({ comment, parent }) => renderComment(comment, parent ?? thread.root))}</div> : null}</section>)}</div>
           <ArticleInfiniteFooter hasMore={hasMoreComments} isLoading={isLoadingMoreComments} onLoadMore={() => void loadMoreComments()} />
         </> : <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />还没有评论。</div>}
-      </section>
+      </section> : null}
       {reportingComment ? <div className="comment-report-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setReportingComment(null); }}><form className="comment-report-dialog" onSubmit={handleReportSubmit}><div><strong>举报评论</strong><button aria-label="关闭举报窗口" onClick={() => setReportingComment(null)} type="button"><X aria-hidden="true" size={17} /></button></div><label>举报原因<select onChange={(event) => setReportReason(event.target.value as ArticleCommentReportReason)} value={reportReason}><option value="spam">垃圾广告</option><option value="harassment">辱骂骚扰</option><option value="illegal">违法违规</option><option value="privacy">隐私泄露</option><option value="misinformation">不实内容</option><option value="other">其他</option></select></label><label>补充说明<textarea maxLength={500} onChange={(event) => setReportDetail(event.target.value)} placeholder="可选，帮助管理员判断具体问题" rows={3} value={reportDetail} /></label><button className="button" disabled={isSubmittingReport} type="submit">{isSubmittingReport ? "提交中" : "提交举报"}</button></form></div> : null}
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>

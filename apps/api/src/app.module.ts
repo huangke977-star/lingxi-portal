@@ -18,8 +18,9 @@ import { DiscoveryModule } from './discovery/discovery.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { SuggestionsModule } from './suggestions/suggestions.module';
 import { AnonymousTopicsModule } from './anonymous-topics/anonymous-topics.module';
+import { ReputationModule } from './reputation/reputation.module';
 
 @Module({
-  imports: [PrismaModule, HealthModule, RolesModule, SiteSettingsModule, AuthModule, AuditModule, SearchModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, SystemStatusModule, PortalModule, ArticlesModule, SocialModule, AnalyticsModule, DiscoveryModule, AnnouncementsModule, SuggestionsModule, AnonymousTopicsModule],
+  imports: [PrismaModule, HealthModule, RolesModule, SiteSettingsModule, AuthModule, AuditModule, SearchModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, SystemStatusModule, PortalModule, ReputationModule, ArticlesModule, SocialModule, AnalyticsModule, DiscoveryModule, AnnouncementsModule, SuggestionsModule, AnonymousTopicsModule],
 })
 export class AppModule {}

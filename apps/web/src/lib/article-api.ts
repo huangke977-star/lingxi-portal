@@ -45,6 +45,12 @@ export interface Article {
   likeCount: number;
   favoriteCount: number;
   commentCount: number;
+  resource: {
+    enabled: boolean;
+    pointCost: number;
+    redeemed: boolean;
+    accessible: boolean;
+  };
   author: ArticleAuthor;
   recentCommenters: ArticleAuthor[];
   allowedRoles: ArticleRole[];
@@ -139,6 +145,8 @@ export interface ArticleInput {
   visibility: ArticleVisibility;
   status?: ArticleStatus;
   roleCodes: string[];
+  isPointResource: boolean;
+  pointCost: number;
 }
 
 export type ArticleVersionSource = "autosave" | "manual" | "publish" | "restore";
@@ -162,6 +170,8 @@ export interface ArticleVersion extends ArticleVersionSummary {
   visibility: ArticleVisibility;
   status: ArticleStatus;
   roleCodes: string[];
+  isPointResource: boolean;
+  pointCost: number;
 }
 
 export const ARTICLE_STATUS_LABEL: Record<ArticleStatus, string> = {
@@ -388,6 +398,13 @@ export function likeArticle(accessToken: string, id: number, liked: boolean): Pr
 export function favoriteArticle(accessToken: string, id: number, favorited: boolean): Promise<{ liked?: boolean; favorited?: boolean; likeCount: number; favoriteCount: number }> {
   return requestJson(`/articles/${id}/favorite`, {
     method: favorited ? "POST" : "DELETE",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function redeemArticleResource(accessToken: string, id: number): Promise<Article> {
+  return requestJson<Article>(`/articles/${id}/redeem`, {
+    method: "POST",
     headers: authHeaders(accessToken),
   });
 }

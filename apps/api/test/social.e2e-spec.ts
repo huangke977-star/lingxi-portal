@@ -3,6 +3,7 @@ import { AuthenticatedUser } from "../src/auth/auth.types";
 import { ChatMessageType, FriendshipStatus } from "../src/generated/prisma/client";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { SiteSettingsService } from "../src/site-settings/site-settings.service";
+import { ReputationService } from "../src/reputation/reputation.service";
 import { ChatAttachmentsService } from "../src/social/chat-attachments.service";
 import { SocialService } from "../src/social/social.service";
 
@@ -88,11 +89,16 @@ const siteSettingsService = {
   }),
 };
 
+const reputationService = {
+  awardAuthorSubscribed: jest.fn(async () => true),
+};
+
 function createService(prisma: object) {
   return new SocialService(
     prisma as unknown as PrismaService,
     attachmentsService as unknown as ChatAttachmentsService,
     siteSettingsService as unknown as SiteSettingsService,
+    reputationService as unknown as ReputationService,
   );
 }
 

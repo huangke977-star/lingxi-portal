@@ -8,6 +8,7 @@ import {
 import { AuthenticatedUser } from "../src/auth/auth.types";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { RedisService } from "../src/redis/redis.service";
+import { ReputationService } from "../src/reputation/reputation.service";
 import { ArticlesService } from "../src/articles/articles.service";
 import { ListArticleCommentsQueryDto, ListArticlesQueryDto } from "../src/articles/dto/article.dto";
 import { SiteSettingsService } from "../src/site-settings/site-settings.service";
@@ -199,11 +200,20 @@ const redisService = {
   set: jest.fn(async () => undefined),
 };
 
+const reputationService = {
+  awardArticleRead: jest.fn(async () => true),
+  awardArticleComment: jest.fn(async () => true),
+  awardArticlePublished: jest.fn(async () => true),
+  awardArticleLiked: jest.fn(async () => true),
+  transferResourcePoints: jest.fn(async () => undefined),
+};
+
 function createService(prisma: object) {
   return new ArticlesService(
     prisma as unknown as PrismaService,
     siteSettingsService as unknown as SiteSettingsService,
     redisService as unknown as RedisService,
+    reputationService as unknown as ReputationService,
   );
 }
 
@@ -341,6 +351,7 @@ describe("ArticlesService article center extensions", () => {
       prisma as unknown as PrismaService,
       siteSettingsService as unknown as SiteSettingsService,
       { get: jest.fn(async () => JSON.stringify([12, 13])), set: jest.fn() } as unknown as RedisService,
+      reputationService as unknown as ReputationService,
     );
     const query = new ListArticlesQueryDto();
     query.sort = "recommended";

@@ -263,12 +263,11 @@ function AnonymousTopicListRow({ item, onFavorite, onOpen }: {
 }
 
 function topicHighlightLabel(message: NonNullable<AnonymousTopicSummary["topLikedMessage"]>) {
-  const author = message.nickname ? `#${message.sequence} ${message.nickname}` : `第 ${message.sequence} 条`;
-  return `${author}：${message.body}`;
+  return `#${message.sequence}：${message.body}`;
 }
 
 function AnonymousMessageRow({ isManager, message, onHide, onReact }: { isManager: boolean; message: AnonymousTopicMessage; onHide: (id: number, isHidden: boolean) => void; onReact: (id: number, value: "up" | "down") => void }) {
-  return <article className={`anonymous-message${message.isHidden ? " hidden" : ""}`}><header><span>{message.nickname ? `#${message.sequence} · ${message.nickname}` : `第 ${message.sequence} 条`}</span><time>{formatTime(message.createdAt)}</time>{isManager ? <button aria-label={message.isHidden ? "恢复消息" : "隐藏消息"} onClick={() => void onHide(message.id, !message.isHidden)} title={message.isHidden ? "恢复消息" : "隐藏消息"} type="button">{message.isHidden ? <Eye aria-hidden="true" size={14} /> : <EyeOff aria-hidden="true" size={14} />}</button> : null}</header><p>{message.body}</p><footer><button onClick={() => void onReact(message.id, "up")} type="button"><ThumbsUp aria-hidden="true" size={14} />{message.likeCount}</button><button onClick={() => void onReact(message.id, "down")} type="button"><ThumbsDown aria-hidden="true" size={14} />{message.dislikeCount}</button></footer></article>;
+  return <article className={`anonymous-message${message.isHidden ? " hidden" : ""}`}><header><span>#{message.sequence}</span><time>{formatTime(message.createdAt)}</time>{isManager ? <button aria-label={message.isHidden ? "恢复消息" : "隐藏消息"} onClick={() => void onHide(message.id, !message.isHidden)} title={message.isHidden ? "恢复消息" : "隐藏消息"} type="button">{message.isHidden ? <EyeOff aria-hidden="true" size={14} /> : <Eye aria-hidden="true" size={14} />}</button> : null}</header><p>{message.body}</p><footer><button onClick={() => void onReact(message.id, "up")} type="button"><ThumbsUp aria-hidden="true" size={14} />{message.likeCount}</button><button onClick={() => void onReact(message.id, "down")} type="button"><ThumbsDown aria-hidden="true" size={14} />{message.dislikeCount}</button></footer></article>;
 }
 
 function formatTime(value: string) {

@@ -13,9 +13,10 @@ import { SocialService } from "./social.service";
 import { PublicProfilesController } from "./public-profiles.controller";
 import { PushModule } from "../push/push.module";
 import { PendingActionReminderService } from "./pending-action-reminder.service";
+import { ReputationModule } from "../reputation/reputation.module";
 
 @Module({
-  imports: [JwtModule.register({}), UsersModule, RedisModule, SiteSettingsModule, PushModule],
+  imports: [JwtModule.register({}), UsersModule, RedisModule, SiteSettingsModule, PushModule, ReputationModule],
   controllers: [SocialController, PublicProfilesController, ChatGroupsController, ChatGroupAvatarsController],
   providers: [SocialService, ChatAttachmentsService, ChatGroupsService, CallsService, ChatGateway, PendingActionReminderService],
   exports: [SocialService, ChatGroupsService],

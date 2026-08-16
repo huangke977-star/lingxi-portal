@@ -69,6 +69,17 @@ export class CreateArticleDto {
   @IsOptional()
   @IsString({ each: true })
   roleCodes?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  isPointResource?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(10000)
+  pointCost?: number;
 }
 
 export class UpdateArticleDto extends CreateArticleDto {}
@@ -110,6 +121,17 @@ export class AutosaveArticleDto {
   @IsOptional()
   @IsString({ each: true })
   roleCodes?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  isPointResource?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(10000)
+  pointCost?: number;
 }
 
 export class ListArticlesQueryDto {

@@ -4,6 +4,7 @@ import { ArticlesService } from "../src/articles/articles.service";
 import { AuthenticatedUser } from "../src/auth/auth.types";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { RedisService } from "../src/redis/redis.service";
+import { ReputationService } from "../src/reputation/reputation.service";
 import { SearchIndexService } from "../src/search/search-index.service";
 import { buildSearchFields } from "../src/search/search-normalization";
 import { SearchService } from "../src/search/search.service";
@@ -83,6 +84,7 @@ function createArticlesService(prisma: object) {
       getArticlePublishPolicy: jest.fn(async () => ({ defaultArticleVisibility: ArticleVisibility.public })),
     } as unknown as SiteSettingsService,
     {} as RedisService,
+    {} as ReputationService,
   );
 }
 
