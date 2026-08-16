@@ -36,7 +36,7 @@ CREATE INDEX `article_resource_exchanges_article_id_idx`
 DROP INDEX `article_resource_exchanges_article_id_buyer_id_key` ON `article_resource_exchanges`;
 CREATE UNIQUE INDEX `article_resource_exchanges_article_id_buyer_id_block_key_key`
   ON `article_resource_exchanges`(`article_id`, `buyer_id`, `block_key`);
-CREATE INDEX `article_resource_exchanges_author_id_seller_settled_at_seller_available_at_idx`
+CREATE INDEX `article_resource_author_settle_idx`
   ON `article_resource_exchanges`(`author_id`, `seller_settled_at`, `seller_available_at`);
 
 CREATE TABLE `article_reports` (

@@ -1170,7 +1170,7 @@ model ArticleResourceExchange {
   @@unique([articleId, buyerId, blockKey])
   @@index([articleId])
   @@index([buyerId, createdAt])
-  @@index([authorId, sellerSettledAt, sellerAvailableAt])
+  @@index([authorId, sellerSettledAt, sellerAvailableAt], map: "article_resource_author_settle_idx")
   @@map("article_resource_exchanges")
 }
 
