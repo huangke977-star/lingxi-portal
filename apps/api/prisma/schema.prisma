@@ -1168,6 +1168,7 @@ model ArticleResourceExchange {
   createdAt         DateTime  @default(now()) @map("created_at")
 
   @@unique([articleId, buyerId, blockKey])
+  @@index([articleId])
   @@index([buyerId, createdAt])
   @@index([authorId, sellerSettledAt, sellerAvailableAt])
   @@map("article_resource_exchanges")

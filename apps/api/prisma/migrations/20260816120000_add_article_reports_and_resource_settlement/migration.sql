@@ -31,6 +31,8 @@ ALTER TABLE `article_resource_exchanges`
   ADD COLUMN `seller_available_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) AFTER `point_cost`,
   ADD COLUMN `seller_settled_at` DATETIME(3) NULL AFTER `seller_available_at`;
 
+CREATE INDEX `article_resource_exchanges_article_id_idx`
+  ON `article_resource_exchanges`(`article_id`);
 DROP INDEX `article_resource_exchanges_article_id_buyer_id_key` ON `article_resource_exchanges`;
 CREATE UNIQUE INDEX `article_resource_exchanges_article_id_buyer_id_block_key_key`
   ON `article_resource_exchanges`(`article_id`, `buyer_id`, `block_key`);
