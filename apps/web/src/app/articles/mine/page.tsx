@@ -219,7 +219,7 @@ function MyArticlesContent() {
                   <h2>{article.title}</h2>
                 </div>
                 {article.status === "blocked" && article.blockedReason ? <div className="article-blocked-reason">受限原因：{article.blockedReason}</div> : null}
-                <div className="article-mine-row-meta"><span>更新于 {formatArticleDate(article.updatedAt)}</span><RecentCommenters article={article} /><ArticleStats article={article} compact /><ArticleTaxonomy article={article} limit={4} /></div>
+                <div className="article-mine-row-meta"><span>更新于 {formatArticleDate(article.updatedAt)}</span><ArticleTaxonomy article={article} limit={4} /><ArticleStats article={article} compact /><RecentCommenters article={article} /></div>
               </div>
               <div className="article-mine-row-actions">
                 {article.status !== "deleted" ? <Link href={`/articles/edit/${article.id}`} title="编辑"><Edit3 aria-hidden="true" size={17} /><span>编辑</span></Link> : null}

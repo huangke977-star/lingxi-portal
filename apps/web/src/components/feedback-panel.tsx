@@ -4,12 +4,15 @@ import { type ReactNode, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronLeft, ChevronRight, LifeBuoy, Plus, Send, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
+import { GlassSelect } from "@/components/glass-select";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { isAuthExpiredError } from "@/lib/auth-api";
 import { createFeedback, getFeedback, listFeedbackInbox, listMyFeedback, replyFeedback, updateFeedbackStatus, type FeedbackCategory, type FeedbackDetail, type FeedbackStatus, type FeedbackSummary } from "@/lib/feedback-api";
 
 const STATUS_LABEL: Record<FeedbackStatus, string> = { pending: "待处理", in_progress: "处理中", resolved: "已解决", closed: "已关闭" };
 const CATEGORY_LABEL: Record<FeedbackCategory, string> = { bug: "功能异常", account: "账号问题", content: "内容问题", payment: "积分与资源", other: "其他" };
+const STATUS_OPTIONS = Object.entries(STATUS_LABEL).map(([value, label]) => ({ label, value: value as FeedbackStatus }));
+const CATEGORY_OPTIONS = Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ label, value: value as FeedbackCategory }));
 
 export function FeedbackPanel({ mode = "mine" }: { mode?: "mine" | "inbox" }) {
   const [token, setToken] = useState<string | null>(null);
@@ -80,11 +83,7 @@ export function FeedbackPanel({ mode = "mine" }: { mode?: "mine" | "inbox" }) {
           placeholder="搜索标题或内容"
           value={search}
         />
-        {mode === "inbox" ? (
-          <select aria-label="反馈状态" onChange={(event) => setStatus(event.target.value as FeedbackStatus)} value={status}>
-            {Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        ) : null}
+        {mode === "inbox" ? <GlassSelect ariaLabel="反馈状态" onChange={setStatus} options={STATUS_OPTIONS} value={status} /> : null}
       </div>
     {isLoading ? (
       <p className="p8-empty">正在读取反馈。</p>
@@ -104,8 +103,8 @@ export function FeedbackPanel({ mode = "mine" }: { mode?: "mine" | "inbox" }) {
       <p className="p8-empty">暂无反馈记录。</p>
     )}
     {totalPages > 1 ? <footer className="feedback-pagination"><button aria-label="上一页" disabled={page <= 1} onClick={() => void load(page - 1)} type="button"><ChevronLeft size={16} /></button><span>{page} / {totalPages}</span><button aria-label="下一页" disabled={page >= totalPages} onClick={() => void load(page + 1)} type="button"><ChevronRight size={16} /></button></footer> : null}
-    {isCreateOpen ? <FeedbackModalPortal><div className="modal-backdrop feedback-modal-backdrop" role="presentation"><form aria-modal="true" className="feedback-modal feedback-create-modal" onSubmit={submitCreate} role="dialog"><header><strong>提交反馈</strong><button aria-label="关闭" onClick={() => setIsCreateOpen(false)} type="button"><X size={17} /></button></header><label>分类<select onChange={(event) => setDraft({ ...draft, category: event.target.value as FeedbackCategory })} value={draft.category}>{Object.entries(CATEGORY_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>标题<input maxLength={120} onChange={(event) => setDraft({ ...draft, title: event.target.value })} required value={draft.title} /></label><label>具体内容<textarea maxLength={5000} onChange={(event) => setDraft({ ...draft, content: event.target.value })} required rows={8} value={draft.content} /></label><footer><button className="button" disabled={isSaving} type="submit"><Send size={15} />{isSaving ? "提交中" : "提交"}</button></footer></form></div></FeedbackModalPortal> : null}
-    {detail ? <FeedbackModalPortal><div className="modal-backdrop feedback-modal-backdrop" role="presentation"><section aria-modal="true" className="feedback-modal feedback-detail-modal" role="dialog"><header><div><strong>{detail.title}</strong><small>{CATEGORY_LABEL[detail.category]} · {STATUS_LABEL[detail.status]}</small></div><button aria-label="关闭" onClick={() => setDetail(null)} type="button"><X size={17} /></button></header><p className="feedback-detail-content">{detail.content}</p><div className="feedback-replies">{detail.replies.map((item) => <article key={item.id}><strong>{item.author.nickname}</strong><small>{new Date(item.createdAt).toLocaleString("zh-CN")}</small><p>{item.content}</p></article>)}</div>{mode === "inbox" ? <label>处理状态<select onChange={(event) => void changeStatus(event.target.value as FeedbackStatus)} value={detail.status}>{Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label> : null}<div className="feedback-reply-box"><textarea aria-label="反馈回复" onChange={(event) => setReply(event.target.value)} placeholder={mode === "inbox" ? "回复用户" : "补充说明"} rows={3} value={reply} /><button aria-label="发送回复" disabled={isSaving || !reply.trim()} onClick={() => void sendReply()} title="发送回复" type="button"><Check size={16} /></button></div></section></div></FeedbackModalPortal> : null}
+    {isCreateOpen ? <FeedbackModalPortal><div className="modal-backdrop feedback-modal-backdrop" role="presentation"><form aria-modal="true" className="feedback-modal feedback-create-modal" onSubmit={submitCreate} role="dialog"><header><strong>提交反馈</strong><button aria-label="关闭" onClick={() => setIsCreateOpen(false)} type="button"><X size={17} /></button></header><label>分类<GlassSelect ariaLabel="反馈分类" onChange={(category) => setDraft({ ...draft, category })} options={CATEGORY_OPTIONS} value={draft.category} /></label><label>标题<input maxLength={120} onChange={(event) => setDraft({ ...draft, title: event.target.value })} required value={draft.title} /></label><label>具体内容<textarea maxLength={5000} onChange={(event) => setDraft({ ...draft, content: event.target.value })} required rows={8} value={draft.content} /></label><footer><button className="button" disabled={isSaving} type="submit"><Send size={15} />{isSaving ? "提交中" : "提交"}</button></footer></form></div></FeedbackModalPortal> : null}
+    {detail ? <FeedbackModalPortal><div className="modal-backdrop feedback-modal-backdrop" role="presentation"><section aria-modal="true" className="feedback-modal feedback-detail-modal" role="dialog"><header><div><strong>{detail.title}</strong><small>{CATEGORY_LABEL[detail.category]} · {STATUS_LABEL[detail.status]}</small></div><button aria-label="关闭" onClick={() => setDetail(null)} type="button"><X size={17} /></button></header><p className="feedback-detail-content">{detail.content}</p><div className="feedback-replies">{detail.replies.map((item) => <article key={item.id}><strong>{item.author.nickname}</strong><small>{new Date(item.createdAt).toLocaleString("zh-CN")}</small><p>{item.content}</p></article>)}</div>{mode === "inbox" ? <label>处理状态<GlassSelect ariaLabel="处理状态" onChange={(nextStatus) => void changeStatus(nextStatus)} options={STATUS_OPTIONS} value={detail.status} /></label> : null}<div className="feedback-reply-box"><textarea aria-label="反馈回复" onChange={(event) => setReply(event.target.value)} placeholder={mode === "inbox" ? "回复用户" : "补充说明"} rows={3} value={reply} /><button aria-label="发送回复" disabled={isSaving || !reply.trim()} onClick={() => void sendReply()} title="发送回复" type="button"><Check size={16} /></button></div></section></div></FeedbackModalPortal> : null}
     <AppToast duration={3200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );

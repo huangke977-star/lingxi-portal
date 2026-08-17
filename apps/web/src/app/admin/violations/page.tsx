@@ -9,6 +9,7 @@ import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { getViolationAuthor, listViolationAuthors, updateViolationRestriction, type ViolationAuthor, type ViolationAuthorDetail } from "@/lib/article-api";
 
 function date(value: string) { return new Date(value).toLocaleString("zh-CN", { hour12: false }); }
+const REPORT_REASON_LABEL: Record<string, string> = { spam: "垃圾广告", harassment: "辱骂骚扰", illegal: "违法违规", privacy: "隐私泄露", misinformation: "不实内容", other: "其他" };
 function avatar(user: { nickname: string; avatarUrl: string | null }) {
   const avatarUrl = user.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
   return avatarUrl ? <img alt="" src={avatarUrl} /> : <span>{user.nickname.slice(0, 1)}</span>;
@@ -50,6 +51,6 @@ function ReportSide({ title, items }: { title: string; items: ViolationAuthorDet
   return <section className="violation-report-side"><h3>{title}<small>{items.length}</small></h3>{items.length ? items.map((item) => {
     const relatedUser = item.reporter ? { label: "举报人", user: item.reporter } : item.article.author ? { label: "被举报人", user: item.article.author } : null;
     const statusLabel = item.status === "resolved" ? "已处理" : item.status === "rejected" ? "已驳回" : "待处理";
-    return <article key={item.id}><div className="violation-report-content"><div className="violation-report-title-line"><strong>{item.article.title}</strong><span className={`violation-report-status ${item.status}`}>{statusLabel}</span></div><small>第 {item.publicationNumber} 次发布 · {item.reason} · {date(item.createdAt)}</small>{item.resolution ? <p className="violation-report-resolution">处理反馈：{item.resolution}</p> : null}</div>{relatedUser ? <Link aria-label={`查看${relatedUser.label}${relatedUser.user.nickname}的主页`} className="violation-report-person" href={`/users/${relatedUser.user.username}`} title={`查看${relatedUser.label}主页`}><span className="violation-report-avatar">{avatar(relatedUser.user)}</span><span><small>{relatedUser.label}</small><strong>{relatedUser.user.nickname}</strong></span></Link> : null}</article>;
+    return <article key={item.id}><div className="violation-report-content"><div className="violation-report-title-line"><strong>{item.article.title}</strong><span className={`violation-report-status ${item.status}`}>{statusLabel}</span></div><small>第 {item.publicationNumber} 次发布 · {REPORT_REASON_LABEL[item.reason] ?? item.reason} · {date(item.createdAt)}</small>{item.resolution ? <p className="violation-report-resolution">处理反馈：{item.resolution}</p> : null}</div>{relatedUser ? <Link aria-label={`查看${relatedUser.label}${relatedUser.user.nickname}的主页`} className="violation-report-person" href={`/users/${relatedUser.user.username}`} title={`查看${relatedUser.label}主页`}><span className="violation-report-avatar">{avatar(relatedUser.user)}</span><span><small>{relatedUser.label}</small><strong>{relatedUser.user.nickname}</strong></span></Link> : null}</article>;
   }) : <p>暂无记录。</p>}</section>;
 }
