@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronLeft, ChevronRight, LifeBuoy, Plus, Send, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
@@ -39,8 +40,11 @@ export function FeedbackPanel({ mode = "mine" }: { mode?: "mine" | "inbox" }) {
   }
 
   // The list is an external query keyed by the visible mode and status filter.
-  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
-  useEffect(() => { void load(1, ""); }, [mode, status]);
+  useEffect(() => {
+    // Loading is asynchronous; the state updates only occur after the request settles.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load(1, "");
+  }, [mode, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function openDetail(id: number) {
     const accessToken = token ?? readAccessToken(); if (!accessToken) return;
@@ -100,9 +104,14 @@ export function FeedbackPanel({ mode = "mine" }: { mode?: "mine" | "inbox" }) {
       <p className="p8-empty">暂无反馈记录。</p>
     )}
     {totalPages > 1 ? <footer className="feedback-pagination"><button aria-label="上一页" disabled={page <= 1} onClick={() => void load(page - 1)} type="button"><ChevronLeft size={16} /></button><span>{page} / {totalPages}</span><button aria-label="下一页" disabled={page >= totalPages} onClick={() => void load(page + 1)} type="button"><ChevronRight size={16} /></button></footer> : null}
-    {isCreateOpen ? <div className="modal-backdrop feedback-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setIsCreateOpen(false); }}><form className="feedback-modal" onSubmit={submitCreate}><header><strong>提交反馈</strong><button aria-label="关闭" onClick={() => setIsCreateOpen(false)} type="button"><X size={17} /></button></header><label>分类<select onChange={(event) => setDraft({ ...draft, category: event.target.value as FeedbackCategory })} value={draft.category}>{Object.entries(CATEGORY_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>标题<input maxLength={120} onChange={(event) => setDraft({ ...draft, title: event.target.value })} required value={draft.title} /></label><label>具体内容<textarea maxLength={5000} onChange={(event) => setDraft({ ...draft, content: event.target.value })} required rows={8} value={draft.content} /></label><footer><button className="button" disabled={isSaving} type="submit"><Send size={15} />{isSaving ? "提交中" : "提交"}</button></footer></form></div> : null}
-    {detail ? <div className="modal-backdrop feedback-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setDetail(null); }}><section className="feedback-modal feedback-detail-modal"><header><div><strong>{detail.title}</strong><small>{CATEGORY_LABEL[detail.category]} · {STATUS_LABEL[detail.status]}</small></div><button aria-label="关闭" onClick={() => setDetail(null)} type="button"><X size={17} /></button></header><p className="feedback-detail-content">{detail.content}</p><div className="feedback-replies">{detail.replies.map((item) => <article key={item.id}><strong>{item.author.nickname}</strong><small>{new Date(item.createdAt).toLocaleString("zh-CN")}</small><p>{item.content}</p></article>)}</div>{mode === "inbox" ? <label>处理状态<select onChange={(event) => void changeStatus(event.target.value as FeedbackStatus)} value={detail.status}>{Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label> : null}<div className="feedback-reply-box"><textarea aria-label="反馈回复" onChange={(event) => setReply(event.target.value)} placeholder={mode === "inbox" ? "回复用户" : "补充说明"} rows={3} value={reply} /><button aria-label="发送回复" disabled={isSaving || !reply.trim()} onClick={() => void sendReply()} title="发送回复" type="button"><Check size={16} /></button></div></section></div> : null}
+    {isCreateOpen ? <FeedbackModalPortal><div className="modal-backdrop feedback-modal-backdrop" role="presentation"><form aria-modal="true" className="feedback-modal feedback-create-modal" onSubmit={submitCreate} role="dialog"><header><strong>提交反馈</strong><button aria-label="关闭" onClick={() => setIsCreateOpen(false)} type="button"><X size={17} /></button></header><label>分类<select onChange={(event) => setDraft({ ...draft, category: event.target.value as FeedbackCategory })} value={draft.category}>{Object.entries(CATEGORY_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>标题<input maxLength={120} onChange={(event) => setDraft({ ...draft, title: event.target.value })} required value={draft.title} /></label><label>具体内容<textarea maxLength={5000} onChange={(event) => setDraft({ ...draft, content: event.target.value })} required rows={8} value={draft.content} /></label><footer><button className="button" disabled={isSaving} type="submit"><Send size={15} />{isSaving ? "提交中" : "提交"}</button></footer></form></div></FeedbackModalPortal> : null}
+    {detail ? <FeedbackModalPortal><div className="modal-backdrop feedback-modal-backdrop" role="presentation"><section aria-modal="true" className="feedback-modal feedback-detail-modal" role="dialog"><header><div><strong>{detail.title}</strong><small>{CATEGORY_LABEL[detail.category]} · {STATUS_LABEL[detail.status]}</small></div><button aria-label="关闭" onClick={() => setDetail(null)} type="button"><X size={17} /></button></header><p className="feedback-detail-content">{detail.content}</p><div className="feedback-replies">{detail.replies.map((item) => <article key={item.id}><strong>{item.author.nickname}</strong><small>{new Date(item.createdAt).toLocaleString("zh-CN")}</small><p>{item.content}</p></article>)}</div>{mode === "inbox" ? <label>处理状态<select onChange={(event) => void changeStatus(event.target.value as FeedbackStatus)} value={detail.status}>{Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label> : null}<div className="feedback-reply-box"><textarea aria-label="反馈回复" onChange={(event) => setReply(event.target.value)} placeholder={mode === "inbox" ? "回复用户" : "补充说明"} rows={3} value={reply} /><button aria-label="发送回复" disabled={isSaving || !reply.trim()} onClick={() => void sendReply()} title="发送回复" type="button"><Check size={16} /></button></div></section></div></FeedbackModalPortal> : null}
     <AppToast duration={3200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );
+}
+
+function FeedbackModalPortal({ children }: { children: ReactNode }) {
+  if (typeof document === "undefined") return null;
+  return createPortal(children, document.body);
 }

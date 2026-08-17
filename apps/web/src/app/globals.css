@@ -16123,6 +16123,53 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .article-status-preview-meta { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: 8px 14px; color: var(--muted); font-size: 0.7rem; }
 .article-status-preview-reason { margin: 0; border-radius: 7px; background: color-mix(in srgb, #b44352 10%, transparent); color: #a33a4a; font-size: 0.74rem; line-height: 1.5; padding: 9px 10px; }
 
+/* Header report work items deliberately use the same opaque glass treatment as the account menu. */
+.task-popover.header-popover,
+.admin-report-popover {
+  border: 1px solid color-mix(in srgb, var(--control-line) 58%, transparent);
+  background: color-mix(in srgb, var(--popover-surface) 70%, transparent);
+  box-shadow: 0 18px 48px rgba(22, 29, 43, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  backdrop-filter: blur(30px) saturate(142%);
+  -webkit-backdrop-filter: blur(30px) saturate(142%);
+}
+
+/* Feedback dialogs are portalled and use the exact layout limits of the homepage suggestion dialog. */
+.feedback-modal-backdrop { z-index: 1800; padding: 14px; }
+.feedback-modal { box-sizing: border-box; width: min(540px, calc(100vw - 28px)); max-height: min(76dvh, 680px); overflow: auto; gap: 0; padding: 0; }
+.feedback-modal > header { border-bottom: 1px solid color-mix(in srgb, var(--control-line) 72%, transparent); padding: 11px 13px; }
+.feedback-modal > label,
+.feedback-modal > :is(.feedback-detail-content, .feedback-replies, .feedback-reply-box) { margin-inline: 13px; }
+.feedback-create-modal > label { margin-top: 10px; }
+.feedback-create-modal > label:first-of-type { margin-top: 13px; }
+.feedback-modal > footer { padding: 13px; }
+.feedback-detail-modal { display: grid; align-content: start; }
+.feedback-detail-modal .feedback-detail-content { margin-top: 13px; }
+.feedback-detail-modal .feedback-replies { margin-top: 13px; }
+.feedback-detail-modal .feedback-reply-box { margin-block: 13px; }
+
+/* Report cards show the workflow status as a title tag and reserve the right edge for the related account. */
+.violation-report-side article { grid-template-columns: minmax(0, 1fr) minmax(118px, auto); align-items: center; gap: 8px 12px; }
+.violation-report-content { display: grid; min-width: 0; gap: 2px; }
+.violation-report-title-line { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.violation-report-title-line > strong { min-width: 0; }
+.violation-report-status { display: inline-flex; flex: 0 0 auto; align-items: center; border-radius: 4px; background: rgba(161, 108, 37, 0.13); color: #a16c25; font-size: 0.61rem; line-height: 1; padding: 4px 6px; white-space: nowrap; }
+.violation-report-status.resolved { background: rgba(58, 128, 100, 0.12); color: #3a8064; }
+.violation-report-status.rejected { background: rgba(177, 68, 83, 0.13); color: #a53f50; }
+.violation-report-person { display: inline-flex; min-width: 0; align-items: center; justify-self: end; gap: 6px; color: var(--accent-strong); text-decoration: none; }
+.violation-report-person:hover { color: var(--accent); }
+.violation-report-avatar { display: grid; width: 27px; height: 27px; flex: 0 0 auto; place-items: center; overflow: hidden; border-radius: 50%; background: var(--accent-soft); color: var(--accent-strong); font-size: 0.66rem; font-weight: 700; }
+.violation-report-avatar > img { width: 100%; height: 100%; object-fit: cover; }
+.violation-report-person > span:last-child { display: grid; min-width: 0; gap: 1px; }
+.violation-report-person small { color: var(--muted); font-size: 0.57rem; }
+.violation-report-person strong { max-width: 96px; color: inherit; font-size: 0.65rem; }
+.violation-report-side article > .article-status-dot,
+.violation-report-side article > footer { display: none; }
+
+@media (max-width: 640px) {
+  .violation-report-side article { grid-template-columns: minmax(0, 1fr) auto; }
+  .violation-report-person strong { max-width: 72px; }
+}
+
 @media (max-width: 640px) {
   .article-status-preview-heading { align-items: flex-start; }
   .article-status-preview-article-heading { display: grid; gap: 10px; }
