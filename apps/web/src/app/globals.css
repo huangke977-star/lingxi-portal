@@ -16161,12 +16161,65 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .feedback-replies article p { font-size: 0.84rem; }
 .feedback-modal :is(input, textarea, .announcement-editor-select-trigger) { font-size: 0.86rem; }
 
-/* Article-center secondary navigation stays visually subordinate to the main directory. */
-.article-center-nav-wrap + :is(.article-discovery-tabs, .article-mine-toolbar, .discovery-toolbar, .collection-page-tabs, .topics-toolbar, .article-reading-tabs, .admin-management-toolbar) { margin-top: 2px; }
-.article-center-nav-wrap + :is(.article-discovery-tabs, .article-reading-tabs, .collection-page-tabs) { margin-bottom: 4px; }
-.article-center-secondary-tabs button { min-height: 32px; border-radius: 6px; font-size: 0.74rem; }
-.article-center-secondary-tabs button.active { background: color-mix(in srgb, var(--accent-soft) 56%, transparent); color: var(--accent-strong); font-weight: 650; }
-.article-center-secondary-tabs button.active::after { display: none; }
+/* Article-center secondary navigation shares one layout, including compact mobile overflow. */
+:is(.articles-page, .subscription-feed-page, .collection-manager-page, .topics-page, .admin-articles-page):has(> .article-center-nav-wrap) { gap: 10px; }
+.article-center-nav-wrap + :is(.article-center-secondary-tabs, .article-mine-toolbar, .discovery-toolbar, .collection-page-tabs, .topics-toolbar, .article-reading-tabs, .admin-management-toolbar) { margin-top: 0; }
+.article-center-nav-wrap + :is(.article-center-secondary-tabs, .article-reading-tabs, .collection-page-tabs) { margin-bottom: 0; }
+
+.article-center-secondary-tabs {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  border: 0;
+  background: transparent;
+  scrollbar-width: none;
+}
+.article-center-secondary-tabs::-webkit-scrollbar { display: none; }
+.article-center-secondary-tabs button {
+  position: relative;
+  display: inline-flex;
+  min-height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.article-center-secondary-tabs button:hover,
+.article-center-secondary-tabs button.active {
+  background: color-mix(in srgb, var(--accent-soft) 56%, transparent);
+  color: var(--accent-strong);
+}
+.article-center-secondary-tabs button.active { font-weight: 650; }
+.article-center-secondary-tabs button::after { display: none; }
+.article-center-secondary-tabs button > span {
+  min-width: 18px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1;
+  padding: 0;
+  text-align: center;
+}
+.article-center-secondary-tabs button.active > span { color: currentColor; }
 
 /* Keep management controls compact without changing shared article typography. */
 .admin-inspector-heading h2, .admin-comments-heading h2 { font-size: 1.05rem; }

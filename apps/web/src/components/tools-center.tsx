@@ -56,7 +56,7 @@ export function ToolsCenter() {
   const filteredRecords = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
     if (!normalized) return records;
-    return records.filter(({ category, entry }) => `${category.name} ${entry.title} ${entry.description}`.toLocaleLowerCase().includes(normalized));
+    return records.filter(({ category, entry }) => `${entry.title} ${kindLabel(category.kind)} ${category.name} ${entry.description ?? ""} ${entry.url ?? ""}`.toLocaleLowerCase().includes(normalized));
   }, [query, records]);
 
   async function save(next: PortalPreferences) {
@@ -93,7 +93,7 @@ export function ToolsCenter() {
 
   return <section className="p8-page p8-tools-page">
     <header className="p8-page-heading"><div><span className="section-label">TOOLS</span><h1>工具中心</h1></div><span className="p8-heading-note">{token ? "收藏并拖动排序，跨设备保持一致" : "登录后可保存常用工具"}</span></header>
-    <label className="p8-tool-search"><Search aria-hidden="true" size={17} /><input onChange={(event) => setQuery(event.target.value)} placeholder="搜索工具、导航或说明" value={query} /><span>{filteredRecords.length}</span></label>
+    <label className="p8-tool-search"><Search aria-hidden="true" size={17} /><input onChange={(event) => setQuery(event.target.value)} placeholder="搜索工具、导航、分类或说明" value={query} /><span>{filteredRecords.length}</span></label>
     {isLoading ? <div className="status-row compact-status-row"><span className="status">正在读取工具</span></div> : <div className="p8-tools-layout">
       <section className="p8-surface p8-saved-tools"><div className="p8-section-heading"><div><Star aria-hidden="true" size={17} /><h2>我的常用</h2></div><small>{isSaving ? "保存中" : `${savedRecords.length}/30`}</small></div>
         {savedRecords.length ? <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd} sensors={sensors}><SortableContext items={savedRecords.map(({ entry }) => entry.id)} strategy={verticalListSortingStrategy}><div className="p8-saved-tool-list">{savedRecords.map((record) => <SortableTool key={record.entry.id} onToggle={toggleSaved} record={record} />)}</div></SortableContext></DndContext> : <p className="p8-empty">从右侧工具列表收藏常用入口，可拖动调整顺序。</p>}
@@ -113,7 +113,7 @@ function SortableTool({ record, onToggle }: { record: ToolRecord; onToggle: (id:
 }
 
 function ToolCard({ record, isHomeShortcut, isSaved, onToggleHomeShortcut, onToggleSaved }: { record: ToolRecord; isHomeShortcut: boolean; isSaved: boolean; onToggleHomeShortcut: (id: number) => void; onToggleSaved: (id: number) => void }) {
-  return <article className="p8-tool-card"><ToolLink record={record} showDescription={false} /><div className="p8-tool-actions"><button aria-label={isHomeShortcut ? `移出首页快捷入口 ${record.entry.title}` : `加入首页快捷入口 ${record.entry.title}`} className={`p8-home-shortcut-button${isHomeShortcut ? " selected" : ""}`} onClick={() => onToggleHomeShortcut(record.entry.id)} title={isHomeShortcut ? "移出首页快捷入口" : "加入首页快捷入口"} type="button"><House aria-hidden="true" size={15} fill={isHomeShortcut ? "currentColor" : "none"} /></button><button aria-label={isSaved ? `取消收藏 ${record.entry.title}` : `收藏 ${record.entry.title}`} className={`p8-star-button${isSaved ? " saved" : ""}`} onClick={() => onToggleSaved(record.entry.id)} title={isSaved ? "取消收藏" : "加入常用"} type="button"><Star aria-hidden="true" size={16} fill={isSaved ? "currentColor" : "none"} /></button></div><small>{kindLabel(record.category.kind)} · {record.entry.description || portalHost(record.entry.url)}</small></article>;
+  return <article className="p8-tool-card"><ToolLink record={record} showDescription={false} /><div className="p8-tool-actions"><button aria-label={isHomeShortcut ? `移出首页快捷入口 ${record.entry.title}` : `加入首页快捷入口 ${record.entry.title}`} className={`p8-home-shortcut-button${isHomeShortcut ? " selected" : ""}`} onClick={() => onToggleHomeShortcut(record.entry.id)} title={isHomeShortcut ? "移出首页快捷入口" : "加入首页快捷入口"} type="button"><House aria-hidden="true" size={15} fill={isHomeShortcut ? "currentColor" : "none"} /></button><button aria-label={isSaved ? `取消收藏 ${record.entry.title}` : `收藏 ${record.entry.title}`} className={`p8-star-button${isSaved ? " saved" : ""}`} onClick={() => onToggleSaved(record.entry.id)} title={isSaved ? "取消收藏" : "加入常用"} type="button"><Star aria-hidden="true" size={16} fill={isSaved ? "currentColor" : "none"} /></button></div><small>{kindLabel(record.category.kind)} · {record.category.name} · {record.entry.description || portalHost(record.entry.url)}</small></article>;
 }
 
 function ToolLink({ record, showDescription = true }: { record: ToolRecord; showDescription?: boolean }) {
