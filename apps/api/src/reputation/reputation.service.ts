@@ -77,6 +77,13 @@ export const REPUTATION_RULES: ReputationRule[] = [
     points: 5,
     dailyExperienceCap: null,
   },
+  {
+    reason: ReputationReason.article_report_accepted,
+    label: "举报文章被采纳",
+    experience: 20,
+    points: 5,
+    dailyExperienceCap: null,
+  },
 ];
 
 @Injectable()
@@ -139,6 +146,44 @@ export class ReputationService implements OnModuleInit, OnModuleDestroy {
         settledAt: item.settledAt?.toISOString() ?? null,
         createdAt: item.createdAt.toISOString(),
       })),
+    };
+  }
+
+  async getMyLedger(userId: number, page = 1, pageSize = 20) {
+    const safePage = Math.max(1, Math.floor(page));
+    const safePageSize = Math.min(50, Math.max(1, Math.floor(pageSize)));
+    await this.settlePendingPoints();
+    const where: Prisma.UserReputationLedgerWhereInput = {
+      userId,
+      OR: [{ experienceDelta: { not: 0 } }, { pointDelta: { not: 0 } }, { pendingPointDelta: { not: 0 } }],
+    };
+    const [total, items] = await Promise.all([
+      this.prisma.userReputationLedger.count({ where }),
+      this.prisma.userReputationLedger.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: (safePage - 1) * safePageSize,
+        take: safePageSize,
+      }),
+    ]);
+    return {
+      items: items.map((item) => ({
+        id: item.id,
+        reason: item.reason,
+        description: item.description,
+        experienceDelta: item.experienceDelta,
+        pointDelta: item.pointDelta,
+        pendingPointDelta: item.pendingPointDelta,
+        experienceAfter: item.experienceAfter,
+        pointsAfter: item.pointsAfter,
+        availableAt: item.availableAt?.toISOString() ?? null,
+        settledAt: item.settledAt?.toISOString() ?? null,
+        createdAt: item.createdAt.toISOString(),
+      })),
+      total,
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.max(1, Math.ceil(total / safePageSize)),
     };
   }
 
@@ -225,6 +270,24 @@ export class ReputationService implements OnModuleInit, OnModuleDestroy {
       description: "获得新的订阅者",
       points: rule.points,
       metadata: { subscriberId },
+    });
+  }
+
+  awardArticleReportAccepted(
+    transaction: Prisma.TransactionClient,
+    reporterId: number,
+    articleId: number,
+    articleAuthorId: number,
+  ): Promise<boolean> {
+    const rule = this.rule(ReputationReason.article_report_accepted);
+    return this.award(transaction, {
+      userId: reporterId,
+      reason: rule.reason,
+      eventKey: `article-report-accepted:${articleId}:${reporterId}`,
+      description: "举报文章被采纳",
+      experience: rule.experience,
+      points: rule.points,
+      metadata: { articleId, articleAuthorId },
     });
   }
 

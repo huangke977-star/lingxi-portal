@@ -60,6 +60,7 @@ enum ReputationReason {
   author_subscribed
   resource_redeemed
   resource_sold
+  article_report_accepted
 }
 
 enum SiteAssetKind {
@@ -125,7 +126,24 @@ enum UserNotificationType {
   subscription_published
   announcement_published
   suggestion_updated
+  article_appeal_received
+  article_appeal_resolved
+  feedback_updated
+  article_publish_restricted
   system
+}
+
+enum ArticleAppealStatus {
+  pending
+  approved
+  rejected
+}
+
+enum UserFeedbackStatus {
+  pending
+  in_progress
+  resolved
+  closed
 }
 
 enum SuggestionStatus {
@@ -496,6 +514,14 @@ model User {
   reputationLedgers         UserReputationLedger[]
   resourceExchanges         ArticleResourceExchange[]      @relation("ArticleResourceBuyer")
   resourceSales             ArticleResourceExchange[]      @relation("ArticleResourceAuthor")
+  articleAppealsSubmitted   ArticleAppeal[]               @relation("ArticleAppealAuthor")
+  articleAppealsReviewed    ArticleAppeal[]               @relation("ArticleAppealReviewer")
+  articlePublishRestrictions ArticlePublishRestriction[]  @relation("RestrictedArticleAuthor")
+  createdArticleRestrictions ArticlePublishRestriction[]  @relation("ArticleRestrictionCreator")
+  liftedArticleRestrictions ArticlePublishRestriction[]   @relation("ArticleRestrictionLifter")
+  feedbackSubmitted         UserFeedback[]                @relation("UserFeedbackSubmitter")
+  feedbackReviewed           UserFeedback[]                @relation("UserFeedbackReviewer")
+  feedbackReplies            UserFeedbackReply[]           @relation("UserFeedbackReplyAuthor")
 
   @@index([roleId])
   @@index([createdAt])
@@ -1090,6 +1116,7 @@ model Article {
   subscriptionFeedReads SubscriptionFeedRead[]
   profilePins           UserProfileSettings[]   @relation("PinnedProfileArticle")
   resourceExchanges     ArticleResourceExchange[]
+  appeals               ArticleAppeal[]
   createdAt             DateTime                @default(now()) @map("created_at")
   updatedAt             DateTime                @updatedAt @map("updated_at")
 
@@ -1098,6 +1125,48 @@ model Article {
   @@index([category, status])
   @@index([publishedAt])
   @@map("articles")
+}
+
+model ArticleAppeal {
+  id          Int                @id @default(autoincrement())
+  articleId   Int                @map("article_id")
+  article     Article            @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  authorId    Int                @map("author_id")
+  author      User               @relation("ArticleAppealAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  reason      String             @db.VarChar(1000)
+  status      ArticleAppealStatus @default(pending)
+  reviewedById Int?              @map("reviewed_by_id")
+  reviewedBy  User?              @relation("ArticleAppealReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt  DateTime?          @map("reviewed_at")
+  resolution  String?            @db.VarChar(500)
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  @@index([articleId, status, createdAt])
+  @@index([authorId, status, createdAt])
+  @@map("article_appeals")
+}
+
+model ArticlePublishRestriction {
+  id            Int          @id @default(autoincrement())
+  userId        Int          @map("user_id")
+  user          User         @relation("RestrictedArticleAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  sourceReportId Int?        @map("source_report_id")
+  sourceReport  ArticleReport? @relation("ArticleReportRestrictionSource", fields: [sourceReportId], references: [id], onDelete: SetNull)
+  createdById   Int?         @map("created_by_id")
+  createdBy     User?        @relation("ArticleRestrictionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  liftedById    Int?         @map("lifted_by_id")
+  liftedBy      User?        @relation("ArticleRestrictionLifter", fields: [liftedById], references: [id], onDelete: SetNull)
+  reason        String       @db.VarChar(500)
+  startsAt      DateTime     @default(now()) @map("starts_at")
+  endsAt        DateTime?    @map("ends_at")
+  liftedAt      DateTime?    @map("lifted_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  @@index([userId, liftedAt, endsAt])
+  @@index([sourceReportId])
+  @@map("article_publish_restrictions")
 }
 
 model ArticleVersion {
@@ -1303,12 +1372,46 @@ model ArticleReport {
   createdAt     DateTime                   @default(now()) @map("created_at")
   updatedAt     DateTime                   @updatedAt @map("updated_at")
   notifications UserNotification[]
+  publishRestrictions ArticlePublishRestriction[] @relation("ArticleReportRestrictionSource")
 
   @@unique([articleId, reporterId])
   @@index([status, createdAt])
   @@index([reporterId])
   @@index([handledById])
   @@map("article_reports")
+}
+
+model UserFeedback {
+  id           Int               @id @default(autoincrement())
+  userId       Int               @map("user_id")
+  user         User              @relation("UserFeedbackSubmitter", fields: [userId], references: [id], onDelete: Cascade)
+  category     String            @db.VarChar(40)
+  title        String            @db.VarChar(120)
+  content      String            @db.Text
+  status       UserFeedbackStatus @default(pending)
+  reviewedById Int?              @map("reviewed_by_id")
+  reviewedBy   User?             @relation("UserFeedbackReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?         @map("reviewed_at")
+  replies      UserFeedbackReply[]
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  @@index([userId, updatedAt])
+  @@index([status, updatedAt])
+  @@map("user_feedback")
+}
+
+model UserFeedbackReply {
+  id         Int          @id @default(autoincrement())
+  feedbackId Int          @map("feedback_id")
+  feedback   UserFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  authorId   Int          @map("author_id")
+  author     User         @relation("UserFeedbackReplyAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  content    String       @db.Text
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  @@index([feedbackId, createdAt])
+  @@map("user_feedback_replies")
 }
 
 model ArticleLike {

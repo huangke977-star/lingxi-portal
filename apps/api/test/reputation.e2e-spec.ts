@@ -4,6 +4,36 @@ import { PrismaService } from "../src/prisma/prisma.service";
 import { ReputationService } from "../src/reputation/reputation.service";
 
 describe("ReputationService", () => {
+  it("awards an accepted article report only once for the same reporter and article", async () => {
+    const ledgerFind = jest.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 8 });
+    const createLedger = jest.fn(async () => ({ id: 9 }));
+    const transaction = {
+      userReputationLedger: {
+        findUnique: ledgerFind,
+        create: createLedger,
+      },
+      user: {
+        findUnique: jest.fn(async () => ({ experience: 10, points: 2, role: { level: 10 } })),
+        update: jest.fn(async () => ({ experience: 30, points: 7 })),
+      },
+      role: { findUnique: jest.fn(async () => null) },
+    };
+    const service = new ReputationService({} as PrismaService);
+
+    await expect(service.awardArticleReportAccepted(transaction as never, 7, 12, 8)).resolves.toBe(true);
+    await expect(service.awardArticleReportAccepted(transaction as never, 7, 12, 8)).resolves.toBe(false);
+    expect(createLedger).toHaveBeenCalledTimes(1);
+    expect(createLedger).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventKey: "article-report-accepted:12:7",
+        experienceDelta: 20,
+        pointDelta: 5,
+      }),
+    });
+  });
+
   it("returns balances, the earned growth level, progress and recent ledger entries", async () => {
     const prisma = {
       user: {

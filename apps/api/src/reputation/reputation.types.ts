@@ -29,6 +29,14 @@ export interface ReputationLedgerResponse {
   createdAt: string;
 }
 
+export interface ReputationLedgerPageResponse {
+  items: ReputationLedgerResponse[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export interface ReputationSummaryResponse {
   experience: number;
   points: number;

@@ -19,8 +19,10 @@ import {
   ArticleList,
   ArticleMineSummary,
   ArticleStatus,
+  Article,
   ARTICLE_STATUS_LABEL,
   deleteArticle,
+  createArticleAppeal,
   getMyArticleSummary,
   listMyArticles,
   permanentlyDeleteArticle,
@@ -68,6 +70,9 @@ function MyArticlesContent() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [appealArticle, setAppealArticle] = useState<Article | null>(null);
+  const [appealReason, setAppealReason] = useState("");
+  const [isAppealSaving, setIsAppealSaving] = useState(false);
   const composingRef = useRef(false);
 
   function replaceQuery(next: { status?: "all" | ArticleStatus; q?: string }) {
@@ -219,6 +224,7 @@ function MyArticlesContent() {
               <div className="article-mine-row-actions">
                 {article.status !== "deleted" ? <Link href={`/articles/edit/${article.id}`} title="编辑"><Edit3 aria-hidden="true" size={17} /><span>编辑</span></Link> : null}
                 {article.status === "published" || article.status === "blocked" ? <Link href={`/articles/${article.slug}`} title="查看"><ExternalLink aria-hidden="true" size={17} /><span>查看</span></Link> : null}
+                {article.status === "blocked" ? <button onClick={() => { setAppealArticle(article); setAppealReason(""); }} title="申诉" type="button">申诉</button> : null}
                 {article.status === "published" ? <button onClick={() => void runAction((token) => unpublishArticle(token, article.id), "文章已下架。") } type="button">下架</button> : null}
                 {article.status === "deleted" ? <button onClick={() => void runAction((token) => restoreArticle(token, article.id), "文章已恢复为草稿。") } type="button"><RotateCcw aria-hidden="true" size={16} /><span>恢复</span></button> : null}
                 {article.status === "deleted" ? <button className="text-danger-action" onClick={() => { if (window.confirm(`彻底删除《${article.title}》及其图片吗？此操作无法撤销。`)) void runAction((token) => permanentlyDeleteArticle(token, article.id), "文章已彻底删除。"); }} type="button"><Trash2 aria-hidden="true" size={16} /><span>彻底删除</span></button> : <button className="text-danger-action" onClick={() => { if (window.confirm(`将《${article.title}》移入回收站吗？`)) void runAction((token) => deleteArticle(token, article.id), "文章已移入回收站。"); }} type="button"><Trash2 aria-hidden="true" size={16} /><span>删除</span></button>}
@@ -229,6 +235,7 @@ function MyArticlesContent() {
       ) : <div className="article-empty-state"><strong>这里还没有文章</strong><span>{querySearch ? "换一个关键词试试。" : status === "deleted" ? "回收站目前是空的。" : "点击右上角“写文章”开始创作。"}</span></div>}
 
       {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
+      {appealArticle ? <div className="modal-backdrop article-appeal-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !isAppealSaving) setAppealArticle(null); }}><form className="article-appeal-modal" onSubmit={async (event) => { event.preventDefault(); const token = readAccessToken(); if (!token || !appealReason.trim()) return; setIsAppealSaving(true); try { await createArticleAppeal(token, appealArticle.id, appealReason.trim()); setAppealArticle(null); setNotice("申诉已提交，等待管理员处理。"); } catch (appealError) { setError(appealError instanceof Error ? appealError.message : "申诉提交失败。"); } finally { setIsAppealSaving(false); } }}><header><strong>申诉文章</strong><button aria-label="关闭" onClick={() => setAppealArticle(null)} type="button"><X size={17} /></button></header><p>《{appealArticle.title}》当前处于受限状态，修改内容后可以提交申诉。</p><textarea autoFocus maxLength={1000} onChange={(event) => setAppealReason(event.target.value)} placeholder="请填写申诉理由和你已做的修改" required rows={7} value={appealReason} /><footer><button className="button" disabled={isAppealSaving} type="submit">{isAppealSaving ? "提交中" : "提交申诉"}</button></footer></form></div> : null}
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );

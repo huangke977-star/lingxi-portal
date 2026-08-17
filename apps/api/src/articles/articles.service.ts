@@ -11,6 +11,7 @@ import {
   ArticleCommentReportReason,
   ArticleCommentReportStatus,
   ArticleCommentStatus,
+  ArticleAppealStatus,
   ArticleStatus,
   ArticleTopicStatus,
   ArticleVersionSource,
@@ -31,6 +32,7 @@ import {
   ArticleStatusValue,
   AutosaveArticleDto,
   CreateArticleCommentDto,
+  CreateArticleAppealDto,
   CreateArticleDto,
   ListArticleCommentsQueryDto,
   ListArticlesQueryDto,
@@ -38,13 +40,16 @@ import {
   ModerateArticleCommentReportDto,
   ModerateArticleDto,
   ModerateArticleReportDto,
+  ModerateArticleAppealDto,
   RedeemArticleResourceDto,
   ReportArticleDto,
   ReportArticleCommentDto,
   UpdateArticleDto,
+  UpdateArticlePublishRestrictionDto,
 } from "./dto/article.dto";
 import {
   ArticleAuthorResponse,
+  ArticleAppealResponse,
   ArticleCenterSummaryResponse,
   ArticleCommentResponse,
   ArticleCommentReportResponse,
@@ -59,6 +64,7 @@ import {
   ArticleVersionResponse,
   ArticleVersionSummaryResponse,
   ReadingProgressResponse,
+  ViolationAuthorResponse,
 } from "./articles.types";
 import { parseArticleContent } from "./article-resources";
 
@@ -261,12 +267,30 @@ const articleReportInclude = {
   },
 } satisfies Prisma.ArticleReportInclude;
 
+const articleAppealInclude = {
+  article: { select: { id: true, title: true, slug: true, status: true } },
+  author: {
+    select: {
+      id: true,
+      nickname: true,
+      username: true,
+      avatarStoredName: true,
+      isSuperAdmin: true,
+      role: { select: { code: true, name: true, level: true } },
+    },
+  },
+} satisfies Prisma.ArticleAppealInclude;
+
 type CommentReportRecord = Prisma.ArticleCommentReportGetPayload<{
   include: typeof commentReportInclude;
 }>;
 
 type ArticleReportRecord = Prisma.ArticleReportGetPayload<{
   include: typeof articleReportInclude;
+}>;
+
+type ArticleAppealRecord = Prisma.ArticleAppealGetPayload<{
+  include: typeof articleAppealInclude;
 }>;
 
 @Injectable()
@@ -530,6 +554,7 @@ export class ArticlesService {
     const visibility = dto.visibility ?? publishPolicy.defaultArticleVisibility;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
     const status = this.normalizeAuthorStatus(dto.status);
+    if (status === ArticleStatus.published) await this.assertArticlePublishAllowed(user);
     const slug = await this.createUniqueSlug(title);
     const tags = this.normalizeTags(dto.tags);
     const article = await this.prisma.$transaction(async (transaction) => {
@@ -727,6 +752,7 @@ export class ArticlesService {
     const status = existing.status === ArticleStatus.blocked && !this.canManageContent(user)
       ? ArticleStatus.blocked
       : requestedStatus;
+    if (status === ArticleStatus.published && !this.canManageContent(user)) await this.assertArticlePublishAllowed(user);
     const isFirstPublication = status === ArticleStatus.published && existing.publishedAt === null;
     const title = dto.title?.trim() || existing.title;
     const category = dto.category === undefined ? existing.category : dto.category.trim();
@@ -769,6 +795,7 @@ export class ArticlesService {
   async publish(id: number, user: AuthenticatedUser): Promise<ArticleResponse> {
     const existing = await this.getArticleOrThrow(id);
     this.assertCanEdit(existing, user);
+    await this.assertArticlePublishAllowed(user);
     if (existing.status === ArticleStatus.blocked || existing.status === ArticleStatus.deleted) {
       throw new BadRequestException("受限或已删除的文章不能直接发布。");
     }
@@ -1374,7 +1401,16 @@ export class ArticlesService {
     const reports = await this.prisma.articleReport.findMany({
       where: normalizedStatus ? { status: normalizedStatus } : undefined,
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 100,
+      include: articleReportInclude,
+    });
+    return { items: reports.map((report) => this.toArticleReportResponse(report)) };
+  }
+
+  async listMyArticleReports(user: AuthenticatedUser): Promise<{ items: ArticleReportResponse[] }> {
+    const reports = await this.prisma.articleReport.findMany({
+      where: { reporterId: user.id },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 200,
       include: articleReportInclude,
     });
     return { items: reports.map((report) => this.toArticleReportResponse(report)) };
@@ -1535,6 +1571,7 @@ export class ArticlesService {
       if (updated.count !== 1) throw new BadRequestException("这条文章举报已经由其他管理员处理。");
       if (notificationSettings.notifyCommentReport) {
         const resolved = dto.status === "resolved";
+        const feedback = dto.resolution?.trim() || `你对《${report.article.title}》的举报已${resolved ? "处理" : "驳回"}。`;
         await transaction.userNotification.create({
           data: {
             userId: report.reporterId,
@@ -1542,33 +1579,202 @@ export class ArticlesService {
             type: resolved ? UserNotificationType.article_report_resolved : UserNotificationType.article_report_rejected,
             channel: UserNotificationChannel.system,
             title: resolved ? "文章举报已处理" : "文章举报已驳回",
-            body: (dto.resolution?.trim() || `你对《${report.article.title}》的举报已${resolved ? "处理" : "驳回"}。`).slice(0, 500),
+            body: feedback.slice(0, 500),
             actionUrl: `/articles/${report.article.slug}`,
             articleId: report.articleId,
             articleReportId: id,
           },
         });
-        if (
-          report.article.authorId !== report.reporterId &&
-          (dto.articleStatus === "blocked" || dto.articleStatus === "deleted")
-        ) {
-          await transaction.userNotification.create({
-            data: {
-              userId: report.article.authorId,
-              actorId: actor.id,
-              type: UserNotificationType.article_author_moderated,
-              channel: UserNotificationChannel.system,
-              title: dto.articleStatus === "deleted" ? "你的文章已删除" : "你的文章已屏蔽",
-              body: `《${report.article.title}》已因举报被${dto.articleStatus === "deleted" ? "删除" : "屏蔽"}${dto.resolution ? `：${dto.resolution.trim()}` : "。"}`.slice(0, 500),
-              actionUrl: `/articles/${report.article.slug}`,
-              articleId: report.articleId,
-              articleReportId: id,
-            },
-          });
-        }
+        await transaction.userNotification.create({
+          data: {
+            userId: report.article.authorId,
+            actorId: actor.id,
+            type: UserNotificationType.article_author_moderated,
+            channel: UserNotificationChannel.system,
+            title: dto.articleStatus === "deleted"
+              ? "你的文章已删除"
+              : dto.articleStatus === "blocked"
+                ? "你的文章已屏蔽"
+                : "文章举报处理结果",
+            body: `《${report.article.title}》的举报处理结果：${feedback}`.slice(0, 500),
+            actionUrl: `/articles/${report.article.slug}`,
+            articleId: report.articleId,
+            articleReportId: id,
+          },
+        });
+      }
+      if (dto.status === "resolved") {
+        await this.reputationService.awardArticleReportAccepted(
+          transaction,
+          report.reporterId,
+          report.articleId,
+          report.article.authorId,
+        );
+        await this.ensureAuthorRestriction(transaction, report.article.authorId, id);
       }
     });
     return { success: true };
+  }
+
+  async createArticleAppeal(id: number, user: AuthenticatedUser, dto: CreateArticleAppealDto): Promise<ArticleAppealResponse> {
+    const article = await this.getArticleOrThrow(id);
+    if (article.authorId !== user.id) throw new ForbiddenException("只有文章作者可以申诉。");
+    if (article.status !== ArticleStatus.blocked) throw new BadRequestException("只有被屏蔽的文章可以申诉。");
+    const pending = await this.prisma.articleAppeal.findFirst({ where: { articleId: id, status: ArticleAppealStatus.pending } });
+    if (pending) throw new BadRequestException("这篇文章已有待处理申诉，请等待管理员处理。");
+    const appeal = await this.prisma.articleAppeal.create({
+      data: { articleId: id, authorId: user.id, reason: dto.reason.trim() },
+      include: articleAppealInclude,
+    });
+    const administrators = await this.prisma.user.findMany({
+      where: { status: "active", OR: [{ isSuperAdmin: true }, { role: { level: { gte: 90 } } }] },
+      select: { id: true },
+    });
+    if (administrators.length) {
+      await this.prisma.userNotification.createMany({
+        data: administrators.map(({ id: administratorId }) => ({
+          userId: administratorId,
+          actorId: user.id,
+          type: UserNotificationType.article_appeal_received,
+          channel: UserNotificationChannel.system,
+          title: "收到文章申诉",
+          body: `${user.nickname || user.username} 申诉了《${article.title}》，请前往文章管理处理。`.slice(0, 500),
+          actionUrl: `/admin/articles?tab=articles&appeal=${appeal.id}`,
+          articleId: id,
+        })),
+      });
+    }
+    return this.toArticleAppealResponse(appeal);
+  }
+
+  async listArticleAppeals(status?: string): Promise<{ items: ArticleAppealResponse[] }> {
+    const normalized = status && Object.values(ArticleAppealStatus).includes(status as ArticleAppealStatus)
+      ? status as ArticleAppealStatus
+      : undefined;
+    const items = await this.prisma.articleAppeal.findMany({
+      where: normalized ? { status: normalized } : undefined,
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }, { id: "desc" }],
+      take: 200,
+      include: articleAppealInclude,
+    });
+    return { items: items.map((item) => this.toArticleAppealResponse(item)) };
+  }
+
+  async moderateArticleAppeal(id: number, actor: AuthenticatedUser, dto: ModerateArticleAppealDto): Promise<{ success: true }> {
+    this.assertCanManageContent(actor);
+    await this.prisma.$transaction(async (transaction) => {
+      const appeal = await transaction.articleAppeal.findUnique({
+        where: { id },
+        select: { articleId: true, authorId: true, status: true, article: { select: { title: true, slug: true } } },
+      });
+      if (!appeal) throw new NotFoundException("文章申诉不存在。");
+      if (appeal.status !== ArticleAppealStatus.pending) throw new BadRequestException("这条申诉已经处理，不能重复操作。");
+      await transaction.articleAppeal.update({
+        where: { id },
+        data: { status: dto.status as ArticleAppealStatus, resolution: dto.resolution.trim(), reviewedById: actor.id, reviewedAt: new Date() },
+      });
+      if (dto.status === "approved") {
+        await transaction.article.update({
+          where: { id: appeal.articleId },
+          data: { status: ArticleStatus.unpublished, blockedReason: null },
+        });
+      }
+      await transaction.userNotification.create({
+        data: {
+          userId: appeal.authorId,
+          actorId: actor.id,
+          type: UserNotificationType.article_appeal_resolved,
+          channel: UserNotificationChannel.system,
+          title: dto.status === "approved" ? "文章申诉已通过" : "文章申诉已驳回",
+          body: `《${appeal.article.title}》的申诉${dto.status === "approved" ? "已通过，文章已解除屏蔽，请重新发布" : "已驳回"}：${dto.resolution.trim()}`.slice(0, 500),
+          actionUrl: `/articles/edit/${appeal.articleId}`,
+          articleId: appeal.articleId,
+        },
+      });
+    });
+    return { success: true };
+  }
+
+  async listViolationAuthors(): Promise<{ items: ViolationAuthorResponse[] }> {
+    const reports = await this.prisma.articleReport.findMany({
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 5000,
+      select: {
+        reporterId: true,
+        createdAt: true,
+        article: { select: { authorId: true, author: { select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, role: { select: { code: true, name: true, level: true } } } } } },
+      },
+    });
+    const activeRestrictions = await this.prisma.articlePublishRestriction.findMany({
+      where: { liftedAt: null, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { id: true, userId: true, reason: true, startsAt: true, endsAt: true, liftedAt: true },
+    });
+    const byUser = new Map<number, typeof reports[number]["article"]["author"]>();
+    for (const report of reports) byUser.set(report.article.authorId, report.article.author);
+    for (const restriction of activeRestrictions) {
+      if (!byUser.has(restriction.userId)) {
+        const user = await this.prisma.user.findUnique({ where: { id: restriction.userId }, select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, role: { select: { code: true, name: true, level: true } } } });
+        if (user) byUser.set(user.id, user);
+      }
+    }
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const items = [...byUser.entries()].map(([userId, author]) => {
+      const received = reports.filter((report) => report.article.authorId === userId);
+      const submitted = reports.filter((report) => report.reporterId === userId);
+      const restriction = activeRestrictions.find((item) => item.userId === userId) ?? null;
+      return {
+        user: this.toAuthor(author),
+        totalReceived: received.length,
+        recentReceived: received.filter((item) => item.createdAt >= cutoff).length,
+        totalSubmitted: submitted.length,
+        recentSubmitted: submitted.filter((item) => item.createdAt >= cutoff).length,
+        restriction: restriction ? { id: restriction.id, reason: restriction.reason, startsAt: restriction.startsAt.toISOString(), endsAt: restriction.endsAt?.toISOString() ?? null, liftedAt: restriction.liftedAt?.toISOString() ?? null } : null,
+      };
+    }).sort((a, b) => b.recentReceived - a.recentReceived || b.totalReceived - a.totalReceived);
+    return { items };
+  }
+
+  async getViolationAuthor(userId: number) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, role: { select: { code: true, name: true, level: true } } } });
+    if (!user) throw new NotFoundException("用户不存在。");
+    const [received, submitted, restriction] = await Promise.all([
+      this.prisma.articleReport.findMany({ where: { article: { authorId: userId } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 500, include: { article: { select: { id: true, title: true, slug: true } }, reporter: { select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, role: { select: { code: true, name: true, level: true } } } } } }),
+      this.prisma.articleReport.findMany({ where: { reporterId: userId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 500, include: { article: { select: { id: true, title: true, slug: true, author: { select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, role: { select: { code: true, name: true, level: true } } } } } } } }),
+      this.prisma.articlePublishRestriction.findFirst({ where: { userId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, reason: true, startsAt: true, endsAt: true, liftedAt: true } }),
+    ]);
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    return {
+      user: this.toAuthor(user),
+      totalReceived: received.length,
+      recentReceived: received.filter((item) => item.createdAt >= cutoff).length,
+      totalSubmitted: submitted.length,
+      recentSubmitted: submitted.filter((item) => item.createdAt >= cutoff).length,
+      restriction: restriction ? { id: restriction.id, reason: restriction.reason, startsAt: restriction.startsAt.toISOString(), endsAt: restriction.endsAt?.toISOString() ?? null, liftedAt: restriction.liftedAt?.toISOString() ?? null } : null,
+      received: received.map((item) => ({ id: item.id, article: item.article, reporter: this.toAuthor(item.reporter), reason: item.reason, detail: item.detail, status: item.status, resolution: item.resolution, createdAt: item.createdAt.toISOString(), handledAt: item.handledAt?.toISOString() ?? null })),
+      submitted: submitted.map((item) => ({ id: item.id, article: item.article, reason: item.reason, detail: item.detail, status: item.status, resolution: item.resolution, createdAt: item.createdAt.toISOString(), handledAt: item.handledAt?.toISOString() ?? null })),
+    };
+  }
+
+  async updateViolationRestriction(userId: number, actor: AuthenticatedUser, dto: UpdateArticlePublishRestrictionDto) {
+    this.assertCanManageContent(actor);
+    const target = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, nickname: true, username: true } });
+    if (!target) throw new NotFoundException("用户不存在。");
+    const current = await this.prisma.articlePublishRestriction.findFirst({ where: { userId, liftedAt: null, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+    if (dto.active === false) {
+      if (current) await this.prisma.articlePublishRestriction.update({ where: { id: current.id }, data: { liftedAt: new Date(), liftedById: actor.id } });
+      return { success: true, active: false };
+    }
+    const endsAt = dto.permanent ? null : dto.endsAt ? new Date(dto.endsAt) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    if (endsAt && Number.isNaN(endsAt.getTime())) throw new BadRequestException("限制结束时间无效。");
+    if (endsAt && endsAt <= new Date()) throw new BadRequestException("限制结束时间必须晚于当前时间。");
+    if (current) {
+      await this.prisma.articlePublishRestriction.update({ where: { id: current.id }, data: { endsAt, reason: dto.reason?.trim() || current.reason } });
+    } else {
+      await this.prisma.articlePublishRestriction.create({ data: { userId, createdById: actor.id, reason: dto.reason?.trim() || "管理员手动限制文章发布", endsAt } });
+    }
+    await this.prisma.userNotification.create({ data: { userId, actorId: actor.id, type: UserNotificationType.article_publish_restricted, channel: UserNotificationChannel.system, title: "文章发布权限已更新", body: endsAt ? `管理员已限制你发布文章至 ${endsAt.toLocaleString("zh-CN") }。` : "管理员已永久限制你发布文章。", actionUrl: "/articles/mine" } });
+    return { success: true, active: true, endsAt: endsAt?.toISOString() ?? null };
   }
 
   private async listArticles(
@@ -2049,6 +2255,19 @@ export class ArticlesService {
     return normalized;
   }
 
+  private async assertArticlePublishAllowed(user: AuthenticatedUser): Promise<void> {
+    if (this.canManageContent(user)) return;
+    const restriction = await this.prisma.articlePublishRestriction?.findFirst({
+      where: { userId: user.id, liftedAt: null, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { endsAt: true },
+    });
+    if (!restriction) return;
+    throw new BadRequestException(restriction.endsAt
+      ? `当前账号被限制发布文章至 ${restriction.endsAt.toLocaleString("zh-CN")}，可以继续保存文章。`
+      : "当前账号被永久限制发布文章，可以继续保存文章。");
+  }
+
   private async resolveRoles(visibility: ArticleVisibility | string, roleCodes: string[]) {
     const normalizedCodes = [...new Set(roleCodes.map((code) => code.trim()).filter(Boolean))];
     if (visibility !== ArticleVisibility.role_restricted) return [];
@@ -2447,6 +2666,58 @@ export class ArticlesService {
       createdAt: report.createdAt.toISOString(),
       handledAt: report.handledAt?.toISOString() ?? null,
     };
+  }
+
+  private toArticleAppealResponse(appeal: ArticleAppealRecord): ArticleAppealResponse {
+    return {
+      id: appeal.id,
+      article: appeal.article,
+      author: this.toAuthor(appeal.author),
+      reason: appeal.reason,
+      status: appeal.status,
+      resolution: appeal.resolution,
+      createdAt: appeal.createdAt.toISOString(),
+      reviewedAt: appeal.reviewedAt?.toISOString() ?? null,
+    };
+  }
+
+  private async ensureAuthorRestriction(
+    transaction: Prisma.TransactionClient,
+    authorId: number,
+    sourceReportId: number,
+  ): Promise<void> {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const validCount = await transaction.articleReport.count({
+      where: { status: ArticleCommentReportStatus.resolved, createdAt: { gte: cutoff }, article: { authorId } },
+    });
+    if (validCount < 3) return;
+    const now = new Date();
+    const active = await transaction.articlePublishRestriction.findFirst({
+      where: { userId: authorId, liftedAt: null, OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+      select: { id: true },
+    });
+    if (active) return;
+    const endsAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    await transaction.articlePublishRestriction.create({
+      data: {
+        userId: authorId,
+        sourceReportId,
+        reason: "最近 30 天内有效文章举报达到 3 次，系统自动限制发布。",
+        startsAt: now,
+        endsAt,
+      },
+    });
+    await transaction.userNotification.create({
+      data: {
+        userId: authorId,
+        actorId: null,
+        type: UserNotificationType.article_publish_restricted,
+        channel: UserNotificationChannel.system,
+        title: "文章发布权限已限制",
+        body: `你最近 30 天内有 ${validCount} 次有效文章举报，系统已限制发布文章至 ${endsAt.toLocaleString("zh-CN")}。你仍可以保存修改。`,
+        actionUrl: "/articles/mine",
+      },
+    });
   }
 
   private visibleCommentIds(comments: Array<{

@@ -30,6 +30,7 @@ import {
 } from "./articles.service";
 import {
   CreateArticleCommentDto,
+  CreateArticleAppealDto,
   CreateArticleDto,
   AutosaveArticleDto,
   ListArticleCommentsQueryDto,
@@ -38,11 +39,13 @@ import {
   ModerateArticleCommentReportDto,
   ModerateArticleDto,
   ModerateArticleReportDto,
+  ModerateArticleAppealDto,
   RedeemArticleResourceDto,
   ReportArticleDto,
   ReportArticleCommentDto,
   UpdateReadingProgressDto,
   UpdateArticleDto,
+  UpdateArticlePublishRestrictionDto,
 } from "./dto/article.dto";
 
 @Controller("articles")
@@ -87,6 +90,12 @@ export class ArticlesController {
   @UseGuards(JwtAuthGuard)
   getMineSummary(@CurrentUser() user: AuthenticatedUser) {
     return this.articlesService.getMineSummary(user);
+  }
+
+  @Get("mine/reports")
+  @UseGuards(JwtAuthGuard)
+  listMyArticleReports(@CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.listMyArticleReports(user);
   }
 
   @Get("mine/:id")
@@ -177,6 +186,34 @@ export class ArticlesController {
   @UseGuards(JwtAuthGuard, UserManagementGuard)
   listArticleReports(@Query("status") status?: string) {
     return this.articlesService.listArticleReports(status);
+  }
+
+  @Get("admin/appeals")
+  @UseGuards(JwtAuthGuard, UserManagementGuard)
+  listArticleAppeals(@Query("status") status?: string) {
+    return this.articlesService.listArticleAppeals(status);
+  }
+
+  @Get("admin/violations")
+  @UseGuards(JwtAuthGuard, UserManagementGuard)
+  listViolationAuthors() {
+    return this.articlesService.listViolationAuthors();
+  }
+
+  @Get("admin/violations/:userId")
+  @UseGuards(JwtAuthGuard, UserManagementGuard)
+  getViolationAuthor(@Param("userId", ParseIntPipe) userId: number) {
+    return this.articlesService.getViolationAuthor(userId);
+  }
+
+  @Patch("admin/violations/:userId/restriction")
+  @UseGuards(JwtAuthGuard, UserManagementGuard)
+  updateViolationRestriction(
+    @Param("userId", ParseIntPipe) userId: number,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Body() dto: UpdateArticlePublishRestrictionDto,
+  ) {
+    return this.articlesService.updateViolationRestriction(userId, actor, dto);
   }
 
   @Get("admin/:id")
@@ -454,6 +491,16 @@ export class ArticlesController {
     return this.articlesService.reportArticle(id, user, dto);
   }
 
+  @Post(":id/appeals")
+  @UseGuards(JwtAuthGuard)
+  createArticleAppeal(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateArticleAppealDto,
+  ) {
+    return this.articlesService.createArticleAppeal(id, user, dto);
+  }
+
   @Patch("admin/:id")
   @UseGuards(JwtAuthGuard, UserManagementGuard)
   moderate(
@@ -492,6 +539,16 @@ export class ArticlesController {
     @Body() dto: ModerateArticleReportDto,
   ) {
     return this.articlesService.moderateArticleReport(id, actor, dto);
+  }
+
+  @Patch("admin/appeals/:id")
+  @UseGuards(JwtAuthGuard, UserManagementGuard)
+  moderateArticleAppeal(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Body() dto: ModerateArticleAppealDto,
+  ) {
+    return this.articlesService.moderateArticleAppeal(id, actor, dto);
   }
 
   private visitorKey(request: Request, userId?: number): string {

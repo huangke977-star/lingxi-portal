@@ -988,7 +988,7 @@ export default function ProfilePage() {
           <section className="profile-panel reputation-panel">
             <div className="panel-heading reputation-heading">
               <span className="section-label">Growth & points</span>
-              <strong>成长与积分</strong>
+              <strong>成长与积分</strong><button className="text-action reputation-detail-link" onClick={() => router.push("/profile/points")} type="button">积分明细</button>
             </div>
             {reputation ? <div className="reputation-layout">
               <div className="reputation-overview">

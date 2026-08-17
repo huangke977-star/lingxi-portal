@@ -124,6 +124,32 @@ export interface ArticleReportResponse {
   handledAt: string | null;
 }
 
+export interface ArticleAppealResponse {
+  id: number;
+  article: { id: number; title: string; slug: string; status: ArticleStatusValue };
+  author: ArticleAuthorResponse;
+  reason: string;
+  status: string;
+  resolution: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+}
+
+export interface ViolationAuthorResponse {
+  user: ArticleAuthorResponse;
+  totalReceived: number;
+  recentReceived: number;
+  totalSubmitted: number;
+  recentSubmitted: number;
+  restriction: {
+    id: number;
+    reason: string;
+    startsAt: string;
+    endsAt: string | null;
+    liftedAt: string | null;
+  } | null;
+}
+
 export interface ArticleReportSummaryResponse {
   pending: number;
 }

@@ -27,6 +27,7 @@ import { ArticleAuthorLine, ArticlePinBadge, formatArticleDate } from "@/compone
 import { AppToast } from "@/components/app-toast";
 import {
   Article,
+  ArticleAppeal,
   ArticleComment,
   ArticleCommentReport,
   ArticleReport,
@@ -40,10 +41,12 @@ import {
   listAdminComments,
   listCommentReports,
   listArticleReports,
+  listArticleAppeals,
   moderateArticle,
   moderateArticleComment,
   moderateCommentReport,
   moderateArticleReport,
+  moderateArticleAppeal,
 } from "@/lib/article-api";
 import { buildArticleCommentThreads } from "@/lib/article-comments";
 import type { ArticleCommentThread } from "@/lib/article-comments";
@@ -69,6 +72,7 @@ function AdminArticlesWorkspace() {
   const [comments, setComments] = useState<ArticleComment[]>([]);
   const [reports, setReports] = useState<ArticleCommentReport[]>([]);
   const [articleReports, setArticleReports] = useState<ArticleReport[]>([]);
+  const [articleAppeals, setArticleAppeals] = useState<ArticleAppeal[]>([]);
   const [pendingReportCount, setPendingReportCount] = useState(0);
   const [commentFilter, setCommentFilter] = useState<"all" | "reported" | "pending">("all");
   const [highlightCommentId, setHighlightCommentId] = useState<number | null>(null);
@@ -90,6 +94,10 @@ function AdminArticlesWorkspace() {
   const [isReportQueueOpen, setIsReportQueueOpen] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [reportAction, setReportAction] = useState<{ report: ArticleReport; action: "rejected" | "resolved" | "blocked" | "deleted" } | null>(null);
+  const [reportResolution, setReportResolution] = useState("");
+  const [appealAction, setAppealAction] = useState<{ appeal: ArticleAppeal; status: "approved" | "rejected" } | null>(null);
+  const [appealResolution, setAppealResolution] = useState("");
   const composingRef = useRef(false);
   const initializedRef = useRef(false);
   const reportQueueRef = useRef<HTMLDivElement | null>(null);
@@ -132,15 +140,18 @@ function AdminArticlesWorkspace() {
   }
 
   async function loadReportQueue(token: string) {
-    const [summary, reportResult, articleSummary, articleReportResult] = await Promise.all([
+    const [summary, reportResult, articleSummary, articleReportResult, appealResult] = await Promise.all([
       getCommentReportSummary(token),
       listCommentReports(token, "pending"),
       getArticleReportSummary(token),
       listArticleReports(token),
+      listArticleAppeals(token),
     ]);
     setPendingReportCount(summary.pending + articleSummary.pending);
     setReports(reportResult.items);
     setArticleReports(articleReportResult.items);
+    setArticleAppeals(appealResult.items);
+    setPendingReportCount(summary.pending + articleSummary.pending + appealResult.items.filter((appeal) => appeal.status === "pending").length);
     return { reportResult, articleReportResult: { items: articleReportResult.items.filter((report) => report.status === "pending") } };
   }
 
@@ -464,31 +475,56 @@ function AdminArticlesWorkspace() {
     }
   }
 
-  async function handleArticleReport(
+  function handleArticleReport(
     report: ArticleReport,
     action: "rejected" | "resolved" | "blocked" | "deleted",
   ) {
+    setReportResolution("");
+    setReportAction({ report, action });
+  }
+
+  async function submitArticleReportAction(event: React.FormEvent) {
+    event.preventDefault();
     const token = readAccessToken();
-    if (!token) return;
+    if (!token || !reportAction || !reportResolution.trim()) return;
     try {
-      await moderateArticleReport(token, report.id, {
-        status: action === "rejected" ? "rejected" : "resolved",
-        articleStatus: action === "blocked" || action === "deleted" ? action : undefined,
-      });
-      const refreshed = await getAdminArticle(token, report.article.id);
+      await moderateArticleReport(token, reportAction.report.id, { status: reportAction.action === "rejected" ? "rejected" : "resolved", articleStatus: reportAction.action === "blocked" || reportAction.action === "deleted" ? reportAction.action : undefined, resolution: reportResolution.trim() });
+      const refreshed = await getAdminArticle(token, reportAction.report.article.id);
       applyArticleSelection(refreshed);
       setArticleList((current) => ({ ...current, items: current.items.map((item) => item.id === refreshed.id ? refreshed : item) }));
       await loadReportQueue(token);
-      setNotice(action === "rejected" ? "文章举报已驳回。" : action === "resolved" ? "举报已处理，文章未修改。" : action === "blocked" ? "文章已屏蔽并处理举报。" : "文章已删除并处理举报。");
-    } catch (reportError) {
-      setError(reportError instanceof Error ? reportError.message : "文章举报处理失败。");
-    }
+      setReportAction(null);
+      setNotice(reportAction.action === "rejected" ? "文章举报已驳回。" : reportAction.action === "resolved" ? "举报已处理，文章未修改。" : reportAction.action === "blocked" ? "文章已屏蔽并处理举报。" : "文章已删除并处理举报。");
+    } catch (reportError) { setError(reportError instanceof Error ? reportError.message : "文章举报处理失败。"); }
+  }
+
+  function handleArticleAppeal(appeal: ArticleAppeal, status: "approved" | "rejected") {
+    setAppealResolution("");
+    setAppealAction({ appeal, status });
+  }
+
+  async function submitArticleAppealAction(event: React.FormEvent) {
+    event.preventDefault();
+    const token = readAccessToken();
+    if (!token || !appealAction || !appealResolution.trim()) return;
+    try {
+      await moderateArticleAppeal(token, appealAction.appeal.id, { status: appealAction.status, resolution: appealResolution.trim() });
+      await loadReportQueue(token);
+      setAppealAction(null);
+      setNotice(appealAction.status === "approved" ? "申诉已通过，文章已解除屏蔽。" : "申诉已驳回。");
+    } catch (appealError) { setError(appealError instanceof Error ? appealError.message : "申诉处理失败。"); }
   }
 
   function renderArticleReports(articleId: number) {
     const reportsForArticle = articleReports.filter((report) => report.article.id === articleId);
     if (!reportsForArticle.length) return null;
-    return <section className="admin-article-reports"><div className="admin-section-heading"><span><AlertTriangle aria-hidden="true" size={15} />文章举报</span><small>{reportsForArticle.length} 条</small></div>{reportsForArticle.map((report) => <article className={`admin-article-report ${report.status}`} key={report.id}><div><strong>{report.reason === "spam" ? "垃圾广告" : report.reason === "harassment" ? "辱骂骚扰" : report.reason === "illegal" ? "违法违规" : report.reason === "privacy" ? "隐私泄露" : report.reason === "misinformation" ? "不实内容" : "其他"}</strong><span>{report.reporter.nickname} · {formatArticleDate(report.createdAt)}</span></div>{report.detail ? <p>{report.detail}</p> : null}{report.status === "pending" ? <div className="admin-article-report-actions"><button onClick={() => void handleArticleReport(report, "rejected")} type="button">驳回</button><button onClick={() => void handleArticleReport(report, "resolved")} type="button">处理但不改文章</button><button onClick={() => void handleArticleReport(report, "blocked")} type="button">屏蔽文章</button><button className="text-danger-action" onClick={() => void handleArticleReport(report, "deleted")} type="button">删除文章</button></div> : <em>{report.status === "resolved" ? "已处理" : "已驳回"}{report.resolution ? ` · ${report.resolution}` : ""}</em>}</article>)}</section>;
+    return <section className="admin-article-reports"><div className="admin-section-heading"><span><AlertTriangle aria-hidden="true" size={15} />文章举报</span><small>{reportsForArticle.length} 条</small></div>{reportsForArticle.map((report) => <article className={`admin-article-report ${report.status}`} key={report.id}><div><strong>{report.reason === "spam" ? "垃圾广告" : report.reason === "harassment" ? "辱骂骚扰" : report.reason === "illegal" ? "违法违规" : report.reason === "privacy" ? "隐私泄露" : report.reason === "misinformation" ? "不实内容" : "其他"}</strong><span>{report.reporter.nickname} · {formatArticleDate(report.createdAt)}</span></div>{report.detail ? <p>{report.detail}</p> : null}{report.status === "pending" ? <div className="admin-article-report-actions"><button onClick={() => handleArticleReport(report, "rejected")} type="button">驳回</button><button onClick={() => handleArticleReport(report, "resolved")} type="button">处理但不改文章</button><button onClick={() => handleArticleReport(report, "blocked")} type="button">屏蔽文章</button><button className="text-danger-action" onClick={() => handleArticleReport(report, "deleted")} type="button">删除文章</button></div> : <em>{report.status === "resolved" ? "已处理" : "已驳回"}{report.resolution ? ` · ${report.resolution}` : ""}</em>}</article>)}</section>;
+  }
+
+  function renderArticleAppeals(articleId: number) {
+    const appeals = articleAppeals.filter((appeal) => appeal.article.id === articleId);
+    if (!appeals.length) return null;
+    return <section className="admin-article-appeals"><div className="admin-section-heading"><span><ShieldCheck aria-hidden="true" size={15} />文章申诉</span><small>{appeals.length} 条</small></div>{appeals.map((appeal) => <article className={`admin-article-appeal ${appeal.status}`} key={appeal.id}><div><strong>{appeal.author.nickname}</strong><span>{formatArticleDate(appeal.createdAt)}</span></div><p>{appeal.reason}</p>{appeal.status === "pending" ? <div className="admin-article-report-actions"><button onClick={() => handleArticleAppeal(appeal, "rejected")} type="button">驳回</button><button onClick={() => handleArticleAppeal(appeal, "approved")} type="button">通过申诉</button></div> : <em>{appeal.status === "approved" ? "已通过" : "已驳回"}{appeal.resolution ? ` · ${appeal.resolution}` : ""}</em>}</article>)}</section>;
   }
 
   function renderArticleList() {
@@ -601,6 +637,7 @@ function AdminArticlesWorkspace() {
               <label className="admin-pin-check"><input checked={isPinned} onChange={(event) => setIsPinned(event.target.checked)} type="checkbox" /><Pin aria-hidden="true" size={16} />置顶文章</label>
                <label className="admin-reason-field">屏蔽说明<textarea maxLength={255} onChange={(event) => setBlockedReason(event.target.value)} placeholder="文章被屏蔽时可以记录原因" rows={3} value={blockedReason} /></label>
                {renderArticleReports(selected.id)}
+               {renderArticleAppeals(selected.id)}
                <div className="admin-inspector-footer"><span>更新于 {formatArticleDate(selected.updatedAt)}</span><button className="button" disabled={isSaving} onClick={() => void saveArticleModeration()} type="button"><Save aria-hidden="true" size={16} />{isSaving ? "保存中" : "保存设置"}</button></div>
             </> : <div className="article-empty-state">选择一篇文章查看管理项。</div>}
           </section>
@@ -617,6 +654,8 @@ function AdminArticlesWorkspace() {
           </section>
         </div>
       )}
+      {reportAction ? <div className="modal-backdrop article-report-resolution-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setReportAction(null); }}><form className="article-report-resolution-modal" onSubmit={submitArticleReportAction}><header><strong>填写处理反馈</strong><button aria-label="关闭" onClick={() => setReportAction(null)} type="button"><X size={17} /></button></header><p>{reportAction.action === "rejected" ? "驳回举报" : reportAction.action === "resolved" ? "处理但不修改文章" : reportAction.action === "blocked" ? "屏蔽文章" : "删除文章"}</p><textarea autoFocus maxLength={500} onChange={(event) => setReportResolution(event.target.value)} placeholder="反馈内容会发送给举报者和文章作者" required rows={5} value={reportResolution} /><footer><button className="button" type="submit">提交处理</button></footer></form></div> : null}
+      {appealAction ? <div className="modal-backdrop article-report-resolution-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setAppealAction(null); }}><form className="article-report-resolution-modal" onSubmit={submitArticleAppealAction}><header><strong>{appealAction.status === "approved" ? "通过文章申诉" : "驳回文章申诉"}</strong><button aria-label="关闭" onClick={() => setAppealAction(null)} type="button"><X size={17} /></button></header><textarea autoFocus maxLength={500} onChange={(event) => setAppealResolution(event.target.value)} placeholder="填写处理反馈" required rows={5} value={appealResolution} /><footer><button className="button" type="submit">提交处理</button></footer></form></div> : null}
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );

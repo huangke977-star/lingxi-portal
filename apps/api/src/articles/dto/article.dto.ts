@@ -7,6 +7,7 @@ import {
   IsString,
   Max,
   MaxLength,
+  MinLength,
   Min,
 } from "class-validator";
 
@@ -269,8 +270,46 @@ export class ModerateArticleReportDto {
 
   @IsOptional()
   @IsString()
+  @MinLength(1)
   @MaxLength(500)
   resolution?: string;
+}
+
+export class CreateArticleAppealDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(1000)
+  reason!: string;
+}
+
+export class ModerateArticleAppealDto {
+  @IsIn(["approved", "rejected"])
+  status!: "approved" | "rejected";
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  resolution!: string;
+}
+
+export class UpdateArticlePublishRestrictionDto {
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  permanent?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  endsAt?: string;
 }
 
 export class ModerateArticleCommentReportDto {

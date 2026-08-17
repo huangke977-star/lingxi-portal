@@ -32,12 +32,12 @@ const article = {
   allowedRoles: [],
 };
 
-function createService(prisma: object, siteSettings: object = {}) {
+function createService(prisma: object, siteSettings: object = {}, reputation: object = { awardArticleReportAccepted: jest.fn(async () => true) }) {
   return new ArticlesService(
     prisma as PrismaService,
     siteSettings as SiteSettingsService,
     {} as RedisService,
-    {} as ReputationService,
+    reputation as ReputationService,
   );
 }
 
@@ -97,6 +97,7 @@ describe("article reports", () => {
           article: { authorId: article.authorId, title: article.title, slug: article.slug, status: article.status },
         })),
         updateMany,
+        count: jest.fn(async () => 1),
       },
       article: { update: updateArticle },
       userNotification: { create: createNotification },
@@ -125,5 +126,59 @@ describe("article reports", () => {
         data: expect.objectContaining({ status: articleStatus }),
       });
     }
+  });
+
+  it("creates a publish restriction after the third valid report in 30 days", async () => {
+    const restrictionCreate = jest.fn(async () => ({ id: 77 }));
+    const createNotification = jest.fn(async () => ({ id: 1 }));
+    const transaction = {
+      articleReport: {
+        findUnique: jest.fn(async () => ({
+          articleId: article.id,
+          reporterId: reporter.id,
+          status: ArticleCommentReportStatus.pending,
+          article: { authorId: article.authorId, title: article.title, slug: article.slug, status: article.status },
+        })),
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        count: jest.fn(async () => 3),
+      },
+      article: { update: jest.fn() },
+      articlePublishRestriction: {
+        findFirst: jest.fn(async () => null),
+        create: restrictionCreate,
+      },
+      userNotification: { create: createNotification },
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: object) => Promise<void>) => callback(transaction)),
+    };
+    const service = createService(prisma, { getNotificationSettings: jest.fn(async () => ({ notifyCommentReport: true })) });
+
+    await service.moderateArticleReport(article.id, administrator, { status: "resolved", resolution: "确认违规" });
+
+    expect(restrictionCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ userId: article.authorId, sourceReportId: article.id, endsAt: expect.any(Date) }),
+    }));
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ userId: article.authorId, type: "article_publish_restricted" }),
+    }));
+  });
+
+  it("lists only reports submitted by the current user", async () => {
+    const findMany = jest.fn(async () => [{
+      id: 31,
+      article: { id: article.id, title: article.title, slug: article.slug },
+      reporter: { id: reporter.id, nickname: reporter.nickname, username: reporter.username, avatarStoredName: null, isSuperAdmin: false, role: { code: "qi_refining", name: "练气", level: 10 } },
+      reason: "spam",
+      detail: null,
+      status: ArticleCommentReportStatus.pending,
+      resolution: null,
+      createdAt: new Date("2026-08-17T01:00:00.000Z"),
+      handledAt: null,
+    }]);
+    const service = createService({ articleReport: { findMany } });
+
+    await expect(service.listMyArticleReports(reporter)).resolves.toMatchObject({ items: [{ id: 31, article: { id: article.id } }] });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { reporterId: reporter.id } }));
   });
 });

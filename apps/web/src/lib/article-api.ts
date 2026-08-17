@@ -428,6 +428,43 @@ export interface ArticleReport {
   handledAt: string | null;
 }
 
+export interface ArticleAppeal {
+  id: number;
+  article: { id: number; title: string; slug: string; status: ArticleStatus };
+  author: ArticleAuthor;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  resolution: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+}
+
+export interface ViolationAuthor {
+  user: ArticleAuthor;
+  totalReceived: number;
+  recentReceived: number;
+  totalSubmitted: number;
+  recentSubmitted: number;
+  restriction: { id: number; reason: string; startsAt: string; endsAt: string | null; liftedAt: string | null } | null;
+}
+
+export interface ViolationReportDetail {
+  id: number;
+  article: { id: number; title: string; slug: string; author?: ArticleAuthor };
+  reporter?: ArticleAuthor;
+  reason: string;
+  detail: string | null;
+  status: ArticleReportStatus;
+  resolution: string | null;
+  createdAt: string;
+  handledAt: string | null;
+}
+
+export interface ViolationAuthorDetail extends ViolationAuthor {
+  received: ViolationReportDetail[];
+  submitted: ViolationReportDetail[];
+}
+
 export function reportArticle(
   accessToken: string,
   id: number,
@@ -438,6 +475,17 @@ export function reportArticle(
     headers: authHeaders(accessToken),
     body: JSON.stringify(input),
   });
+}
+
+export function listMyArticleReports(accessToken: string): Promise<{ items: ArticleReport[] }> {
+  return requestJson("/articles/mine/reports", {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function createArticleAppeal(accessToken: string, id: number, reason: string): Promise<ArticleAppeal> {
+  return requestJson<ArticleAppeal>(`/articles/${id}/appeals`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ reason }) });
 }
 
 export function setArticleReadLater(accessToken: string, id: number, readLater: boolean): Promise<{ readLater: boolean }> {
@@ -545,13 +593,34 @@ export function listArticleReports(
 export function moderateArticleReport(
   accessToken: string,
   id: number,
-  input: { status: "resolved" | "rejected"; articleStatus?: "blocked" | "deleted"; resolution?: string },
+  input: { status: "resolved" | "rejected"; articleStatus?: "blocked" | "deleted"; resolution: string },
 ): Promise<void> {
   return requestJson<void>(`/articles/admin/article-reports/${id}`, {
     method: "PATCH",
     headers: authHeaders(accessToken),
     body: JSON.stringify(input),
   });
+}
+
+export function listArticleAppeals(accessToken: string, status?: ArticleAppeal["status"]): Promise<{ items: ArticleAppeal[] }> {
+  const query = status ? `?status=${status}` : "";
+  return requestJson(`/articles/admin/appeals${query}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function moderateArticleAppeal(accessToken: string, id: number, input: { status: "approved" | "rejected"; resolution: string }): Promise<void> {
+  return requestJson<void>(`/articles/admin/appeals/${id}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(input) });
+}
+
+export function listViolationAuthors(accessToken: string): Promise<{ items: ViolationAuthor[] }> {
+  return requestJson("/articles/admin/violations", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function getViolationAuthor(accessToken: string, userId: number): Promise<ViolationAuthorDetail> {
+  return requestJson(`/articles/admin/violations/${userId}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function updateViolationRestriction(accessToken: string, userId: number, input: { active?: boolean; permanent?: boolean; endsAt?: string; reason?: string }): Promise<{ success: true; active: boolean; endsAt?: string | null }> {
+  return requestJson(`/articles/admin/violations/${userId}/restriction`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(input) });
 }
 
 export function listCommentReports(
