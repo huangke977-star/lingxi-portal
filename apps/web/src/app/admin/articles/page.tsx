@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   Bookmark,
@@ -8,7 +7,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CornerDownRight,
-  ExternalLink,
   Eye,
   FileText,
   Flag,
@@ -23,6 +21,7 @@ import {
 } from "lucide-react";
 import { Suspense, type UIEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
+import { AdminArticlePreviewModal } from "@/components/admin-article-preview-modal";
 import { ArticleAuthorLine, ArticlePinBadge, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import {
@@ -77,6 +76,7 @@ function AdminArticlesWorkspace() {
   const [commentFilter, setCommentFilter] = useState<"all" | "reported" | "pending">("all");
   const [highlightCommentId, setHighlightCommentId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Article | null>(null);
+  const [previewArticle, setPreviewArticle] = useState<Article | null>(null);
   const [activeTab, setActiveTab] = useState<"articles" | "comments">("articles");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -295,6 +295,16 @@ function AdminArticlesWorkspace() {
     if (!token) return;
     try {
       await loadComments(token, article.id);
+    } catch (loadError) {
+      handleLoadError(loadError);
+    }
+  }
+
+  async function openArticlePreview(articleId: number) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      setPreviewArticle(await getAdminArticle(token, articleId));
     } catch (loadError) {
       handleLoadError(loadError);
     }
@@ -630,7 +640,7 @@ function AdminArticlesWorkspace() {
           {renderArticleList()}
           <section className="admin-article-inspector">
             {selected ? <>
-              <div className="admin-inspector-heading"><div><span className="section-label">Article Inspector</span><h2>{selected.title}</h2></div><span className="admin-article-author">{selected.author.nickname}</span></div>
+              <div className="admin-inspector-heading"><div><span className="section-label">Article Inspector</span><h2><button className="admin-article-preview-trigger" onClick={() => void openArticlePreview(selected.id)} title="查看文章内容" type="button">{selected.title}</button></h2></div><span className="admin-article-author">{selected.author.nickname}</span></div>
               <div className="admin-stat-strip"><span><Eye aria-hidden="true" size={15} />{selected.viewCount}<small>阅读</small></span><span><Heart aria-hidden="true" size={15} />{selected.likeCount}<small>点赞</small></span><span><MessageSquare aria-hidden="true" size={15} />{selected.commentCount}<small>评论</small></span><span><Bookmark aria-hidden="true" size={15} />{selected.favoriteCount}<small>收藏</small></span></div>
               <div className="admin-article-controls"><label>文章状态<select onChange={(event) => setStatus(event.target.value as Article["status"])} value={status}>{Object.entries(ARTICLE_STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>阅读权限<select onChange={(event) => setVisibility(event.target.value as Article["visibility"])} value={visibility}>{Object.entries(ARTICLE_VISIBILITY_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>标题颜色<input aria-label="标题颜色" onChange={(event) => setTitleColor(event.target.value)} type="color" value={titleColor || "#2b2530"} /></label><label>置顶顺序<input min={0} onChange={(event) => setPinOrder(Number(event.target.value))} type="number" value={pinOrder} /></label></div>
               {visibility === "role_restricted" ? <input className="admin-role-input" onChange={(event) => setRoleCodes(event.target.value)} placeholder="角色代码，用逗号分隔" value={roleCodes} /> : null}
@@ -647,7 +657,7 @@ function AdminArticlesWorkspace() {
           {renderArticleList()}
           <section className="admin-comments-panel">
             {selected ? <>
-              <div className="admin-comments-heading"><div><span className="section-label">Comment Thread</span><h2>{selected.title}</h2></div><Link href={`/articles/${selected.slug}`} target="_blank"><ExternalLink aria-hidden="true" size={15} />查看文章</Link></div>
+              <div className="admin-comments-heading"><div><span className="section-label">Comment Thread</span><h2><button className="admin-article-preview-trigger" onClick={() => void openArticlePreview(selected.id)} title="查看文章内容" type="button">{selected.title}</button></h2></div></div>
               <div className="admin-comment-filters"><button className={commentFilter === "all" ? "active" : undefined} onClick={() => setCommentFilter("all")} type="button">全部</button><button className={commentFilter === "reported" ? "active" : undefined} onClick={() => setCommentFilter("reported")} type="button">有举报</button><button className={commentFilter === "pending" ? "active" : undefined} onClick={() => setCommentFilter("pending")} type="button">待处理</button></div>
               {isCommentsLoading ? <div className="article-empty-state">正在读取评论。</div> : visibleCommentThreads.length ? <div className="admin-comments-table">{visibleCommentThreads.map(renderCommentThread)}</div> : <div className="article-empty-state">当前筛选下没有评论和回复。</div>}
             </> : <div className="article-empty-state">选择一篇文章查看评论。</div>}
@@ -656,6 +666,7 @@ function AdminArticlesWorkspace() {
       )}
       {reportAction ? <div className="modal-backdrop article-report-resolution-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setReportAction(null); }}><form className="article-report-resolution-modal" onSubmit={submitArticleReportAction}><header><strong>填写处理反馈</strong><button aria-label="关闭" onClick={() => setReportAction(null)} type="button"><X size={17} /></button></header><p>{reportAction.action === "rejected" ? "驳回举报" : reportAction.action === "resolved" ? "处理但不修改文章" : reportAction.action === "blocked" ? "屏蔽文章" : "删除文章"}</p><textarea autoFocus maxLength={500} onChange={(event) => setReportResolution(event.target.value)} placeholder="反馈内容会发送给举报者和文章作者" required rows={5} value={reportResolution} /><footer><button className="button" type="submit">提交处理</button></footer></form></div> : null}
       {appealAction ? <div className="modal-backdrop article-report-resolution-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setAppealAction(null); }}><form className="article-report-resolution-modal" onSubmit={submitArticleAppealAction}><header><strong>{appealAction.status === "approved" ? "通过文章申诉" : "驳回文章申诉"}</strong><button aria-label="关闭" onClick={() => setAppealAction(null)} type="button"><X size={17} /></button></header><textarea autoFocus maxLength={500} onChange={(event) => setAppealResolution(event.target.value)} placeholder="填写处理反馈" required rows={5} value={appealResolution} /><footer><button className="button" type="submit">提交处理</button></footer></form></div> : null}
+      {previewArticle ? <AdminArticlePreviewModal article={previewArticle} onClose={() => setPreviewArticle(null)} /> : null}
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );
