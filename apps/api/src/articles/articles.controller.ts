@@ -98,6 +98,15 @@ export class ArticlesController {
     return this.articlesService.listMyArticleReports(user);
   }
 
+  @Get("mine/reports/:id/preview")
+  @UseGuards(JwtAuthGuard)
+  getMyArticleReportPreview(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.articlesService.getMyArticleReportPreview(id, user);
+  }
+
   @Get("mine/:id")
   @UseGuards(JwtAuthGuard)
   getMineById(

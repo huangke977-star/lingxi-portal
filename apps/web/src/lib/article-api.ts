@@ -486,6 +486,13 @@ export function listMyArticleReports(accessToken: string): Promise<{ items: Arti
   });
 }
 
+export function getMyArticleReportPreview(accessToken: string, id: number): Promise<Article> {
+  return requestJson<Article>(`/articles/mine/reports/${id}/preview`, {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
 export function createArticleAppeal(accessToken: string, id: number, reason: string): Promise<ArticleAppeal> {
   return requestJson<ArticleAppeal>(`/articles/${id}/appeals`, { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ reason }) });
 }

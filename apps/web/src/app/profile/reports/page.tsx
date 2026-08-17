@@ -1,12 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CheckCircle2, Clock3, ExternalLink, Flag, XCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { CheckCircle2, Clock3, Flag, XCircle } from "lucide-react";
+import { AdminArticlePreviewModal } from "@/components/admin-article-preview-modal";
 import { AppToast } from "@/components/app-toast";
 import { getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
-import { listMyArticleReports, type ArticleReport } from "@/lib/article-api";
+import { getMyArticleReportPreview, listMyArticleReports, type Article, type ArticleReport } from "@/lib/article-api";
 
 const REASON_LABEL: Record<string, string> = {
   spam: "垃圾广告",
@@ -34,14 +35,16 @@ function formatDate(value: string) {
 }
 
 export default function MyArticleReportsPage() {
+  const router = useRouter();
   const [items, setItems] = useState<ArticleReport[]>([]);
+  const [previewArticle, setPreviewArticle] = useState<Article | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     const token = readAccessToken();
     if (!token) {
-      window.location.href = "/login?from=%2Fprofile%2Freports";
+      router.push("/login?from=%2Fprofile%2Freports");
       return;
     }
     Promise.all([getMe(token), listMyArticleReports(token)])
@@ -49,13 +52,28 @@ export default function MyArticleReportsPage() {
       .catch((loadError) => {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          window.location.href = "/login";
+          router.push("/login");
           return;
         }
         setError(loadError instanceof Error ? loadError.message : "无法读取举报记录。");
       })
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [router]);
+
+  async function openArticlePreview(item: ArticleReport) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      setPreviewArticle(await getMyArticleReportPreview(token, item.id));
+    } catch (previewError) {
+      if (isAuthExpiredError(previewError)) {
+        clearAuthTokens();
+        router.push("/login");
+        return;
+      }
+      setError(previewError instanceof Error ? previewError.message : "文章内容加载失败。");
+    }
+  }
 
   return (
     <section className="p8-page p8-directory-page my-reports-page">
@@ -72,18 +90,18 @@ export default function MyArticleReportsPage() {
             <article className="my-report-row" key={item.id}>
               <div className="my-report-main">
                 <div className="my-report-title-line">
-                  <strong>{item.article.title}</strong>
-                  <span className={`my-report-status ${item.status}`}>{statusIcon(item.status)}{statusLabel(item.status)}</span>
+                  <button className="my-report-title-button" onClick={() => void openArticlePreview(item)} title="查看文章内容" type="button">{item.article.title}</button>
+                  <small className="my-report-timestamps">提交于 {formatDate(item.createdAt)}{item.handledAt ? ` · 处理于 ${formatDate(item.handledAt)}` : ""}</small>
                 </div>
                 <p>{REASON_LABEL[item.reason] ?? item.reason}{item.detail ? ` · ${item.detail}` : ""}</p>
                 {item.resolution ? <small className="my-report-resolution">处理反馈：{item.resolution}</small> : null}
-                <small>提交于 {formatDate(item.createdAt)}{item.handledAt ? ` · 处理于 ${formatDate(item.handledAt)}` : ""}</small>
               </div>
-              <Link aria-label={`查看文章《${item.article.title}》`} className="my-report-article-link" href={`/articles/${item.article.slug}`} target="_blank" title="查看文章"><ExternalLink aria-hidden="true" size={16} /></Link>
+              <span className={`my-report-status ${item.status}`}>{statusIcon(item.status)}{statusLabel(item.status)}</span>
             </article>
           ))}
         </div>
       ) : <div className="article-empty-state">暂无举报记录。</div>}
+      {previewArticle ? <AdminArticlePreviewModal article={previewArticle} onClose={() => setPreviewArticle(null)} /> : null}
       <AppToast duration={3600} message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );

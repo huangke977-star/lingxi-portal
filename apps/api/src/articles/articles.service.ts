@@ -1436,6 +1436,22 @@ export class ArticlesService {
     return { items: reports.map((report) => this.toArticleReportResponse(report)) };
   }
 
+  async getMyArticleReportPreview(id: number, user: AuthenticatedUser): Promise<ArticleResponse> {
+    const report = await this.prisma.articleReport.findUnique({
+      where: { id },
+      select: { articleId: true, reporterId: true },
+    });
+    if (!report) throw new NotFoundException("举报记录不存在。");
+    if (report.reporterId !== user.id && !this.canManageContent(user)) {
+      throw new ForbiddenException("没有查看这篇被举报文章的权限。");
+    }
+    const [article, readerState] = await Promise.all([
+      this.getArticleOrThrow(report.articleId),
+      this.getReaderState(report.articleId, user.id),
+    ]);
+    return this.toResponse(article, user, readerState);
+  }
+
   async getAdminArticle(id: number, actor: AuthenticatedUser): Promise<ArticleResponse> {
     const article = await this.prisma.article.findUnique({ where: { id }, include: articleInclude });
     if (!article) {
