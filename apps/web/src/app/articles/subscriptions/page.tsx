@@ -110,7 +110,7 @@ function SubscriptionFeedContent() {
   return <section className="page-shell subscription-feed-page">
     <ArticleCenterNav active="subscriptions" isLoggedIn user={user} />
     <div className="discovery-toolbar">
-      <nav aria-label="订阅动态排序" className="discovery-sort-tabs">
+      <nav aria-label="订阅动态排序" className="discovery-sort-tabs article-center-secondary-tabs">
         {(["latest", "unread", "popular"] as FeedSort[]).map((value) => <button className={sort === value ? "active" : undefined} key={value} onClick={() => router.replace(value === "latest" ? "/articles/subscriptions" : `/articles/subscriptions?sort=${value}`)} type="button">{value === "latest" ? "最新" : value === "unread" ? `未读 ${feed.unread}` : "热度"}</button>)}
       </nav>
       <span className="discovery-toolbar-actions">

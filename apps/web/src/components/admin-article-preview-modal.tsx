@@ -15,7 +15,9 @@ export function AdminArticlePreviewModal({ article, onClose }: { article: Articl
           <span>文章内容</span>
           <button aria-label="关闭文章预览" onClick={onClose} title="关闭" type="button"><X aria-hidden="true" size={18} /></button>
         </header>
-        <ArticleBody content={article.content} />
+        <div className="admin-article-preview-content">
+          <ArticleBody content={article.content} />
+        </div>
       </section>
     </div>,
     document.body,

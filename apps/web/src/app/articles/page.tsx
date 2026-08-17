@@ -130,7 +130,7 @@ function ArticlesContent() {
   return (
     <section className="page-shell articles-page">
       <ArticleCenterNav active="discover" isLoggedIn={isLoggedIn} user={user} />
-      <div className="article-discovery-tabs" role="tablist">
+      <div className="article-discovery-tabs article-center-secondary-tabs" role="tablist">
         {([
           ["recommended", "推荐"],
           ["latest", "最新"],

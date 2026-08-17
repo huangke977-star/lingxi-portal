@@ -182,7 +182,7 @@ function MyArticlesContent() {
       <ArticleCenterNav active="mine" isLoggedIn user={user} />
 
       <div className="article-mine-toolbar">
-        <nav aria-label="文章状态" className="article-status-tabs">
+        <nav aria-label="文章状态" className="article-status-tabs article-center-secondary-tabs">
           {statusTabs.map((tab) => (
             <button
               className={status === tab.value ? "active" : undefined}

@@ -165,7 +165,7 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
   return (
     <section className="page-shell articles-page article-collection-page">
       <ArticleCenterNav active="reading" isLoggedIn user={user} />
-      <div className="article-reading-tabs" role="tablist">
+      <div className="article-reading-tabs article-center-secondary-tabs" role="tablist">
         {([
           ["read-later", "稍后读", Clock3, summary.readLater],
           ["history", "阅读历史", History, summary.history],

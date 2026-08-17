@@ -604,7 +604,7 @@ function AdminArticlesWorkspace() {
     <section className="page-shell admin-articles-page">
       <ArticleCenterNav active="manage" isLoggedIn user={user} />
       <div className="admin-management-toolbar">
-        <div className="admin-content-tabs">
+        <div className="admin-content-tabs article-center-secondary-tabs">
           <button className={activeTab === "articles" ? "active" : undefined} onClick={() => void changeTab("articles")} type="button"><FileText aria-hidden="true" size={16} />文章 <span>{articleList.total}</span></button>
           <button className={activeTab === "comments" ? "active" : undefined} onClick={() => void changeTab("comments")} type="button"><MessageSquare aria-hidden="true" size={16} />评论与回复 <span>{selected?.commentCount ?? 0}</span></button>
         </div>

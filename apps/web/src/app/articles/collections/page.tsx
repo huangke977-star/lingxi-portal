@@ -270,7 +270,7 @@ export default function ArticleCollectionsPage() {
   return (
     <section className="page-shell collection-manager-page">
       <ArticleCenterNav active="collections" isLoggedIn user={user} />
-      <nav aria-label="合集页面" className="collection-page-tabs">
+      <nav aria-label="合集页面" className="collection-page-tabs article-center-secondary-tabs">
         <button
           className={view === "mine" ? "active" : undefined}
           onClick={() => setView("mine")}

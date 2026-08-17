@@ -16162,11 +16162,11 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .feedback-modal :is(input, textarea, .announcement-editor-select-trigger) { font-size: 0.86rem; }
 
 /* Article-center secondary navigation stays visually subordinate to the main directory. */
-.article-center-nav-wrap + :is(.article-discovery-tabs, .article-mine-toolbar, .discovery-toolbar, .collection-page-tabs, .topics-toolbar, .article-reading-tabs, .admin-management-toolbar) { margin-top: 6px; }
+.article-center-nav-wrap + :is(.article-discovery-tabs, .article-mine-toolbar, .discovery-toolbar, .collection-page-tabs, .topics-toolbar, .article-reading-tabs, .admin-management-toolbar) { margin-top: 2px; }
 .article-center-nav-wrap + :is(.article-discovery-tabs, .article-reading-tabs, .collection-page-tabs) { margin-bottom: 4px; }
-:is(.article-discovery-tabs, .article-reading-tabs, .discovery-sort-tabs, .collection-page-tabs, .article-status-tabs, .admin-content-tabs) button { min-height: 32px; border-radius: 6px; font-size: 0.74rem; }
-:is(.discovery-sort-tabs, .collection-page-tabs) button.active { background: color-mix(in srgb, var(--accent-soft) 60%, transparent); color: var(--accent-strong); }
-:is(.discovery-sort-tabs, .collection-page-tabs) button.active::after { display: none; }
+.article-center-secondary-tabs button { min-height: 32px; border-radius: 6px; font-size: 0.74rem; }
+.article-center-secondary-tabs button.active { background: color-mix(in srgb, var(--accent-soft) 56%, transparent); color: var(--accent-strong); font-weight: 650; }
+.article-center-secondary-tabs button.active::after { display: none; }
 
 /* Keep management controls compact without changing shared article typography. */
 .admin-inspector-heading h2, .admin-comments-heading h2 { font-size: 1.05rem; }
@@ -16178,18 +16178,23 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .admin-comment-row-actions button { gap: 4px; font-size: 0.7rem; }
 .admin-comment-row-actions button svg { width: 14px; height: 14px; }
 
-/* The admin preview intentionally contains only rendered article content. */
+/* The admin preview keeps its title bar fixed and scrolls only the article body. */
 .admin-article-preview-backdrop { z-index: 1900; padding: 20px; }
-.admin-article-preview-modal { display: grid; width: min(900px, calc(100vw - 40px)); max-height: min(84dvh, 920px); overflow: auto; overscroll-behavior: contain; border: 1px solid color-mix(in srgb, var(--control-line) 62%, transparent); border-radius: 9px; background: color-mix(in srgb, var(--popover-surface) 94%, transparent); box-shadow: var(--shadow-strong); padding: 0; backdrop-filter: blur(18px) saturate(120%); -webkit-backdrop-filter: blur(18px) saturate(120%); }
-.admin-article-preview-modal > header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid color-mix(in srgb, var(--control-line) 72%, transparent); color: var(--muted-strong); font-size: 0.78rem; padding: 11px 14px; }
+.admin-article-preview-modal { display: grid; width: min(900px, calc(100vw - 40px)); max-height: min(84dvh, 920px); grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid color-mix(in srgb, var(--control-line) 58%, transparent); border-radius: 9px; background: color-mix(in srgb, var(--popover-surface) 70%, transparent); box-shadow: 0 18px 48px rgba(22, 29, 43, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.32); padding: 0; backdrop-filter: blur(18px) saturate(120%); -webkit-backdrop-filter: blur(18px) saturate(120%); }
+.admin-article-preview-modal > header { display: flex; min-height: 50px; align-items: center; justify-content: space-between; border-bottom: 1px solid color-mix(in srgb, var(--control-line) 72%, transparent); background: color-mix(in srgb, var(--surface-strong) 48%, var(--accent-soft)); color: var(--muted-strong); font-size: 0.78rem; padding: 0 14px; }
 .admin-article-preview-modal > header button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
-.admin-article-preview-modal > .article-body { min-width: 0; padding: 18px 22px 26px; }
+.admin-article-preview-content { min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: color-mix(in srgb, var(--accent-strong) 46%, transparent) transparent; scrollbar-width: thin; }
+.admin-article-preview-content::-webkit-scrollbar { width: 5px; }
+.admin-article-preview-content::-webkit-scrollbar-track { background: transparent; }
+.admin-article-preview-content::-webkit-scrollbar-thumb { border-radius: 5px; background: color-mix(in srgb, var(--accent-strong) 42%, transparent); }
+.admin-article-preview-content > .article-body { min-width: 0; padding: 18px 22px 26px; }
 
 /* The violation list is a compact selector, while records retain their readable detail density. */
 .violation-author-list { padding: 5px; }
 .violation-author-list button { grid-template-columns: 29px minmax(0, 1fr) auto; gap: 6px; padding: 6px 7px; }
-.violation-author-list strong { font-size: 0.74rem; }
-.violation-author-list small { font-size: 0.58rem; }
+.violation-author-list button > span:nth-child(2) { gap: 1px; }
+.violation-author-list strong { font-size: 1rem; }
+.violation-author-list small { font-size: 0.62rem; }
 .violation-author-list .violation-avatar { width: 29px; height: 29px; font-size: 0.66rem; }
 .violation-report-title-button { display: block; min-width: 0; overflow: hidden; border: 0; background: transparent; color: var(--foreground); cursor: pointer; font: inherit; font-weight: 700; padding: 0; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .violation-report-title-button:hover { color: var(--accent-strong); }
@@ -16197,7 +16202,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 @media (max-width: 640px) {
   .admin-article-preview-backdrop { padding: 12px; }
   .admin-article-preview-modal { width: min(100%, calc(100vw - 24px)); max-height: calc(100dvh - 24px); }
-  .admin-article-preview-modal > .article-body { padding: 15px; }
+  .admin-article-preview-content > .article-body { padding: 15px; }
 }
 
 /* Report cards show the workflow status as a title tag and reserve the right edge for the related account. */
