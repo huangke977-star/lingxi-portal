@@ -12,6 +12,7 @@ import { createFeedback, getFeedback, listFeedbackInbox, listMyFeedback, replyFe
 const STATUS_LABEL: Record<FeedbackStatus, string> = { pending: "待处理", in_progress: "处理中", resolved: "已解决", closed: "已关闭" };
 const CATEGORY_LABEL: Record<FeedbackCategory, string> = { bug: "功能异常", account: "账号问题", content: "内容问题", payment: "积分与资源", other: "其他" };
 const STATUS_OPTIONS = Object.entries(STATUS_LABEL).map(([value, label]) => ({ label, value: value as FeedbackStatus }));
+const INBOX_STATUS_OPTIONS = [{ label: "全部", value: "all" as const }, ...STATUS_OPTIONS];
 const CATEGORY_OPTIONS = Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ label, value: value as FeedbackCategory }));
 
 export function FeedbackPanel({ mode = "mine" }: { mode?: "mine" | "inbox" }) {
@@ -20,7 +21,7 @@ export function FeedbackPanel({ mode = "mine" }: { mode?: "mine" | "inbox" }) {
   const [detail, setDetail] = useState<FeedbackDetail | null>(null);
   const [draft, setDraft] = useState({ category: "bug" as FeedbackCategory, title: "", content: "" });
   const [reply, setReply] = useState("");
-  const [status, setStatus] = useState<FeedbackStatus>("pending");
+  const [status, setStatus] = useState<FeedbackStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState("");
@@ -34,7 +35,7 @@ export function FeedbackPanel({ mode = "mine" }: { mode?: "mine" | "inbox" }) {
     const accessToken = token ?? readAccessToken();
     if (!accessToken) return;
     try {
-      const result = mode === "inbox" ? await listFeedbackInbox(accessToken, nextPage, 12, q, status) : await listMyFeedback(accessToken, nextPage, 12, q);
+      const result = mode === "inbox" ? await listFeedbackInbox(accessToken, nextPage, 12, q, status === "all" ? undefined : status) : await listMyFeedback(accessToken, nextPage, 12, q);
       setToken(accessToken); setItems(result.items); setPage(result.page); setTotalPages(result.totalPages);
     } catch (loadError) {
       if (isAuthExpiredError(loadError)) { clearAuthTokens(); window.location.href = "/login"; return; }
@@ -83,7 +84,7 @@ export function FeedbackPanel({ mode = "mine" }: { mode?: "mine" | "inbox" }) {
           placeholder="搜索标题或内容"
           value={search}
         />
-        {mode === "inbox" ? <GlassSelect ariaLabel="反馈状态" onChange={setStatus} options={STATUS_OPTIONS} value={status} /> : null}
+        {mode === "inbox" ? <GlassSelect ariaLabel="反馈状态" onChange={setStatus} options={INBOX_STATUS_OPTIONS} value={status} /> : null}
       </div>
     {isLoading ? (
       <p className="p8-empty">正在读取反馈。</p>

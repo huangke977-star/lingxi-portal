@@ -15927,12 +15927,12 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .points-pagination button, .feedback-pagination button { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 50%; background: var(--surface); color: var(--foreground); cursor: pointer; }
 .points-pagination button:disabled, .feedback-pagination button:disabled { cursor: default; opacity: 0.4; }
 
-.feedback-panel { display: grid; min-width: 0; gap: 12px; padding: 16px; }
+.feedback-panel { display: grid; min-width: 0; gap: 12px; overflow: visible; padding: 16px; }
 .feedback-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .feedback-panel-heading .section-label { display: inline-flex; align-items: center; gap: 5px; }
 .feedback-panel-heading h1 { margin: 4px 0; font-size: 1.35rem; }
 .feedback-panel-heading p { margin: 0; color: var(--muted); font-size: 0.73rem; }
-.feedback-toolbar { display: flex; min-width: 0; gap: 8px; }
+.feedback-toolbar { position: relative; z-index: 2; display: flex; min-width: 0; gap: 8px; }
 .feedback-toolbar input, .feedback-toolbar select { min-width: 0; min-height: 36px; border: 0; border-radius: 7px; background: var(--surface-soft); color: var(--foreground); padding: 0 10px; }
 .feedback-toolbar input { flex: 1; }
 .feedback-list { display: grid; min-width: 0; }
@@ -16151,6 +16151,15 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .feedback-toolbar .announcement-editor-select-trigger { min-height: 36px; }
 .feedback-modal .announcement-editor-select-trigger { min-height: 38px; }
 .feedback-modal .announcement-editor-select-menu { z-index: 20; }
+.feedback-toolbar .announcement-editor-select-menu { z-index: 40; }
+.feedback-modal > label { font-size: 0.78rem; }
+.feedback-modal > header > strong { font-size: 1rem; }
+.feedback-modal header small { font-size: 0.76rem; }
+.feedback-detail-content { font-size: 0.88rem; }
+.feedback-replies article strong { font-size: 0.82rem; }
+.feedback-replies article small { font-size: 0.72rem; }
+.feedback-replies article p { font-size: 0.84rem; }
+.feedback-modal :is(input, textarea, .announcement-editor-select-trigger) { font-size: 0.86rem; }
 
 /* Report cards show the workflow status as a title tag and reserve the right edge for the related account. */
 .violation-report-side article { grid-template-columns: minmax(0, 1fr) minmax(118px, auto); align-items: center; gap: 8px 12px; }
