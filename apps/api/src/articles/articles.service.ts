@@ -293,6 +293,21 @@ type ArticleAppealRecord = Prisma.ArticleAppealGetPayload<{
   include: typeof articleAppealInclude;
 }>;
 
+function countDistinctReportPublications<T extends {
+  publicationNumber: number;
+  createdAt: Date;
+}>(
+  reports: readonly T[],
+  articleIdOf: (report: T) => number,
+  cutoff?: Date,
+): number {
+  return new Set(
+    reports
+      .filter((report) => !cutoff || report.createdAt >= cutoff)
+      .map((report) => `${articleIdOf(report)}:${report.publicationNumber}`),
+  ).size;
+}
+
 @Injectable()
 export class ArticlesService {
   private readonly uploadDirectory = resolve(
@@ -569,13 +584,14 @@ export class ArticlesService {
         titleColor: this.normalizeTitleColor(dto.titleColor),
         visibility,
         status,
+        publicationCount: status === ArticleStatus.published ? 1 : 0,
         publishedAt: status === ArticleStatus.published ? new Date() : null,
         isPointResource: false,
         pointCost: 0,
         ...buildSearchFields([title, dto.category?.trim() ?? "", tags]),
         allowedRoles: { create: roles.map((role) => ({ roleId: role.id })) },
       }, include: articleInclude });
-      await this.createVersionSnapshot(transaction, created, user.id, ArticleVersionSource.manual);
+      await this.createVersionSnapshot(transaction, created, user.id, status === ArticleStatus.published ? ArticleVersionSource.publish : ArticleVersionSource.manual);
       if (status === ArticleStatus.published) {
         await this.reputationService.awardArticlePublished(transaction, user.id, created.id);
         await this.notifySubscribersOfPublication(transaction, created);
@@ -754,6 +770,7 @@ export class ArticlesService {
       : requestedStatus;
     if (status === ArticleStatus.published && !this.canManageContent(user)) await this.assertArticlePublishAllowed(user);
     const isFirstPublication = status === ArticleStatus.published && existing.publishedAt === null;
+    const isNewPublication = status === ArticleStatus.published && existing.status !== ArticleStatus.published;
     const title = dto.title?.trim() || existing.title;
     const category = dto.category === undefined ? existing.category : dto.category.trim();
     const tags = dto.tags === undefined ? existing.tags : this.normalizeTags(dto.tags);
@@ -768,6 +785,7 @@ export class ArticlesService {
         titleColor: dto.titleColor === undefined ? existing.titleColor : this.normalizeTitleColor(dto.titleColor),
         visibility,
         status,
+        publicationCount: isNewPublication ? { increment: 1 } : undefined,
         isPointResource: false,
         pointCost: 0,
         ...buildSearchFields([title, category, tags]),
@@ -782,7 +800,7 @@ export class ArticlesService {
           create: roles.map((role) => ({ roleId: role.id })),
         },
       }, include: articleInclude });
-      await this.createVersionSnapshot(transaction, updated, user.id, ArticleVersionSource.manual);
+      await this.createVersionSnapshot(transaction, updated, user.id, isNewPublication ? ArticleVersionSource.publish : ArticleVersionSource.manual);
       if (isFirstPublication) {
         await this.reputationService.awardArticlePublished(transaction, user.id, updated.id);
         await this.notifySubscribersOfPublication(transaction, updated);
@@ -804,13 +822,14 @@ export class ArticlesService {
     }
     parseArticleContent(existing.content);
     const isFirstPublication = existing.publishedAt === null;
+    const isNewPublication = existing.status !== ArticleStatus.published;
     const article = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.article.update({
         where: { id },
-        data: { status: ArticleStatus.published, publishedAt: existing.publishedAt ?? new Date(), blockedReason: null },
+        data: { status: ArticleStatus.published, publicationCount: isNewPublication ? { increment: 1 } : undefined, publishedAt: existing.publishedAt ?? new Date(), blockedReason: null },
         include: articleInclude,
       });
-      await this.createVersionSnapshot(transaction, updated, user.id, ArticleVersionSource.publish);
+      await this.createVersionSnapshot(transaction, updated, user.id, isNewPublication ? ArticleVersionSource.publish : ArticleVersionSource.manual);
       if (isFirstPublication) {
         await this.reputationService.awardArticlePublished(transaction, user.id, updated.id);
         await this.notifySubscribersOfPublication(transaction, updated);
@@ -1260,50 +1279,49 @@ export class ArticlesService {
     if (article.status !== ArticleStatus.published) throw new BadRequestException("文章当前不可举报。");
     if (article.authorId === user.id) throw new BadRequestException("不能举报自己的文章。");
 
-    const current = await this.prisma.articleReport.findUnique({
-      where: { articleId_reporterId: { articleId: id, reporterId: user.id } },
-      select: { status: true },
+    const publicationNumber = Math.max(1, article.publicationCount);
+    const pendingDuplicate = await this.prisma.articleReport.findFirst({
+      where: {
+        articleId: id,
+        publicationNumber,
+        reason: dto.reason as ArticleCommentReportReason,
+        status: ArticleCommentReportStatus.pending,
+      },
+      select: { id: true },
     });
-    const report = await this.prisma.articleReport.upsert({
-      where: { articleId_reporterId: { articleId: id, reporterId: user.id } },
-      create: {
+    if (pendingDuplicate) {
+      throw new BadRequestException("该文章当前发布版本已有相同类型的待处理举报。请等待处理结果。");
+    }
+    const report = await this.prisma.articleReport.create({
+      data: {
         articleId: id,
         reporterId: user.id,
+        publicationNumber,
         reason: dto.reason as ArticleCommentReportReason,
         detail: dto.detail?.trim() || null,
-      },
-      update: {
-        reason: dto.reason as ArticleCommentReportReason,
-        detail: dto.detail?.trim() || null,
-        status: ArticleCommentReportStatus.pending,
-        handledById: null,
-        handledAt: null,
-        resolution: null,
       },
       select: { id: true, status: true },
     });
-    if (!current || current.status !== ArticleCommentReportStatus.pending) {
-      const notificationSettings = await this.siteSettingsService.getNotificationSettings();
-      if (notificationSettings.notifyCommentReport) {
-        const administrators = await this.prisma.user.findMany({
-          where: { status: "active", OR: [{ isSuperAdmin: true }, { role: { level: { gte: 90 } } }] },
-          select: { id: true },
+    const notificationSettings = await this.siteSettingsService.getNotificationSettings();
+    if (notificationSettings.notifyCommentReport) {
+      const administrators = await this.prisma.user.findMany({
+        where: { status: "active", OR: [{ isSuperAdmin: true }, { role: { level: { gte: 90 } } }] },
+        select: { id: true },
+      });
+      if (administrators.length) {
+        await this.prisma.userNotification.createMany({
+          data: administrators.map(({ id: administratorId }) => ({
+            userId: administratorId,
+            actorId: user.id,
+            type: UserNotificationType.article_report_received,
+            channel: UserNotificationChannel.system,
+            title: "收到文章举报",
+            body: `${user.nickname || user.username} 举报了《${article.title}》，请前往文章管理处理。`.slice(0, 500),
+            actionUrl: `/admin/articles?tab=articles&report=${report.id}`,
+            articleId: article.id,
+            articleReportId: report.id,
+          })),
         });
-        if (administrators.length) {
-          await this.prisma.userNotification.createMany({
-            data: administrators.map(({ id: administratorId }) => ({
-              userId: administratorId,
-              actorId: user.id,
-              type: UserNotificationType.article_report_received,
-              channel: UserNotificationChannel.system,
-              title: "收到文章举报",
-              body: `${user.nickname || user.username} 举报了《${article.title}》，请前往文章管理处理。`.slice(0, 500),
-              actionUrl: `/admin/articles?tab=articles&report=${report.id}`,
-              articleId: article.id,
-              articleReportId: report.id,
-            })),
-          });
-        }
       }
     }
     return { reported: true };
@@ -1316,9 +1334,11 @@ export class ArticlesService {
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? this.roleCodes(existing));
     const status = dto.status ? this.toArticleStatus(dto.status) : undefined;
     const isFirstPublication = status === ArticleStatus.published && existing.publishedAt === null;
+    const isNewPublication = status === ArticleStatus.published && existing.status !== ArticleStatus.published;
     const article = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.article.update({ where: { id }, data: {
         status,
+        publicationCount: isNewPublication ? { increment: 1 } : undefined,
         isPinned: dto.isPinned,
         pinOrder: dto.pinOrder,
         titleColor: dto.titleColor === undefined ? undefined : this.normalizeTitleColor(dto.titleColor),
@@ -1702,7 +1722,8 @@ export class ArticlesService {
       select: {
         reporterId: true,
         createdAt: true,
-        article: { select: { authorId: true, author: { select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, role: { select: { code: true, name: true, level: true } } } } } },
+        publicationNumber: true,
+        article: { select: { id: true, authorId: true, author: { select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, role: { select: { code: true, name: true, level: true } } } } } },
       },
     });
     const activeRestrictions = await this.prisma.articlePublishRestriction.findMany({
@@ -1725,8 +1746,8 @@ export class ArticlesService {
       const restriction = activeRestrictions.find((item) => item.userId === userId) ?? null;
       return {
         user: this.toAuthor(author),
-        totalReceived: received.length,
-        recentReceived: received.filter((item) => item.createdAt >= cutoff).length,
+        totalReceived: countDistinctReportPublications(received, (item) => item.article.id),
+        recentReceived: countDistinctReportPublications(received, (item) => item.article.id, cutoff),
         totalSubmitted: submitted.length,
         recentSubmitted: submitted.filter((item) => item.createdAt >= cutoff).length,
         restriction: restriction ? { id: restriction.id, reason: restriction.reason, startsAt: restriction.startsAt.toISOString(), endsAt: restriction.endsAt?.toISOString() ?? null, liftedAt: restriction.liftedAt?.toISOString() ?? null } : null,
@@ -1746,13 +1767,13 @@ export class ArticlesService {
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     return {
       user: this.toAuthor(user),
-      totalReceived: received.length,
-      recentReceived: received.filter((item) => item.createdAt >= cutoff).length,
+      totalReceived: countDistinctReportPublications(received, (item) => item.article.id),
+      recentReceived: countDistinctReportPublications(received, (item) => item.article.id, cutoff),
       totalSubmitted: submitted.length,
       recentSubmitted: submitted.filter((item) => item.createdAt >= cutoff).length,
       restriction: restriction ? { id: restriction.id, reason: restriction.reason, startsAt: restriction.startsAt.toISOString(), endsAt: restriction.endsAt?.toISOString() ?? null, liftedAt: restriction.liftedAt?.toISOString() ?? null } : null,
-      received: received.map((item) => ({ id: item.id, article: item.article, reporter: this.toAuthor(item.reporter), reason: item.reason, detail: item.detail, status: item.status, resolution: item.resolution, createdAt: item.createdAt.toISOString(), handledAt: item.handledAt?.toISOString() ?? null })),
-      submitted: submitted.map((item) => ({ id: item.id, article: item.article, reason: item.reason, detail: item.detail, status: item.status, resolution: item.resolution, createdAt: item.createdAt.toISOString(), handledAt: item.handledAt?.toISOString() ?? null })),
+      received: received.map((item) => ({ id: item.id, publicationNumber: item.publicationNumber, article: item.article, reporter: this.toAuthor(item.reporter), reason: item.reason, detail: item.detail, status: item.status, resolution: item.resolution, createdAt: item.createdAt.toISOString(), handledAt: item.handledAt?.toISOString() ?? null })),
+      submitted: submitted.map((item) => ({ id: item.id, publicationNumber: item.publicationNumber, article: item.article, reason: item.reason, detail: item.detail, status: item.status, resolution: item.resolution, createdAt: item.createdAt.toISOString(), handledAt: item.handledAt?.toISOString() ?? null })),
     };
   }
 
@@ -2657,6 +2678,7 @@ export class ArticlesService {
   private toArticleReportResponse(report: ArticleReportRecord): ArticleReportResponse {
     return {
       id: report.id,
+      publicationNumber: report.publicationNumber,
       article: report.article,
       reporter: this.toAuthor(report.reporter),
       reason: report.reason,
@@ -2687,9 +2709,11 @@ export class ArticlesService {
     sourceReportId: number,
   ): Promise<void> {
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const validCount = await transaction.articleReport.count({
+    const validReports = await transaction.articleReport.findMany({
       where: { status: ArticleCommentReportStatus.resolved, createdAt: { gte: cutoff }, article: { authorId } },
+      select: { articleId: true, publicationNumber: true, createdAt: true },
     });
+    const validCount = countDistinctReportPublications(validReports, (report) => report.articleId);
     if (validCount < 3) return;
     const now = new Date();
     const active = await transaction.articlePublishRestriction.findFirst({

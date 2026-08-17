@@ -1088,6 +1088,7 @@ model Article {
   titleColor            String                  @default("") @map("title_color") @db.VarChar(7)
   visibility            ArticleVisibility       @default(public)
   status                ArticleStatus           @default(draft)
+  publicationCount      Int                     @default(0) @map("publication_count")
   isPinned              Boolean                 @default(false) @map("is_pinned")
   pinOrder              Int                     @default(0) @map("pin_order")
   publishedAt           DateTime?               @map("published_at")
@@ -1362,6 +1363,7 @@ model ArticleReport {
   article       Article                    @relation(fields: [articleId], references: [id], onDelete: Cascade)
   reporterId    Int                        @map("reporter_id")
   reporter      User                       @relation("ArticleReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  publicationNumber Int                     @default(1) @map("publication_number")
   reason        ArticleCommentReportReason
   detail        String?                    @db.VarChar(500)
   status        ArticleCommentReportStatus @default(pending)
@@ -1374,7 +1376,8 @@ model ArticleReport {
   notifications UserNotification[]
   publishRestrictions ArticlePublishRestriction[] @relation("ArticleReportRestrictionSource")
 
-  @@unique([articleId, reporterId])
+  @@index([articleId, reporterId])
+  @@index([articleId, publicationNumber, reason, status])
   @@index([status, createdAt])
   @@index([reporterId])
   @@index([handledById])

@@ -29,6 +29,7 @@ const article = {
   slug: "reported-article",
   status: ArticleStatus.published,
   visibility: ArticleVisibility.public,
+  publicationCount: 1,
   allowedRoles: [],
 };
 
@@ -47,8 +48,8 @@ describe("article reports", () => {
     const prisma = {
       article: { findUnique: jest.fn(async () => article) },
       articleReport: {
-        findUnique: jest.fn(async () => null),
-        upsert: jest.fn(async () => ({ id: 31, status: ArticleCommentReportStatus.pending })),
+        findFirst: jest.fn(async () => null),
+        create: jest.fn(async () => ({ id: 31, status: ArticleCommentReportStatus.pending })),
       },
       user: { findMany: jest.fn(async () => [{ id: 99 }]) },
       userNotification: { createMany },
@@ -61,8 +62,8 @@ describe("article reports", () => {
 
     await expect(service.reportArticle(12, reporter, { reason: "spam", detail: "广告内容" }))
       .resolves.toEqual({ reported: true });
-    expect(prisma.articleReport.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      create: expect.objectContaining({ articleId: 12, reporterId: reporter.id, reason: "spam", detail: "广告内容" }),
+    expect(prisma.articleReport.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ articleId: 12, reporterId: reporter.id, publicationNumber: 1, reason: "spam", detail: "广告内容" }),
     }));
     expect(createMany).toHaveBeenCalledWith({
       data: [{
@@ -97,7 +98,7 @@ describe("article reports", () => {
           article: { authorId: article.authorId, title: article.title, slug: article.slug, status: article.status },
         })),
         updateMany,
-        count: jest.fn(async () => 1),
+        findMany: jest.fn(async () => []),
       },
       article: { update: updateArticle },
       userNotification: { create: createNotification },
@@ -128,6 +129,23 @@ describe("article reports", () => {
     }
   });
 
+  it("rejects a second pending report of the same type in the same publication", async () => {
+    const prisma = {
+      article: { findUnique: jest.fn(async () => article) },
+      articleReport: {
+        findFirst: jest.fn(async () => ({ id: 31 })),
+        create: jest.fn(),
+      },
+    };
+    const service = createService(prisma, {
+      getArticlePublishPolicy: jest.fn(async () => ({ reportsEnabled: true })),
+    });
+
+    await expect(service.reportArticle(12, reporter, { reason: "spam" }))
+      .rejects.toThrow("已有相同类型的待处理举报");
+    expect(prisma.articleReport.create).not.toHaveBeenCalled();
+  });
+
   it("creates a publish restriction after the third valid report in 30 days", async () => {
     const restrictionCreate = jest.fn(async () => ({ id: 77 }));
     const createNotification = jest.fn(async () => ({ id: 1 }));
@@ -140,7 +158,11 @@ describe("article reports", () => {
           article: { authorId: article.authorId, title: article.title, slug: article.slug, status: article.status },
         })),
         updateMany: jest.fn(async () => ({ count: 1 })),
-        count: jest.fn(async () => 3),
+        findMany: jest.fn(async () => [
+          { articleId: 12, publicationNumber: 1, createdAt: new Date() },
+          { articleId: 13, publicationNumber: 1, createdAt: new Date() },
+          { articleId: 14, publicationNumber: 1, createdAt: new Date() },
+        ]),
       },
       article: { update: jest.fn() },
       articlePublishRestriction: {
@@ -173,6 +195,7 @@ describe("article reports", () => {
       detail: null,
       status: ArticleCommentReportStatus.pending,
       resolution: null,
+      publicationNumber: 1,
       createdAt: new Date("2026-08-17T01:00:00.000Z"),
       handledAt: null,
     }]);

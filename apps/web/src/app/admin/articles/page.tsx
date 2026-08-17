@@ -615,7 +615,7 @@ function AdminArticlesWorkspace() {
             <AlertTriangle aria-hidden="true" size={15} />待处理举报 <span>{pendingReportCount}</span>
           </button>
           <div className="admin-report-popover" onFocus={cancelReportQueueClose}>
-            {reports.length || articleReports.length ? <>{articleReports.map((report) => <button key={`article-${report.id}`} onClick={() => void locateArticleReport(report)} type="button"><strong>文章举报 · {report.article.title}</strong><span>{report.reporter.nickname} · {formatArticleDate(report.createdAt)}</span></button>)}{reports.map((report) => <button key={`comment-${report.id}`} onClick={() => void locateReportedComment(report)} type="button"><strong>评论举报 · {report.article.title}</strong><span>{report.reporter.nickname} · {formatArticleDate(report.createdAt)}</span></button>)}</> : <span>暂无待处理举报。</span>}
+            {reports.length || articleReports.filter((report) => report.status === "pending").length ? <>{articleReports.filter((report) => report.status === "pending").map((report) => <button key={`article-${report.id}`} onClick={() => void locateArticleReport(report)} type="button"><strong>文章举报 · {report.article.title}</strong><span>{report.reporter.nickname} · {formatArticleDate(report.createdAt)}</span></button>)}{reports.map((report) => <button key={`comment-${report.id}`} onClick={() => void locateReportedComment(report)} type="button"><strong>评论举报 · {report.article.title}</strong><span>{report.reporter.nickname} · {formatArticleDate(report.createdAt)}</span></button>)}</> : <span>暂无待处理举报。</span>}
           </div>
         </div>
         <label className="article-search admin-article-search">

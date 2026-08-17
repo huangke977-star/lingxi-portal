@@ -418,6 +418,7 @@ export type ArticleReportStatus = ArticleCommentReportStatus;
 
 export interface ArticleReport {
   id: number;
+  publicationNumber: number;
   article: { id: number; title: string; slug: string };
   reporter: ArticleAuthor;
   reason: ArticleReportReason;
@@ -450,6 +451,7 @@ export interface ViolationAuthor {
 
 export interface ViolationReportDetail {
   id: number;
+  publicationNumber: number;
   article: { id: number; title: string; slug: string; author?: ArticleAuthor };
   reporter?: ArticleAuthor;
   reason: string;

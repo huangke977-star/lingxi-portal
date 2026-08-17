@@ -4,12 +4,15 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Ban, ExternalLink, ShieldAlert, ShieldCheck, UserRound, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
-import { getMe, isAuthExpiredError } from "@/lib/auth-api";
+import { getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { getViolationAuthor, listViolationAuthors, updateViolationRestriction, type ViolationAuthor, type ViolationAuthorDetail } from "@/lib/article-api";
 
 function date(value: string) { return new Date(value).toLocaleString("zh-CN", { hour12: false }); }
-function avatar(user: { nickname: string; avatarUrl: string | null }) { return user.avatarUrl ? <img alt="" src={user.avatarUrl} /> : <span>{user.nickname.slice(0, 1)}</span>; }
+function avatar(user: { nickname: string; avatarUrl: string | null }) {
+  const avatarUrl = user.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
+  return avatarUrl ? <img alt="" src={avatarUrl} /> : <span>{user.nickname.slice(0, 1)}</span>;
+}
 
 export default function ViolationAuthorsPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -44,5 +47,5 @@ export default function ViolationAuthorsPage() {
 }
 
 function ReportSide({ title, items }: { title: string; items: ViolationAuthorDetail["received"] }) {
-  return <section className="violation-report-side"><h3>{title}<small>{items.length}</small></h3>{items.length ? items.map((item) => <article key={item.id}><div><strong>{item.article.title}</strong><small>{item.reason} · {date(item.createdAt)}</small></div><span className={`article-status-dot ${item.status}`}>{item.status === "resolved" ? "已处理" : item.status === "rejected" ? "已驳回" : "待处理"}</span><footer>{item.reporter ? <Link href={`/users/${item.reporter.username}`} title="查看举报人"><UserRound size={14} />{item.reporter.nickname}</Link> : item.article.author ? <Link href={`/users/${item.article.author.username}`} title="查看被举报人"><UserRound size={14} />{item.article.author.nickname}</Link> : null}<Link href={`/articles/${item.article.slug}`} target="_blank" title="查看文章"><ExternalLink size={14} /></Link></footer></article>) : <p>暂无记录。</p>}</section>;
+  return <section className="violation-report-side"><h3>{title}<small>{items.length}</small></h3>{items.length ? items.map((item) => <article key={item.id}><div><strong>{item.article.title}</strong><small>第 {item.publicationNumber} 次发布 · {item.reason} · {date(item.createdAt)}</small>{item.resolution ? <p className="violation-report-resolution">处理反馈：{item.resolution}</p> : null}</div><span className={`article-status-dot ${item.status}`}>{item.status === "resolved" ? "已处理" : item.status === "rejected" ? "已驳回" : "待处理"}</span><footer>{item.reporter ? <Link href={`/users/${item.reporter.username}`} title="查看举报人"><UserRound size={14} />{item.reporter.nickname}</Link> : item.article.author ? <Link href={`/users/${item.article.author.username}`} title="查看被举报人"><UserRound size={14} />{item.article.author.nickname}</Link> : null}<Link href={`/articles/preview/${item.article.id}`} target="_blank" title="预览文章"><ExternalLink size={14} /></Link></footer></article>) : <p>暂无记录。</p>}</section>;
 }

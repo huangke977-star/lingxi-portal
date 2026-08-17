@@ -114,6 +114,7 @@ export interface ArticleCommentReportSummaryResponse {
 
 export interface ArticleReportResponse {
   id: number;
+  publicationNumber: number;
   article: { id: number; title: string; slug: string };
   reporter: ArticleAuthorResponse;
   reason: string;

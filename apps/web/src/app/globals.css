@@ -15631,7 +15631,7 @@ select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 38%, transpar
 .anonymous-identity-create input[type="checkbox"]:checked { border-color: var(--accent) !important; background-color: var(--accent) !important; }
 
 /* Every dialog mask exactly reuses the login overlay treatment. */
-:is(.modal-backdrop, .modal-backdrop--light, .password-modal-backdrop, .avatar-crop-backdrop, .cache-detail-backdrop, .global-search-backdrop, .article-preview-backdrop, .article-versions-backdrop, .comment-report-backdrop, .chat-confirm-backdrop, .install-guide-backdrop, .storage-preview-backdrop, .site-background-preview-backdrop, .announcement-editor-backdrop, .chat-group-manager-backdrop, .group-management-modal-backdrop, .group-management-preview-backdrop) { background: rgba(255, 248, 251, 0.22); backdrop-filter: blur(7px) saturate(108%); }
+:is(.modal-backdrop, .modal-backdrop--light, .password-modal-backdrop, .avatar-crop-backdrop, .cache-detail-backdrop, .global-search-backdrop, .article-preview-backdrop, .article-versions-backdrop, .comment-report-backdrop, .chat-confirm-backdrop, .install-guide-backdrop, .storage-preview-backdrop, .site-background-preview-backdrop, .announcement-editor-backdrop, .chat-group-manager-backdrop, .group-management-modal-backdrop, .group-management-preview-backdrop, .feedback-modal-backdrop, .article-report-resolution-backdrop, .article-appeal-backdrop, .suggestion-modal-backdrop, .anonymous-topic-backdrop) { background: rgba(255, 248, 251, 0.22); backdrop-filter: blur(7px) saturate(108%); -webkit-backdrop-filter: blur(7px) saturate(108%); }
 .suggestion-modal-backdrop,
 .anonymous-topic-backdrop { z-index: 1800; }
 
@@ -15996,6 +15996,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .violation-report-side article > div { display: grid; min-width: 0; gap: 2px; }
 .violation-report-side article strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .violation-report-side article small { color: var(--muted); font-size: 0.62rem; }
+.violation-report-resolution { margin: 4px 0 0; color: var(--muted-strong); font-size: 0.68rem; line-height: 1.45; white-space: pre-wrap; }
 .violation-report-side article footer { display: flex; grid-column: 1 / -1; align-items: center; gap: 8px; }
 .violation-report-side article footer a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-strong); font-size: 0.65rem; text-decoration: none; }
 .violation-report-side > p { margin: 0; color: var(--muted); font-size: 0.7rem; }
@@ -16044,6 +16045,88 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .article-resource-settings { grid-template-columns: minmax(0, 1fr); align-items: start; }
   .article-resource-cost { grid-template-columns: auto minmax(0, 1fr); }
   .article-resource-lock { min-height: 260px; padding: 30px 14px; }
+}
+
+/* Article rows keep metadata and actions centered against the row, including narrow layouts. */
+.article-mine-row-meta,
+.article-mine-row-actions { align-self: center; align-items: center; line-height: 1; }
+.article-mine-row-meta > *,
+.article-mine-row-actions > * { align-self: center; }
+
+/* Moderation and feedback dialogs share the login mask and chat-like glass surface. */
+:is(
+  .modal-backdrop,
+  .modal-backdrop--light,
+  .password-modal-backdrop,
+  .comment-report-backdrop,
+  .feedback-modal-backdrop,
+  .article-report-resolution-backdrop,
+  .article-appeal-backdrop,
+  .suggestion-modal-backdrop,
+  .anonymous-topic-backdrop
+) {
+  background: rgba(255, 248, 251, 0.22);
+  backdrop-filter: blur(7px) saturate(108%);
+  -webkit-backdrop-filter: blur(7px) saturate(108%);
+}
+
+:is(
+  .comment-report-dialog,
+  .article-report-resolution-modal,
+  .article-appeal-modal,
+  .feedback-modal,
+  .suggestion-modal,
+  .anonymous-topic-modal
+) {
+  border: 1px solid color-mix(in srgb, var(--control-line) 58%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--popover-surface) 70%, transparent);
+  box-shadow: 0 22px 58px rgba(20, 27, 39, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.34);
+  backdrop-filter: blur(30px) saturate(142%);
+  -webkit-backdrop-filter: blur(30px) saturate(142%);
+}
+
+:is(
+  .comment-report-dialog,
+  .article-report-resolution-modal,
+  .article-appeal-modal,
+  .feedback-modal,
+  .suggestion-modal,
+  .anonymous-topic-modal
+) :is(input, select, textarea) {
+  border: 0;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface-soft) 88%, transparent);
+  color: var(--foreground);
+  outline: 0;
+  font: inherit;
+}
+
+.admin-report-popover {
+  border: 1px solid color-mix(in srgb, var(--control-line) 58%, transparent);
+  background: color-mix(in srgb, var(--popover-surface) 70%, transparent);
+  box-shadow: 0 18px 48px rgba(22, 29, 43, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  backdrop-filter: blur(30px) saturate(142%);
+  -webkit-backdrop-filter: blur(30px) saturate(142%);
+}
+
+.article-status-preview-page { display: grid; min-width: 0; gap: 14px; }
+.article-status-preview-heading { display: flex; align-items: flex-end; gap: 10px; }
+.article-status-preview-heading > a { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 50%; color: var(--muted); }
+.article-status-preview-heading > a:hover { background: var(--surface-soft); color: var(--accent-strong); }
+.article-status-preview-heading h1 { margin: 4px 0; font-size: 1.45rem; }
+.article-status-preview-heading p { margin: 0; color: var(--muted); font-size: 0.72rem; }
+.article-status-preview-surface { display: grid; min-width: 0; gap: 16px; border-radius: 9px; background: var(--surface); box-shadow: var(--shadow-soft); padding: clamp(16px, 3vw, 28px); }
+.article-status-preview-article-heading { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--control-line); padding-bottom: 14px; }
+.article-status-preview-article-heading > div { min-width: 0; }
+.article-status-preview-article-heading h2 { margin: 7px 0 8px; font-size: clamp(1.25rem, 3vw, 1.85rem); line-height: 1.3; overflow-wrap: anywhere; }
+.article-status-preview-meta { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: 8px 14px; color: var(--muted); font-size: 0.7rem; }
+.article-status-preview-reason { margin: 0; border-radius: 7px; background: color-mix(in srgb, #b44352 10%, transparent); color: #a33a4a; font-size: 0.74rem; line-height: 1.5; padding: 9px 10px; }
+
+@media (max-width: 640px) {
+  .article-status-preview-heading { align-items: flex-start; }
+  .article-status-preview-article-heading { display: grid; gap: 10px; }
+  .article-status-preview-article-heading > .article-stats { justify-self: start; }
 }
 
 /* Comment text should use the available card width instead of the global paragraph cap. */
