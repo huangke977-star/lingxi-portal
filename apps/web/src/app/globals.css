@@ -16221,6 +16221,74 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 .article-center-secondary-tabs button.active > span { color: currentColor; }
 
+/* Management indexes follow the dashboard suggestion list: compact rows with a stable title/meta scale. */
+.my-report-row { gap: 10px; padding: 8px 10px; }
+.my-report-main { gap: 2px; }
+.my-report-title-line { gap: 6px; }
+.my-report-title-line strong { font-size: 0.76rem; }
+.my-report-main :is(p, small) { font-size: 0.68rem; }
+.my-report-status { font-size: 0.62rem; padding: 3px 5px; }
+.my-report-article-link { width: 26px; height: 26px; }
+
+.feedback-list-item { gap: 8px; padding: 7px 6px; }
+.feedback-list-item > span { gap: 2px; }
+.feedback-list-item strong { font-size: 0.76rem; }
+.feedback-list-item small { font-size: 0.68rem; }
+.feedback-status { font-size: 0.62rem; padding: 3px 6px; }
+
+.admin-table th { font-size: 0.68rem; }
+.admin-table td { font-size: 0.76rem; }
+.admin-table th,
+.admin-table td { padding: 8px 10px; }
+.admin-table :is(.user-cell strong, .user-cell small, .table-role-label, .table-action, .table-no-action) { font-size: 0.68rem; }
+
+.portal-category-select { gap: 1px; padding: 6px 8px; }
+.portal-category-select strong { font-size: 0.76rem; }
+.portal-category-select :is(span, small) { font-size: 0.68rem; }
+.portal-entry-admin-row { gap: 9px; padding: 6px 4px; }
+.portal-entry-admin-icon { width: 34px; height: 34px; }
+.portal-entry-admin-icon img { width: 31px; height: 31px; }
+.portal-entry-admin-copy { gap: 8px; }
+.portal-entry-admin-copy strong { font-size: 0.76rem; }
+.portal-entry-admin-copy p { font-size: 0.68rem; }
+.portal-entry-admin-copy > div span { font-size: 0.65rem; }
+.portal-row-actions button { width: 27px; height: 27px; }
+
+.violation-author-list strong,
+.violation-report-side article strong { font-size: 0.76rem; }
+.violation-author-list small,
+.violation-report-side article small,
+.violation-report-resolution { font-size: 0.68rem; }
+.violation-report-side { gap: 5px; padding-top: 9px; }
+.violation-report-side article { padding: 6px 8px; }
+
+.group-admin-card-body { gap: 6px; padding: 9px; }
+.group-admin-card-title strong { font-size: 0.76rem; }
+.group-admin-card-title small,
+.group-admin-card-body p { font-size: 0.68rem; }
+.group-admin-owner strong { font-size: 0.68rem; }
+.group-admin-card-body footer { padding-top: 6px; }
+.group-admin-card-body footer > small { font-size: 0.64rem; }
+
+.anonymous-topic-open { padding: 7px 8px 7px 10px; }
+.anonymous-topic-list-copy strong { font-size: 0.76rem; }
+.anonymous-topic-subline > small { font-size: 0.68rem; }
+.anonymous-topic-highlights small,
+.anonymous-topic-metrics > :is(small, button) { font-size: 0.65rem; }
+
+.analytics-ranking ol { padding: 4px 8px 6px; }
+.analytics-ranking li > :is(a, div) { padding: 5px 3px; }
+.analytics-ranking li strong { font-size: 0.76rem; }
+.analytics-ranking li small,
+.analytics-ranking li em { font-size: 0.68rem; }
+
+.announcement-admin-list { gap: 4px; }
+.announcement-admin-list > article { gap: 8px; padding: 7px 5px; }
+.announcement-admin-list header strong { font-size: 0.76rem; }
+.announcement-admin-list :is(p, small) { font-size: 0.68rem; }
+.announcement-admin-stats { font-size: 0.65rem; }
+.announcement-admin-list footer button { width: 27px; height: 27px; }
+
 /* Keep management controls compact without changing shared article typography. */
 .admin-inspector-heading h2, .admin-comments-heading h2 { font-size: 1.05rem; }
 .admin-article-preview-trigger { border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; padding: 0; text-align: left; }
@@ -16246,8 +16314,8 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .violation-author-list { padding: 5px; }
 .violation-author-list button { grid-template-columns: 29px minmax(0, 1fr) auto; gap: 6px; padding: 6px 7px; }
 .violation-author-list button > span:nth-child(2) { gap: 1px; }
-.violation-author-list strong { font-size: 1rem; }
-.violation-author-list small { font-size: 0.62rem; }
+.violation-author-list strong { font-size: 0.76rem; }
+.violation-author-list small { font-size: 0.68rem; }
 .violation-author-list .violation-avatar { width: 29px; height: 29px; font-size: 0.66rem; }
 .violation-report-title-button { display: block; min-width: 0; overflow: hidden; border: 0; background: transparent; color: var(--foreground); cursor: pointer; font: inherit; font-weight: 700; padding: 0; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .violation-report-title-button:hover { color: var(--accent-strong); }
