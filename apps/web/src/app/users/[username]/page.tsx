@@ -11,7 +11,7 @@ import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleCard } from "@/components/article-ui";
 import { DiscoveryArticleRow } from "@/components/discovery-ui";
 import { RoleSymbol } from "@/components/role-symbol";
-import { ManagementIdentitySymbol, UserIdentityBadges } from "@/components/user-identity-badges";
+import { AvatarManagementBadge, ManagementIdentitySymbol } from "@/components/user-identity-badges";
 import { ArticleList, listPublicArticles, listVisibleArticles } from "@/lib/article-api";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
@@ -169,7 +169,7 @@ export default function UserProfilePage() {
 
   return <section className="page-shell public-user-page">
     <section className="public-user-profile-card">
-      <div className="public-user-avatar identity-avatar-host"><span className="identity-avatar-visual">{avatarUrl ? <img alt="" src={avatarUrl} /> : getAvatarFallbackText(profile)}</span><UserIdentityBadges user={profile} /></div>
+      <div className="public-user-avatar identity-avatar-host"><span className="identity-avatar-visual">{avatarUrl ? <img alt="" src={avatarUrl} /> : getAvatarFallbackText(profile)}</span><AvatarManagementBadge user={profile} /></div>
       <div className="public-user-overview">
         <div className="public-user-copy">
           <div className="public-user-name"><span><h1>{profile.nickname}</h1><small>@{profile.username}</small></span><span className="public-user-role"><RoleSymbol code={profile.role.code} />{profile.role.name}</span>{management ? <span className="public-user-role"><ManagementIdentitySymbol user={profile} />{management.label}</span> : null}</div>

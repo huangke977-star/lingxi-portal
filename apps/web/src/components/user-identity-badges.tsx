@@ -10,7 +10,7 @@ export interface IdentityBadgeUser {
   };
 }
 
-export function UserIdentityBadges({
+export function AvatarManagementBadge({
   user,
   className = "",
 }: {
@@ -18,25 +18,15 @@ export function UserIdentityBadges({
   className?: string;
 }) {
   const management = getManagementIdentity(user);
+  if (!management) return null;
 
   return (
-    <span className={`user-identity-badges ${className}`.trim()}>
-      {management ? (
-        <span
-          className="user-identity-badge management"
-          data-role={management.code}
-          title={management.label}
-        >
-          <RoleSymbol code={management.code} />
-        </span>
-      ) : null}
-      <span
-        className="user-identity-badge growth"
-        data-role={user.role.code}
-        title={`成长等级：${user.role.name}`}
-      >
-        <RoleSymbol code={user.role.code} />
-      </span>
+    <span
+      className={`avatar-management-badge ${className}`.trim()}
+      data-role={management.code}
+      title={management.label}
+    >
+      <RoleSymbol code={management.code} />
     </span>
   );
 }

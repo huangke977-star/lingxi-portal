@@ -12,7 +12,7 @@ import { AppToast } from "@/components/app-toast";
 import { AccountSecurityPanel } from "@/components/account-security-panel";
 import { PasswordInput } from "@/components/password-input";
 import { RoleSymbol } from "@/components/role-symbol";
-import { ManagementIdentitySymbol, UserIdentityBadges } from "@/components/user-identity-badges";
+import { AvatarManagementBadge, ManagementIdentitySymbol } from "@/components/user-identity-badges";
 import {
   AuthAppearance,
   AuthSession,
@@ -844,7 +844,7 @@ export default function ProfilePage() {
                       avatarInitial
                     )}
                   </span>
-                  <UserIdentityBadges user={user} />
+                  <AvatarManagementBadge user={user} />
                 </span>
               </label>
 

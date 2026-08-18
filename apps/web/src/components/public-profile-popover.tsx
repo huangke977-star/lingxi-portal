@@ -8,7 +8,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RoleSymbol } from "@/components/role-symbol";
-import { ManagementIdentitySymbol, UserIdentityBadges } from "@/components/user-identity-badges";
+import { AvatarManagementBadge, ManagementIdentitySymbol } from "@/components/user-identity-badges";
 import type { ArticleAuthor } from "@/lib/article-api";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
@@ -178,14 +178,14 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
         >
           {avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText({ nickname: author.nickname, username: author.username })}
         </button>
-        <UserIdentityBadges user={author} />
+        <AvatarManagementBadge user={author} />
       </span>
       {isOpen && typeof document !== "undefined" ? createPortal(
         <div className="public-profile-popover" ref={panelRef} style={position}>
           <div className="public-profile-head">
             <span className="public-profile-avatar identity-avatar-host">
               <span className="identity-avatar-visual">{avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText({ nickname: author.nickname, username: author.username })}</span>
-              <UserIdentityBadges user={author} />
+              <AvatarManagementBadge user={author} />
             </span>
             <div>
               <strong>{displayProfile.nickname}</strong>
@@ -222,6 +222,7 @@ export function CommentAuthorIdentity({ author }: { author: ArticleAuthor }) {
     <span className="comment-author-identity">
       <PublicProfilePopover author={author} />
       <Link className="comment-author-profile-link" href={`/users/${encodeURIComponent(author.username)}`}>{author.nickname}</Link>
+      <span className="comment-role-icon" title={`成长等级：${author.role.name}`}><RoleSymbol code={author.role.code} /></span>
     </span>
   );
 }

@@ -25,7 +25,7 @@ import {
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
-import { UserIdentityBadges } from "@/components/user-identity-badges";
+import { AvatarManagementBadge } from "@/components/user-identity-badges";
 import { useRouter } from "next/navigation";
 import { resolveApiUrl } from "@/lib/auth-api";
 import {
@@ -554,7 +554,7 @@ function GroupAvatar({ group, large = false }: { group: Pick<ChatGroupSummary, "
 }
 
 function UserAvatar({ user }: { user: SocialUser }) {
-  return <span className="chat-user-avatar identity-avatar-host"><span className="identity-avatar-visual">{user.avatarUrl ? <img alt="" draggable={false} src={resolveApiUrl(user.avatarUrl)} /> : fallbackText(user.nickname)}</span><UserIdentityBadges user={user} /></span>;
+  return <span className="chat-user-avatar identity-avatar-host"><span className="identity-avatar-visual">{user.avatarUrl ? <img alt="" draggable={false} src={resolveApiUrl(user.avatarUrl)} /> : fallbackText(user.nickname)}</span><AvatarManagementBadge user={user} /></span>;
 }
 
 function muteDurationLabel(minutes: number): string {

@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { Bell, FilePenLine, MessageCircleMore, MessagesSquare, ShieldAlert, UsersRound } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
 import { SuggestionsPanel } from "@/components/suggestions-panel";
-import { UserIdentityBadges } from "@/components/user-identity-badges";
+import { AvatarManagementBadge } from "@/components/user-identity-badges";
 import { getCommentReportSummary, getMyArticleSummary, type ArticleMineSummary } from "@/lib/article-api";
 import { AuthUser, getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
@@ -73,7 +73,7 @@ export function DashboardWorkspace() {
     <header className="p8-page-heading"><div><span className="section-label">WORKSPACE</span><h1>工作台</h1></div><Link className="p8-primary-link" href="/articles/write"><FilePenLine aria-hidden="true" size={16} />写文章</Link></header>
     {isLoading ? <div className="status-row compact-status-row"><span className="status">正在读取工作台</span></div> : user ? <>
       <section className="p8-surface p8-dashboard-identity">
-        <div><span className="p8-avatar identity-avatar-host"><span className="identity-avatar-visual">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : getUserDisplayName(user).slice(0, 2)}</span><UserIdentityBadges user={user} /></span><span><strong>{getUserDisplayName(user)}</strong><small>@{user.username} · {user.role.name}{managementIdentity ? ` · ${managementIdentity.label}` : ""}</small></span></div>
+        <div><span className="p8-avatar identity-avatar-host"><span className="identity-avatar-visual">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : getUserDisplayName(user).slice(0, 2)}</span><AvatarManagementBadge user={user} /></span><span><strong>{getUserDisplayName(user)}</strong><small>@{user.username} · {user.role.name}{managementIdentity ? ` · ${managementIdentity.label}` : ""}</small></span></div>
         <div className="p8-identity-stats"><span><b>{data.article.published}</b>已发布</span><span><b>{data.article.draft}</b>草稿</span><span><b>{data.groupCount}</b>群聊</span></div>
       </section>
       <div className="p8-dashboard-grid">

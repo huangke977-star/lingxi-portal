@@ -64,7 +64,8 @@ import { io, type Socket } from "socket.io-client";
 import { AppToast } from "@/components/app-toast";
 import { ChatCallPanel, useChatCalls } from "@/components/chat-call";
 import { ChatGroupManager } from "@/components/chat-group-manager";
-import { UserIdentityBadges } from "@/components/user-identity-badges";
+import { RoleSymbol } from "@/components/role-symbol";
+import { AvatarManagementBadge } from "@/components/user-identity-badges";
 import { getMe, refreshStoredSession, resolveApiUrl, type AuthUser } from "@/lib/auth-api";
 import {
   AUTH_STATE_CHANGE_EVENT,
@@ -2289,7 +2290,7 @@ export function ChatDock() {
             <header><span><Forward aria-hidden="true" size={18} /><strong>选择转发对象</strong></span><button aria-label="关闭转发窗口" disabled={isForwardingMessages} onClick={() => setPendingMessageForward(null)} type="button"><X aria-hidden="true" size={17} /></button></header>
             <label className="chat-user-search"><Search aria-hidden="true" size={16} /><input autoFocus maxLength={40} onChange={(event) => setForwardTargetSearch(event.target.value)} placeholder="搜索好友" value={forwardTargetSearch} />{forwardTargetSearch ? <button aria-label="清空好友搜索" onClick={() => setForwardTargetSearch("")} type="button"><X aria-hidden="true" size={13} /></button> : null}</label>
             <div className="chat-forward-target-list">
-              {forwardTargets.map((friendship) => <button disabled={isForwardingMessages} key={friendship.id} onClick={() => void forwardMessagesTo(friendship)} type="button"><UserAvatar user={friendship.user} /><span><strong>{friendship.user.nickname}</strong><small>@{friendship.user.username}</small></span><Forward aria-hidden="true" size={15} /></button>)}
+              {forwardTargets.map((friendship) => <button disabled={isForwardingMessages} key={friendship.id} onClick={() => void forwardMessagesTo(friendship)} type="button"><UserAvatar user={friendship.user} /><span><strong>{friendship.user.nickname}<RoleSymbol code={friendship.user.role.code} /></strong><small>@{friendship.user.username}</small></span><Forward aria-hidden="true" size={15} /></button>)}
               {!forwardTargets.length ? <span className="chat-sidebar-empty">没有可转发的好友。</span> : null}
             </div>
             <small className="chat-forward-hint">将按原顺序逐条转发 {pendingMessageForward.messageIds.length} 条消息。</small>
@@ -2299,7 +2300,7 @@ export function ChatDock() {
           <div aria-modal="true" className="chat-add-friend-dialog" onClick={(event) => event.stopPropagation()} role="dialog">
             <header><span><UserPlus aria-hidden="true" size={18} /><strong>添加好友</strong></span><button aria-label="关闭添加好友" onClick={() => { setIsAddFriendOpen(false); setFriendRequestTarget(null); }} type="button"><X aria-hidden="true" size={17} /></button></header>
             {friendRequestTarget ? <div className="chat-friend-request-form">
-              <div className="chat-user-search-result identity"><UserAvatar large user={friendRequestTarget} /><span><strong>{friendRequestTarget.nickname}</strong><small>@{friendRequestTarget.username}</small></span></div>
+              <div className="chat-user-search-result identity"><UserAvatar large user={friendRequestTarget} /><span><strong>{friendRequestTarget.nickname}</strong><small>@{friendRequestTarget.username}</small></span><RoleSymbol code={friendRequestTarget.role.code} /></div>
               <label><span>申请备注</span><textarea maxLength={120} onChange={(event) => setFriendRequestNote(event.target.value)} placeholder="简单介绍一下自己，可不填" rows={3} value={friendRequestNote} /></label>
               <footer><button disabled={isFriendRequestSending} onClick={() => { setFriendRequestTarget(null); setFriendRequestNote(""); }} type="button">返回</button><button disabled={isFriendRequestSending} onClick={() => void sendFriendRequest()} type="button">{isFriendRequestSending ? "发送中" : "发送申请"}</button></footer>
             </div> : <>
@@ -2310,7 +2311,7 @@ export function ChatDock() {
                 {!isUserSearching && userSearch.trim().length >= 2 && !userSearchResults.length ? <span className="chat-sidebar-empty">没有找到匹配的用户。</span> : null}
                 {userSearchResults.map((result) => <div className="chat-user-search-result" key={result.id}>
                   <UserAvatar user={result} />
-                  <span><strong>{result.nickname}</strong><small>@{result.username}</small></span>
+                  <span><strong>{result.nickname}<RoleSymbol code={result.role.code} /></strong><small>@{result.username}</small></span>
                   {result.relationship?.status === "accepted" ? <button onClick={() => void openSearchResultChat(result)} type="button">发消息</button>
                     : result.canRequest ? <button onClick={() => { setFriendRequestTarget(result); setFriendRequestNote(""); }} type="button">添加</button>
                       : <small className="chat-user-search-status">{result.relationship?.status === "pending"
@@ -2369,7 +2370,7 @@ function ChatSidebarContactRow({ active, friendship, menuOpen, muted, preview, u
   return <div className={`chat-sidebar-contact-row${active ? " active" : ""}`}>
     <button className="chat-sidebar-primary-row" onClick={onOpen} type="button">
       <UserAvatar user={user} />
-      <span><strong className="chat-conversation-name">{user.nickname}{muted ? <BellOff aria-hidden="true" className="chat-muted-inline" size={13} /> : null}</strong><small>{preview}</small></span>
+      <span><strong className="chat-conversation-name">{user.nickname}<RoleSymbol code={user.role.code} />{muted ? <BellOff aria-hidden="true" className="chat-muted-inline" size={13} /> : null}</strong><small>{preview}</small></span>
       {unreadCount ? <b className={muted ? "muted" : undefined}>{muted ? "" : formatCount(unreadCount)}</b> : null}
     </button>
     {friendship || onConversationAction ? <div className="chat-friend-action" data-chat-friend-action>
@@ -2868,7 +2869,7 @@ function AttachmentPreview({ attachment, onClose }: { attachment: ChatAttachment
 
 function UserAvatar({ user, large = false }: { user: SocialUser; large?: boolean }) {
   const avatar = user.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
-  return <span className={`chat-user-avatar identity-avatar-host${large ? " large" : ""}`}><span className="identity-avatar-visual">{avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText(user)}</span><UserIdentityBadges user={user} /></span>;
+  return <span className={`chat-user-avatar identity-avatar-host${large ? " large" : ""}`}><span className="identity-avatar-visual">{avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText(user)}</span><AvatarManagementBadge user={user} /></span>;
 }
 
 function NotificationChannelIcon({ channel, size }: { channel: NotificationChannel; size: number }) {

@@ -953,60 +953,37 @@ body:has(.auth-page) .topbar {
   object-fit: cover;
 }
 
-.user-identity-badges {
+.avatar-management-badge {
   position: absolute;
   z-index: 4;
-  inset: 0;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.user-identity-badge {
-  position: absolute;
+  top: -4px;
   right: -4px;
   display: inline-flex;
   width: 14px;
   height: 14px;
   align-items: center;
   justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--surface-strong) 82%, transparent);
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
-  box-shadow: 0 1px 4px rgba(18, 25, 38, 0.24);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   color: var(--identity-accent, var(--accent-strong));
+  pointer-events: none;
 }
 
-.user-identity-badge.management {
-  top: -4px;
+.avatar-management-badge .role-symbol {
+  width: 14px;
+  height: 14px;
 }
 
-.user-identity-badge.growth {
-  bottom: -4px;
-}
-
-.user-identity-badge .role-symbol {
-  width: 10px;
-  height: 10px;
-}
-
-.user-identity-badge[data-role="super_administrator"],
+.avatar-management-badge[data-role="super_administrator"],
 .management-identity-symbol[data-role="super_administrator"] {
   --identity-accent: #c58a00;
 }
 
-.user-identity-badge[data-role="administrator"],
+.avatar-management-badge[data-role="administrator"],
 .management-identity-symbol[data-role="administrator"] {
   --identity-accent: #3f6fd8;
 }
-
-.user-identity-badge[data-role="qi_refining"] { --identity-accent: #0f9f8f; }
-.user-identity-badge[data-role="foundation_building"] { --identity-accent: #3b82f6; }
-.user-identity-badge[data-role="golden_core"] { --identity-accent: #d79b24; }
-.user-identity-badge[data-role="nascent_soul"] { --identity-accent: #8b5cf6; }
-.user-identity-badge[data-role="spirit_transformation"] { --identity-accent: #d946ef; }
-.user-identity-badge[data-role="void_refining"] { --identity-accent: #6366f1; }
-.user-identity-badge[data-role="body_integration"] { --identity-accent: #22a06b; }
-.user-identity-badge[data-role="mahayana"] { --identity-accent: #e11d48; }
 
 .management-identity-symbol {
   display: inline-flex;
@@ -1020,23 +997,23 @@ body:has(.auth-page) .topbar {
   height: 15px;
 }
 
-.public-user-avatar.identity-avatar-host .user-identity-badge,
-.profile-avatar.identity-avatar-host .user-identity-badge {
+.public-user-avatar.identity-avatar-host .avatar-management-badge,
+.profile-avatar.identity-avatar-host .avatar-management-badge {
   right: -3px;
   width: 20px;
   height: 20px;
 }
 
-.public-user-avatar.identity-avatar-host .user-identity-badge .role-symbol,
-.profile-avatar.identity-avatar-host .user-identity-badge .role-symbol {
-  width: 14px;
-  height: 14px;
+.public-user-avatar.identity-avatar-host .avatar-management-badge .role-symbol,
+.profile-avatar.identity-avatar-host .avatar-management-badge .role-symbol {
+  width: 20px;
+  height: 20px;
 }
 
 .admin-user-identity {
   display: grid;
-  min-width: 176px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 142px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 4px 8px;
 }
@@ -1065,23 +1042,30 @@ body:has(.auth-page) .topbar {
   color: var(--muted);
 }
 
-.table-identity-action {
+.table-icon-action {
   display: inline-flex;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 50%;
+  border-radius: 6px;
   background: transparent;
-  color: var(--accent-strong);
+  color: var(--muted-strong);
   cursor: pointer;
 }
 
-.table-identity-action:hover,
-.table-identity-action:focus-visible {
+.table-icon-action:hover,
+.table-icon-action:focus-visible {
   background: var(--accent-soft);
+  color: var(--accent-strong);
   outline: none;
+}
+
+.table-icon-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .account-menu {
@@ -3423,8 +3407,9 @@ a.entry-item:hover {
 
 .table-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
 }
 
 .table-action {

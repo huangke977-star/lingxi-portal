@@ -24,7 +24,8 @@ import {
 import { AppToast } from "@/components/app-toast";
 import { PwaInstallButton } from "@/components/pwa-install-button";
 import { GlobalSearch } from "@/components/global-search";
-import { UserIdentityBadges } from "@/components/user-identity-badges";
+import { RoleSymbol } from "@/components/role-symbol";
+import { AvatarManagementBadge } from "@/components/user-identity-badges";
 import {
   type ArticleCommentReport,
   getCommentReportSummary,
@@ -232,6 +233,10 @@ export function TopNav() {
   }, []);
 
   const avatarText = useMemo(() => user ? getAvatarFallbackText(user) : "H", [user]);
+  const roleBadge = useMemo(() => user ? {
+    code: user.role.code,
+    tooltip: `成长等级：${user.role.name}`,
+  } : null, [user]);
   const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
   const siteLogoUrl = useMemo(() => resolveConfiguredAssetUrl(siteBrand.logoPath), [siteBrand.logoPath]);
   const pushDisabledChannels = useMemo(
@@ -375,10 +380,11 @@ export function TopNav() {
                 </div>
               </div>
             </div>
+            {roleBadge ? <button aria-label={roleBadge.tooltip} className="level-badge" data-role={roleBadge.code} data-tooltip={roleBadge.tooltip} title={roleBadge.tooltip} type="button"><RoleSymbol className="role-badge-icon" code={roleBadge.code} /></button> : null}
             <div className="account-menu-wrap" ref={accountMenuRef} onPointerEnter={(event) => handleHoverOpen(event, accountMenuCloseTimerRef, () => setIsAccountMenuOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(accountMenuCloseTimerRef, () => setIsAccountMenuOpen(false)); }}>
               <span className="top-nav-avatar-identity">
                 <button aria-expanded={isAccountMenuOpen} aria-haspopup="menu" aria-label={`${getUserDisplayName(user)} 的账户菜单`} className="avatar-button" onClick={(event) => { event.stopPropagation(); setIsAccountMenuOpen(true); }} onFocus={() => setIsAccountMenuOpen(true)} type="button">{avatarUrl ? <img alt="" src={avatarUrl} /> : avatarText}</button>
-                <UserIdentityBadges user={user} />
+                <AvatarManagementBadge user={user} />
               </span>
               <div className={`account-menu ${isAccountMenuOpen ? "open" : ""}`} onFocus={() => cancelClose(accountMenuCloseTimerRef)} role="menu">
                 <div className="account-menu-head"><strong>{getUserDisplayName(user)}</strong><span>@{user.username}</span></div>

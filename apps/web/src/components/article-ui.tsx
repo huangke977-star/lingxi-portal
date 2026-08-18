@@ -14,7 +14,7 @@ import type { Article, ArticleAuthor, ArticleContentSegment } from "@/lib/articl
 import { resolveApiUrl } from "@/lib/auth-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
 import { PublicProfilePopover } from "@/components/public-profile-popover";
-import { UserIdentityBadges } from "@/components/user-identity-badges";
+import { AvatarManagementBadge } from "@/components/user-identity-badges";
 
 export function formatArticleDate(value: string | null): string {
   if (!value) return "尚未发布";
@@ -32,7 +32,7 @@ export function ArticleAuthorLine({ author, interactive = false }: { author: Art
         <span className="article-author-avatar">
           {avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText({ nickname: author.nickname, username: author.username })}
         </span>
-        <UserIdentityBadges user={author} />
+        <AvatarManagementBadge user={author} />
       </span>}
       <Link className="article-author-profile-link" href={`/users/${encodeURIComponent(author.username)}`} onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}>{author.nickname}</Link>
     </span>

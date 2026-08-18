@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ShieldCheck, ShieldOff } from "lucide-react";
+import {
+  KeyRound,
+  ShieldCheck,
+  ShieldOff,
+  UserRoundCheck,
+  UserRoundPen,
+  UserRoundX,
+} from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { PasswordInput } from "@/components/password-input";
@@ -482,18 +489,6 @@ export default function AdminPage() {
                         ) : (
                           <span className="table-management-label muted">普通用户</span>
                         )}
-                        {canChangeAdministrator ? (
-                          <button
-                            aria-label={user.isAdministrator ? "取消站点管理员" : "授予站点管理员"}
-                            className="table-identity-action"
-                            disabled={isBusy}
-                            onClick={() => void handleAdministratorToggle(user)}
-                            title={user.isAdministrator ? "取消站点管理员" : "授予站点管理员"}
-                            type="button"
-                          >
-                            {user.isAdministrator ? <ShieldOff aria-hidden="true" size={15} /> : <ShieldCheck aria-hidden="true" size={15} />}
-                          </button>
-                        ) : null}
                       </div>
                     </td>
                     <td>
@@ -503,41 +498,56 @@ export default function AdminPage() {
                     </td>
                     <td>
                       <div className="table-actions">
-                        {canChangeStatus ? (
+                        {canChangeAdministrator ? (
                           <button
-                            className="table-action"
+                            aria-label={user.isAdministrator ? "取消站点管理员" : "授予站点管理员"}
+                            className="table-icon-action"
                             disabled={isBusy}
-                            onClick={() => void handleStatusToggle(user)}
+                            onClick={() => void handleAdministratorToggle(user)}
+                            title={user.isAdministrator ? "取消站点管理员" : "授予站点管理员"}
                             type="button"
                           >
-                            {isBusy
-                              ? "保存中"
-                              : user.status === "active"
-                                ? "停用"
-                                : "启用"}
+                            {user.isAdministrator ? <ShieldOff aria-hidden="true" size={16} /> : <ShieldCheck aria-hidden="true" size={16} />}
+                          </button>
+                        ) : null}
+                        {canChangeStatus ? (
+                          <button
+                            aria-label={user.status === "active" ? "停用账号" : "启用账号"}
+                            className="table-icon-action"
+                            disabled={isBusy}
+                            onClick={() => void handleStatusToggle(user)}
+                            title={user.status === "active" ? "停用账号" : "启用账号"}
+                            type="button"
+                          >
+                            {user.status === "active" ? <UserRoundX aria-hidden="true" size={16} /> : <UserRoundCheck aria-hidden="true" size={16} />}
                           </button>
                         ) : null}
                         {canChangePassword ? (
                           <button
-                            className="table-action"
+                            aria-label="修改密码"
+                            className="table-icon-action"
                             disabled={isBusy}
                             onClick={() => openPasswordDialog(user)}
+                            title="修改密码"
                             type="button"
                           >
-                            修改密码
+                            <KeyRound aria-hidden="true" size={16} />
                           </button>
                         ) : null}
                         {canResetNickname ? (
                           <button
-                            className="table-action"
+                            aria-label="重置昵称"
+                            className="table-icon-action"
                             disabled={isBusy}
                             onClick={() => void handleNicknameReset(user)}
+                            title="重置昵称"
                             type="button"
                           >
-                            重置昵称
+                            <UserRoundPen aria-hidden="true" size={16} />
                           </button>
                         ) : null}
-                        {!canChangeStatus &&
+                        {!canChangeAdministrator &&
+                        !canChangeStatus &&
                         !canChangePassword &&
                         !canResetNickname ? (
                           <span className="table-no-action">—</span>
