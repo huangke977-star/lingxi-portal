@@ -1689,6 +1689,13 @@ a.entry-item:hover {
   padding: 10px 11px 10px 16px;
 }
 
+.account-role-tag > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 .level-icon {
   display: inline-grid;
   min-width: 22px;
