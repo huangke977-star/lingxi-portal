@@ -11,6 +11,7 @@ import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleCard } from "@/components/article-ui";
 import { DiscoveryArticleRow } from "@/components/discovery-ui";
 import { RoleSymbol } from "@/components/role-symbol";
+import { ManagementIdentitySymbol, UserIdentityBadges } from "@/components/user-identity-badges";
 import { ArticleList, listPublicArticles, listVisibleArticles } from "@/lib/article-api";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
@@ -24,6 +25,7 @@ import {
   unsubscribeFromAuthor,
 } from "@/lib/social-api";
 import { notifySocialStateChange, openChatDock } from "@/lib/social-events";
+import { getManagementIdentity } from "@/lib/user-permissions";
 import { getAvatarFallbackText } from "@/lib/user-display";
 import { getProfileShowcase, type ProfileShowcase } from "@/lib/discovery-api";
 
@@ -162,15 +164,15 @@ export default function UserProfilePage() {
   if (!profile) return <section className="page-shell public-user-page"><div className="search-page-empty"><strong>用户主页不可用</strong><span>{error || "该账号不存在或已停用。"}</span></div></section>;
 
   const avatarUrl = profile.avatarUrl ? resolveApiUrl(profile.avatarUrl) : null;
-  const roleCode = profile.isSuperAdmin ? "super_administrator" : profile.role.code;
+  const management = getManagementIdentity(profile);
   const relationship = profile.relationship;
 
   return <section className="page-shell public-user-page">
     <section className="public-user-profile-card">
-      <div className="public-user-avatar">{avatarUrl ? <img alt="" src={avatarUrl} /> : getAvatarFallbackText(profile)}</div>
+      <div className="public-user-avatar identity-avatar-host"><span className="identity-avatar-visual">{avatarUrl ? <img alt="" src={avatarUrl} /> : getAvatarFallbackText(profile)}</span><UserIdentityBadges user={profile} /></div>
       <div className="public-user-overview">
         <div className="public-user-copy">
-          <div className="public-user-name"><span><h1>{profile.nickname}</h1><small>@{profile.username}</small></span><span className="public-user-role"><RoleSymbol code={roleCode} />{profile.isSuperAdmin ? "超级管理员" : profile.role.name}</span></div>
+          <div className="public-user-name"><span><h1>{profile.nickname}</h1><small>@{profile.username}</small></span><span className="public-user-role"><RoleSymbol code={profile.role.code} />{profile.role.name}</span>{management ? <span className="public-user-role"><ManagementIdentitySymbol user={profile} />{management.label}</span> : null}</div>
           {profile.profileBio ? <p className="public-user-bio" title={profile.profileBio}>{profile.profileBio}</p> : null}
           <div className="public-user-facts">{profile.createdAt ? <span><Clock3 aria-hidden="true" size={15} />{formatJoinedAt(profile.createdAt)} 加入</span> : null}<span>{articles.total} 篇当前可见内容</span></div>
         </div>

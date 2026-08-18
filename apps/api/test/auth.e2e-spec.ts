@@ -25,7 +25,6 @@ interface StoredUser {
 
 const roles = [
   { id: 1, code: 'qi_refining', name: '练气', level: 10 },
-  { id: 9, code: 'administrator', name: '管理员', level: 90 },
 ];
 
 const defaultSiteSetting = {

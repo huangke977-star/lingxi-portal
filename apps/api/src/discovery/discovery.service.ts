@@ -84,6 +84,7 @@ const discoveryArticleInclude = {
       username: true,
       avatarStoredName: true,
       isSuperAdmin: true,
+      isAdministrator: true,
       role: { select: { code: true, name: true, level: true } },
     },
   },
@@ -123,6 +124,7 @@ const articleCollectionInclude = {
       username: true,
       avatarStoredName: true,
       isSuperAdmin: true,
+      isAdministrator: true,
       role: { select: { code: true, name: true, level: true } },
     },
   },
@@ -939,6 +941,7 @@ export class DiscoveryService {
     username: string;
     avatarStoredName: string | null;
     isSuperAdmin: boolean;
+    isAdministrator: boolean;
     role: { code: string; name: string; level: number };
   }): DiscoveryAuthorResponse {
     return {
@@ -947,9 +950,10 @@ export class DiscoveryService {
       username: author.username,
       avatarUrl: author.avatarStoredName ? `/auth/avatars/${author.avatarStoredName}` : null,
       isSuperAdmin: author.isSuperAdmin,
+      isAdministrator: author.isAdministrator,
       role: {
         ...author.role,
-        name: author.isSuperAdmin ? "超级管理员" : author.role.name,
+        name: author.role.name,
       },
     };
   }
@@ -1093,7 +1097,7 @@ export class DiscoveryService {
   }
 
   private canManage(user: AuthenticatedUser | null): boolean {
-    return Boolean(user && (user.isSuperAdmin || user.role.level >= 90));
+    return Boolean(user && (user.isSuperAdmin || user.isAdministrator));
   }
 
   private assertCanManage(user: AuthenticatedUser): void {

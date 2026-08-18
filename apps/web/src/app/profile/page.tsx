@@ -12,6 +12,7 @@ import { AppToast } from "@/components/app-toast";
 import { AccountSecurityPanel } from "@/components/account-security-panel";
 import { PasswordInput } from "@/components/password-input";
 import { RoleSymbol } from "@/components/role-symbol";
+import { ManagementIdentitySymbol, UserIdentityBadges } from "@/components/user-identity-badges";
 import {
   AuthAppearance,
   AuthSession,
@@ -37,6 +38,7 @@ import {
 } from "@/lib/auth-storage";
 import { getAccountMotto } from "@/lib/account-mottos";
 import { getAvatarFallbackText, getUserDisplayName } from "@/lib/user-display";
+import { getManagementIdentity } from "@/lib/user-permissions";
 import { getMyReputation, type ReputationSummary } from "@/lib/reputation-api";
 import { listMyArticles, type Article } from "@/lib/article-api";
 import {
@@ -831,15 +833,18 @@ export default function ProfilePage() {
                   }}
                   type="file"
                 />
-                <span className="profile-avatar">
-                  {avatarUrl ? (
-                    <img
-                      alt={`${getUserDisplayName(user)} 的头像`}
-                      src={avatarUrl}
-                    />
-                  ) : (
-                    avatarInitial
-                  )}
+                <span className="profile-avatar identity-avatar-host">
+                  <span className="identity-avatar-visual">
+                    {avatarUrl ? (
+                      <img
+                        alt={`${getUserDisplayName(user)} 的头像`}
+                        src={avatarUrl}
+                      />
+                    ) : (
+                      avatarInitial
+                    )}
+                  </span>
+                  <UserIdentityBadges user={user} />
                 </span>
               </label>
 
@@ -854,7 +859,8 @@ export default function ProfilePage() {
             </div>
 
             <div className="account-role-tag">
-              <span>{user.isSuperAdmin ? "超级管理员" : user.role.name}</span>
+              <span><RoleSymbol code={user.role.code} />{user.role.name}</span>
+              {getManagementIdentity(user) ? <span><ManagementIdentitySymbol user={user} />{getManagementIdentity(user)?.label}</span> : null}
               <button
                 aria-expanded={isLevelInfoOpen}
                 aria-label="查看账号等级说明"

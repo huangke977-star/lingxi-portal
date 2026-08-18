@@ -7,6 +7,7 @@ import { AdminArticlePreviewModal } from "@/components/admin-article-preview-mod
 import { AppToast } from "@/components/app-toast";
 import { getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { isSiteManager } from "@/lib/user-permissions";
 import { getAdminArticle, getViolationAuthor, listViolationAuthors, updateViolationRestriction, type Article, type ViolationAuthor, type ViolationAuthorDetail } from "@/lib/article-api";
 
 function date(value: string) { return new Date(value).toLocaleString("zh-CN", { hour12: false }); }
@@ -31,7 +32,7 @@ export default function ViolationAuthorsPage() {
     const accessToken = readAccessToken();
     if (!accessToken) { window.location.href = "/login?from=%2Fadmin%2Fviolations"; return; }
     Promise.all([getMe(accessToken), listViolationAuthors(accessToken)]).then(([user, result]) => {
-      if (!user.isSuperAdmin && user.role.level < 90) throw new Error("需要管理员权限。");
+      if (!isSiteManager(user)) throw new Error("需要管理员权限。");
       setToken(accessToken); setItems(result.items);
     }).catch((loadError) => { if (isAuthExpiredError(loadError)) { clearAuthTokens(); window.location.href = "/login"; return; } setError(loadError instanceof Error ? loadError.message : "无法读取违规作者。"); }).finally(() => setIsLoading(false));
   }, []);

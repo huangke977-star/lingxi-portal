@@ -18,6 +18,7 @@ const owner: AuthenticatedUser = {
   email: "owner@example.com",
   status: "active",
   isSuperAdmin: false,
+  isAdministrator: false,
   avatarUrl: null,
   profileBio: "",
   createdAt: new Date("2026-08-01T00:00:00.000Z"),
@@ -41,7 +42,8 @@ const siteManager: AuthenticatedUser = {
   username: "site-manager",
   nickname: "站点管理员",
   isSuperAdmin: true,
-  role: { code: "super_administrator", name: "超级管理员", level: 100 },
+  isAdministrator: false,
+  role: { code: "qi_refining", name: "练气", level: 10 },
 };
 
 const groupUser = (id: number) => ({
@@ -51,6 +53,7 @@ const groupUser = (id: number) => ({
   avatarStoredName: null,
   profileBio: "介绍",
   isSuperAdmin: false,
+  isAdministrator: false,
   createdAt: new Date("2026-08-01T00:00:00.000Z"),
   status: "active",
   role: { code: "qi_refining", name: "练气", level: 10 },

@@ -24,6 +24,7 @@ interface BootstrapUserUpdateData {
   passwordHash: string;
   roleId: number;
   isSuperAdmin: boolean;
+  isAdministrator: boolean;
   status: 'active';
 }
 
@@ -47,12 +48,12 @@ export async function bootstrapAdminFromEnv(
     throw new Error('ADMIN_PASSWORD must be at least 8 characters.');
   }
 
-  const administratorRole = await prisma.role.findUnique({
-    where: { code: 'administrator' },
+  const initialGrowthRole = await prisma.role.findUnique({
+    where: { code: 'qi_refining' },
   });
 
-  if (!administratorRole) {
-    throw new Error('administrator role is not configured. Run prisma seed first.');
+  if (!initialGrowthRole) {
+    throw new Error('initial growth role is not configured. Run prisma seed first.');
   }
 
   const passwordHash = await new PasswordService().hashPassword(password);
@@ -60,8 +61,9 @@ export async function bootstrapAdminFromEnv(
     username,
     email,
     passwordHash,
-    roleId: administratorRole.id,
+    roleId: initialGrowthRole.id,
     isSuperAdmin: true,
+    isAdministrator: false,
     status: 'active',
   };
   const existingUser = await prisma.user.findFirst({

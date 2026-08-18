@@ -34,6 +34,7 @@ export interface AuthUser {
   email: string;
   status: "active" | "disabled";
   isSuperAdmin: boolean;
+  isAdministrator: boolean;
   avatarUrl: string | null;
   profileBio: string;
   createdAt: string;
@@ -295,6 +296,7 @@ export function normalizeAuthUser(user: AuthUser): AuthUser {
   return {
     ...user,
     nickname: user.nickname?.trim() || user.username,
+    isAdministrator: Boolean(user.isAdministrator),
   };
 }
 

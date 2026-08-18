@@ -10,6 +10,7 @@ import {
 } from "@/lib/article-api";
 import type { AuthUser } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
+import { isSiteManager } from "@/lib/user-permissions";
 
 export type ArticleCenterSection = "discover" | "subscriptions" | "collections" | "topics" | "mine" | "reading" | "manage";
 
@@ -45,7 +46,7 @@ export function ArticleCenterNav({
   showWrite?: boolean;
 }) {
   const [summary, setSummary] = useState<ArticleCenterSummary>(emptySummary);
-  const canManage = Boolean(user?.isSuperAdmin || (user?.role.level ?? 0) >= 90);
+  const canManage = isSiteManager(user);
   const protectedHref = (href: string) => isLoggedIn
     ? href
     : `/login?from=${encodeURIComponent(href)}`;

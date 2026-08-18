@@ -28,7 +28,8 @@ function topic() {
 const manager = {
   id: 1,
   isSuperAdmin: true,
-  role: { level: 100 },
+  isAdministrator: false,
+  role: { code: "qi_refining", name: "练气", level: 10 },
 } as AuthenticatedUser;
 
 function createService(prisma: object) {

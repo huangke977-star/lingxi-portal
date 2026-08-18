@@ -11,7 +11,6 @@ const roles = [
   { code: 'void_refining', name: '炼虚', level: 60, sortOrder: 60 },
   { code: 'body_integration', name: '合体', level: 70, sortOrder: 70 },
   { code: 'mahayana', name: '大乘', level: 80, sortOrder: 80 },
-  { code: 'administrator', name: '管理员', level: 90, sortOrder: 90 },
 ];
 
 async function main() {

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { isSiteManager } from "@/lib/user-permissions";
 import {
   banChatGroup,
   downloadChatAttachment,
@@ -57,7 +58,7 @@ export default function GroupReportsAdminPage() {
     Promise.all([getMe(token), listAdminChatGroups(token, search), listChatGroupReports(token, undefined, reportStatus)])
       .then(([currentUser, groupResult, reportResult]) => {
         if (!active) return;
-        if (!(currentUser.isSuperAdmin || currentUser.role.level >= 90)) {
+        if (!isSiteManager(currentUser)) {
           router.replace("/");
           return;
         }

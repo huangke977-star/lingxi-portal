@@ -30,6 +30,7 @@ import {
 } from "@/lib/analytics-api";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { isSiteManager } from "@/lib/user-permissions";
 
 type Range = 7 | 30 | 90;
 type SeriesKey = Exclude<keyof AnalyticsTrendPoint, "date">;
@@ -73,7 +74,7 @@ export default function AdminAnalyticsPage() {
     setIsLoading(true);
     try {
       const [currentUser, result] = await Promise.all([getMe(token), getAdminAnalytics(token, currentRange)]);
-      if (!currentUser.isSuperAdmin && currentUser.role.level < 90) {
+      if (!isSiteManager(currentUser)) {
         setUser(currentUser);
         setError("当前账号没有查看运营数据的权限。");
         return;
@@ -113,7 +114,7 @@ export default function AdminAnalyticsPage() {
     }
   }
 
-  if (!isLoading && user && !user.isSuperAdmin && user.role.level < 90) {
+  if (!isLoading && user && !isSiteManager(user)) {
     return <section className="page-shell analytics-page"><div className="search-page-empty"><strong>无法进入运营分析</strong><span>{error}</span></div></section>;
   }
 

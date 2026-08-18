@@ -8,6 +8,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RoleSymbol } from "@/components/role-symbol";
+import { ManagementIdentitySymbol, UserIdentityBadges } from "@/components/user-identity-badges";
 import type { ArticleAuthor } from "@/lib/article-api";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
@@ -20,6 +21,7 @@ import {
 } from "@/lib/social-api";
 import { notifySocialStateChange, openChatDock } from "@/lib/social-events";
 import { getAvatarFallbackText } from "@/lib/user-display";
+import { getManagementIdentity } from "@/lib/user-permissions";
 
 interface Position {
   left: number;
@@ -40,8 +42,7 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
   const [friendNote, setFriendNote] = useState("");
   const [error, setError] = useState("");
   const avatar = author.avatarUrl ? resolveApiUrl(author.avatarUrl) : null;
-  const roleCode = author.isSuperAdmin ? "super_administrator" : author.role.code;
-  const roleName = author.isSuperAdmin ? "超级管理员" : author.role.name;
+  const management = getManagementIdentity(author);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -166,27 +167,34 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
 
   return (
     <>
-      <button
-        aria-expanded={isOpen}
-        aria-label={`查看 ${author.nickname} 的公开资料`}
-        className="comment-avatar-button"
-        onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openProfile(); }}
-        ref={triggerRef}
-        type="button"
-      >
-        {avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText({ nickname: author.nickname, username: author.username })}
-      </button>
+      <span className="identity-badged-avatar">
+        <button
+          aria-expanded={isOpen}
+          aria-label={`查看 ${author.nickname} 的公开资料`}
+          className="comment-avatar-button"
+          onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openProfile(); }}
+          ref={triggerRef}
+          type="button"
+        >
+          {avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText({ nickname: author.nickname, username: author.username })}
+        </button>
+        <UserIdentityBadges user={author} />
+      </span>
       {isOpen && typeof document !== "undefined" ? createPortal(
         <div className="public-profile-popover" ref={panelRef} style={position}>
           <div className="public-profile-head">
-            <span className="public-profile-avatar">
-              {avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText({ nickname: author.nickname, username: author.username })}
+            <span className="public-profile-avatar identity-avatar-host">
+              <span className="identity-avatar-visual">{avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText({ nickname: author.nickname, username: author.username })}</span>
+              <UserIdentityBadges user={author} />
             </span>
             <div>
               <strong>{displayProfile.nickname}</strong>
               <span>@{displayProfile.username}</span>
             </div>
-            <span className="public-profile-role" title={roleName}><RoleSymbol code={roleCode} />{roleName}</span>
+            <span className="public-profile-identities">
+              <span className="public-profile-role" title={`成长等级：${author.role.name}`}><RoleSymbol code={author.role.code} />{author.role.name}</span>
+              {management ? <span className="public-profile-role" title={management.label}><ManagementIdentitySymbol user={author} />{management.label}</span> : null}
+            </span>
           </div>
           {displayProfile.profileBio ? <p>{displayProfile.profileBio}</p> : null}
           {displayProfile.createdAt ? <span className="public-profile-since"><Clock3 aria-hidden="true" size={14} />加入于 {new Date(displayProfile.createdAt).toLocaleDateString("zh-CN")}</span> : null}
@@ -210,13 +218,10 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
 }
 
 export function CommentAuthorIdentity({ author }: { author: ArticleAuthor }) {
-  const roleCode = author.isSuperAdmin ? "super_administrator" : author.role.code;
-  const roleName = author.isSuperAdmin ? "超级管理员" : author.role.name;
   return (
     <span className="comment-author-identity">
       <PublicProfilePopover author={author} />
       <Link className="comment-author-profile-link" href={`/users/${encodeURIComponent(author.username)}`}>{author.nickname}</Link>
-      <span className="comment-role-icon" title={roleName}><RoleSymbol code={roleCode} /></span>
     </span>
   );
 }

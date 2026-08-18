@@ -124,6 +124,7 @@ describe("browser push subscriptions", () => {
         avatarUrl: null,
         profileBio: "",
         isSuperAdmin: false,
+        isAdministrator: false,
         role: { code: "qi_refining", name: "练气", level: 10 },
         createdAt: "2026-08-05T00:00:00.000Z",
       },

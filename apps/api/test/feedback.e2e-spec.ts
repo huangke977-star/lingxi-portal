@@ -8,6 +8,7 @@ const user = {
   nickname: "反馈用户",
   username: "feedback-user",
   isSuperAdmin: false,
+  isAdministrator: false,
   role: { code: "qi_refining", name: "练气", level: 10 },
 } as AuthenticatedUser;
 
@@ -16,7 +17,8 @@ const manager = {
   nickname: "管理员",
   username: "admin",
   isSuperAdmin: false,
-  role: { code: "administrator", name: "管理员", level: 90 },
+  isAdministrator: true,
+  role: { code: "qi_refining", name: "练气", level: 10 },
 } as AuthenticatedUser;
 
 function feedbackRecord(status = "pending") {

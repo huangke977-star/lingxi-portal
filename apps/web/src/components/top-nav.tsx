@@ -24,7 +24,7 @@ import {
 import { AppToast } from "@/components/app-toast";
 import { PwaInstallButton } from "@/components/pwa-install-button";
 import { GlobalSearch } from "@/components/global-search";
-import { RoleSymbol } from "@/components/role-symbol";
+import { UserIdentityBadges } from "@/components/user-identity-badges";
 import {
   type ArticleCommentReport,
   getCommentReportSummary,
@@ -37,6 +37,7 @@ import {
   readAccessToken,
   readRefreshToken,
 } from "@/lib/auth-storage";
+import { isSiteManager } from "@/lib/user-permissions";
 import {
   type Conversation,
   type NotificationChannelState,
@@ -129,7 +130,7 @@ export function TopNav() {
 
     try {
       const currentUser = await getMe(accessToken);
-      const canModerate = currentUser.isSuperAdmin || currentUser.role.level >= 90;
+      const canModerate = isSiteManager(currentUser);
       const [summary, conversationResult, notificationResult, reportSummary, reportResult] = await Promise.all([
         getSocialSummary(accessToken).catch(() => emptySummary),
         listConversations(accessToken).catch(() => ({ items: [] })),
@@ -231,10 +232,6 @@ export function TopNav() {
   }, []);
 
   const avatarText = useMemo(() => user ? getAvatarFallbackText(user) : "H", [user]);
-  const roleBadge = useMemo(() => user ? {
-    code: user.isSuperAdmin ? "super_administrator" : user.role.code,
-    tooltip: user.isSuperAdmin ? "超级管理员" : user.role.name,
-  } : null, [user]);
   const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
   const siteLogoUrl = useMemo(() => resolveConfiguredAssetUrl(siteBrand.logoPath), [siteBrand.logoPath]);
   const pushDisabledChannels = useMemo(
@@ -358,8 +355,8 @@ export function TopNav() {
           <GlobalSearch />
           {isLoading ? <span className="login-chip">读取中</span> : null}
           {!isLoading && !user ? <Link className="login-chip login-chip-action" href={`/login?from=${encodeURIComponent(pathname)}`}>登录</Link> : null}
-          {user && roleBadge ? <>
-            {user.isSuperAdmin || user.role.level >= 90 ? <div className="header-action-wrap" ref={taskPopoverRef} onPointerEnter={(event) => handleHoverOpen(event, taskCloseTimerRef, () => setIsTaskPopoverOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(taskCloseTimerRef, () => setIsTaskPopoverOpen(false)); }}>
+          {user ? <>
+            {isSiteManager(user) ? <div className="header-action-wrap" ref={taskPopoverRef} onPointerEnter={(event) => handleHoverOpen(event, taskCloseTimerRef, () => setIsTaskPopoverOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(taskCloseTimerRef, () => setIsTaskPopoverOpen(false)); }}>
               <button aria-expanded={isTaskPopoverOpen} aria-label="待处理举报" className={`header-action-button${isTaskPopoverOpen ? " active" : ""}`} onClick={() => setIsTaskPopoverOpen((current) => !current)} title="待处理举报" type="button"><ListTodo aria-hidden="true" size={19} />{pendingReportCount ? <b>{pendingReportCount > 99 ? "99+" : pendingReportCount}</b> : null}</button>
               <div className={`header-popover task-popover${isTaskPopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(taskCloseTimerRef)}>
                 <div className="header-popover-heading"><strong>待处理举报</strong><button onClick={() => { setIsTaskPopoverOpen(false); router.push("/admin/articles?tab=comments"); }} type="button">进入管理</button></div>
@@ -378,16 +375,18 @@ export function TopNav() {
                 </div>
               </div>
             </div>
-            <button aria-label={roleBadge.tooltip} className="level-badge" data-role={roleBadge.code} data-tooltip={roleBadge.tooltip} title={roleBadge.tooltip} type="button"><RoleSymbol className="role-badge-icon" code={roleBadge.code} /></button>
             <div className="account-menu-wrap" ref={accountMenuRef} onPointerEnter={(event) => handleHoverOpen(event, accountMenuCloseTimerRef, () => setIsAccountMenuOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(accountMenuCloseTimerRef, () => setIsAccountMenuOpen(false)); }}>
-              <button aria-expanded={isAccountMenuOpen} aria-haspopup="menu" aria-label={`${getUserDisplayName(user)} 的账户菜单`} className="avatar-button" onClick={(event) => { event.stopPropagation(); setIsAccountMenuOpen(true); }} onFocus={() => setIsAccountMenuOpen(true)} type="button">{avatarUrl ? <img alt="" src={avatarUrl} /> : avatarText}</button>
+              <span className="top-nav-avatar-identity">
+                <button aria-expanded={isAccountMenuOpen} aria-haspopup="menu" aria-label={`${getUserDisplayName(user)} 的账户菜单`} className="avatar-button" onClick={(event) => { event.stopPropagation(); setIsAccountMenuOpen(true); }} onFocus={() => setIsAccountMenuOpen(true)} type="button">{avatarUrl ? <img alt="" src={avatarUrl} /> : avatarText}</button>
+                <UserIdentityBadges user={user} />
+              </span>
               <div className={`account-menu ${isAccountMenuOpen ? "open" : ""}`} onFocus={() => cancelClose(accountMenuCloseTimerRef)} role="menu">
                 <div className="account-menu-head"><strong>{getUserDisplayName(user)}</strong><span>@{user.username}</span></div>
                 <Link href={`/users/${encodeURIComponent(user.username)}`} onClick={() => setIsAccountMenuOpen(false)}>我的主页</Link>
                  <Link href="/profile" onClick={() => setIsAccountMenuOpen(false)}>个人中心</Link>
                  <Link href="/profile/reports" onClick={() => setIsAccountMenuOpen(false)}>我的举报</Link>
                  <Link href="/feedback" onClick={() => setIsAccountMenuOpen(false)}>用户反馈</Link>
-                {user.isSuperAdmin || user.role.level >= 90 ? <><Link href="/admin" onClick={() => setIsAccountMenuOpen(false)}>用户管理</Link><Link href="/admin/content" onClick={() => setIsAccountMenuOpen(false)}>内容管理</Link><Link href="/admin/violations" onClick={() => setIsAccountMenuOpen(false)}>违规作者</Link><Link href="/admin/feedback" onClick={() => setIsAccountMenuOpen(false)}>用户反馈管理</Link><Link href="/admin/groups" onClick={() => setIsAccountMenuOpen(false)}>群聊管理</Link><Link href="/admin/voices" onClick={() => setIsAccountMenuOpen(false)}>匿名话题管理</Link><Link href="/admin/analytics" onClick={() => setIsAccountMenuOpen(false)}>运营数据</Link><Link href="/admin/announcements" onClick={() => setIsAccountMenuOpen(false)}>公告管理</Link><Link href="/admin/audit" onClick={() => setIsAccountMenuOpen(false)}>审计日志</Link><Link href="/admin/security" onClick={() => setIsAccountMenuOpen(false)}><ShieldCheck aria-hidden="true" size={15} />安全管理</Link></> : null}
+                {isSiteManager(user) ? <><Link href="/admin" onClick={() => setIsAccountMenuOpen(false)}>用户管理</Link><Link href="/admin/content" onClick={() => setIsAccountMenuOpen(false)}>内容管理</Link><Link href="/admin/violations" onClick={() => setIsAccountMenuOpen(false)}>违规作者</Link><Link href="/admin/feedback" onClick={() => setIsAccountMenuOpen(false)}>用户反馈管理</Link><Link href="/admin/groups" onClick={() => setIsAccountMenuOpen(false)}>群聊管理</Link><Link href="/admin/voices" onClick={() => setIsAccountMenuOpen(false)}>匿名话题管理</Link><Link href="/admin/analytics" onClick={() => setIsAccountMenuOpen(false)}>运营数据</Link><Link href="/admin/announcements" onClick={() => setIsAccountMenuOpen(false)}>公告管理</Link><Link href="/admin/audit" onClick={() => setIsAccountMenuOpen(false)}>审计日志</Link><Link href="/admin/security" onClick={() => setIsAccountMenuOpen(false)}><ShieldCheck aria-hidden="true" size={15} />安全管理</Link></> : null}
                 {user.isSuperAdmin ? <><Link href="/admin/settings" onClick={() => setIsAccountMenuOpen(false)}>站点设置</Link><Link href="/admin/android" onClick={() => setIsAccountMenuOpen(false)}>安装包管理</Link><Link href="/admin/cache" onClick={() => setIsAccountMenuOpen(false)}>缓存管理</Link><Link href="/admin/system" onClick={() => setIsAccountMenuOpen(false)}>系统概览</Link></> : null}
                 <button disabled={isLoggingOut} onClick={() => void handleLogout()} type="button">{isLoggingOut ? "退出中" : "退出登录"}</button>
               </div>

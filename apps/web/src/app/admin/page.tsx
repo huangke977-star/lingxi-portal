@@ -2,25 +2,27 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ShieldCheck, ShieldOff } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { PasswordInput } from "@/components/password-input";
+import { RoleSymbol } from "@/components/role-symbol";
+import { ManagementIdentitySymbol } from "@/components/user-identity-badges";
 import {
   listAdminUsers,
-  listRoles,
   resetUserNickname,
+  updateUserAdministrator,
   updateUserPassword,
-  updateUserRole,
   updateUserStatus,
 } from "@/lib/admin-api";
 import {
   ApiRequestError,
-  AuthRole,
   AuthUser,
   getMe,
   isAuthExpiredError,
 } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { getManagementIdentity, isSiteManager } from "@/lib/user-permissions";
 
 const STATUS_LABEL: Record<AuthUser["status"], string> = {
   active: "启用",
@@ -32,7 +34,6 @@ export default function AdminPage() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [users, setUsers] = useState<AuthUser[]>([]);
-  const [roles, setRoles] = useState<AuthRole[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -70,36 +71,6 @@ export default function AdminPage() {
 
         setAccessToken(verifiedToken);
         setCurrentUser(me);
-
-        if (!canAccessUserManagement(me)) {
-          return;
-        }
-
-        try {
-          const nextRoles = await listRoles();
-          if (!isMounted) {
-            return;
-          }
-
-          setRoles(nextRoles);
-        } catch (managementError) {
-          if (
-            managementError instanceof ApiRequestError &&
-            managementError.status === 401
-          ) {
-            clearAuthTokens();
-            router.replace("/");
-            return;
-          }
-
-          if (isMounted) {
-            setError(
-              managementError instanceof Error
-                ? managementError.message
-                : "无法读取管理数据。",
-            );
-          }
-        }
       } catch (loadError) {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
@@ -202,8 +173,8 @@ export default function AdminPage() {
     searchQuery,
   ]);
 
-  async function handleRoleChange(user: AuthUser, roleCode: string) {
-    if (!accessToken || user.role.code === roleCode) {
+  async function handleAdministratorToggle(user: AuthUser) {
+    if (!accessToken) {
       return;
     }
 
@@ -212,12 +183,22 @@ export default function AdminPage() {
     setNotice("");
 
     try {
-      const updatedUser = await updateUserRole(accessToken, user.id, roleCode);
+      const updatedUser = await updateUserAdministrator(
+        accessToken,
+        user.id,
+        !user.isAdministrator,
+      );
       replaceUser(updatedUser);
-      setNotice(`已更新 ${updatedUser.username} 的角色。`);
-    } catch (roleError) {
+      setNotice(
+        updatedUser.isAdministrator
+          ? `已授予 ${updatedUser.username} 站点管理员身份。`
+          : `已取消 ${updatedUser.username} 的站点管理员身份。`,
+      );
+    } catch (administratorError) {
       setError(
-        roleError instanceof Error ? roleError.message : "角色更新失败。",
+        administratorError instanceof Error
+          ? administratorError.message
+          : "管理员身份更新失败。",
       );
     } finally {
       setBusyUserId(null);
@@ -444,7 +425,7 @@ export default function AdminPage() {
             <tr>
               <th>账号</th>
               <th>邮箱</th>
-              <th>角色</th>
+              <th>成长等级 / 管理身份</th>
               <th>状态</th>
               <th>操作</th>
             </tr>
@@ -465,7 +446,10 @@ export default function AdminPage() {
             ) : (
               users.map((user) => {
                 const isBusy = busyUserId === user.id;
-                const canChangeRole = canChangeUserRole(currentUser, user);
+                const canChangeAdministrator = canChangeUserAdministrator(
+                  currentUser,
+                  user,
+                );
                 const canChangeStatus = canChangeUserStatus(currentUser, user);
                 const canChangePassword = canChangeUserPassword(
                   currentUser,
@@ -475,10 +459,6 @@ export default function AdminPage() {
                   currentUser,
                   user,
                 );
-                const assignableRoles = currentUser.isSuperAdmin
-                  ? roles
-                  : roles.filter((role) => role.level < currentUser.role.level);
-
                 return (
                   <tr key={user.id}>
                     <td>
@@ -489,28 +469,32 @@ export default function AdminPage() {
                     </td>
                     <td>{user.email}</td>
                     <td>
-                      {canChangeRole ? (
-                        <select
-                          aria-label={`${user.username} 的角色`}
-                          disabled={isBusy}
-                          onChange={(event) =>
-                            void handleRoleChange(user, event.target.value)
-                          }
-                          value={user.role.code}
-                        >
-                          {assignableRoles.map((role) => (
-                            <option key={role.code} value={role.code}>
-                              {role.name} · {role.level}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="table-role-label">
-                          {user.isSuperAdmin
-                            ? "超级管理员"
-                            : `${user.role.name} · ${user.role.level}`}
+                      <div className="admin-user-identity">
+                        <span className="table-role-label" title="成长等级">
+                          <RoleSymbol code={user.role.code} />
+                          {user.role.name} · Lv.{user.role.level}
                         </span>
-                      )}
+                        {getManagementIdentity(user) ? (
+                          <span className="table-management-label">
+                            <ManagementIdentitySymbol user={user} />
+                            {getManagementIdentity(user)?.label}
+                          </span>
+                        ) : (
+                          <span className="table-management-label muted">普通用户</span>
+                        )}
+                        {canChangeAdministrator ? (
+                          <button
+                            aria-label={user.isAdministrator ? "取消站点管理员" : "授予站点管理员"}
+                            className="table-identity-action"
+                            disabled={isBusy}
+                            onClick={() => void handleAdministratorToggle(user)}
+                            title={user.isAdministrator ? "取消站点管理员" : "授予站点管理员"}
+                            type="button"
+                          >
+                            {user.isAdministrator ? <ShieldOff aria-hidden="true" size={15} /> : <ShieldCheck aria-hidden="true" size={15} />}
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                     <td>
                       <span className={`status-badge ${user.status}`}>
@@ -661,15 +645,11 @@ export default function AdminPage() {
 }
 
 function canAccessUserManagement(user: AuthUser): boolean {
-  return user.isSuperAdmin || user.role.level >= 90;
+  return isSiteManager(user);
 }
 
-function canChangeUserRole(actor: AuthUser, target: AuthUser): boolean {
-  if (target.isSuperAdmin) {
-    return false;
-  }
-
-  return actor.isSuperAdmin || target.role.level < actor.role.level;
+function canChangeUserAdministrator(actor: AuthUser, target: AuthUser): boolean {
+  return actor.isSuperAdmin && !target.isSuperAdmin;
 }
 
 function canChangeUserStatus(actor: AuthUser, target: AuthUser): boolean {
@@ -677,7 +657,7 @@ function canChangeUserStatus(actor: AuthUser, target: AuthUser): boolean {
     return false;
   }
 
-  return actor.isSuperAdmin || target.role.level < actor.role.level;
+  return actor.isSuperAdmin || (actor.isAdministrator && !target.isAdministrator);
 }
 
 function canChangeUserPassword(actor: AuthUser, target: AuthUser): boolean {
@@ -693,5 +673,5 @@ function canResetUserNickname(actor: AuthUser, target: AuthUser): boolean {
     return false;
   }
 
-  return actor.isSuperAdmin || target.role.level < actor.role.level;
+  return actor.isSuperAdmin || (actor.isAdministrator && !target.isAdministrator);
 }

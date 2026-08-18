@@ -30,7 +30,8 @@ const users = [
     email: 'admin@example.com',
     status: 'active',
     isSuperAdmin: true,
-    role: { code: 'administrator', name: '管理员', level: 90 },
+    isAdministrator: false,
+    role: { code: 'qi_refining', name: '练气', level: 10 },
   },
   {
     id: 2,
@@ -38,6 +39,7 @@ const users = [
     email: 'normal@example.com',
     status: 'active',
     isSuperAdmin: false,
+    isAdministrator: false,
     role: { code: 'qi_refining', name: '练气', level: 10 },
   },
 ] as const;

@@ -72,6 +72,7 @@ const groupUserSelect = {
   avatarStoredName: true,
   profileBio: true,
   isSuperAdmin: true,
+  isAdministrator: true,
   createdAt: true,
   status: true,
   role: { select: { code: true, name: true, level: true } },
@@ -1008,7 +1009,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     user: AuthenticatedUser,
     query: ListChatGroupReportsQueryDto,
   ): Promise<{ items: ChatGroupReportResponse[] }> {
-    const siteManager = user.isSuperAdmin || user.role.level >= 90;
+    const siteManager = user.isSuperAdmin || Boolean(user.isAdministrator);
     if (!siteManager && !query.groupId) throw new ForbiddenException("请选择你管理的群聊。");
     if (!siteManager && query.groupId) await this.assertManager(query.groupId, user.id);
     const reports = await this.prisma.chatGroupMessageReport.findMany({
@@ -1040,7 +1041,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
       },
     });
     if (!report) throw new NotFoundException("群消息举报不存在。");
-    if (!(user.isSuperAdmin || user.role.level >= 90)) await this.assertManager(report.groupId, user.id);
+    if (!(user.isSuperAdmin || user.isAdministrator)) await this.assertManager(report.groupId, user.id);
     const storedNames = report.message.attachments.map((attachment) => attachment.storedName);
     await this.prisma.$transaction(async (transaction) => {
       await transaction.chatGroupMessageReport.update({
@@ -1246,7 +1247,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private isSiteManager(user: AuthenticatedUser): boolean {
-    return user.isSuperAdmin || user.role.level >= 90;
+    return user.isSuperAdmin || Boolean(user.isAdministrator);
   }
 
   private assertSiteManager(user: AuthenticatedUser): void {
@@ -1436,9 +1437,10 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
       avatarUrl: user.avatarStoredName ? `/auth/avatars/${user.avatarStoredName}` : null,
       profileBio: user.profileBio,
       isSuperAdmin: user.isSuperAdmin,
+      isAdministrator: user.isAdministrator,
       role: {
         code: user.role.code,
-        name: user.isSuperAdmin ? "超级管理员" : user.role.name,
+        name: user.role.name,
         level: user.role.level,
       },
       createdAt: user.createdAt.toISOString(),

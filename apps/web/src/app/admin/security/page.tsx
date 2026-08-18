@@ -15,6 +15,7 @@ import { AppToast } from "@/components/app-toast";
 import { PasswordInput } from "@/components/password-input";
 import { type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { isSiteManager } from "@/lib/user-permissions";
 import {
   getSecurityAdminConfig,
   getSecurityAdminOverview,
@@ -796,7 +797,7 @@ function StatusBadge({ value = "unknown" }: { value?: string }) {
 }
 
 function canAccessSecurityAdmin(user: AuthUser): boolean {
-  return user.isSuperAdmin || user.role.level >= 90;
+  return isSiteManager(user);
 }
 
 function searchPlaceholder(tab: SecurityAdminTab): string {

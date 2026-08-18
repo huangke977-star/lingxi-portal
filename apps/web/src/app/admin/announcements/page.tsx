@@ -21,6 +21,7 @@ import {
 } from "@/lib/announcements-api";
 import { AuthRole, AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { isSiteManager } from "@/lib/user-permissions";
 
 type StatusFilter = "all" | AnnouncementStatus;
 type EditorState = { id: number | null; status: AnnouncementStatus; input: AnnouncementInput };
@@ -94,7 +95,7 @@ export default function AnnouncementAdminPage() {
     }
     Promise.all([getMe(accessToken), listRoles()])
       .then(([currentUser, nextRoles]) => {
-        if (!currentUser.isSuperAdmin && currentUser.role.level < 90) {
+        if (!isSiteManager(currentUser)) {
           router.replace("/");
           return;
         }

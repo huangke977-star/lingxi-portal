@@ -5,6 +5,7 @@ export interface SocialUserResponse {
   avatarUrl: string | null;
   profileBio: string;
   isSuperAdmin: boolean;
+  isAdministrator: boolean;
   role: {
     code: string;
     name: string;

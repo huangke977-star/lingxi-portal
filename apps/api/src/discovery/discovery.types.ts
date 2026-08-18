@@ -4,6 +4,7 @@ export interface DiscoveryAuthorResponse {
   username: string;
   avatarUrl: string | null;
   isSuperAdmin: boolean;
+  isAdministrator: boolean;
   role: { code: string; name: string; level: number };
 }
 

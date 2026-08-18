@@ -19,6 +19,7 @@ import {
   type AuthUser,
 } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { isSiteManager } from "@/lib/user-permissions";
 import {
   addTopicArticle,
   createTopic,
@@ -83,7 +84,7 @@ export default function TopicManagementPage() {
     }
     getMe(token)
       .then(async (currentUser) => {
-        if (!currentUser.isSuperAdmin && currentUser.role.level < 90)
+        if (!isSiteManager(currentUser))
           throw new Error("需要管理员权限。");
         const [topicResult, articleResult, roleResult] = await Promise.all([
           listAdminTopics(token),

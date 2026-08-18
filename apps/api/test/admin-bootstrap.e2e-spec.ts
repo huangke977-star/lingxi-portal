@@ -1,7 +1,7 @@
 import { bootstrapAdminFromEnv } from '../prisma/bootstrap-admin';
 
 describe('admin bootstrap', () => {
-  const administratorRole = { id: 9, code: 'administrator', name: '管理员', level: 90 };
+  const initialGrowthRole = { id: 1, code: 'qi_refining', name: '练气', level: 10 };
 
   function createPrismaMock() {
     const users: Array<{
@@ -12,6 +12,7 @@ describe('admin bootstrap', () => {
       passwordHash: string;
       roleId: number;
       isSuperAdmin: boolean;
+      isAdministrator: boolean;
       status: 'active' | 'disabled';
     }> = [];
 
@@ -20,7 +21,7 @@ describe('admin bootstrap', () => {
       prisma: {
         role: {
           findUnique: jest.fn(async ({ where }: { where: { code: string } }) => {
-            return where.code === 'administrator' ? administratorRole : null;
+            return where.code === 'qi_refining' ? initialGrowthRole : null;
           }),
         },
         user: {
@@ -60,7 +61,7 @@ describe('admin bootstrap', () => {
     ADMIN_PASSWORD: 'Secret123!',
   };
 
-  it('creates a super admin with administrator role', async () => {
+  it('creates a super admin with the initial growth role', async () => {
     const state = createPrismaMock();
 
     const result = await bootstrapAdminFromEnv(state.prisma as never, env);
@@ -71,8 +72,9 @@ describe('admin bootstrap', () => {
       username: 'admin',
       nickname: 'admin',
       email: 'admin@example.com',
-      roleId: administratorRole.id,
+      roleId: initialGrowthRole.id,
       isSuperAdmin: true,
+      isAdministrator: false,
       status: 'active',
     });
     expect(state.users[0].passwordHash).not.toBe(env.ADMIN_PASSWORD);
@@ -94,7 +96,8 @@ describe('admin bootstrap', () => {
       username: 'admin',
       email: 'admin-new@example.com',
       isSuperAdmin: true,
-      roleId: administratorRole.id,
+      isAdministrator: false,
+      roleId: initialGrowthRole.id,
     });
   });
 });

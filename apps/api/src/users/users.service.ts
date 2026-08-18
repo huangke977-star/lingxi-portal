@@ -34,6 +34,7 @@ interface UserRecord {
   passwordHash?: string;
   status: string;
   isSuperAdmin: boolean;
+  isAdministrator: boolean;
   appearanceThemeId: string;
   customAccent: string;
   customSurface: string;
@@ -68,13 +69,6 @@ interface SupportedAvatarFormat {
   extensions: string[];
   mimeType: string;
   matches: (buffer: Buffer) => boolean;
-}
-
-interface ManagedRole {
-  id: number;
-  code: string;
-  name: string;
-  level: number;
 }
 
 export interface UserListResult {
@@ -253,30 +247,19 @@ export class UsersService {
     };
   }
 
-  async assignRole(
+  async setAdministrator(
     actor: AuthenticatedUser,
     id: number,
-    roleCode: string,
+    isAdministrator: boolean,
   ): Promise<AuthenticatedUser> {
     const target = await this.findUserForManagement(id);
-    const role = await this.prisma.role.findUnique({
-      where: { code: roleCode },
-      select: { id: true, code: true, name: true, level: true },
-    });
-
-    if (!role) {
-      throw new NotFoundException("Role not found.");
-    }
-
-    this.assertCanAssignRole(actor, target, role);
-
-    if (target.role.code === role.code) {
-      return target;
-    }
+    if (!actor.isSuperAdmin) throw new ForbiddenException("Only the super admin may change administrator identity.");
+    if (target.isSuperAdmin) throw new ForbiddenException("The super admin identity cannot be changed here.");
+    if (target.isAdministrator === isAdministrator) return target;
 
     const user = await this.prisma.user.update({
       where: { id },
-      data: { roleId: role.id },
+      data: { isAdministrator },
       select: this.userSelect(),
     });
 
@@ -499,6 +482,7 @@ export class UsersService {
       authVersion: true,
       status: true,
       isSuperAdmin: true,
+      isAdministrator: true,
       appearanceThemeId: true,
       customAccent: true,
       customSurface: true,
@@ -539,6 +523,7 @@ export class UsersService {
       authVersion: user.authVersion,
       status: user.status as UserStatus,
       isSuperAdmin: user.isSuperAdmin,
+      isAdministrator: user.isAdministrator,
       avatarUrl: user.avatarStoredName
         ? `/auth/avatars/${user.avatarStoredName}`
         : null,
@@ -557,7 +542,7 @@ export class UsersService {
       },
       role: {
         code: user.role.code,
-        name: user.isSuperAdmin ? "超级管理员" : user.role.name,
+        name: user.role.name,
         level: user.role.level,
       },
     };
@@ -589,29 +574,6 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
-  private assertCanAssignRole(
-    actor: AuthenticatedUser,
-    target: AuthenticatedUser,
-    role: ManagedRole,
-  ): void {
-    if (target.isSuperAdmin) {
-      throw new ForbiddenException("The super admin role cannot be changed.");
-    }
-
-    if (actor.isSuperAdmin) {
-      return;
-    }
-
-    if (
-      target.role.level >= actor.role.level ||
-      role.level >= actor.role.level
-    ) {
-      throw new ForbiddenException(
-        "Administrators may only assign roles below their own level.",
-      );
-    }
-  }
-
   private assertCanSetStatus(
     actor: AuthenticatedUser,
     target: AuthenticatedUser,
@@ -622,9 +584,9 @@ export class UsersService {
       );
     }
 
-    if (!actor.isSuperAdmin && target.role.level >= actor.role.level) {
+    if (!actor.isSuperAdmin && target.isAdministrator) {
       throw new ForbiddenException(
-        "Administrators may only change accounts below their own level.",
+        "Administrators cannot change another administrator account.",
       );
     }
   }
@@ -656,9 +618,9 @@ export class UsersService {
       );
     }
 
-    if (!actor.isSuperAdmin && target.role.level >= actor.role.level) {
+    if (!actor.isSuperAdmin && target.isAdministrator) {
       throw new ForbiddenException(
-        "Administrators may only reset nicknames below their own level.",
+        "Administrators cannot reset another administrator nickname.",
       );
     }
   }

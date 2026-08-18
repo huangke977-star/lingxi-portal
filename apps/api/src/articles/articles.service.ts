@@ -150,6 +150,7 @@ const articleInclude = {
       username: true,
       avatarStoredName: true,
       isSuperAdmin: true,
+      isAdministrator: true,
       role: { select: { code: true, name: true, level: true } },
     },
   },
@@ -204,6 +205,7 @@ const articleInclude = {
           username: true,
           avatarStoredName: true,
           isSuperAdmin: true,
+          isAdministrator: true,
           role: { select: { code: true, name: true, level: true } },
         },
       },
@@ -248,6 +250,7 @@ const commentReportInclude = {
       username: true,
       avatarStoredName: true,
       isSuperAdmin: true,
+      isAdministrator: true,
       role: { select: { code: true, name: true, level: true } },
     },
   },
@@ -262,6 +265,7 @@ const articleReportInclude = {
       username: true,
       avatarStoredName: true,
       isSuperAdmin: true,
+      isAdministrator: true,
       role: { select: { code: true, name: true, level: true } },
     },
   },
@@ -276,6 +280,7 @@ const articleAppealInclude = {
       username: true,
       avatarStoredName: true,
       isSuperAdmin: true,
+      isAdministrator: true,
       role: { select: { code: true, name: true, level: true } },
     },
   },
@@ -336,7 +341,7 @@ export class ArticlesService {
     user: AuthenticatedUser | null,
   ): Promise<ArticleCenterSummaryResponse> {
     const visibleWhere = this.buildWhere(new ListArticlesQueryDto(), user, false, false);
-    const canManage = Boolean(user?.isSuperAdmin || (user?.role.level ?? 0) >= 90);
+    const canManage = Boolean(user?.isSuperAdmin || user?.isAdministrator);
     const subscriptionWhere: Prisma.ArticleWhereInput = user ? { AND: [
       visibleWhere,
       { author: { is: { subscriptionsReceived: { some: { subscriberId: user.id } } } } },
@@ -1305,7 +1310,7 @@ export class ArticlesService {
     const notificationSettings = await this.siteSettingsService.getNotificationSettings();
     if (notificationSettings.notifyCommentReport) {
       const administrators = await this.prisma.user.findMany({
-        where: { status: "active", OR: [{ isSuperAdmin: true }, { role: { level: { gte: 90 } } }] },
+        where: { status: "active", OR: [{ isSuperAdmin: true }, { isAdministrator: true }] },
         select: { id: true },
       });
       if (administrators.length) {
@@ -1663,7 +1668,7 @@ export class ArticlesService {
       include: articleAppealInclude,
     });
     const administrators = await this.prisma.user.findMany({
-      where: { status: "active", OR: [{ isSuperAdmin: true }, { role: { level: { gte: 90 } } }] },
+      where: { status: "active", OR: [{ isSuperAdmin: true }, { isAdministrator: true }] },
       select: { id: true },
     });
     if (administrators.length) {
@@ -1739,7 +1744,7 @@ export class ArticlesService {
         reporterId: true,
         createdAt: true,
         publicationNumber: true,
-        article: { select: { id: true, authorId: true, author: { select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, role: { select: { code: true, name: true, level: true } } } } } },
+        article: { select: { id: true, authorId: true, author: { select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, isAdministrator: true, role: { select: { code: true, name: true, level: true } } } } } },
       },
     });
     const activeRestrictions = await this.prisma.articlePublishRestriction.findMany({
@@ -1751,7 +1756,7 @@ export class ArticlesService {
     for (const report of reports) byUser.set(report.article.authorId, report.article.author);
     for (const restriction of activeRestrictions) {
       if (!byUser.has(restriction.userId)) {
-        const user = await this.prisma.user.findUnique({ where: { id: restriction.userId }, select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, role: { select: { code: true, name: true, level: true } } } });
+        const user = await this.prisma.user.findUnique({ where: { id: restriction.userId }, select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, isAdministrator: true, role: { select: { code: true, name: true, level: true } } } });
         if (user) byUser.set(user.id, user);
       }
     }
@@ -1773,11 +1778,11 @@ export class ArticlesService {
   }
 
   async getViolationAuthor(userId: number) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, role: { select: { code: true, name: true, level: true } } } });
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, isAdministrator: true, role: { select: { code: true, name: true, level: true } } } });
     if (!user) throw new NotFoundException("用户不存在。");
     const [received, submitted, restriction] = await Promise.all([
-      this.prisma.articleReport.findMany({ where: { article: { authorId: userId } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 500, include: { article: { select: { id: true, title: true, slug: true } }, reporter: { select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, role: { select: { code: true, name: true, level: true } } } } } }),
-      this.prisma.articleReport.findMany({ where: { reporterId: userId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 500, include: { article: { select: { id: true, title: true, slug: true, author: { select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, role: { select: { code: true, name: true, level: true } } } } } } } }),
+      this.prisma.articleReport.findMany({ where: { article: { authorId: userId } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 500, include: { article: { select: { id: true, title: true, slug: true } }, reporter: { select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, isAdministrator: true, role: { select: { code: true, name: true, level: true } } } } } }),
+      this.prisma.articleReport.findMany({ where: { reporterId: userId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 500, include: { article: { select: { id: true, title: true, slug: true, author: { select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, isAdministrator: true, role: { select: { code: true, name: true, level: true } } } } } } } }),
       this.prisma.articlePublishRestriction.findFirst({ where: { userId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, reason: true, startsAt: true, endsAt: true, liftedAt: true } }),
     ]);
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -2262,7 +2267,7 @@ export class ArticlesService {
   }
 
   private canManageContent(user: AuthenticatedUser): boolean {
-    return user.isSuperAdmin || user.role.level >= 90;
+    return user.isSuperAdmin || Boolean(user.isAdministrator);
   }
 
   private assertCanManageContent(user: AuthenticatedUser): void {
@@ -2623,6 +2628,7 @@ export class ArticlesService {
           username: true,
           avatarStoredName: true,
           isSuperAdmin: true,
+          isAdministrator: true,
           role: { select: { code: true, name: true, level: true } },
         },
       },
@@ -2644,6 +2650,7 @@ export class ArticlesService {
       username: string;
       avatarStoredName: string | null;
       isSuperAdmin: boolean;
+      isAdministrator: boolean;
       role: { code: string; name: string; level: number };
     };
   }, options: {
@@ -2818,6 +2825,7 @@ export class ArticlesService {
     username: string;
     avatarStoredName: string | null;
     isSuperAdmin: boolean;
+    isAdministrator: boolean;
     role: { code: string; name: string; level: number };
   }): ArticleAuthorResponse {
     return {
@@ -2826,9 +2834,10 @@ export class ArticlesService {
       username: author.username,
       avatarUrl: author.avatarStoredName ? `/auth/avatars/${author.avatarStoredName}` : null,
       isSuperAdmin: author.isSuperAdmin,
+      isAdministrator: author.isAdministrator,
       role: {
         code: author.role.code,
-        name: author.isSuperAdmin ? "超级管理员" : author.role.name,
+        name: author.role.name,
         level: author.role.level,
       },
     };

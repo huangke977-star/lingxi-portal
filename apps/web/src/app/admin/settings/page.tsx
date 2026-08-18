@@ -202,7 +202,7 @@ export default function SiteSettingsPage() {
   const logoAssets = useMemo(() => siteAssets.filter((asset) => asset.kind === "logo"), [siteAssets]);
   const pwaIconAssets = useMemo(() => siteAssets.filter((asset) => asset.kind === "pwa_icon"), [siteAssets]);
   const roleOptions = useMemo(
-    () => roles.filter((role) => role.level < 90),
+    () => roles,
     [roles],
   );
 

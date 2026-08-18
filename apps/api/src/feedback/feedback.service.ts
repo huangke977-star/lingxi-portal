@@ -96,7 +96,7 @@ export class FeedbackService {
     return { ...this.toSummary(item), content: item.content, reviewedAt: item.reviewedAt?.toISOString() ?? null, reviewedBy: item.reviewedBy ? this.toUser(item.reviewedBy) : null, replies: item.replies.map((reply) => ({ id: reply.id, content: reply.content, author: this.toUser(reply.author), createdAt: reply.createdAt.toISOString() })) };
   }
 
-  private isManager(user: AuthenticatedUser) { return user.isSuperAdmin || user.role.level >= 90; }
+  private isManager(user: AuthenticatedUser) { return user.isSuperAdmin || Boolean(user.isAdministrator); }
 
   private assertManager(user: AuthenticatedUser) { if (!this.isManager(user)) throw new ForbiddenException("需要管理员权限。"); }
 

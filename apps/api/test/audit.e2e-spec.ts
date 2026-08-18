@@ -13,6 +13,7 @@ function user(isSuperAdmin: boolean): AuthenticatedUser {
     email: "user@example.com",
     status: "active",
     isSuperAdmin,
+    isAdministrator: !isSuperAdmin,
     avatarUrl: null,
     profileBio: "",
     createdAt: new Date("2026-08-01T00:00:00.000Z"),
@@ -27,7 +28,7 @@ function user(isSuperAdmin: boolean): AuthenticatedUser {
       glassTint: "#fff3f6",
       glassTintAlpha: 72,
     },
-    role: { code: "administrator", name: "管理员", level: 90 },
+    role: { code: "qi_refining", name: "练气", level: 10 },
   };
 }
 

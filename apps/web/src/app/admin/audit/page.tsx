@@ -7,6 +7,7 @@ import { AppToast } from "@/components/app-toast";
 import { AuditLog, listAuditLogs } from "@/lib/audit-api";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { isSiteManager } from "@/lib/user-permissions";
 
 export default function AuditLogPage() {
   const router = useRouter();
@@ -43,7 +44,7 @@ export default function AuditLogPage() {
       ]).then(([currentUser, response]) => {
         if (!active) return;
         setUser(currentUser);
-        if (!currentUser.isSuperAdmin && currentUser.role.level < 90) return;
+        if (!isSiteManager(currentUser)) return;
         setItems(response.items);
         setTotal(response.total);
         setTotalPages(response.totalPages);
@@ -63,7 +64,7 @@ export default function AuditLogPage() {
     };
   }, [page, result, router, scope, search]);
 
-  if (!isLoading && (!user || (!user.isSuperAdmin && user.role.level < 90))) {
+  if (!isLoading && !isSiteManager(user)) {
     return <section className="page-shell admin-shell"><div className="search-page-empty"><strong>无权访问</strong><span>审计日志仅超级管理员和管理员可查看。</span></div></section>;
   }
 

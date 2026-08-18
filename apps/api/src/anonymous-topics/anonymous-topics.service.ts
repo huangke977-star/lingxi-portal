@@ -509,6 +509,6 @@ export class AnonymousTopicsService {
   }
 
   private assertManager(user: AuthenticatedUser): void {
-    if (!user.isSuperAdmin && user.role.level < 90) throw new ForbiddenException("仅超级管理员和管理员可以管理匿名话题。");
+    if (!user.isSuperAdmin && !user.isAdministrator) throw new ForbiddenException("仅超级管理员和管理员可以管理匿名话题。");
   }
 }

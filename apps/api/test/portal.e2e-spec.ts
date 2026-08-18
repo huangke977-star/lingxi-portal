@@ -9,13 +9,13 @@ import { RedisService } from "../src/redis/redis.service";
 const roles = [
   { id: 1, code: "qi_refining", name: "练气", level: 10 },
   { id: 2, code: "foundation_building", name: "筑基", level: 20 },
-  { id: 9, code: "administrator", name: "管理员", level: 90 },
 ];
 
 const userDefaults = {
   nickname: "测试用户",
   email: "test@example.com",
   status: "active",
+  isAdministrator: false,
   appearanceThemeId: "sakura-mist",
   customAccent: "#db2777",
   customSurface: "#ffffff",
@@ -39,7 +39,7 @@ const users = [
     nickname: "超级管理员",
     email: "super@example.com",
     isSuperAdmin: true,
-    role: roles[2],
+    role: roles[0],
   },
   {
     ...userDefaults,
@@ -48,7 +48,8 @@ const users = [
     nickname: "管理员",
     email: "administrator@example.com",
     isSuperAdmin: false,
-    role: roles[2],
+    isAdministrator: true,
+    role: roles[1],
   },
   {
     ...userDefaults,
@@ -773,7 +774,7 @@ describe("portal content management (e2e)", () => {
         visibility: "public",
         sortOrder: 10,
         status: "active",
-        roleCodes: ["administrator"],
+        roleCodes: ["foundation_building"],
       })
       .expect(201);
 

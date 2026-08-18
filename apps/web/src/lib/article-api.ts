@@ -10,6 +10,7 @@ export interface ArticleAuthor {
   username: string;
   avatarUrl: string | null;
   isSuperAdmin: boolean;
+  isAdministrator: boolean;
   role: ArticleRole;
 }
 

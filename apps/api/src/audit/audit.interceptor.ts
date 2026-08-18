@@ -26,7 +26,7 @@ export class AuditInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest<AuditRequest>();
     const response = context.switchToHttp().getResponse<Response>();
     const descriptor = this.describe(request);
-    if (!descriptor || !request.user || (!request.user.isSuperAdmin && request.user.role.level < 90)) {
+    if (!descriptor || !request.user || (!request.user.isSuperAdmin && !request.user.isAdministrator)) {
       return next.handle();
     }
     const startedAt = Date.now();

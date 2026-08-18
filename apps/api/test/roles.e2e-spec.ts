@@ -13,7 +13,6 @@ const cultivationRoles = [
   { code: 'void_refining', name: '炼虚', level: 60 },
   { code: 'body_integration', name: '合体', level: 70 },
   { code: 'mahayana', name: '大乘', level: 80 },
-  { code: 'administrator', name: '管理员', level: 90 },
 ];
 
 describe('RolesController (e2e)', () => {

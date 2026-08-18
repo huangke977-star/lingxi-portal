@@ -488,7 +488,6 @@ export class ReputationService implements OnModuleInit, OnModuleDestroy {
     currentRoleLevel: number,
     experience: number,
   ): Promise<void> {
-    if (currentRoleLevel >= 90) return;
     const target = this.levelForExperience(experience);
     if (target.level <= currentRoleLevel) return;
     const role = await transaction.role.findUnique({

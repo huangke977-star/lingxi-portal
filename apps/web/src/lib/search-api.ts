@@ -7,6 +7,7 @@ export interface SearchUserResult {
   avatarUrl: string | null;
   profileBio: string;
   isSuperAdmin: boolean;
+  isAdministrator: boolean;
   role: { code: string; name: string; level: number };
   createdAt: string;
 }
@@ -22,7 +23,7 @@ export interface SearchArticleResult {
   likeCount: number;
   favoriteCount: number;
   commentCount: number;
-  author: Pick<SearchUserResult, "id" | "username" | "nickname" | "avatarUrl" | "isSuperAdmin" | "role">;
+  author: Pick<SearchUserResult, "id" | "username" | "nickname" | "avatarUrl" | "isSuperAdmin" | "isAdministrator" | "role">;
 }
 
 export interface SearchEntryResult {

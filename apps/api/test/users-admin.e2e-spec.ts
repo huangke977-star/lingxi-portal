@@ -14,6 +14,7 @@ interface StoredUser {
   passwordHash: string;
   roleId: number;
   isSuperAdmin: boolean;
+  isAdministrator: boolean;
   status: "active" | "disabled";
   profileBio: string;
   lastLoginAt: Date | null;
@@ -35,7 +36,6 @@ interface MockUserWhere {
 const roles = [
   { id: 1, code: "qi_refining", name: "练气", level: 10 },
   { id: 3, code: "golden_core", name: "金丹", level: 30 },
-  { id: 9, code: "administrator", name: "管理员", level: 90 },
 ];
 
 function createPrismaMock() {
@@ -46,8 +46,9 @@ function createPrismaMock() {
       nickname: "HLOVET 主理人",
       email: "admin@example.com",
       passwordHash: "hash",
-      roleId: 9,
+      roleId: 1,
       isSuperAdmin: true,
+      isAdministrator: false,
       status: "active",
       profileBio: "我懒，我不写",
       lastLoginAt: null,
@@ -59,8 +60,9 @@ function createPrismaMock() {
       nickname: "云间来客",
       email: "normal@example.com",
       passwordHash: "hash",
-      roleId: 1,
+      roleId: 3,
       isSuperAdmin: false,
+      isAdministrator: false,
       status: "active",
       profileBio: "我高冷，我不写。",
       lastLoginAt: null,
@@ -72,8 +74,9 @@ function createPrismaMock() {
       nickname: "值守管理员",
       email: "manager@example.com",
       passwordHash: "hash",
-      roleId: 9,
+      roleId: 1,
       isSuperAdmin: false,
+      isAdministrator: true,
       status: "active",
       profileBio: "保持简单。",
       lastLoginAt: null,
@@ -88,6 +91,7 @@ function createPrismaMock() {
     passwordHash: user.passwordHash,
     status: user.status,
     isSuperAdmin: user.isSuperAdmin,
+    isAdministrator: user.isAdministrator,
     appearanceThemeId: "sakura-mist",
     customAccent: "#db2777",
     customSurface: "#ffffff",
@@ -265,7 +269,9 @@ describe("admin user management (e2e)", () => {
     expect(response.body.items).toHaveLength(3);
     expect(response.body.items[0]).toMatchObject({
       username: "admin",
-      role: { code: "administrator", name: "超级管理员", level: 90 },
+      isSuperAdmin: true,
+      isAdministrator: false,
+      role: { code: "qi_refining", name: "练气", level: 10 },
     });
     expect(response.body.items[0].passwordHash).toBeUndefined();
   });
@@ -303,6 +309,7 @@ describe("admin user management (e2e)", () => {
         passwordHash: "hash",
         roleId: 1,
         isSuperAdmin: false,
+        isAdministrator: false,
         status: "active",
         profileBio: "保持简单。",
         lastLoginAt: null,
@@ -325,16 +332,25 @@ describe("admin user management (e2e)", () => {
     expect(response.body.items[0].username).toBe("user11");
   });
 
-  it("allows super admin to assign roles", async () => {
+  it("allows the super admin to grant and revoke administrator identity", async () => {
     const token = await tokenFor(1);
 
     await request(app.getHttpServer())
-      .patch("/users/2/role")
+      .patch("/users/2/administrator")
       .set("Authorization", `Bearer ${token}`)
-      .send({ roleCode: "golden_core" })
+      .send({ isAdministrator: true })
       .expect(200);
 
+    expect(state.users[1].isAdministrator).toBe(true);
     expect(state.users[1].roleId).toBe(3);
+
+    await request(app.getHttpServer())
+      .patch("/users/2/administrator")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ isAdministrator: false })
+      .expect(200);
+
+    expect(state.users[1].isAdministrator).toBe(false);
   });
 
   it("allows super admin to update user status", async () => {
@@ -379,13 +395,13 @@ describe("admin user management (e2e)", () => {
     expect(response.body.passwordHash).toBeUndefined();
   });
 
-  it("protects the super admin role and status", async () => {
+  it("protects the super admin identity and status", async () => {
     const token = await tokenFor(1);
 
     await request(app.getHttpServer())
-      .patch("/users/1/role")
+      .patch("/users/1/administrator")
       .set("Authorization", `Bearer ${token}`)
-      .send({ roleCode: "golden_core" })
+      .send({ isAdministrator: false })
       .expect(403);
 
     await request(app.getHttpServer())
@@ -417,14 +433,8 @@ describe("admin user management (e2e)", () => {
       .expect(200);
   });
 
-  it("allows administrators to manage lower-level roles and status", async () => {
+  it("allows a low-growth administrator to manage a higher-growth ordinary user", async () => {
     const token = await tokenFor(3);
-
-    await request(app.getHttpServer())
-      .patch("/users/2/role")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ roleCode: "golden_core" })
-      .expect(200);
 
     await request(app.getHttpServer())
       .patch("/users/2/status")
@@ -432,6 +442,7 @@ describe("admin user management (e2e)", () => {
       .send({ status: "disabled" })
       .expect(200);
 
+    expect(state.users[2].roleId).toBe(1);
     expect(state.users[1].roleId).toBe(3);
     expect(state.users[1].status).toBe("disabled");
   });
@@ -447,17 +458,17 @@ describe("admin user management (e2e)", () => {
     expect(state.users[1].nickname).toBe("normal");
   });
 
-  it("prevents administrators from assigning administrator roles", async () => {
+  it("prevents administrators from granting administrator identity", async () => {
     const token = await tokenFor(3);
 
     await request(app.getHttpServer())
-      .patch("/users/2/role")
+      .patch("/users/2/administrator")
       .set("Authorization", `Bearer ${token}`)
-      .send({ roleCode: "administrator" })
+      .send({ isAdministrator: true })
       .expect(403);
   });
 
-  it("prevents administrators from changing same-level or super-admin accounts", async () => {
+  it("prevents administrators from changing administrator or super-admin accounts", async () => {
     const token = await tokenFor(3);
 
     await request(app.getHttpServer())
@@ -467,9 +478,9 @@ describe("admin user management (e2e)", () => {
       .expect(403);
 
     await request(app.getHttpServer())
-      .patch("/users/1/role")
+      .patch("/users/1/administrator")
       .set("Authorization", `Bearer ${token}`)
-      .send({ roleCode: "golden_core" })
+      .send({ isAdministrator: true })
       .expect(403);
 
     await request(app.getHttpServer())
@@ -498,7 +509,7 @@ describe("admin user management (e2e)", () => {
       .expect(400);
   });
 
-  it("rejects users below administrator level", async () => {
+  it("rejects ordinary users regardless of growth level", async () => {
     const token = await tokenFor(2);
 
     await request(app.getHttpServer())

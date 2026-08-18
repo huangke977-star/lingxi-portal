@@ -11,6 +11,7 @@ const reporter = {
   nickname: "举报人",
   username: "reporter",
   isSuperAdmin: false,
+  isAdministrator: false,
   role: { code: "qi_refining", name: "练气", level: 10 },
 } as AuthenticatedUser;
 
@@ -19,7 +20,8 @@ const administrator = {
   nickname: "管理员",
   username: "admin",
   isSuperAdmin: false,
-  role: { code: "administrator", name: "管理员", level: 90 },
+  isAdministrator: true,
+  role: { code: "foundation_building", name: "筑基", level: 20 },
 } as AuthenticatedUser;
 
 const article = {

@@ -1,18 +1,20 @@
 import {
   canManageServerEntries,
   canViewServerEntries,
-  hasRoleLevel,
+  isAdministrator,
+  isSiteManager,
   isSuperAdmin,
 } from '../src/auth/permissions';
 import { AuthenticatedUser } from '../src/auth/auth.types';
 
-const user = (level: number, isSuper = false): AuthenticatedUser => ({
+const user = (level: number, isSuper = false, administrator = false): AuthenticatedUser => ({
   id: 1,
   username: 'tester',
   nickname: 'tester',
   email: 'tester@example.com',
   status: 'active',
   isSuperAdmin: isSuper,
+  isAdministrator: administrator,
   avatarUrl: null,
   profileBio: '我懒，我不写',
   createdAt: new Date('2026-07-14T00:00:00.000Z'),
@@ -28,8 +30,8 @@ const user = (level: number, isSuper = false): AuthenticatedUser => ({
     glassTintAlpha: 72,
   },
   role: {
-    code: isSuper ? 'administrator' : 'qi_refining',
-    name: isSuper ? '管理员' : '练气',
+    code: level >= 80 ? 'mahayana' : 'qi_refining',
+    name: level >= 80 ? '大乘' : '练气',
     level,
   },
 });
@@ -37,25 +39,27 @@ const user = (level: number, isSuper = false): AuthenticatedUser => ({
 describe('permission helpers', () => {
   it('treats isSuperAdmin as super admin', () => {
     expect(isSuperAdmin(user(10, true))).toBe(true);
-    expect(isSuperAdmin(user(90, false))).toBe(false);
+    expect(isSuperAdmin(user(80, false))).toBe(false);
   });
 
-  it('allows super admin to bypass role level checks', () => {
-    expect(hasRoleLevel(user(10, true), 90)).toBe(true);
+  it('recognizes the independent administrator identity', () => {
+    expect(isAdministrator(user(10, false, true))).toBe(true);
+    expect(isAdministrator(user(80))).toBe(false);
   });
 
-  it('checks regular users by role level', () => {
-    expect(hasRoleLevel(user(30), 20)).toBe(true);
-    expect(hasRoleLevel(user(10), 30)).toBe(false);
+  it('does not derive management permission from growth level', () => {
+    expect(isSiteManager(user(80))).toBe(false);
+    expect(isSiteManager(user(10, false, true))).toBe(true);
+    expect(isSiteManager(user(10, true))).toBe(true);
   });
 
   it('allows only the super admin to view server entries', () => {
-    expect(canViewServerEntries(user(90))).toBe(false);
+    expect(canViewServerEntries(user(80, false, true))).toBe(false);
     expect(canViewServerEntries(user(10, true))).toBe(true);
   });
 
   it('allows only super admin to manage server entries', () => {
-    expect(canManageServerEntries(user(90))).toBe(false);
+    expect(canManageServerEntries(user(80, false, true))).toBe(false);
     expect(canManageServerEntries(user(10, true))).toBe(true);
   });
 });

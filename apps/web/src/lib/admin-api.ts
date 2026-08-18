@@ -73,15 +73,15 @@ export async function listRoles(): Promise<AuthRole[]> {
   return requestJson<AuthRole[]>("/roles");
 }
 
-export async function updateUserRole(
+export async function updateUserAdministrator(
   accessToken: string,
   userId: number,
-  roleCode: string,
+  isAdministrator: boolean,
 ): Promise<AuthUser> {
-  const user = await requestJson<AuthUser>(`/users/${userId}/role`, {
+  const user = await requestJson<AuthUser>(`/users/${userId}/administrator`, {
     method: "PATCH",
     headers: authorizationHeader(accessToken),
-    body: JSON.stringify({ roleCode }),
+    body: JSON.stringify({ isAdministrator }),
   });
 
   return normalizeAuthUser(user);

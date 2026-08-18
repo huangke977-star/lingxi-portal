@@ -7,6 +7,7 @@ import { ArticleAuthorLine, ArticleBody, ArticleStats, formatArticleDate } from 
 import { getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { getAdminArticle, type Article } from "@/lib/article-api";
+import { isSiteManager } from "@/lib/user-permissions";
 
 const STATUS_LABEL: Record<Article["status"], string> = {
   draft: "草稿",
@@ -32,7 +33,7 @@ export default function ArticlePreviewPage({ params }: { params: { id: string } 
     if (invalidArticleId) return;
     Promise.all([getMe(token), getAdminArticle(token, articleId)])
       .then(([user, result]) => {
-        if (!user.isSuperAdmin && user.role.level < 90) throw new Error("需要管理员权限。");
+        if (!isSiteManager(user)) throw new Error("需要管理员权限。");
         setArticle(result);
       })
       .catch((loadError) => {

@@ -260,6 +260,7 @@ export class AuthService {
       emailVerifiedAt: user.emailVerifiedAt,
       status: user.status,
       isSuperAdmin: user.isSuperAdmin,
+      isAdministrator: user.isAdministrator,
       avatarUrl: user.avatarUrl,
       profileBio: user.profileBio,
       createdAt: user.createdAt,

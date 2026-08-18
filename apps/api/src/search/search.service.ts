@@ -142,6 +142,7 @@ export class SearchService {
               nickname: true,
               avatarStoredName: true,
               isSuperAdmin: true,
+              isAdministrator: true,
               role: { select: { code: true, name: true, level: true } },
             },
           },
@@ -158,9 +159,10 @@ export class SearchService {
         nickname: article.author.nickname || article.author.username,
         avatarUrl: article.author.avatarStoredName ? `/auth/avatars/${article.author.avatarStoredName}` : null,
         isSuperAdmin: article.author.isSuperAdmin,
+        isAdministrator: article.author.isAdministrator,
         role: {
           ...article.author.role,
-          name: article.author.isSuperAdmin ? "超级管理员" : article.author.role.name,
+          name: article.author.role.name,
         },
       },
     })), total, query);
@@ -186,6 +188,7 @@ export class SearchService {
           avatarStoredName: true,
           profileBio: true,
           isSuperAdmin: true,
+          isAdministrator: true,
           role: { select: { code: true, name: true, level: true } },
           createdAt: true,
         },
@@ -198,7 +201,8 @@ export class SearchService {
       avatarUrl: record.avatarStoredName ? `/auth/avatars/${record.avatarStoredName}` : null,
       profileBio: record.profileBio,
       isSuperAdmin: record.isSuperAdmin,
-      role: { ...record.role, name: record.isSuperAdmin ? "超级管理员" : record.role.name },
+      isAdministrator: record.isAdministrator,
+      role: record.role,
       createdAt: record.createdAt.toISOString(),
     })), total, query);
   }

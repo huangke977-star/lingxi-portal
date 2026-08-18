@@ -13,8 +13,8 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UserManagementGuard } from "../auth/guards/user-management.guard";
 import { ListUsersQueryDto } from "./dto/list-users-query.dto";
+import { UpdateUserAdministratorDto } from "./dto/update-user-administrator.dto";
 import { UpdateUserPasswordDto } from "./dto/update-user-password.dto";
-import { UpdateUserRoleDto } from "./dto/update-user-role.dto";
 import { UpdateUserStatusDto } from "./dto/update-user-status.dto";
 import { UserListResult, UsersService } from "./users.service";
 
@@ -28,13 +28,13 @@ export class UsersController {
     return this.usersService.listUsers(query);
   }
 
-  @Patch(":id/role")
-  assignRole(
+  @Patch(":id/administrator")
+  setAdministrator(
     @CurrentUser() actor: AuthenticatedUser,
     @Param("id", ParseIntPipe) id: number,
-    @Body() dto: UpdateUserRoleDto,
+    @Body() dto: UpdateUserAdministratorDto,
   ): Promise<AuthenticatedUser> {
-    return this.usersService.assignRole(actor, id, dto.roleCode);
+    return this.usersService.setAdministrator(actor, id, dto.isAdministrator);
   }
 
   @Patch(":id/status")

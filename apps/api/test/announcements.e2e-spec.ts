@@ -10,6 +10,7 @@ const user: AuthenticatedUser = {
   email: "admin@example.com",
   status: "active",
   isSuperAdmin: false,
+  isAdministrator: true,
   avatarUrl: null,
   profileBio: "",
   createdAt: new Date("2026-08-01T00:00:00.000Z"),
@@ -24,7 +25,7 @@ const user: AuthenticatedUser = {
     glassTint: "#fff3f6",
     glassTintAlpha: 0,
   },
-  role: { code: "administrator", name: "管理员", level: 90 },
+  role: { code: "qi_refining", name: "练气", level: 10 },
 };
 
 describe("AnnouncementsService", () => {

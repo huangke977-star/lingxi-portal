@@ -7,12 +7,14 @@ import { useEffect, useState } from "react";
 import { Bell, FilePenLine, MessageCircleMore, MessagesSquare, ShieldAlert, UsersRound } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
 import { SuggestionsPanel } from "@/components/suggestions-panel";
+import { UserIdentityBadges } from "@/components/user-identity-badges";
 import { getCommentReportSummary, getMyArticleSummary, type ArticleMineSummary } from "@/lib/article-api";
 import { AuthUser, getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { getSocialSummary, listChatGroupReports, listChatGroups } from "@/lib/social-api";
 import { openChatDock } from "@/lib/social-events";
 import { getUserDisplayName } from "@/lib/user-display";
+import { getManagementIdentity, isSiteManager } from "@/lib/user-permissions";
 
 interface DashboardData {
   article: ArticleMineSummary;
@@ -40,7 +42,7 @@ export function DashboardWorkspace() {
       setIsLoading(true);
       try {
         const currentUser = await getMe(token);
-        const canManage = currentUser.isSuperAdmin || currentUser.role.level >= 90;
+        const canManage = isSiteManager(currentUser);
         const [article, social, groups, commentReports, groupReports] = await Promise.all([
           getMyArticleSummary(token),
           getSocialSummary(token),
@@ -62,7 +64,8 @@ export function DashboardWorkspace() {
     return () => { active = false; };
   }, []);
 
-  const canManage = Boolean(user && (user.isSuperAdmin || user.role.level >= 90));
+  const canManage = isSiteManager(user);
+  const managementIdentity = user ? getManagementIdentity(user) : null;
   const notificationCount = data.social.unreadMessages + data.social.pendingFriendRequests + data.social.unreadNotifications;
   const moderationCount = data.commentReports + data.groupReports;
 
@@ -70,7 +73,7 @@ export function DashboardWorkspace() {
     <header className="p8-page-heading"><div><span className="section-label">WORKSPACE</span><h1>工作台</h1></div><Link className="p8-primary-link" href="/articles/write"><FilePenLine aria-hidden="true" size={16} />写文章</Link></header>
     {isLoading ? <div className="status-row compact-status-row"><span className="status">正在读取工作台</span></div> : user ? <>
       <section className="p8-surface p8-dashboard-identity">
-        <div><span className="p8-avatar">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : getUserDisplayName(user).slice(0, 2)}</span><span><strong>{getUserDisplayName(user)}</strong><small>@{user.username} · {user.isSuperAdmin ? "超级管理员" : user.role.name}</small></span></div>
+        <div><span className="p8-avatar identity-avatar-host"><span className="identity-avatar-visual">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : getUserDisplayName(user).slice(0, 2)}</span><UserIdentityBadges user={user} /></span><span><strong>{getUserDisplayName(user)}</strong><small>@{user.username} · {user.role.name}{managementIdentity ? ` · ${managementIdentity.label}` : ""}</small></span></div>
         <div className="p8-identity-stats"><span><b>{data.article.published}</b>已发布</span><span><b>{data.article.draft}</b>草稿</span><span><b>{data.groupCount}</b>群聊</span></div>
       </section>
       <div className="p8-dashboard-grid">

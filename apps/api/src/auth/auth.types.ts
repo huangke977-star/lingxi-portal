@@ -21,6 +21,7 @@ export interface AuthenticatedUser {
   authVersion?: number;
   status: UserStatus;
   isSuperAdmin: boolean;
+  isAdministrator?: boolean;
   avatarUrl: string | null;
   profileBio: string;
   createdAt: Date;

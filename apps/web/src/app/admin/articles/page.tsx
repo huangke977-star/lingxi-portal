@@ -51,6 +51,7 @@ import { buildArticleCommentThreads } from "@/lib/article-comments";
 import type { ArticleCommentThread } from "@/lib/article-comments";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { isSiteManager } from "@/lib/user-permissions";
 
 const emptyArticleList: ArticleList = {
   items: [],
@@ -192,7 +193,7 @@ function AdminArticlesWorkspace() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     Promise.all([getMe(token), loadArticles(token, 1, ""), loadReportQueue(token)])
       .then(([currentUser, articleResult, reportQueue]) => {
-        if (!currentUser.isSuperAdmin && currentUser.role.level < 90) {
+        if (!isSiteManager(currentUser)) {
           window.location.href = "/";
           return;
         }

@@ -9,6 +9,7 @@ import { AppToast } from "@/components/app-toast";
 import { listRoles } from "@/lib/admin-api";
 import { AuthRole, AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { isSiteManager } from "@/lib/user-permissions";
 import {
   createPortalCategory,
   createPortalEntry,
@@ -989,5 +990,5 @@ function emptyEntryDraft(category: PortalCategory): PortalEntryInput {
 }
 
 function canAccessContentManagement(user: AuthUser): boolean {
-  return user.isSuperAdmin || user.role.level >= 90;
+  return isSiteManager(user);
 }

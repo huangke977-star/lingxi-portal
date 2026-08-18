@@ -8,6 +8,7 @@ import { AppToast } from "@/components/app-toast";
 import { GlassSelect } from "@/components/glass-select";
 import { getMe } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
+import { isSiteManager } from "@/lib/user-permissions";
 import {
   claimAnonymousIdentity,
   createAnonymousTopic,
@@ -101,7 +102,7 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
   useEffect(() => {
     const token = readAccessToken();
     if (!token) return;
-    void getMe(token).then((user) => setIsManager(user.isSuperAdmin || user.role.level >= 90)).catch(() => setIsManager(false));
+    void getMe(token).then((user) => setIsManager(isSiteManager(user))).catch(() => setIsManager(false));
   }, []);
   useEffect(() => {
     const topicId = topic?.id;

@@ -418,6 +418,7 @@ model User {
   roleId                    Int                            @map("role_id")
   role                      Role                           @relation(fields: [roleId], references: [id])
   isSuperAdmin              Boolean                        @default(false) @map("is_super_admin")
+  isAdministrator           Boolean                        @default(false) @map("is_administrator")
   status                    UserStatus                     @default(active)
   appearanceThemeId         String                         @default("cloud-blue") @map("appearance_theme_id") @db.VarChar(64)
   customAccent              String                         @default("#1814f0") @map("custom_accent") @db.VarChar(7)

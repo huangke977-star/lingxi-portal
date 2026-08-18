@@ -191,7 +191,7 @@ export class ChatAttachmentsService {
     const siteManager = Boolean(
       group &&
       attachment.message?.groupReports.length &&
-      (user.isSuperAdmin || user.role.level >= 90),
+      (user.isSuperAdmin || Boolean(user.isAdministrator)),
     );
     const directMember = Boolean(
       friendship &&

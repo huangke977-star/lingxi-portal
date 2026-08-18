@@ -4,8 +4,12 @@ export function isSuperAdmin(user: AuthenticatedUser): boolean {
   return user.isSuperAdmin;
 }
 
-export function hasRoleLevel(user: AuthenticatedUser, minLevel: number): boolean {
-  return isSuperAdmin(user) || user.role.level >= minLevel;
+export function isAdministrator(user: AuthenticatedUser): boolean {
+  return Boolean(user.isAdministrator);
+}
+
+export function isSiteManager(user: AuthenticatedUser): boolean {
+  return isSuperAdmin(user) || isAdministrator(user);
 }
 
 export function canViewServerEntries(user: AuthenticatedUser): boolean {

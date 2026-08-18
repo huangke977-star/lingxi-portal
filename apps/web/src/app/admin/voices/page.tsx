@@ -6,6 +6,7 @@ import { AnonymousTopicsPanel } from "@/components/anonymous-topics-panel";
 import { AppToast } from "@/components/app-toast";
 import { getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { isSiteManager } from "@/lib/user-permissions";
 
 export default function AnonymousTopicManagementPage() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function AnonymousTopicManagementPage() {
     }
     getMe(token)
       .then((user) => {
-        if (!user.isSuperAdmin && user.role.level < 90) throw new Error("需要管理员权限。");
+        if (!isSiteManager(user)) throw new Error("需要管理员权限。");
         setIsReady(true);
       })
       .catch((loadError) => {
