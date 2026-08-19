@@ -3,7 +3,7 @@
 - Document status: Active
 - Created: 2026-08-04
 - Last updated: 2026-08-19
-- Current phase: Phase 9 passed local acceptance and awaits commit, deployment, and production verification
+- Current phase: Phase 10 not started (Phase 9 Privacy And Discovery Extension is complete)
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -41,7 +41,7 @@ Status definitions:
 | Phase 6 | Operations Console | Operational analytics, announcements, scheduling, read statistics | Completed |
 | Phase 7 | Backup Recovery Closure | Paired database/media snapshots, integrity verification, restore preflight | Completed |
 | Phase 8 | Portal Entry Upgrade | Home, dashboard, and tools-center redesign | Completed |
-| Phase 9 | Privacy And Discovery Extension | Social permissions, search scope, discovery entry points | In progress (production verification pending) |
+| Phase 9 | Privacy And Discovery Extension | Social permissions, search scope, discovery entry points | Completed |
 | Phase 10 | Moderation Automation | Unified reports, anti-spam, and review rules | Not started |
 
 ## 4. External Prerequisites
@@ -392,10 +392,10 @@ Goal: provide controlled social boundaries for real user growth and make public 
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P9-01 | Add visibility and delivery settings for profiles, friend requests, private messages, and group invitations | In progress (local acceptance passed) |
-| P9-02 | Add a stranger-message request inbox and consistent blacklist behavior | In progress (local acceptance passed) |
-| P9-03 | Extend global search to permission-visible topics, collections, groups, and site announcements | In progress (local acceptance passed) |
-| P9-04 | Add permission-filtered recommended topics, collections, and active groups to discovery | In progress (local acceptance passed) |
+| P9-01 | Add visibility and delivery settings for profiles, friend requests, private messages, and group invitations | Completed |
+| P9-02 | Add a stranger-message request inbox and consistent blacklist behavior | Completed |
+| P9-03 | Extend global search to permission-visible topics, collections, groups, and site announcements | Completed |
+| P9-04 | Add permission-filtered recommended topics, collections, and active groups to discovery | Completed |
 
 ### Current Implementation Results
 
@@ -405,7 +405,8 @@ Goal: provide controlled social boundaries for real user growth and make public 
 - Discovery supports topic and collection subscriptions and recommends visible topics, collections, and active groups that the user has neither joined nor blocked. New articles from subscribed topics and collections enter the subscription feed.
 - The configured `pwaIconPath` is now the single source for the browser tab icon, iOS Apple Touch icon, dynamic manifest, shortcuts, push notifications, and service-worker fallback icon. The site-settings update timestamp provides cache invalidation.
 - Prisma format/generate/validate, API/Web lint, API/Web builds, 42 focused P9 tests, and the complete API suite of 40 suites and 259 tests passed. All 48 migrations apply in order to a fresh database and seed successfully.
-- Playwright acceptance at 390x844 and 1440x900 covered profile settings, global search, discovery, and the main chat window without page-level horizontal overflow. Privacy settings persisted across reloads. Production deployment and verification have not run, so this phase remains in progress.
+- Playwright acceptance at 390x844 and 1440x900 covered profile settings, global search, discovery, and the main chat window without page-level horizontal overflow. Privacy settings persisted across reloads.
+- Commit `7f591ec` was pushed and GitHub Actions `32221090519` built and published the API and Web images. Production applied both additive migrations and recreated only API and Web; the external home page, `/api/health`, and manifest returned `200`, API/Web restart counts stayed at zero, and MySQL, Redis, Caddy, and TURN were not restarted. Two old dangling API/Web images were removed while data volumes remained intact.
 
 ### Phase 10: Moderation Automation
 
