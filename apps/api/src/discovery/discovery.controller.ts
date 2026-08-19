@@ -87,6 +87,36 @@ export class DiscoveryController {
     return this.discoveryService.listMyCollections(user);
   }
 
+  @Get("recommendations")
+  @UseGuards(JwtAuthGuard)
+  listRecommendations(@CurrentUser() user: AuthenticatedUser) {
+    return this.discoveryService.listRecommendations(user);
+  }
+
+  @Post("topics/:id/subscribe")
+  @UseGuards(JwtAuthGuard)
+  subscribeTopic(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
+    return this.discoveryService.subscribeTopic(user, id);
+  }
+
+  @Delete("topics/:id/subscribe")
+  @UseGuards(JwtAuthGuard)
+  unsubscribeTopic(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
+    return this.discoveryService.unsubscribeTopic(user, id);
+  }
+
+  @Post("collections/:id/subscribe")
+  @UseGuards(JwtAuthGuard)
+  subscribeCollection(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
+    return this.discoveryService.subscribeCollection(user, id);
+  }
+
+  @Delete("collections/:id/subscribe")
+  @UseGuards(JwtAuthGuard)
+  unsubscribeCollection(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
+    return this.discoveryService.unsubscribeCollection(user, id);
+  }
+
   @Get("collections")
   listPublicCollections(@Query() query: ListCollectionsQueryDto) {
     return this.discoveryService.listCollections(query, null);

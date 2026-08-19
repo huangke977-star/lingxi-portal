@@ -24,8 +24,10 @@ import {
   ListMessagesQueryDto,
   ListNotificationsQueryDto,
   NotificationIdsDto,
+  CreateStrangerMessageRequestDto,
   RequestFriendDto,
   RespondFriendRequestDto,
+  RespondStrangerMessageRequestDto,
   SearchSocialUsersQueryDto,
   UpdateConversationSettingsDto,
   UpdateNotificationChannelSettingsDto,
@@ -108,6 +110,34 @@ export class SocialController {
   @Delete("friendships/:id/block")
   unblockFriendship(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
     return this.socialService.unblockFriendship(user, id);
+  }
+
+  @Post("users/:id/block")
+  blockUser(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number) {
+    return this.socialService.blockUser(user, id);
+  }
+
+  @Get("stranger-message-requests")
+  listStrangerMessageRequests(@CurrentUser() user: AuthenticatedUser) {
+    return this.socialService.listStrangerMessageRequests(user);
+  }
+
+  @Post("stranger-message-requests/:id")
+  createStrangerMessageRequest(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: CreateStrangerMessageRequestDto,
+  ) {
+    return this.socialService.createStrangerMessageRequest(user, id, dto.body);
+  }
+
+  @Patch("stranger-message-requests/:id/respond")
+  respondStrangerMessageRequest(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: RespondStrangerMessageRequestDto,
+  ) {
+    return this.socialService.respondStrangerMessageRequest(user, id, dto.status);
   }
 
   @Get("summary")

@@ -142,6 +142,7 @@ function createInviteFixture({ pending, unread }: { pending: boolean; unread: bo
   const service = createService({
     chatGroup: { findUnique: jest.fn(async () => groupRecord()) },
     user: { findMany: jest.fn(async () => [{ id: 9 }]) },
+    friendship: { findMany: jest.fn(async () => []) },
     chatGroupInvitation: {
       findMany: jest.fn(async () => pending ? [{ inviteeId: 9 }] : []),
     },

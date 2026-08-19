@@ -34,6 +34,8 @@ export interface PublicProfile extends Omit<SocialUser, "profileBio" | "createdA
   publicViewCount: number | null;
   visibleFields: { bio: boolean; joinedAt: boolean; stats: boolean; followingCount: boolean; pinnedContent: boolean };
   relationship: Pick<Friendship, "id" | "status" | "direction" | "note"> | null;
+  canRequestFriend: boolean;
+  messageAccess: "conversation" | "request" | "none";
 }
 
 export interface SocialUserSearchResult extends SocialUser {
@@ -104,6 +106,19 @@ export interface Conversation {
   lastMessage: ChatMessage | null;
   unreadCount: number;
   muted: boolean;
+  canCall: boolean;
+  updatedAt: string;
+}
+
+export interface StrangerMessageRequest {
+  id: number;
+  user: SocialUser;
+  body: string;
+  status: "pending" | "accepted" | "declined" | "cancelled";
+  direction: "incoming" | "outgoing";
+  conversationId: number | null;
+  respondedAt: string | null;
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -331,7 +346,35 @@ export function unblockFriendship(accessToken: string, friendshipId: number): Pr
   return requestJson<void>(`/social/friendships/${friendshipId}/block`, { method: "DELETE", headers: authHeaders(accessToken) });
 }
 
-export function getSocialSummary(accessToken: string): Promise<{ unreadMessages: number; pendingFriendRequests: number; unreadNotifications: number }> {
+export function blockUser(accessToken: string, userId: number): Promise<void> {
+  return requestJson<void>(`/social/users/${userId}/block`, { method: "POST", headers: authHeaders(accessToken) });
+}
+
+export function listStrangerMessageRequests(accessToken: string): Promise<{ incoming: StrangerMessageRequest[]; outgoing: StrangerMessageRequest[] }> {
+  return requestJson("/social/stranger-message-requests", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function createStrangerMessageRequest(accessToken: string, userId: number, body: string): Promise<StrangerMessageRequest> {
+  return requestJson(`/social/stranger-message-requests/${userId}`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function respondStrangerMessageRequest(
+  accessToken: string,
+  requestId: number,
+  status: "accepted" | "declined",
+): Promise<{ request: StrangerMessageRequest; conversation: Conversation | null }> {
+  return requestJson(`/social/stranger-message-requests/${requestId}/respond`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function getSocialSummary(accessToken: string): Promise<{ unreadMessages: number; pendingFriendRequests: number; pendingStrangerRequests: number; unreadNotifications: number }> {
   return requestJson("/social/summary", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 

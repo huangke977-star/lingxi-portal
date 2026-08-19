@@ -54,6 +54,18 @@ export class RespondFriendRequestDto {
   status!: "accepted" | "declined";
 }
 
+export class CreateStrangerMessageRequestDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  body!: string;
+}
+
+export class RespondStrangerMessageRequestDto {
+  @IsIn(["accepted", "declined"])
+  status!: "accepted" | "declined";
+}
+
 export class ListMessagesQueryDto {
   @IsOptional()
   @Type(() => Number)

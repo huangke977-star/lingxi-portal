@@ -12,30 +12,48 @@ import "@fontsource-variable/noto-sans-sc/index.css";
 import "./misans.css";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  applicationName: "HLOVET",
-  title: "HLOVET",
-  description:
-    "HLOVET personal portal, navigation, toolbox, and account workspace",
-  manifest: "/manifest.webmanifest",
-  icons: {
-    icon: [
-      { url: "/tab-icon.svg?v=2", type: "image/svg+xml" },
-      { url: "/favicon.ico?v=2", sizes: "any" },
-    ],
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
-  },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "HLOVET",
-  },
-  other: {
-    "mobile-web-app-capable": "yes",
-    "apple-mobile-web-app-capable": "yes",
-    "apple-mobile-web-app-title": "HLOVET",
-  },
-};
+const API_BASE_URL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+
+interface PublicBrandSettings {
+  siteName?: string;
+  browserTitle?: string;
+  pwaIconPath?: string;
+  updatedAt?: string;
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await readPublicBrandSettings();
+  const siteName = settings.siteName?.trim() || "HLOVET";
+  const browserTitle = settings.browserTitle?.trim() || siteName;
+  const iconPath = versionedAssetPath(settings.pwaIconPath?.trim() || "/pwa-logo.png", settings.updatedAt);
+  return {
+    applicationName: siteName,
+    title: browserTitle,
+    description: `${siteName} personal portal, navigation, toolbox, and account workspace`,
+    manifest: "/manifest.webmanifest",
+    icons: { icon: [{ url: iconPath }], shortcut: [{ url: iconPath }], apple: [{ url: iconPath }] },
+    appleWebApp: { capable: true, statusBarStyle: "default", title: siteName },
+    other: {
+      "mobile-web-app-capable": "yes",
+      "apple-mobile-web-app-capable": "yes",
+      "apple-mobile-web-app-title": siteName,
+    },
+  };
+}
+
+async function readPublicBrandSettings(): Promise<PublicBrandSettings> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/site-settings/public`, { cache: "no-store" });
+    return response.ok ? await response.json() as PublicBrandSettings : {};
+  } catch {
+    return {};
+  }
+}
+
+function versionedAssetPath(path: string, updatedAt?: string): string {
+  if (!updatedAt) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}v=${encodeURIComponent(updatedAt)}`;
+}
 
 export const viewport: Viewport = {
   initialScale: 1,

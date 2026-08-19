@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Clock3, Compass, ExternalLink, FileText, Flame, Search, Trash2, UserRound, Wrench, X } from "lucide-react";
+import { Bell, BookOpen, Clock3, Compass, ExternalLink, FileText, Flame, FolderOpen, Search, Trash2, UserRound, UsersRound, Wrench, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useState } from "react";
@@ -14,7 +14,7 @@ import { readAccessToken } from "@/lib/auth-storage";
 import { clearSearchHistory, deleteSearchHistory, globalSearch, GlobalSearchResult, HotSearchItem, listHotSearches, listSearchHistory, recordSearch, SearchCategoryFilter, SearchHistoryItem, SearchSort } from "@/lib/search-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
 
-type SearchTab = "all" | "articles" | "users" | "navigation" | "tools";
+type SearchTab = "all" | "articles" | "users" | "navigation" | "tools" | "topics" | "collections" | "groups" | "announcements";
 
 export default function SearchPage() {
   return <Suspense><SearchContent /></Suspense>;
@@ -112,15 +112,19 @@ function SearchResults({ activeTab, category, page, query, sort }: { activeTab: 
   const totalPages = activeTab === "articles" ? result?.articles.totalPages ?? 1
     : activeTab === "users" ? result?.users.totalPages ?? 1
       : activeTab === "navigation" ? result?.navigation.totalPages ?? 1
-        : activeTab === "tools" ? result?.tools.totalPages ?? 1 : 1;
+        : activeTab === "tools" ? result?.tools.totalPages ?? 1
+          : activeTab === "topics" ? result?.topics.totalPages ?? 1
+            : activeTab === "collections" ? result?.collections.totalPages ?? 1
+              : activeTab === "groups" ? result?.groups.totalPages ?? 1
+                : activeTab === "announcements" ? result?.announcements.totalPages ?? 1 : 1;
   const filters = activeTab === "articles" ? result?.filters.articleCategories ?? []
     : activeTab === "navigation" ? result?.filters.navigationCategories ?? []
       : activeTab === "tools" ? result?.filters.toolCategories ?? [] : [];
-  const total = (result?.articles.total ?? 0) + (result?.users.total ?? 0) + (result?.navigation.total ?? 0) + (result?.tools.total ?? 0);
+  const total = (result?.articles.total ?? 0) + (result?.users.total ?? 0) + (result?.navigation.total ?? 0) + (result?.tools.total ?? 0) + (result?.topics.total ?? 0) + (result?.collections.total ?? 0) + (result?.groups.total ?? 0) + (result?.announcements.total ?? 0);
 
   return <section className="page-shell search-page">
-    <form className="search-page-field" onSubmit={submit}><Search aria-hidden="true" size={21} /><input aria-label="全站搜索" autoFocus onChange={(event) => setDraft(event.target.value)} placeholder="搜索文章、用户、导航和工具" value={draft} />{draft ? <button aria-label="清空" onClick={() => setDraft("")} type="button"><X aria-hidden="true" size={17} /></button> : null}</form>
-    {query ? <nav className="search-tabs"><SearchTabButton active={activeTab === "all"} count={total} label="全部" onClick={() => navigate({ tab: "all" })} /><SearchTabButton active={activeTab === "articles"} count={result?.articles.total ?? 0} label="文章" onClick={() => navigate({ tab: "articles" })} /><SearchTabButton active={activeTab === "users"} count={result?.users.total ?? 0} label="用户" onClick={() => navigate({ tab: "users" })} /><SearchTabButton active={activeTab === "navigation"} count={result?.navigation.total ?? 0} label="导航" onClick={() => navigate({ tab: "navigation" })} /><SearchTabButton active={activeTab === "tools"} count={result?.tools.total ?? 0} label="工具" onClick={() => navigate({ tab: "tools" })} /></nav> : null}
+    <form className="search-page-field" onSubmit={submit}><Search aria-hidden="true" size={21} /><input aria-label="全站搜索" autoFocus onChange={(event) => setDraft(event.target.value)} placeholder="搜索文章、用户、导航、工具、专题、合集、群聊和公告" value={draft} />{draft ? <button aria-label="清空" onClick={() => setDraft("")} type="button"><X aria-hidden="true" size={17} /></button> : null}</form>
+    {query ? <nav className="search-tabs"><SearchTabButton active={activeTab === "all"} count={total} label="全部" onClick={() => navigate({ tab: "all" })} /><SearchTabButton active={activeTab === "articles"} count={result?.articles.total ?? 0} label="文章" onClick={() => navigate({ tab: "articles" })} /><SearchTabButton active={activeTab === "users"} count={result?.users.total ?? 0} label="用户" onClick={() => navigate({ tab: "users" })} /><SearchTabButton active={activeTab === "navigation"} count={result?.navigation.total ?? 0} label="导航" onClick={() => navigate({ tab: "navigation" })} /><SearchTabButton active={activeTab === "tools"} count={result?.tools.total ?? 0} label="工具" onClick={() => navigate({ tab: "tools" })} /><SearchTabButton active={activeTab === "topics"} count={result?.topics.total ?? 0} label="专题" onClick={() => navigate({ tab: "topics" })} /><SearchTabButton active={activeTab === "collections"} count={result?.collections.total ?? 0} label="合集" onClick={() => navigate({ tab: "collections" })} /><SearchTabButton active={activeTab === "groups"} count={result?.groups.total ?? 0} label="群聊" onClick={() => navigate({ tab: "groups" })} /><SearchTabButton active={activeTab === "announcements"} count={result?.announcements.total ?? 0} label="公告" onClick={() => navigate({ tab: "announcements" })} /></nav> : null}
     {filters.length ? <SearchFilters active={category} items={filters} onChange={(value) => navigate({ category: value, page: 1 })} /> : null}
     {query ? <div className="search-sort-row"><span>排序</span><div><button className={sort === "relevance" ? "active" : undefined} onClick={() => navigate({ sort: "relevance", page: 1 })} type="button">综合</button><button className={sort === "latest" ? "active" : undefined} onClick={() => navigate({ sort: "latest", page: 1 })} type="button">最新</button><button className={sort === "popular" ? "active" : undefined} onClick={() => navigate({ sort: "popular", page: 1 })} type="button">热门</button></div></div> : null}
     {isLoading ? <div className="search-page-empty">正在搜索。</div> : null}
@@ -130,6 +134,10 @@ function SearchResults({ activeTab, category, page, query, sort }: { activeTab: 
       {(activeTab === "all" || activeTab === "users") && result.users.total ? <SearchResultSection count={result.users.total} icon={UserRound} title="用户"><div className="search-user-grid">{result.users.items.map((user) => <Link href={`/users/${encodeURIComponent(user.username)}`} key={user.id}><span className="search-user-avatar identity-avatar-host"><span className="identity-avatar-visual">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : getAvatarFallbackText(user)}</span><AvatarManagementBadge user={user} /></span><span><strong>{user.nickname}</strong><small>@{user.username}</small><p>{user.profileBio}</p></span><RoleSymbol code={user.role.code} /></Link>)}</div></SearchResultSection> : null}
       {(activeTab === "all" || activeTab === "navigation") && result.navigation.total ? <EntrySection count={result.navigation.total} entries={result.navigation.items} icon={Compass} title="导航" /> : null}
       {(activeTab === "all" || activeTab === "tools") && result.tools.total ? <EntrySection count={result.tools.total} entries={result.tools.items} icon={Wrench} title="工具" /> : null}
+      {(activeTab === "all" || activeTab === "topics") && result.topics.total ? <SearchResultSection count={result.topics.total} icon={BookOpen} title="专题"><div className="search-discovery-grid">{result.topics.items.map((topic) => <Link className="search-discovery-row" href={`/topics/${topic.slug}`} key={topic.id}><span className="search-discovery-icon">{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <BookOpen aria-hidden="true" size={20} />}</span><span><strong>{topic.title}</strong><small>{topic.articleCount} 篇文章 · {topic.subscriberCount} 人订阅 · {formatTime(topic.updatedAt)}</small><p>{topic.description || "暂无专题说明"}</p></span></Link>)}</div></SearchResultSection> : null}
+      {(activeTab === "all" || activeTab === "collections") && result.collections.total ? <SearchResultSection count={result.collections.total} icon={FolderOpen} title="合集"><div className="search-discovery-grid">{result.collections.items.map((collection) => <Link className="search-discovery-row" href={`/collections/${collection.id}`} key={collection.id}><span className="search-discovery-icon"><FolderOpen aria-hidden="true" size={20} /></span><span><strong>{collection.name}</strong><small>{collection.articleCount} 篇文章 · {collection.subscriberCount} 人订阅 · {collection.owner.nickname}</small><p>{collection.description || "暂无合集说明"}</p></span></Link>)}</div></SearchResultSection> : null}
+      {(activeTab === "all" || activeTab === "groups") && result.groups.total ? <SearchResultSection count={result.groups.total} icon={UsersRound} title="群聊"><div className="search-discovery-grid">{result.groups.items.map((group) => <Link className="search-discovery-row" href={`/messages?conversation=${group.conversationId}`} key={group.id}><span className="search-discovery-icon group">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <UsersRound aria-hidden="true" size={20} />}</span><span><strong>{group.name}</strong><small>{group.memberCount} 位成员 · {group.isMember ? "已加入" : group.joinMode === "approval" ? "可申请加入" : "仅限邀请"} · {formatTime(group.updatedAt)}</small><p>{group.announcement || "暂无群公告"}</p></span></Link>)}</div></SearchResultSection> : null}
+      {(activeTab === "all" || activeTab === "announcements") && result.announcements.total ? <SearchResultSection count={result.announcements.total} icon={Bell} title="站点公告"><div className="search-article-list">{result.announcements.items.map((announcement) => <Link className="search-article-row" href={`/announcements/${announcement.id}`} key={announcement.id}><span><strong>{announcement.title}</strong><small>{announcement.summary || "打开查看公告详情"} · {formatTime(announcement.publishedAt)}</small></span><b>{announcement.isPinned ? "置顶" : ""}</b></Link>)}</div></SearchResultSection> : null}
       {!total ? <div className="search-page-empty"><strong>没有找到匹配内容</strong><span>换一个关键词或分类再试试。</span></div> : null}
     </div> : null}
     {result && totalPages > 1 ? <nav className="admin-pagination search-pagination" aria-label="搜索结果分页"><span>第 {page} / {totalPages} 页</span><div><button disabled={page <= 1} onClick={() => navigate({ page: page - 1 })} type="button">上一页</button><button disabled={page >= totalPages} onClick={() => navigate({ page: page + 1 })} type="button">下一页</button></div></nav> : null}
@@ -155,7 +163,7 @@ function SearchResultSection({ count, icon: Icon, title, children }: { count: nu
 }
 
 function normalizeTab(value: string | null): SearchTab {
-  return value === "articles" || value === "users" || value === "navigation" || value === "tools" ? value : "all";
+  return value === "articles" || value === "users" || value === "navigation" || value === "tools" || value === "topics" || value === "collections" || value === "groups" || value === "announcements" ? value : "all";
 }
 
 function normalizeSort(value: string | null): SearchSort {

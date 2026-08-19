@@ -86,7 +86,7 @@ interface StaticAndroidApkRelease {
 
 const initialChecks: DiagnosticItem[] = [
   { id: "secure", title: "安全连接", value: "检测中", detail: "正在检查 HTTPS 环境。", status: "pending" },
-  { id: "manifest", title: "应用清单", value: "检测中", detail: "正在读取 site.webmanifest。", status: "pending" },
+  { id: "manifest", title: "应用清单", value: "检测中", detail: "正在读取 manifest.webmanifest。", status: "pending" },
   { id: "icons", title: "应用图标", value: "检测中", detail: "正在检查 192 和 512 图标。", status: "pending" },
   { id: "service-worker", title: "Service Worker", value: "检测中", detail: "正在确认安装生命周期支持。", status: "pending" },
 ];
@@ -290,7 +290,7 @@ export function PwaDiagnostics() {
       shortcuts?: unknown[];
     } | null = null;
     const manifestLink = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
-    const manifestUrl = new URL(manifestLink?.href || "/site.webmanifest", window.location.href).href;
+    const manifestUrl = new URL(manifestLink?.href || "/manifest.webmanifest", window.location.href).href;
 
     try {
       const response = await fetchWithTimeout(`${manifestUrl}${manifestUrl.includes("?") ? "&" : "?"}diagnostics=${Date.now()}`, { cache: "no-store" });
@@ -321,7 +321,7 @@ export function PwaDiagnostics() {
         id: "manifest",
         title: "应用清单",
         value: "读取失败",
-        detail: "浏览器没有成功读取 site.webmanifest。",
+        detail: "浏览器没有成功读取 manifest.webmanifest。",
         status: "error",
       });
     }

@@ -64,6 +64,11 @@ export interface ArticleTopic {
 }
 
 export interface ProfileSettings {
+  profileAccess: "public" | "authenticated" | "friends" | "private";
+  searchable: boolean;
+  friendRequestPolicy: "everyone" | "none";
+  directMessagePolicy: "everyone" | "request" | "friends" | "none";
+  groupInvitationPolicy: "everyone" | "friends" | "none";
   showBio: boolean;
   showJoinedAt: boolean;
   showStats: boolean;
@@ -79,6 +84,12 @@ export interface ProfileShowcase {
   pinnedArticle: DiscoveryArticle | null;
   pinnedCollection: ArticleCollection | null;
   collections: ArticleCollection[];
+}
+
+export interface DiscoveryRecommendations {
+  topics: Array<{ id: number; title: string; slug: string; description: string; coverPath: string | null; articleCount: number; subscriberCount: number; subscribed: boolean; updatedAt: string }>;
+  collections: Array<{ id: number; name: string; description: string; articleCount: number; subscriberCount: number; subscribed: boolean; owner: ArticleAuthor; updatedAt: string }>;
+  groups: Array<{ id: number; conversationId: number; name: string; avatarUrl: string | null; announcement: string; memberCount: number; joinMode: "approval" | "invite_only"; isMember: boolean; updatedAt: string }>;
 }
 
 const authHeaders = (accessToken: string) => ({ Authorization: `Bearer ${accessToken}` });
@@ -113,6 +124,26 @@ export function updateSubscriptionSetting(accessToken: string, authorId: number,
 
 export function listMyCollections(accessToken: string) {
   return requestJson<{ items: ArticleCollection[] }>("/discovery/collections/mine", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function listDiscoveryRecommendations(accessToken: string) {
+  return requestJson<DiscoveryRecommendations>("/discovery/recommendations", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function subscribeTopic(accessToken: string, id: number) {
+  return requestJson<{ subscribed: true; subscriberCount: number }>(`/discovery/topics/${id}/subscribe`, { method: "POST", headers: authHeaders(accessToken) });
+}
+
+export function unsubscribeTopic(accessToken: string, id: number) {
+  return requestJson<{ subscribed: false; subscriberCount: number }>(`/discovery/topics/${id}/subscribe`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function subscribeCollection(accessToken: string, id: number) {
+  return requestJson<{ subscribed: true; subscriberCount: number }>(`/discovery/collections/${id}/subscribe`, { method: "POST", headers: authHeaders(accessToken) });
+}
+
+export function unsubscribeCollection(accessToken: string, id: number) {
+  return requestJson<{ subscribed: false; subscriberCount: number }>(`/discovery/collections/${id}/subscribe`, { method: "DELETE", headers: authHeaders(accessToken) });
 }
 
 export function listVisibleCollections(accessToken: string, input: { q?: string; page?: number; pageSize?: number } = {}) {

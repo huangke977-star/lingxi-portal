@@ -7,6 +7,7 @@ interface PublicSiteSettingsSnapshot {
   siteName?: string;
   browserTitle?: string;
   pwaIconPath?: string;
+  updatedAt?: string;
 }
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const settings = await readPublicSettings();
   const name = settings.siteName?.trim() || "HLOVET";
-  const iconPath = settings.pwaIconPath?.trim() || "/icon-192.png";
+  const iconPath = versionedAssetPath(settings.pwaIconPath?.trim() || "/pwa-logo.png", settings.updatedAt);
 
   return Response.json({
     id: "/",
@@ -31,13 +32,11 @@ export async function GET() {
       {
         src: iconPath,
         sizes: "192x192",
-        type: "image/png",
         purpose: "any maskable",
       },
       {
         src: iconPath,
         sizes: "512x512",
-        type: "image/png",
         purpose: "any maskable",
       },
     ],
@@ -46,18 +45,23 @@ export async function GET() {
         name: "发现",
         short_name: "发现",
         url: "/articles",
-        icons: [{ src: iconPath, sizes: "192x192", type: "image/png" }],
+        icons: [{ src: iconPath, sizes: "192x192" }],
       },
       {
         name: "导航",
         short_name: "导航",
         url: "/nav",
-        icons: [{ src: iconPath, sizes: "192x192", type: "image/png" }],
+        icons: [{ src: iconPath, sizes: "192x192" }],
       },
     ],
     theme_color: "#eef8ff",
     background_color: "#eef8ff",
-  });
+  }, { headers: { "Cache-Control": "no-store, max-age=0" } });
+}
+
+function versionedAssetPath(path: string, updatedAt?: string): string {
+  if (!updatedAt) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}v=${encodeURIComponent(updatedAt)}`;
 }
 
 async function readPublicSettings(): Promise<PublicSiteSettingsSnapshot> {

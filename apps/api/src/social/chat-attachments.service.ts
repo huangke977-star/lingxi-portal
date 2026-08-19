@@ -170,6 +170,8 @@ export class ChatAttachmentsService {
         },
         conversation: {
           select: {
+            directUserOneId: true,
+            directUserTwoId: true,
             friendship: { select: { userOneId: true, userTwoId: true, status: true } },
             group: {
               select: {
@@ -185,7 +187,7 @@ export class ChatAttachmentsService {
     if (!attachment) {
       throw new NotFoundException("附件不存在。");
     }
-    const { friendship, group } = attachment.conversation;
+    const { directUserOneId, directUserTwoId, friendship, group } = attachment.conversation;
     // Administrative access is deliberately limited to attachments belonging to a reported group message.
     // Site managers must not gain a general bypass for private or unrelated group attachments.
     const siteManager = Boolean(
@@ -194,10 +196,14 @@ export class ChatAttachmentsService {
       (user.isSuperAdmin || Boolean(user.isAdministrator)),
     );
     const directMember = Boolean(
-      friendship &&
-      friendship.status === FriendshipStatus.accepted &&
-      [friendship.userOneId, friendship.userTwoId].includes(user.id),
+      (friendship &&
+        friendship.status === FriendshipStatus.accepted &&
+        [friendship.userOneId, friendship.userTwoId].includes(user.id)) ||
+      (directUserOneId && directUserTwoId && [directUserOneId, directUserTwoId].includes(user.id)),
     );
+    if (directMember && directUserOneId && directUserTwoId) {
+      await this.assertDirectPairNotBlocked(directUserOneId, directUserTwoId);
+    }
     const groupMember = Boolean(
       group &&
       group.status === ChatGroupStatus.active &&
@@ -516,6 +522,8 @@ export class ChatAttachmentsService {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
       select: {
+        directUserOneId: true,
+        directUserTwoId: true,
         friendship: { select: { userOneId: true, userTwoId: true, status: true } },
         group: {
           select: {
@@ -529,10 +537,16 @@ export class ChatAttachmentsService {
       },
     });
     const directMember = Boolean(
-      conversation?.friendship &&
-      conversation.friendship.status === FriendshipStatus.accepted &&
-      [conversation.friendship.userOneId, conversation.friendship.userTwoId].includes(userId),
+      (conversation?.friendship &&
+        conversation.friendship.status === FriendshipStatus.accepted &&
+        [conversation.friendship.userOneId, conversation.friendship.userTwoId].includes(userId)) ||
+      (conversation?.directUserOneId &&
+        conversation.directUserTwoId &&
+        [conversation.directUserOneId, conversation.directUserTwoId].includes(userId)),
     );
+    if (directMember && conversation?.directUserOneId && conversation.directUserTwoId) {
+      await this.assertDirectPairNotBlocked(conversation.directUserOneId, conversation.directUserTwoId);
+    }
     const groupMember = Boolean(
       conversation?.group &&
       conversation.group.status === ChatGroupStatus.active &&
@@ -544,6 +558,18 @@ export class ChatAttachmentsService {
     if (!conversation || (!directMember && !groupMember)) {
       throw new ForbiddenException("没有访问这个会话的权限。");
     }
+  }
+
+  private async assertDirectPairNotBlocked(userOneId: number, userTwoId: number): Promise<void> {
+    const blocked = await this.prisma.friendship.findFirst({
+      where: {
+        userOneId: Math.min(userOneId, userTwoId),
+        userTwoId: Math.max(userOneId, userTwoId),
+        status: FriendshipStatus.blocked,
+      },
+      select: { id: true },
+    });
+    if (blocked) throw new ForbiddenException("当前用户关系不可操作。");
   }
 
   private cleanupFiles(files: UploadedChatAttachment[]): Promise<void[]> {

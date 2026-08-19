@@ -77,7 +77,30 @@ export interface ArticleTopicResponse {
   updatedAt: string;
 }
 
+export interface DiscoveryGroupRecommendation {
+  id: number;
+  conversationId: number;
+  name: string;
+  avatarUrl: string | null;
+  announcement: string;
+  memberCount: number;
+  joinMode: "approval" | "invite_only";
+  isMember: boolean;
+  updatedAt: string;
+}
+
+export interface DiscoveryRecommendationsResponse {
+  topics: Array<{ id: number; title: string; slug: string; description: string; coverPath: string | null; articleCount: number; subscriberCount: number; subscribed: boolean; updatedAt: string }>;
+  collections: Array<{ id: number; name: string; description: string; articleCount: number; subscriberCount: number; subscribed: boolean; owner: DiscoveryAuthorResponse; updatedAt: string }>;
+  groups: DiscoveryGroupRecommendation[];
+}
+
 export interface ProfileSettingsResponse {
+  profileAccess: "public" | "authenticated" | "friends" | "private";
+  searchable: boolean;
+  friendRequestPolicy: "everyone" | "none";
+  directMessagePolicy: "everyone" | "request" | "friends" | "none";
+  groupInvitationPolicy: "everyone" | "friends" | "none";
   showBio: boolean;
   showJoinedAt: boolean;
   showStats: boolean;

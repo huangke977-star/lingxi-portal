@@ -179,6 +179,26 @@ export class UpdateAuthorSubscriptionDto {
 
 export class UpdateProfileSettingsDto {
   @IsOptional()
+  @IsIn(["public", "authenticated", "friends", "private"])
+  profileAccess?: "public" | "authenticated" | "friends" | "private";
+
+  @IsOptional()
+  @IsBoolean()
+  searchable?: boolean;
+
+  @IsOptional()
+  @IsIn(["everyone", "none"])
+  friendRequestPolicy?: "everyone" | "none";
+
+  @IsOptional()
+  @IsIn(["everyone", "request", "friends", "none"])
+  directMessagePolicy?: "everyone" | "request" | "friends" | "none";
+
+  @IsOptional()
+  @IsIn(["everyone", "friends", "none"])
+  groupInvitationPolicy?: "everyone" | "friends" | "none";
+
+  @IsOptional()
   @IsBoolean()
   showBio?: boolean;
 

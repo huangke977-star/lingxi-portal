@@ -71,6 +71,7 @@ const navItems = [
 const emptySummary = {
   unreadMessages: 0,
   pendingFriendRequests: 0,
+  pendingStrangerRequests: 0,
   unreadNotifications: 0,
 };
 

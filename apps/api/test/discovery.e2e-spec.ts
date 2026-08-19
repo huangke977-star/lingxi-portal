@@ -125,6 +125,51 @@ describe("DiscoveryService", () => {
         AND: expect.arrayContaining([{ subscriptionFeedReads: { none: { userId: user.id } } }]),
       }),
     }));
+    expect(prisma.article.count).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: expect.objectContaining({
+        AND: expect.arrayContaining([
+          expect.objectContaining({
+            OR: expect.arrayContaining([
+              expect.objectContaining({ author: expect.any(Object) }),
+              expect.objectContaining({ collectionItems: expect.any(Object) }),
+              expect.objectContaining({ topicItems: expect.any(Object) }),
+            ]),
+          }),
+        ]),
+      }),
+    }));
+  });
+
+  it("recommends only unjoined active groups and unsubscribed visible discovery content", async () => {
+    const prisma = {
+      articleTopic: { findMany: jest.fn(async () => []) },
+      articleCollection: { findMany: jest.fn(async () => []) },
+      chatGroup: { findMany: jest.fn(async () => []) },
+    };
+
+    await expect(createService(prisma).listRecommendations(user)).resolves.toEqual({
+      topics: [],
+      collections: [],
+      groups: [],
+    });
+    expect(prisma.articleTopic.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ subscribers: { none: { userId: user.id } } }),
+    }));
+    expect(prisma.articleCollection.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        AND: expect.arrayContaining([{ subscribers: { none: { userId: user.id } } }]),
+      }),
+    }));
+    expect(prisma.chatGroup.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        members: {
+          none: {
+            userId: user.id,
+            status: { in: ["active", "blocked"] },
+          },
+        },
+      }),
+    }));
   });
 
   it("requires collection ordering to contain every current article exactly once", async () => {
@@ -314,6 +359,11 @@ describe("DiscoveryService", () => {
   it("deduplicates profile visits by hashed visitor and day without storing raw request data", async () => {
     const profileSettings = {
       userId: author.id,
+      profileAccess: "public",
+      searchable: true,
+      friendRequestPolicy: "everyone",
+      directMessagePolicy: "request",
+      groupInvitationPolicy: "everyone",
       showBio: true,
       showJoinedAt: true,
       showStats: true,
@@ -332,6 +382,7 @@ describe("DiscoveryService", () => {
         }),
         count: jest.fn(async () => 1),
       },
+      friendship: { findFirst: jest.fn(async () => null) },
       articleCollection: { findMany: jest.fn(async () => []) },
     };
     const service = createService(prisma);
@@ -369,6 +420,11 @@ describe("DiscoveryService", () => {
           status: "active",
           profileSettings: {
             userId: author.id,
+            profileAccess: "public",
+            searchable: true,
+            friendRequestPolicy: "everyone",
+            directMessagePolicy: "request",
+            groupInvitationPolicy: "everyone",
             showBio: false,
             showJoinedAt: false,
             showStats: false,
@@ -387,6 +443,7 @@ describe("DiscoveryService", () => {
         }),
         count: jest.fn(async () => 99),
       },
+      friendship: { findFirst: jest.fn(async () => null) },
       articleCollection: { findMany: jest.fn(async () => []) },
     };
 

@@ -19,8 +19,8 @@ export class SearchQueryDto {
   pageSize = 12;
 
   @IsOptional()
-  @IsIn(["all", "articles", "users", "navigation", "tools"])
-  scope?: "all" | "articles" | "users" | "navigation" | "tools" = "all";
+  @IsIn(["all", "articles", "users", "navigation", "tools", "topics", "collections", "groups", "announcements"])
+  scope?: "all" | "articles" | "users" | "navigation" | "tools" | "topics" | "collections" | "groups" | "announcements" = "all";
 
   @IsOptional()
   @IsString()

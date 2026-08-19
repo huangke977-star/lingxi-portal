@@ -78,6 +78,7 @@ import {
   type Conversation,
   type Friendship,
   type SocialNotification,
+  type StrangerMessageRequest,
   type SocialUserSearchResult,
   type SocialUser,
   type NotificationChannel,
@@ -96,6 +97,7 @@ import {
   listFriendships,
   listMessages,
   listNotifications,
+  listStrangerMessageRequests,
   markAllNotificationsRead,
   markConversationRead,
   markNotificationRead,
@@ -106,6 +108,7 @@ import {
   respondChatGroupInvitationByGroup,
   respondChatGroupJoinRequest,
   respondFriendRequest,
+  respondStrangerMessageRequest,
   searchSocialUsers,
   unblockFriendship,
   updateConversationSettings,
@@ -265,6 +268,7 @@ export function ChatDock() {
     blocked: Friendship[];
   }>({ friends: [], incoming: [], outgoing: [], blocked: [] });
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
+  const [strangerRequests, setStrangerRequests] = useState<{ incoming: StrangerMessageRequest[]; outgoing: StrangerMessageRequest[] }>({ incoming: [], outgoing: [] });
   const [notificationChannelStates, setNotificationChannelStates] = useState<NotificationChannelState[]>([]);
   const [hiddenNotificationChannels, setHiddenNotificationChannels] = useState<NotificationChannel[]>([]);
   const [selectedId, setSelectedId] = useState(0);
@@ -537,6 +541,7 @@ export function ChatDock() {
       setConversations([]);
       setFriendships({ friends: [], incoming: [], outgoing: [], blocked: [] });
       setNotifications([]);
+      setStrangerRequests({ incoming: [], outgoing: [] });
       setNotificationChannelStates([]);
       setBrowserPushState(null);
       setHiddenNotificationChannels([]);
@@ -549,11 +554,12 @@ export function ChatDock() {
     }
     if (showLoading) setIsLoading(true);
     try {
-      const [currentUser, conversationResult, friendshipResult, notificationResult] = await Promise.all([
+      const [currentUser, conversationResult, friendshipResult, notificationResult, strangerRequestResult] = await Promise.all([
         getMe(token),
         listConversations(token),
         listFriendships(token),
         listNotifications(token),
+        listStrangerMessageRequests(token),
       ]);
       if (sessionUserIdRef.current && sessionUserIdRef.current !== currentUser.id) {
         pendingAttachmentsRef.current.forEach((attachment) => {
@@ -567,6 +573,7 @@ export function ChatDock() {
       setConversations(conversationResult.items);
       setFriendships(friendshipResult);
       setNotifications(notificationResult.items);
+      setStrangerRequests(strangerRequestResult);
       setNotificationChannelStates(notificationResult.channelStates ?? []);
       const nextHiddenChannels = notificationResult.hiddenChannels ?? [];
       setHiddenNotificationChannels(nextHiddenChannels);
@@ -1851,6 +1858,30 @@ export function ChatDock() {
     setIsMinimized(false);
   }
 
+  async function handleStrangerRequest(request: StrangerMessageRequest, status: "accepted" | "declined") {
+    const token = readAccessToken();
+    if (!token || isFriendRequestSending) return;
+    setIsFriendRequestSending(true);
+    try {
+      const result = await respondStrangerMessageRequest(token, request.id, status);
+      setStrangerRequests((current) => ({
+        ...current,
+        incoming: current.incoming.filter((item) => item.id !== request.id),
+      }));
+      if (result.conversation) {
+        setConversations((current) => [result.conversation!, ...current.filter((item) => item.id !== result.conversation!.id)]);
+        setSelectedId(result.conversation.id);
+        setIsMobileConversationOpen(true);
+      }
+      setNotice(status === "accepted" ? "已接受消息请求。" : "已拒绝消息请求。");
+      notifySocialStateChange();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "消息请求处理失败。");
+    } finally {
+      setIsFriendRequestSending(false);
+    }
+  }
+
   async function handleGroupNotificationAction(
     notification: SocialNotification,
     action: "accept" | "reject" | "resolve-report" | "reject-report",
@@ -2019,7 +2050,7 @@ export function ChatDock() {
             {isDesktop || !isMobileConversationOpen ? <button aria-label="群聊" onClick={() => { setGroupManagerInitialId(null); setGroupManagerInitialView("mine"); setIsGroupManagerOpen(true); }} title="群聊" type="button"><Users aria-hidden="true" size={17} /></button> : null}
             {isDesktop || !isMobileConversationOpen ? <button aria-expanded={isMessageSettingsOpen} aria-label="消息设置" onClick={() => setIsMessageSettingsOpen((current) => !current)} title="消息设置" type="button"><Settings2 aria-hidden="true" size={17} /></button> : null}
             {selected?.group && !isDesktop && isMobileConversationOpen ? <button aria-label="群资料" onClick={() => { setGroupManagerInitialId(selected.group!.id); setGroupManagerInitialView("mine"); setIsGroupManagerOpen(true); }} title="群资料" type="button"><Users aria-hidden="true" size={17} /></button> : null}
-            {selected?.kind === "direct" && (isDesktop || isMobileConversationOpen) ? <>
+            {selected?.kind === "direct" && selected.canCall && (isDesktop || isMobileConversationOpen) ? <>
               <button aria-label="发起语音通话" disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("voice")} title="语音通话" type="button"><Phone aria-hidden="true" size={17} /></button>
               <button aria-label="发起视频通话" disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("video")} title="视频通话" type="button"><Video aria-hidden="true" size={17} /></button>
             </> : null}
@@ -2167,6 +2198,16 @@ export function ChatDock() {
                     user={friendship.user}
                   />
                 ))}
+
+                {!normalizedFriendSearch && (strangerRequests.incoming.length || strangerRequests.outgoing.length) ? <details className="chat-stranger-request-list" open={Boolean(strangerRequests.incoming.length)}>
+                  <summary><MessageCircleMore aria-hidden="true" size={14} />消息请求 <b>{strangerRequests.incoming.length}</b></summary>
+                  {strangerRequests.incoming.map((request) => <article key={request.id}>
+                    <UserAvatar user={request.user} />
+                    <span><strong>{request.user.nickname}</strong><small>{request.body}</small></span>
+                    <div><button aria-label={`接受 ${request.user.nickname} 的消息请求`} disabled={isFriendRequestSending} onClick={() => void handleStrangerRequest(request, "accepted")} title="接受" type="button"><Check aria-hidden="true" size={14} /></button><button aria-label={`拒绝 ${request.user.nickname} 的消息请求`} disabled={isFriendRequestSending} onClick={() => void handleStrangerRequest(request, "declined")} title="拒绝" type="button"><X aria-hidden="true" size={14} /></button></div>
+                  </article>)}
+                  {strangerRequests.outgoing.map((request) => <article className="outgoing" key={request.id}><UserAvatar user={request.user} /><span><strong>{request.user.nickname}</strong><small>{request.body}</small></span><em>等待对方接受</em></article>)}
+                </details> : null}
 
                 {friendships.blocked.length ? <details className="chat-blocked-list">
                   <summary><Ban aria-hidden="true" size={14} />黑名单 <b>{friendships.blocked.length}</b></summary>

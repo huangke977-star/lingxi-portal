@@ -107,6 +107,38 @@ enum FriendshipStatus {
   blocked
 }
 
+enum ProfileAccessLevel {
+  public
+  authenticated
+  friends
+  private
+}
+
+enum FriendRequestPolicy {
+  everyone
+  none
+}
+
+enum DirectMessagePolicy {
+  everyone
+  request
+  friends
+  none
+}
+
+enum GroupInvitationPolicy {
+  everyone
+  friends
+  none
+}
+
+enum StrangerMessageRequestStatus {
+  pending
+  accepted
+  declined
+  cancelled
+}
+
 enum UserNotificationType {
   friend_request_received
   friend_request_accepted
@@ -408,121 +440,127 @@ model Role {
 }
 
 model User {
-  id                        Int                            @id @default(autoincrement())
-  username                  String                         @unique @db.VarChar(32)
-  nickname                  String                         @db.VarChar(32)
-  email                     String                         @unique @db.VarChar(191)
-  emailVerifiedAt           DateTime?                      @map("email_verified_at")
-  authVersion               Int                            @default(0) @map("auth_version")
-  passwordHash              String                         @map("password_hash") @db.VarChar(255)
-  roleId                    Int                            @map("role_id")
-  role                      Role                           @relation(fields: [roleId], references: [id])
-  isSuperAdmin              Boolean                        @default(false) @map("is_super_admin")
-  isAdministrator           Boolean                        @default(false) @map("is_administrator")
-  status                    UserStatus                     @default(active)
-  appearanceThemeId         String                         @default("cloud-blue") @map("appearance_theme_id") @db.VarChar(64)
-  customAccent              String                         @default("#1814f0") @map("custom_accent") @db.VarChar(7)
-  customSurface             String                         @default("#dfc8c8") @map("custom_surface") @db.VarChar(7)
-  customForeground          String                         @default("#2b2530") @map("custom_foreground") @db.VarChar(7)
-  customMuted               String                         @default("#665867") @map("custom_muted") @db.VarChar(7)
-  cardAlpha                 Int                            @default(50) @map("card_alpha")
-  glassBlur                 Int                            @default(18) @map("glass_blur")
-  glassTint                 String                         @default("#fff3f6") @map("glass_tint") @db.VarChar(7)
-  glassTintAlpha            Int                            @default(0) @map("glass_tint_alpha")
-  appearanceCustomized      Boolean                        @default(false) @map("appearance_customized")
-  avatarOriginalName        String?                        @map("avatar_original_name") @db.VarChar(255)
-  avatarStoredName          String?                        @unique @map("avatar_stored_name") @db.VarChar(255)
-  avatarMimeType            String?                        @map("avatar_mime_type") @db.VarChar(64)
-  avatarSizeBytes           Int?                           @map("avatar_size_bytes")
-  profileBio                String                         @default("我懒，我不写") @map("profile_bio") @db.VarChar(180)
-  experience                Int                            @default(0)
-  points                    Int                            @default(0)
-  searchText                String                         @default("") @map("search_text") @db.VarChar(4096)
-  searchPinyin              String                         @default("") @map("search_pinyin") @db.VarChar(4096)
-  lastLoginAt               DateTime?                      @map("last_login_at")
-  createdAt                 DateTime                       @default(now()) @map("created_at")
-  updatedAt                 DateTime                       @updatedAt @map("updated_at")
-  backgroundImages          BackgroundImage[]
-  siteAssets                SiteAsset[]
-  androidReleases           AndroidRelease[]
-  portalCategoriesCreated   PortalCategory[]               @relation("PortalCategoryCreatedBy")
-  portalCategoriesUpdated   PortalCategory[]               @relation("PortalCategoryUpdatedBy")
-  portalEntriesCreated      PortalEntry[]                  @relation("PortalEntryCreatedBy")
-  portalEntriesUpdated      PortalEntry[]                  @relation("PortalEntryUpdatedBy")
-  portalPreference          UserPortalPreference?
-  articles                  Article[]                      @relation("ArticleAuthor")
-  articleVersionsEdited     ArticleVersion[]               @relation("ArticleVersionEditor")
-  articleComments           ArticleComment[]               @relation("ArticleCommentAuthor")
-  articleLikes              ArticleLike[]
-  articleFavorites          ArticleFavorite[]
-  articleViews              ArticleView[]
-  articleReadLater          ArticleReadLater[]
-  articleReadingHistory     ArticleReadingHistory[]
-  articleCommentLikes       ArticleCommentLike[]
-  articleCommentReports     ArticleCommentReport[]         @relation("ArticleCommentReporter")
-  handledCommentReports     ArticleCommentReport[]         @relation("ArticleCommentReportHandler")
-  articleReports            ArticleReport[]                @relation("ArticleReporter")
-  handledArticleReports     ArticleReport[]                @relation("ArticleReportHandler")
-  friendshipsAsOne          Friendship[]                   @relation("FriendshipUserOne")
-  friendshipsAsTwo          Friendship[]                   @relation("FriendshipUserTwo")
-  friendshipRequests        Friendship[]                   @relation("FriendshipRequester")
-  blockedFriendships        Friendship[]                   @relation("FriendshipBlocker")
-  chatMessages              ChatMessage[]                  @relation("ChatMessageSender")
-  conversationStates        ConversationParticipantState[]
-  hiddenChatMessages        ChatMessageDeletion[]
-  chatAttachments           ChatAttachment[]               @relation("ChatAttachmentUploader")
-  ownedChatGroups           ChatGroup[]                    @relation("ChatGroupOwner")
-  chatGroupMembers          ChatGroupMember[]
-  sentChatGroupInvitations  ChatGroupInvitation[]          @relation("ChatGroupInviter")
-  receivedChatGroupInvites  ChatGroupInvitation[]          @relation("ChatGroupInvitee")
-  chatGroupJoinRequests     ChatGroupJoinRequest[]
-  handledGroupJoinRequests  ChatGroupJoinRequest[]         @relation("ChatGroupJoinRequestHandler")
-  chatGroupReports          ChatGroupMessageReport[]       @relation("ChatGroupReporter")
-  handledChatGroupReports   ChatGroupMessageReport[]       @relation("ChatGroupReportHandler")
-  chatGroupActivity         ChatGroupActivityLog[]         @relation("ChatGroupActivityActor")
-  targetedChatGroupActivity ChatGroupActivityLog[]         @relation("ChatGroupActivityTarget")
-  chatGroupBanRecords        ChatGroupBanRecord[]           @relation("ChatGroupBanActor")
-  liftedChatGroupBanRecords  ChatGroupBanRecord[]           @relation("ChatGroupBanLifter")
-  callsStarted              CallSession[]                  @relation("CallSessionCaller")
-  callsReceived             CallSession[]                  @relation("CallSessionCallee")
-  callsEnded                CallSession[]                  @relation("CallSessionEndedBy")
-  notifications             UserNotification[]             @relation("UserNotificationRecipient")
-  notificationActions       UserNotification[]             @relation("UserNotificationActor")
-  notificationChannelStates UserNotificationChannelState[]
-  subscriptionsGiven        UserSubscription[]             @relation("UserSubscriptionSubscriber")
-  subscriptionsReceived     UserSubscription[]             @relation("UserSubscriptionAuthor")
-  subscriptionFeedReads     SubscriptionFeedRead[]
-  articleCollections        ArticleCollection[]
-  articleTopicsCreated      ArticleTopic[]                 @relation("ArticleTopicCreatedBy")
-  articleTopicsUpdated      ArticleTopic[]                 @relation("ArticleTopicUpdatedBy")
-  profileSettings           UserProfileSettings?
-  profileVisits             ProfileVisit[]                 @relation("ProfileVisitTarget")
-  auditLogs                 AuditLog[]                     @relation("AuditLogActor")
-  pushSubscriptions         PushSubscription[]
-  securityPreference        UserSecurityPreference?
-  knownLoginDevices         KnownLoginDevice[]
-  loginSecurityEvents       LoginSecurityEvent[]
-  emailVerificationRequests EmailVerificationRequest[]
-  passwordResetRequests     PasswordResetRequest[]
-  mailJobs                  MailJob[]
-  searchHistory             SearchHistory[]
-  announcementsCreated      Announcement[]                 @relation("AnnouncementCreatedBy")
-  announcementsUpdated      Announcement[]                 @relation("AnnouncementUpdatedBy")
-  announcementReads         AnnouncementRead[]
-  suggestionsSubmitted      SiteSuggestion[]             @relation("SiteSuggestionSubmitter")
-  suggestionsReviewed       SiteSuggestion[]             @relation("SiteSuggestionReviewer")
-  suggestionReplies         SiteSuggestionReply[]        @relation("SiteSuggestionReplyAuthor")
-  reputationLedgers         UserReputationLedger[]
-  resourceExchanges         ArticleResourceExchange[]      @relation("ArticleResourceBuyer")
-  resourceSales             ArticleResourceExchange[]      @relation("ArticleResourceAuthor")
-  articleAppealsSubmitted   ArticleAppeal[]               @relation("ArticleAppealAuthor")
-  articleAppealsReviewed    ArticleAppeal[]               @relation("ArticleAppealReviewer")
-  articlePublishRestrictions ArticlePublishRestriction[]  @relation("RestrictedArticleAuthor")
-  createdArticleRestrictions ArticlePublishRestriction[]  @relation("ArticleRestrictionCreator")
-  liftedArticleRestrictions ArticlePublishRestriction[]   @relation("ArticleRestrictionLifter")
-  feedbackSubmitted         UserFeedback[]                @relation("UserFeedbackSubmitter")
-  feedbackReviewed           UserFeedback[]                @relation("UserFeedbackReviewer")
-  feedbackReplies            UserFeedbackReply[]           @relation("UserFeedbackReplyAuthor")
+  id                         Int                             @id @default(autoincrement())
+  username                   String                          @unique @db.VarChar(32)
+  nickname                   String                          @db.VarChar(32)
+  email                      String                          @unique @db.VarChar(191)
+  emailVerifiedAt            DateTime?                       @map("email_verified_at")
+  authVersion                Int                             @default(0) @map("auth_version")
+  passwordHash               String                          @map("password_hash") @db.VarChar(255)
+  roleId                     Int                             @map("role_id")
+  role                       Role                            @relation(fields: [roleId], references: [id])
+  isSuperAdmin               Boolean                         @default(false) @map("is_super_admin")
+  isAdministrator            Boolean                         @default(false) @map("is_administrator")
+  status                     UserStatus                      @default(active)
+  appearanceThemeId          String                          @default("cloud-blue") @map("appearance_theme_id") @db.VarChar(64)
+  customAccent               String                          @default("#1814f0") @map("custom_accent") @db.VarChar(7)
+  customSurface              String                          @default("#dfc8c8") @map("custom_surface") @db.VarChar(7)
+  customForeground           String                          @default("#2b2530") @map("custom_foreground") @db.VarChar(7)
+  customMuted                String                          @default("#665867") @map("custom_muted") @db.VarChar(7)
+  cardAlpha                  Int                             @default(50) @map("card_alpha")
+  glassBlur                  Int                             @default(18) @map("glass_blur")
+  glassTint                  String                          @default("#fff3f6") @map("glass_tint") @db.VarChar(7)
+  glassTintAlpha             Int                             @default(0) @map("glass_tint_alpha")
+  appearanceCustomized       Boolean                         @default(false) @map("appearance_customized")
+  avatarOriginalName         String?                         @map("avatar_original_name") @db.VarChar(255)
+  avatarStoredName           String?                         @unique @map("avatar_stored_name") @db.VarChar(255)
+  avatarMimeType             String?                         @map("avatar_mime_type") @db.VarChar(64)
+  avatarSizeBytes            Int?                            @map("avatar_size_bytes")
+  profileBio                 String                          @default("我懒，我不写") @map("profile_bio") @db.VarChar(180)
+  experience                 Int                             @default(0)
+  points                     Int                             @default(0)
+  searchText                 String                          @default("") @map("search_text") @db.VarChar(4096)
+  searchPinyin               String                          @default("") @map("search_pinyin") @db.VarChar(4096)
+  lastLoginAt                DateTime?                       @map("last_login_at")
+  createdAt                  DateTime                        @default(now()) @map("created_at")
+  updatedAt                  DateTime                        @updatedAt @map("updated_at")
+  backgroundImages           BackgroundImage[]
+  siteAssets                 SiteAsset[]
+  androidReleases            AndroidRelease[]
+  portalCategoriesCreated    PortalCategory[]                @relation("PortalCategoryCreatedBy")
+  portalCategoriesUpdated    PortalCategory[]                @relation("PortalCategoryUpdatedBy")
+  portalEntriesCreated       PortalEntry[]                   @relation("PortalEntryCreatedBy")
+  portalEntriesUpdated       PortalEntry[]                   @relation("PortalEntryUpdatedBy")
+  portalPreference           UserPortalPreference?
+  articles                   Article[]                       @relation("ArticleAuthor")
+  articleVersionsEdited      ArticleVersion[]                @relation("ArticleVersionEditor")
+  articleComments            ArticleComment[]                @relation("ArticleCommentAuthor")
+  articleLikes               ArticleLike[]
+  articleFavorites           ArticleFavorite[]
+  articleViews               ArticleView[]
+  articleReadLater           ArticleReadLater[]
+  articleReadingHistory      ArticleReadingHistory[]
+  articleCommentLikes        ArticleCommentLike[]
+  articleCommentReports      ArticleCommentReport[]          @relation("ArticleCommentReporter")
+  handledCommentReports      ArticleCommentReport[]          @relation("ArticleCommentReportHandler")
+  articleReports             ArticleReport[]                 @relation("ArticleReporter")
+  handledArticleReports      ArticleReport[]                 @relation("ArticleReportHandler")
+  friendshipsAsOne           Friendship[]                    @relation("FriendshipUserOne")
+  friendshipsAsTwo           Friendship[]                    @relation("FriendshipUserTwo")
+  friendshipRequests         Friendship[]                    @relation("FriendshipRequester")
+  blockedFriendships         Friendship[]                    @relation("FriendshipBlocker")
+  directConversationsAsOne   Conversation[]                  @relation("DirectConversationUserOne")
+  directConversationsAsTwo   Conversation[]                  @relation("DirectConversationUserTwo")
+  strangerRequestsSent       StrangerMessageRequest[]        @relation("StrangerMessageRequester")
+  strangerRequestsReceived   StrangerMessageRequest[]        @relation("StrangerMessageRecipient")
+  chatMessages               ChatMessage[]                   @relation("ChatMessageSender")
+  conversationStates         ConversationParticipantState[]
+  hiddenChatMessages         ChatMessageDeletion[]
+  chatAttachments            ChatAttachment[]                @relation("ChatAttachmentUploader")
+  ownedChatGroups            ChatGroup[]                     @relation("ChatGroupOwner")
+  chatGroupMembers           ChatGroupMember[]
+  sentChatGroupInvitations   ChatGroupInvitation[]           @relation("ChatGroupInviter")
+  receivedChatGroupInvites   ChatGroupInvitation[]           @relation("ChatGroupInvitee")
+  chatGroupJoinRequests      ChatGroupJoinRequest[]
+  handledGroupJoinRequests   ChatGroupJoinRequest[]          @relation("ChatGroupJoinRequestHandler")
+  chatGroupReports           ChatGroupMessageReport[]        @relation("ChatGroupReporter")
+  handledChatGroupReports    ChatGroupMessageReport[]        @relation("ChatGroupReportHandler")
+  chatGroupActivity          ChatGroupActivityLog[]          @relation("ChatGroupActivityActor")
+  targetedChatGroupActivity  ChatGroupActivityLog[]          @relation("ChatGroupActivityTarget")
+  chatGroupBanRecords        ChatGroupBanRecord[]            @relation("ChatGroupBanActor")
+  liftedChatGroupBanRecords  ChatGroupBanRecord[]            @relation("ChatGroupBanLifter")
+  callsStarted               CallSession[]                   @relation("CallSessionCaller")
+  callsReceived              CallSession[]                   @relation("CallSessionCallee")
+  callsEnded                 CallSession[]                   @relation("CallSessionEndedBy")
+  notifications              UserNotification[]              @relation("UserNotificationRecipient")
+  notificationActions        UserNotification[]              @relation("UserNotificationActor")
+  notificationChannelStates  UserNotificationChannelState[]
+  subscriptionsGiven         UserSubscription[]              @relation("UserSubscriptionSubscriber")
+  subscriptionsReceived      UserSubscription[]              @relation("UserSubscriptionAuthor")
+  subscriptionFeedReads      SubscriptionFeedRead[]
+  articleCollections         ArticleCollection[]
+  collectionSubscriptions    ArticleCollectionSubscription[]
+  articleTopicsCreated       ArticleTopic[]                  @relation("ArticleTopicCreatedBy")
+  articleTopicsUpdated       ArticleTopic[]                  @relation("ArticleTopicUpdatedBy")
+  topicSubscriptions         ArticleTopicSubscription[]
+  profileSettings            UserProfileSettings?
+  profileVisits              ProfileVisit[]                  @relation("ProfileVisitTarget")
+  auditLogs                  AuditLog[]                      @relation("AuditLogActor")
+  pushSubscriptions          PushSubscription[]
+  securityPreference         UserSecurityPreference?
+  knownLoginDevices          KnownLoginDevice[]
+  loginSecurityEvents        LoginSecurityEvent[]
+  emailVerificationRequests  EmailVerificationRequest[]
+  passwordResetRequests      PasswordResetRequest[]
+  mailJobs                   MailJob[]
+  searchHistory              SearchHistory[]
+  announcementsCreated       Announcement[]                  @relation("AnnouncementCreatedBy")
+  announcementsUpdated       Announcement[]                  @relation("AnnouncementUpdatedBy")
+  announcementReads          AnnouncementRead[]
+  suggestionsSubmitted       SiteSuggestion[]                @relation("SiteSuggestionSubmitter")
+  suggestionsReviewed        SiteSuggestion[]                @relation("SiteSuggestionReviewer")
+  suggestionReplies          SiteSuggestionReply[]           @relation("SiteSuggestionReplyAuthor")
+  reputationLedgers          UserReputationLedger[]
+  resourceExchanges          ArticleResourceExchange[]       @relation("ArticleResourceBuyer")
+  resourceSales              ArticleResourceExchange[]       @relation("ArticleResourceAuthor")
+  articleAppealsSubmitted    ArticleAppeal[]                 @relation("ArticleAppealAuthor")
+  articleAppealsReviewed     ArticleAppeal[]                 @relation("ArticleAppealReviewer")
+  articlePublishRestrictions ArticlePublishRestriction[]     @relation("RestrictedArticleAuthor")
+  createdArticleRestrictions ArticlePublishRestriction[]     @relation("ArticleRestrictionCreator")
+  liftedArticleRestrictions  ArticlePublishRestriction[]     @relation("ArticleRestrictionLifter")
+  feedbackSubmitted          UserFeedback[]                  @relation("UserFeedbackSubmitter")
+  feedbackReviewed           UserFeedback[]                  @relation("UserFeedbackReviewer")
+  feedbackReplies            UserFeedbackReply[]             @relation("UserFeedbackReplyAuthor")
 
   @@index([roleId])
   @@index([createdAt])
@@ -592,7 +630,7 @@ model SiteSetting {
   browserTitle                   String            @default("HLOVET") @map("browser_title") @db.VarChar(120)
   logoPath                       String            @default("/favicon.svg") @map("logo_path") @db.VarChar(512)
   pwaIconPath                    String            @default("/icon-192.png") @map("pwa_icon_path") @db.VarChar(512)
-  defaultBackgroundUrl           String            @default("/images/hlovet-cloud-blue.jpeg") @map("default_background_url") @db.VarChar(512)
+  defaultBackgroundUrl           String            @default("/images/hlovet-city-lights.jpg") @map("default_background_url") @db.VarChar(512)
   defaultThemeId                 String            @default("cloud-blue") @map("default_theme_id") @db.VarChar(64)
   defaultAccent                  String            @default("#1814f0") @map("default_accent") @db.VarChar(7)
   defaultSurface                 String            @default("#dfc8c8") @map("default_surface") @db.VarChar(7)
@@ -911,28 +949,28 @@ model PortalCategory {
 }
 
 model PortalEntry {
-  id           Int                @id @default(autoincrement())
-  categoryId   Int                @map("category_id")
-  category     PortalCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  title        String             @db.VarChar(100)
-  description  String             @default("") @db.VarChar(300)
-  url          String?            @db.VarChar(2048)
-  iconPath     String?            @map("icon_path") @db.VarChar(512)
-  openInNewTab Boolean            @default(true) @map("open_in_new_tab")
-  visibility   PortalVisibility   @default(public)
-  sortOrder    Int                @default(0) @map("sort_order")
-  status       PortalRecordStatus @default(active)
-  isFeatured   Boolean            @default(false) @map("is_featured")
-  featuredSortOrder Int            @default(0) @map("featured_sort_order")
-  searchText   String             @default("") @map("search_text") @db.VarChar(4096)
-  searchPinyin String             @default("") @map("search_pinyin") @db.VarChar(4096)
-  createdById  Int?               @map("created_by_id")
-  createdBy    User?              @relation("PortalEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  updatedById  Int?               @map("updated_by_id")
-  updatedBy    User?              @relation("PortalEntryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  allowedRoles PortalEntryRole[]
-  createdAt    DateTime           @default(now()) @map("created_at")
-  updatedAt    DateTime           @updatedAt @map("updated_at")
+  id                Int                @id @default(autoincrement())
+  categoryId        Int                @map("category_id")
+  category          PortalCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  title             String             @db.VarChar(100)
+  description       String             @default("") @db.VarChar(300)
+  url               String?            @db.VarChar(2048)
+  iconPath          String?            @map("icon_path") @db.VarChar(512)
+  openInNewTab      Boolean            @default(true) @map("open_in_new_tab")
+  visibility        PortalVisibility   @default(public)
+  sortOrder         Int                @default(0) @map("sort_order")
+  status            PortalRecordStatus @default(active)
+  isFeatured        Boolean            @default(false) @map("is_featured")
+  featuredSortOrder Int                @default(0) @map("featured_sort_order")
+  searchText        String             @default("") @map("search_text") @db.VarChar(4096)
+  searchPinyin      String             @default("") @map("search_pinyin") @db.VarChar(4096)
+  createdById       Int?               @map("created_by_id")
+  createdBy         User?              @relation("PortalEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById       Int?               @map("updated_by_id")
+  updatedBy         User?              @relation("PortalEntryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  allowedRoles      PortalEntryRole[]
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
 
   @@index([categoryId, status, sortOrder])
   @@index([visibility])
@@ -953,18 +991,18 @@ model UserPortalPreference {
 }
 
 model SiteSuggestion {
-  id           Int              @id @default(autoincrement())
-  userId       Int              @map("user_id")
-  user         User             @relation("SiteSuggestionSubmitter", fields: [userId], references: [id], onDelete: Cascade)
-  title        String           @db.VarChar(120)
-  content      String           @db.Text
-  status       SuggestionStatus @default(pending)
-  reviewedById Int?             @map("reviewed_by_id")
-  reviewedBy   User?            @relation("SiteSuggestionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reviewedAt   DateTime?        @map("reviewed_at")
+  id           Int                   @id @default(autoincrement())
+  userId       Int                   @map("user_id")
+  user         User                  @relation("SiteSuggestionSubmitter", fields: [userId], references: [id], onDelete: Cascade)
+  title        String                @db.VarChar(120)
+  content      String                @db.Text
+  status       SuggestionStatus      @default(pending)
+  reviewedById Int?                  @map("reviewed_by_id")
+  reviewedBy   User?                 @relation("SiteSuggestionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?             @map("reviewed_at")
   replies      SiteSuggestionReply[]
-  createdAt    DateTime         @default(now()) @map("created_at")
-  updatedAt    DateTime         @updatedAt @map("updated_at")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
 
   @@index([status, updatedAt])
   @@index([userId, updatedAt])
@@ -1076,32 +1114,32 @@ model PortalEntryRole {
 }
 
 model Article {
-  id                    Int                     @id @default(autoincrement())
-  authorId              Int                     @map("author_id")
-  author                User                    @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  title                 String                  @db.VarChar(120)
-  slug                  String                  @unique @db.VarChar(180)
-  summary               String                  @default("") @db.VarChar(300)
-  content               String                  @db.LongText
-  coverPath             String?                 @map("cover_path") @db.VarChar(512)
-  category              String                  @default("") @db.VarChar(80)
-  tags                  String                  @default("") @db.VarChar(500)
-  titleColor            String                  @default("") @map("title_color") @db.VarChar(7)
-  visibility            ArticleVisibility       @default(public)
-  status                ArticleStatus           @default(draft)
-  publicationCount      Int                     @default(0) @map("publication_count")
-  isPinned              Boolean                 @default(false) @map("is_pinned")
-  pinOrder              Int                     @default(0) @map("pin_order")
-  publishedAt           DateTime?               @map("published_at")
-  blockedReason         String?                 @map("blocked_reason") @db.VarChar(255)
-  viewCount             Int                     @default(0) @map("view_count")
-  likeCount             Int                     @default(0) @map("like_count")
-  favoriteCount         Int                     @default(0) @map("favorite_count")
-  commentCount          Int                     @default(0) @map("comment_count")
-  isPointResource       Boolean                 @default(false) @map("is_point_resource")
-  pointCost             Int                     @default(0) @map("point_cost")
-  searchText            String                  @default("") @map("search_text") @db.VarChar(4096)
-  searchPinyin          String                  @default("") @map("search_pinyin") @db.VarChar(4096)
+  id                    Int                       @id @default(autoincrement())
+  authorId              Int                       @map("author_id")
+  author                User                      @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  title                 String                    @db.VarChar(120)
+  slug                  String                    @unique @db.VarChar(180)
+  summary               String                    @default("") @db.VarChar(300)
+  content               String                    @db.LongText
+  coverPath             String?                   @map("cover_path") @db.VarChar(512)
+  category              String                    @default("") @db.VarChar(80)
+  tags                  String                    @default("") @db.VarChar(500)
+  titleColor            String                    @default("") @map("title_color") @db.VarChar(7)
+  visibility            ArticleVisibility         @default(public)
+  status                ArticleStatus             @default(draft)
+  publicationCount      Int                       @default(0) @map("publication_count")
+  isPinned              Boolean                   @default(false) @map("is_pinned")
+  pinOrder              Int                       @default(0) @map("pin_order")
+  publishedAt           DateTime?                 @map("published_at")
+  blockedReason         String?                   @map("blocked_reason") @db.VarChar(255)
+  viewCount             Int                       @default(0) @map("view_count")
+  likeCount             Int                       @default(0) @map("like_count")
+  favoriteCount         Int                       @default(0) @map("favorite_count")
+  commentCount          Int                       @default(0) @map("comment_count")
+  isPointResource       Boolean                   @default(false) @map("is_point_resource")
+  pointCost             Int                       @default(0) @map("point_cost")
+  searchText            String                    @default("") @map("search_text") @db.VarChar(4096)
+  searchPinyin          String                    @default("") @map("search_pinyin") @db.VarChar(4096)
   allowedRoles          ArticleAllowedRole[]
   images                ArticleImage[]
   comments              ArticleComment[]
@@ -1116,11 +1154,11 @@ model Article {
   collectionItems       ArticleCollectionItem[]
   topicItems            ArticleTopicItem[]
   subscriptionFeedReads SubscriptionFeedRead[]
-  profilePins           UserProfileSettings[]   @relation("PinnedProfileArticle")
+  profilePins           UserProfileSettings[]     @relation("PinnedProfileArticle")
   resourceExchanges     ArticleResourceExchange[]
   appeals               ArticleAppeal[]
-  createdAt             DateTime                @default(now()) @map("created_at")
-  updatedAt             DateTime                @updatedAt @map("updated_at")
+  createdAt             DateTime                  @default(now()) @map("created_at")
+  updatedAt             DateTime                  @updatedAt @map("updated_at")
 
   @@index([authorId, status, updatedAt])
   @@index([status, visibility, isPinned, pinOrder])
@@ -1130,19 +1168,19 @@ model Article {
 }
 
 model ArticleAppeal {
-  id          Int                @id @default(autoincrement())
-  articleId   Int                @map("article_id")
-  article     Article            @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  authorId    Int                @map("author_id")
-  author      User               @relation("ArticleAppealAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  reason      String             @db.VarChar(1000)
-  status      ArticleAppealStatus @default(pending)
-  reviewedById Int?              @map("reviewed_by_id")
-  reviewedBy  User?              @relation("ArticleAppealReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reviewedAt  DateTime?          @map("reviewed_at")
-  resolution  String?            @db.VarChar(500)
-  createdAt   DateTime           @default(now()) @map("created_at")
-  updatedAt   DateTime           @updatedAt @map("updated_at")
+  id           Int                 @id @default(autoincrement())
+  articleId    Int                 @map("article_id")
+  article      Article             @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  authorId     Int                 @map("author_id")
+  author       User                @relation("ArticleAppealAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  reason       String              @db.VarChar(1000)
+  status       ArticleAppealStatus @default(pending)
+  reviewedById Int?                @map("reviewed_by_id")
+  reviewedBy   User?               @relation("ArticleAppealReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?           @map("reviewed_at")
+  resolution   String?             @db.VarChar(500)
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
 
   @@index([articleId, status, createdAt])
   @@index([authorId, status, createdAt])
@@ -1150,21 +1188,21 @@ model ArticleAppeal {
 }
 
 model ArticlePublishRestriction {
-  id            Int          @id @default(autoincrement())
-  userId        Int          @map("user_id")
-  user          User         @relation("RestrictedArticleAuthor", fields: [userId], references: [id], onDelete: Cascade)
-  sourceReportId Int?        @map("source_report_id")
-  sourceReport  ArticleReport? @relation("ArticleReportRestrictionSource", fields: [sourceReportId], references: [id], onDelete: SetNull)
-  createdById   Int?         @map("created_by_id")
-  createdBy     User?        @relation("ArticleRestrictionCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  liftedById    Int?         @map("lifted_by_id")
-  liftedBy      User?        @relation("ArticleRestrictionLifter", fields: [liftedById], references: [id], onDelete: SetNull)
-  reason        String       @db.VarChar(500)
-  startsAt      DateTime     @default(now()) @map("starts_at")
-  endsAt        DateTime?    @map("ends_at")
-  liftedAt      DateTime?    @map("lifted_at")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
+  id             Int            @id @default(autoincrement())
+  userId         Int            @map("user_id")
+  user           User           @relation("RestrictedArticleAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  sourceReportId Int?           @map("source_report_id")
+  sourceReport   ArticleReport? @relation("ArticleReportRestrictionSource", fields: [sourceReportId], references: [id], onDelete: SetNull)
+  createdById    Int?           @map("created_by_id")
+  createdBy      User?          @relation("ArticleRestrictionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  liftedById     Int?           @map("lifted_by_id")
+  liftedBy       User?          @relation("ArticleRestrictionLifter", fields: [liftedById], references: [id], onDelete: SetNull)
+  reason         String         @db.VarChar(500)
+  startsAt       DateTime       @default(now()) @map("starts_at")
+  endsAt         DateTime?      @map("ends_at")
+  liftedAt       DateTime?      @map("lifted_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
 
   @@index([userId, liftedAt, endsAt])
   @@index([sourceReportId])
@@ -1172,27 +1210,27 @@ model ArticlePublishRestriction {
 }
 
 model ArticleVersion {
-  id            Int                  @id @default(autoincrement())
-  articleId     Int                  @map("article_id")
-  article       Article              @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  editorId      Int?                 @map("editor_id")
-  editor        User?                @relation("ArticleVersionEditor", fields: [editorId], references: [id], onDelete: SetNull)
-  versionNumber Int                  @map("version_number")
-  source        ArticleVersionSource
-  title         String               @db.VarChar(120)
-  summary       String               @default("") @db.VarChar(300)
-  content       String               @db.LongText
-  category      String               @default("") @db.VarChar(80)
-  tags          String               @default("") @db.VarChar(500)
-  titleColor    String               @default("") @map("title_color") @db.VarChar(7)
-  visibility    ArticleVisibility
-  status        ArticleStatus
-  roleCodes     String               @default("") @map("role_codes") @db.VarChar(500)
+  id              Int                  @id @default(autoincrement())
+  articleId       Int                  @map("article_id")
+  article         Article              @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  editorId        Int?                 @map("editor_id")
+  editor          User?                @relation("ArticleVersionEditor", fields: [editorId], references: [id], onDelete: SetNull)
+  versionNumber   Int                  @map("version_number")
+  source          ArticleVersionSource
+  title           String               @db.VarChar(120)
+  summary         String               @default("") @db.VarChar(300)
+  content         String               @db.LongText
+  category        String               @default("") @db.VarChar(80)
+  tags            String               @default("") @db.VarChar(500)
+  titleColor      String               @default("") @map("title_color") @db.VarChar(7)
+  visibility      ArticleVisibility
+  status          ArticleStatus
+  roleCodes       String               @default("") @map("role_codes") @db.VarChar(500)
   isPointResource Boolean              @default(false) @map("is_point_resource")
   pointCost       Int                  @default(0) @map("point_cost")
-  contentHash   String               @map("content_hash") @db.Char(64)
-  changedFields Json?                @map("changed_fields")
-  createdAt     DateTime             @default(now()) @map("created_at")
+  contentHash     String               @map("content_hash") @db.Char(64)
+  changedFields   Json?                @map("changed_fields")
+  createdAt       DateTime             @default(now()) @map("created_at")
 
   @@unique([articleId, versionNumber])
   @@index([articleId, createdAt])
@@ -1202,21 +1240,21 @@ model ArticleVersion {
 }
 
 model UserReputationLedger {
-  id              Int              @id @default(autoincrement())
-  userId          Int              @map("user_id")
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  reason          ReputationReason
-  eventKey        String           @map("event_key") @db.VarChar(191)
-  experienceDelta Int              @default(0) @map("experience_delta")
-  pointDelta      Int              @default(0) @map("point_delta")
-  pendingPointDelta Int            @default(0) @map("pending_point_delta")
-  experienceAfter Int              @map("experience_after")
-  pointsAfter     Int              @map("points_after")
-  description     String           @db.VarChar(255)
-  metadata        Json?
-  availableAt     DateTime?        @map("available_at")
-  settledAt       DateTime?        @map("settled_at")
-  createdAt       DateTime         @default(now()) @map("created_at")
+  id                Int              @id @default(autoincrement())
+  userId            Int              @map("user_id")
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reason            ReputationReason
+  eventKey          String           @map("event_key") @db.VarChar(191)
+  experienceDelta   Int              @default(0) @map("experience_delta")
+  pointDelta        Int              @default(0) @map("point_delta")
+  pendingPointDelta Int              @default(0) @map("pending_point_delta")
+  experienceAfter   Int              @map("experience_after")
+  pointsAfter       Int              @map("points_after")
+  description       String           @db.VarChar(255)
+  metadata          Json?
+  availableAt       DateTime?        @map("available_at")
+  settledAt         DateTime?        @map("settled_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
 
   @@unique([userId, eventKey])
   @@index([userId, createdAt])
@@ -1359,22 +1397,22 @@ model ArticleCommentReport {
 }
 
 model ArticleReport {
-  id            Int                        @id @default(autoincrement())
-  articleId     Int                        @map("article_id")
-  article       Article                    @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  reporterId    Int                        @map("reporter_id")
-  reporter      User                       @relation("ArticleReporter", fields: [reporterId], references: [id], onDelete: Cascade)
-  publicationNumber Int                     @default(1) @map("publication_number")
-  reason        ArticleCommentReportReason
-  detail        String?                    @db.VarChar(500)
-  status        ArticleCommentReportStatus @default(pending)
-  handledById   Int?                       @map("handled_by_id")
-  handledBy     User?                      @relation("ArticleReportHandler", fields: [handledById], references: [id], onDelete: SetNull)
-  handledAt     DateTime?                  @map("handled_at")
-  resolution    String?                    @db.VarChar(500)
-  createdAt     DateTime                   @default(now()) @map("created_at")
-  updatedAt     DateTime                   @updatedAt @map("updated_at")
-  notifications UserNotification[]
+  id                  Int                         @id @default(autoincrement())
+  articleId           Int                         @map("article_id")
+  article             Article                     @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  reporterId          Int                         @map("reporter_id")
+  reporter            User                        @relation("ArticleReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  publicationNumber   Int                         @default(1) @map("publication_number")
+  reason              ArticleCommentReportReason
+  detail              String?                     @db.VarChar(500)
+  status              ArticleCommentReportStatus  @default(pending)
+  handledById         Int?                        @map("handled_by_id")
+  handledBy           User?                       @relation("ArticleReportHandler", fields: [handledById], references: [id], onDelete: SetNull)
+  handledAt           DateTime?                   @map("handled_at")
+  resolution          String?                     @db.VarChar(500)
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
+  notifications       UserNotification[]
   publishRestrictions ArticlePublishRestriction[] @relation("ArticleReportRestrictionSource")
 
   @@index([articleId, reporterId])
@@ -1386,19 +1424,19 @@ model ArticleReport {
 }
 
 model UserFeedback {
-  id           Int               @id @default(autoincrement())
-  userId       Int               @map("user_id")
-  user         User              @relation("UserFeedbackSubmitter", fields: [userId], references: [id], onDelete: Cascade)
-  category     String            @db.VarChar(40)
-  title        String            @db.VarChar(120)
-  content      String            @db.Text
-  status       UserFeedbackStatus @default(pending)
-  reviewedById Int?              @map("reviewed_by_id")
-  reviewedBy   User?             @relation("UserFeedbackReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reviewedAt   DateTime?         @map("reviewed_at")
+  id           Int                 @id @default(autoincrement())
+  userId       Int                 @map("user_id")
+  user         User                @relation("UserFeedbackSubmitter", fields: [userId], references: [id], onDelete: Cascade)
+  category     String              @db.VarChar(40)
+  title        String              @db.VarChar(120)
+  content      String              @db.Text
+  status       UserFeedbackStatus  @default(pending)
+  reviewedById Int?                @map("reviewed_by_id")
+  reviewedBy   User?               @relation("UserFeedbackReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?           @map("reviewed_at")
   replies      UserFeedbackReply[]
-  createdAt    DateTime          @default(now()) @map("created_at")
-  updatedAt    DateTime          @updatedAt @map("updated_at")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
 
   @@index([userId, updatedAt])
   @@index([status, updatedAt])
@@ -1515,21 +1553,34 @@ model SubscriptionFeedRead {
 }
 
 model ArticleCollection {
-  id          Int                     @id @default(autoincrement())
-  ownerId     Int                     @map("owner_id")
-  owner       User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  name        String                  @db.VarChar(80)
-  description String                  @default("") @db.VarChar(300)
-  visibility  ArticleVisibility       @default(public)
-  sortOrder   Int                     @default(0) @map("sort_order")
+  id          Int                             @id @default(autoincrement())
+  ownerId     Int                             @map("owner_id")
+  owner       User                            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name        String                          @db.VarChar(80)
+  description String                          @default("") @db.VarChar(300)
+  visibility  ArticleVisibility               @default(public)
+  sortOrder   Int                             @default(0) @map("sort_order")
   items       ArticleCollectionItem[]
-  profilePins UserProfileSettings[]   @relation("PinnedProfileCollection")
-  createdAt   DateTime                @default(now()) @map("created_at")
-  updatedAt   DateTime                @updatedAt @map("updated_at")
+  subscribers ArticleCollectionSubscription[]
+  profilePins UserProfileSettings[]           @relation("PinnedProfileCollection")
+  createdAt   DateTime                        @default(now()) @map("created_at")
+  updatedAt   DateTime                        @updatedAt @map("updated_at")
 
   @@index([ownerId, sortOrder, updatedAt])
   @@index([visibility, updatedAt])
   @@map("article_collections")
+}
+
+model ArticleCollectionSubscription {
+  userId       Int               @map("user_id")
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collectionId Int               @map("collection_id")
+  collection   ArticleCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  @@id([userId, collectionId])
+  @@index([collectionId, createdAt])
+  @@map("article_collection_subscriptions")
 }
 
 model ArticleCollectionItem {
@@ -1547,32 +1598,45 @@ model ArticleCollectionItem {
 }
 
 model ArticleTopic {
-  id                Int                       @id @default(autoincrement())
-  title             String                    @db.VarChar(80)
-  slug              String                    @unique @db.VarChar(120)
-  description       String                    @default("") @db.VarChar(500)
-  coverPath         String?                   @map("cover_path") @db.VarChar(512)
-  coverOriginalName String?                   @map("cover_original_name") @db.VarChar(255)
-  coverStoredName   String?                   @unique @map("cover_stored_name") @db.VarChar(255)
-  coverMimeType     String?                   @map("cover_mime_type") @db.VarChar(100)
-  coverSizeBytes    Int?                      @map("cover_size_bytes")
-  visibility        PortalVisibility          @default(public)
-  status            ArticleTopicStatus        @default(active)
-  sortOrder         Int                       @default(0) @map("sort_order")
-  createdById       Int                       @map("created_by_id")
-  createdBy         User                      @relation("ArticleTopicCreatedBy", fields: [createdById], references: [id])
-  updatedById       Int                       @map("updated_by_id")
-  updatedBy         User                      @relation("ArticleTopicUpdatedBy", fields: [updatedById], references: [id])
+  id                Int                        @id @default(autoincrement())
+  title             String                     @db.VarChar(80)
+  slug              String                     @unique @db.VarChar(120)
+  description       String                     @default("") @db.VarChar(500)
+  coverPath         String?                    @map("cover_path") @db.VarChar(512)
+  coverOriginalName String?                    @map("cover_original_name") @db.VarChar(255)
+  coverStoredName   String?                    @unique @map("cover_stored_name") @db.VarChar(255)
+  coverMimeType     String?                    @map("cover_mime_type") @db.VarChar(100)
+  coverSizeBytes    Int?                       @map("cover_size_bytes")
+  visibility        PortalVisibility           @default(public)
+  status            ArticleTopicStatus         @default(active)
+  sortOrder         Int                        @default(0) @map("sort_order")
+  createdById       Int                        @map("created_by_id")
+  createdBy         User                       @relation("ArticleTopicCreatedBy", fields: [createdById], references: [id])
+  updatedById       Int                        @map("updated_by_id")
+  updatedBy         User                       @relation("ArticleTopicUpdatedBy", fields: [updatedById], references: [id])
   allowedRoles      ArticleTopicAllowedRole[]
   items             ArticleTopicItem[]
-  createdAt         DateTime                  @default(now()) @map("created_at")
-  updatedAt         DateTime                  @updatedAt @map("updated_at")
+  subscribers       ArticleTopicSubscription[]
+  createdAt         DateTime                   @default(now()) @map("created_at")
+  updatedAt         DateTime                   @updatedAt @map("updated_at")
 
   @@index([status, sortOrder, updatedAt])
   @@index([visibility])
   @@index([createdById])
   @@index([updatedById])
   @@map("article_topics")
+}
+
+model ArticleTopicSubscription {
+  userId    Int          @map("user_id")
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topicId   Int          @map("topic_id")
+  topic     ArticleTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  @@id([userId, topicId])
+  @@index([topicId, createdAt])
+  @@map("article_topic_subscriptions")
 }
 
 model ArticleTopicAllowedRole {
@@ -1601,18 +1665,23 @@ model ArticleTopicItem {
 }
 
 model UserProfileSettings {
-  userId             Int                @id @map("user_id")
-  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  showBio            Boolean            @default(true) @map("show_bio")
-  showJoinedAt       Boolean            @default(true) @map("show_joined_at")
-  showStats          Boolean            @default(true) @map("show_stats")
-  showFollowingCount Boolean            @default(true) @map("show_following_count")
-  showPinnedContent  Boolean            @default(true) @map("show_pinned_content")
-  pinnedArticleId    Int?               @map("pinned_article_id")
-  pinnedArticle      Article?           @relation("PinnedProfileArticle", fields: [pinnedArticleId], references: [id], onDelete: SetNull)
-  pinnedCollectionId Int?               @map("pinned_collection_id")
-  pinnedCollection   ArticleCollection? @relation("PinnedProfileCollection", fields: [pinnedCollectionId], references: [id], onDelete: SetNull)
-  updatedAt          DateTime           @updatedAt @map("updated_at")
+  userId                Int                   @id @map("user_id")
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  showBio               Boolean               @default(true) @map("show_bio")
+  showJoinedAt          Boolean               @default(true) @map("show_joined_at")
+  showStats             Boolean               @default(true) @map("show_stats")
+  showFollowingCount    Boolean               @default(true) @map("show_following_count")
+  showPinnedContent     Boolean               @default(true) @map("show_pinned_content")
+  profileAccess         ProfileAccessLevel    @default(public) @map("profile_access")
+  searchable            Boolean               @default(true)
+  friendRequestPolicy   FriendRequestPolicy   @default(everyone) @map("friend_request_policy")
+  directMessagePolicy   DirectMessagePolicy   @default(request) @map("direct_message_policy")
+  groupInvitationPolicy GroupInvitationPolicy @default(everyone) @map("group_invitation_policy")
+  pinnedArticleId       Int?                  @map("pinned_article_id")
+  pinnedArticle         Article?              @relation("PinnedProfileArticle", fields: [pinnedArticleId], references: [id], onDelete: SetNull)
+  pinnedCollectionId    Int?                  @map("pinned_collection_id")
+  pinnedCollection      ArticleCollection?    @relation("PinnedProfileCollection", fields: [pinnedCollectionId], references: [id], onDelete: SetNull)
+  updatedAt             DateTime              @updatedAt @map("updated_at")
 
   @@index([pinnedArticleId])
   @@index([pinnedCollectionId])
@@ -1664,16 +1733,44 @@ model Conversation {
   kind              ConversationKind               @default(direct)
   friendshipId      Int?                           @unique @map("friendship_id")
   friendship        Friendship?                    @relation(fields: [friendshipId], references: [id], onDelete: Cascade)
+  directUserOneId   Int?                           @map("direct_user_one_id")
+  directUserOne     User?                          @relation("DirectConversationUserOne", fields: [directUserOneId], references: [id], onDelete: Cascade)
+  directUserTwoId   Int?                           @map("direct_user_two_id")
+  directUserTwo     User?                          @relation("DirectConversationUserTwo", fields: [directUserTwoId], references: [id], onDelete: Cascade)
   group             ChatGroup?
   messages          ChatMessage[]
   attachments       ChatAttachment[]
   calls             CallSession[]
+  strangerRequests  StrangerMessageRequest[]
   participantStates ConversationParticipantState[]
   createdAt         DateTime                       @default(now()) @map("created_at")
   updatedAt         DateTime                       @updatedAt @map("updated_at")
 
+  @@unique([directUserOneId, directUserTwoId])
   @@index([updatedAt])
   @@map("conversations")
+}
+
+model StrangerMessageRequest {
+  id             Int                          @id @default(autoincrement())
+  requesterId    Int                          @map("requester_id")
+  requester      User                         @relation("StrangerMessageRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  recipientId    Int                          @map("recipient_id")
+  recipient      User                         @relation("StrangerMessageRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  conversationId Int?                         @map("conversation_id")
+  conversation   Conversation?                @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  notifications  UserNotification[]
+  body           String                       @db.VarChar(500)
+  status         StrangerMessageRequestStatus @default(pending)
+  respondedAt    DateTime?                    @map("responded_at")
+  createdAt      DateTime                     @default(now()) @map("created_at")
+  updatedAt      DateTime                     @updatedAt @map("updated_at")
+
+  @@unique([requesterId, recipientId])
+  @@index([recipientId, status, updatedAt])
+  @@index([requesterId, status, updatedAt])
+  @@index([conversationId])
+  @@map("stranger_message_requests")
 }
 
 model ChatMessage {
@@ -1742,7 +1839,7 @@ model ChatGroup {
   joinRequests       ChatGroupJoinRequest[]
   reports            ChatGroupMessageReport[]
   activityLogs       ChatGroupActivityLog[]
-  banRecords          ChatGroupBanRecord[]
+  banRecords         ChatGroupBanRecord[]
   createdAt          DateTime                 @default(now()) @map("created_at")
   updatedAt          DateTime                 @updatedAt @map("updated_at")
 
@@ -1752,18 +1849,18 @@ model ChatGroup {
 }
 
 model ChatGroupBanRecord {
-  id          Int        @id @default(autoincrement())
-  groupId     Int        @map("group_id")
-  group       ChatGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  actorId     Int        @map("actor_id")
-  actor       User       @relation("ChatGroupBanActor", fields: [actorId], references: [id], onDelete: Restrict)
-  liftedById  Int?       @map("lifted_by_id")
-  liftedBy    User?      @relation("ChatGroupBanLifter", fields: [liftedById], references: [id], onDelete: SetNull)
-  reason      String     @db.VarChar(300)
-  startsAt    DateTime   @default(now()) @map("starts_at")
-  expiresAt   DateTime?  @map("expires_at")
-  liftedAt    DateTime?  @map("lifted_at")
-  createdAt   DateTime   @default(now()) @map("created_at")
+  id         Int       @id @default(autoincrement())
+  groupId    Int       @map("group_id")
+  group      ChatGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  actorId    Int       @map("actor_id")
+  actor      User      @relation("ChatGroupBanActor", fields: [actorId], references: [id], onDelete: Restrict)
+  liftedById Int?      @map("lifted_by_id")
+  liftedBy   User?     @relation("ChatGroupBanLifter", fields: [liftedById], references: [id], onDelete: SetNull)
+  reason     String    @db.VarChar(300)
+  startsAt   DateTime  @default(now()) @map("starts_at")
+  expiresAt  DateTime? @map("expires_at")
+  liftedAt   DateTime? @map("lifted_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   @@index([groupId, createdAt])
   @@index([groupId, liftedAt, expiresAt])
@@ -1931,35 +2028,37 @@ model CallSession {
 }
 
 model UserNotification {
-  id              Int                     @id @default(autoincrement())
-  userId          Int                     @map("user_id")
-  user            User                    @relation("UserNotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
-  actorId         Int?                    @map("actor_id")
-  actor           User?                   @relation("UserNotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
-  type            UserNotificationType
-  channel         UserNotificationChannel @default(system)
-  title           String                  @db.VarChar(120)
-  body            String                  @db.VarChar(500)
-  actionUrl       String?                 @map("action_url") @db.VarChar(512)
-  articleId       Int?                    @map("article_id")
-  article         Article?                @relation(fields: [articleId], references: [id], onDelete: SetNull)
-  commentId       Int?                    @map("comment_id")
-  comment         ArticleComment?         @relation(fields: [commentId], references: [id], onDelete: SetNull)
-  friendshipId    Int?                    @map("friendship_id")
-  friendship      Friendship?             @relation(fields: [friendshipId], references: [id], onDelete: SetNull)
-  commentReportId Int?                    @map("comment_report_id")
-  commentReport   ArticleCommentReport?   @relation(fields: [commentReportId], references: [id], onDelete: SetNull)
-  articleReportId Int?                    @map("article_report_id")
-  articleReport   ArticleReport?          @relation(fields: [articleReportId], references: [id], onDelete: SetNull)
-  announcementId  Int?                    @map("announcement_id")
-  announcement    Announcement?           @relation(fields: [announcementId], references: [id], onDelete: SetNull)
-  aggregateCount  Int                     @default(1) @map("aggregate_count")
-  readAt          DateTime?               @map("read_at")
-  openedAt        DateTime?               @map("opened_at")
-  pushDeliveredAt DateTime?               @map("push_delivered_at")
-  dedupeKey       String?                 @unique @map("dedupe_key") @db.VarChar(160)
-  createdAt       DateTime                @default(now()) @map("created_at")
-  updatedAt       DateTime                @updatedAt @map("updated_at")
+  id                       Int                     @id @default(autoincrement())
+  userId                   Int                     @map("user_id")
+  user                     User                    @relation("UserNotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actorId                  Int?                    @map("actor_id")
+  actor                    User?                   @relation("UserNotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  type                     UserNotificationType
+  channel                  UserNotificationChannel @default(system)
+  title                    String                  @db.VarChar(120)
+  body                     String                  @db.VarChar(500)
+  actionUrl                String?                 @map("action_url") @db.VarChar(512)
+  articleId                Int?                    @map("article_id")
+  article                  Article?                @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  commentId                Int?                    @map("comment_id")
+  comment                  ArticleComment?         @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  friendshipId             Int?                    @map("friendship_id")
+  friendship               Friendship?             @relation(fields: [friendshipId], references: [id], onDelete: SetNull)
+  strangerMessageRequestId Int?                    @map("stranger_message_request_id")
+  strangerMessageRequest   StrangerMessageRequest? @relation(fields: [strangerMessageRequestId], references: [id], onDelete: SetNull)
+  commentReportId          Int?                    @map("comment_report_id")
+  commentReport            ArticleCommentReport?   @relation(fields: [commentReportId], references: [id], onDelete: SetNull)
+  articleReportId          Int?                    @map("article_report_id")
+  articleReport            ArticleReport?          @relation(fields: [articleReportId], references: [id], onDelete: SetNull)
+  announcementId           Int?                    @map("announcement_id")
+  announcement             Announcement?           @relation(fields: [announcementId], references: [id], onDelete: SetNull)
+  aggregateCount           Int                     @default(1) @map("aggregate_count")
+  readAt                   DateTime?               @map("read_at")
+  openedAt                 DateTime?               @map("opened_at")
+  pushDeliveredAt          DateTime?               @map("push_delivered_at")
+  dedupeKey                String?                 @unique @map("dedupe_key") @db.VarChar(160)
+  createdAt                DateTime                @default(now()) @map("created_at")
+  updatedAt                DateTime                @updatedAt @map("updated_at")
 
   @@unique([userId, announcementId])
   @@index([userId, channel, readAt, id])
@@ -1968,6 +2067,7 @@ model UserNotification {
   @@index([articleId])
   @@index([commentId])
   @@index([friendshipId])
+  @@index([strangerMessageRequestId])
   @@index([commentReportId])
   @@index([articleReportId])
   @@map("user_notifications")

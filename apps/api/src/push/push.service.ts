@@ -128,6 +128,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async sendToUser(userId: number, payload: BrowserPushPayload): Promise<void> {
+    const configuredIcon = payload.icon || await this.configuredPwaIcon();
     const subscriptions = await this.prisma.pushSubscription.findMany({
       where: { userId },
       select: { id: true, endpoint: true, p256dh: true, auth: true },
@@ -140,7 +141,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
         }, JSON.stringify({
           ...payload,
           recipientUserId: userId,
-          icon: payload.icon || "/icon-192.png",
+          icon: configuredIcon,
           badge: payload.badge || "/favicon-48x48.png",
         }), { TTL: 300, urgency: "normal" });
       } catch (error) {
@@ -152,6 +153,16 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
         }
       }
     }));
+  }
+
+  private async configuredPwaIcon(): Promise<string> {
+    const settings = await this.prisma.siteSetting.findUnique({
+      where: { id: 1 },
+      select: { pwaIconPath: true, updatedAt: true },
+    });
+    const path = settings?.pwaIconPath?.trim() || "/pwa-logo.png";
+    if (!settings?.updatedAt) return path;
+    return `${path}${path.includes("?") ? "&" : "?"}v=${encodeURIComponent(settings.updatedAt.toISOString())}`;
   }
 
   private assertConfigured(): void {

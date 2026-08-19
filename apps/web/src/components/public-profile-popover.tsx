@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Check, Clock3, MessageCircle, UserPlus, X } from "lucide-react";
+import { Check, Clock3, MessageCircle, Send, UserPlus, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -15,6 +15,7 @@ import { readAccessToken } from "@/lib/auth-storage";
 import {
   getOrCreateConversation,
   getPublicProfile,
+  createStrangerMessageRequest,
   PublicProfile,
   requestFriend,
   respondFriendRequest,
@@ -40,6 +41,8 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
   const [isActing, setIsActing] = useState(false);
   const [isFriendNoteOpen, setIsFriendNoteOpen] = useState(false);
   const [friendNote, setFriendNote] = useState("");
+  const [isMessageRequestOpen, setIsMessageRequestOpen] = useState(false);
+  const [messageRequestBody, setMessageRequestBody] = useState("");
   const [error, setError] = useState("");
   const avatar = author.avatarUrl ? resolveApiUrl(author.avatarUrl) : null;
   const management = getManagementIdentity(author);
@@ -146,6 +149,25 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
     }
   }
 
+  async function sendMessageRequest(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const token = readAccessToken();
+    const body = messageRequestBody.trim();
+    if (!token) return goToLogin();
+    if (!body) return;
+    setIsActing(true);
+    try {
+      await createStrangerMessageRequest(token, author.id, body);
+      setMessageRequestBody("");
+      setIsMessageRequestOpen(false);
+      notifySocialStateChange();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "消息请求发送失败。");
+    } finally {
+      setIsActing(false);
+    }
+  }
+
   function goToLogin() {
     router.push(`/login?from=${encodeURIComponent(pathname)}`);
   }
@@ -163,6 +185,8 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
     receivedLikeCount: 0,
     publicViewCount: 0,
     relationship: null,
+    canRequestFriend: true,
+    messageAccess: "none" as const,
   };
 
   return (
@@ -204,12 +228,14 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
           <div className="public-profile-actions">
             <Link href={`/users/${encodeURIComponent(author.username)}`} onClick={() => setIsOpen(false)}>查看主页</Link>
             {!readAccessToken() ? <button onClick={goToLogin} type="button">登录后互动</button> : null}
-            {profile && !profile.isSelf && !relationship && !isFriendNoteOpen ? <button disabled={isActing} onClick={() => setIsFriendNoteOpen(true)} type="button"><UserPlus aria-hidden="true" size={15} />加好友</button> : null}
+            {profile && !profile.isSelf && !relationship && profile.canRequestFriend && !isFriendNoteOpen ? <button disabled={isActing} onClick={() => { setIsMessageRequestOpen(false); setIsFriendNoteOpen(true); }} type="button"><UserPlus aria-hidden="true" size={15} />加好友</button> : null}
             {relationship?.direction === "outgoing" ? <span><Clock3 aria-hidden="true" size={14} />等待对方确认</span> : null}
             {relationship?.direction === "incoming" ? <><button disabled={isActing} onClick={() => void respond("accepted")} type="button"><Check aria-hidden="true" size={15} />接受</button><button disabled={isActing} onClick={() => void respond("declined")} type="button"><X aria-hidden="true" size={15} />拒绝</button></> : null}
-            {relationship?.direction === "accepted" ? <button disabled={isActing} onClick={() => void startChat()} type="button"><MessageCircle aria-hidden="true" size={15} />发消息</button> : null}
+            {profile?.messageAccess === "conversation" ? <button disabled={isActing} onClick={() => void startChat()} type="button"><MessageCircle aria-hidden="true" size={15} />发消息</button> : null}
+            {profile?.messageAccess === "request" && !isMessageRequestOpen ? <button disabled={isActing} onClick={() => { setIsFriendNoteOpen(false); setIsMessageRequestOpen(true); }} type="button"><Send aria-hidden="true" size={15} />消息请求</button> : null}
           </div>
           {profile && !profile.isSelf && !relationship && isFriendNoteOpen ? <form className="friend-request-note-form" onSubmit={addFriend}><textarea autoFocus maxLength={120} onChange={(event) => setFriendNote(event.target.value)} placeholder="申请备注，可不填" rows={2} value={friendNote} /><div><span>{friendNote.length} / 120</span><button disabled={isActing} type="submit">{isActing ? "发送中" : "发送申请"}</button><button onClick={() => { setIsFriendNoteOpen(false); setFriendNote(""); }} type="button">取消</button></div></form> : null}
+          {profile?.messageAccess === "request" && isMessageRequestOpen ? <form className="friend-request-note-form" onSubmit={sendMessageRequest}><textarea autoFocus maxLength={500} onChange={(event) => setMessageRequestBody(event.target.value)} placeholder="说明来意，对方接受后会成为第一条消息" required rows={3} value={messageRequestBody} /><div><span>{messageRequestBody.length} / 500</span><button disabled={isActing || !messageRequestBody.trim()} type="submit">{isActing ? "发送中" : "发送请求"}</button><button onClick={() => { setIsMessageRequestOpen(false); setMessageRequestBody(""); }} type="button">取消</button></div></form> : null}
         </div>,
         document.body,
       ) : null}

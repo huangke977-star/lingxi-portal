@@ -15,10 +15,15 @@ import {
   ChatGroupStatus,
   ChatMessageType,
   ConversationKind,
+  DirectMessagePolicy,
+  FriendRequestPolicy,
   FriendshipStatus,
+  GroupInvitationPolicy,
+  ProfileAccessLevel,
   Prisma,
   UserNotificationChannel,
   UserNotificationType,
+  StrangerMessageRequestStatus,
 } from "../generated/prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
@@ -41,6 +46,7 @@ import {
   SocialSummaryResponse,
   SocialUserResponse,
   SocialUserSearchResult,
+  StrangerMessageRequestResponse,
   NotificationChannelStateResponse,
   UserNotificationResponse,
 } from "./social.types";
@@ -65,6 +71,11 @@ const socialUserSelect = {
       showStats: true,
       showFollowingCount: true,
       showPinnedContent: true,
+      profileAccess: true,
+      searchable: true,
+      friendRequestPolicy: true,
+      directMessagePolicy: true,
+      groupInvitationPolicy: true,
     },
   },
 } satisfies Prisma.UserSelect;
@@ -93,6 +104,7 @@ interface ConversationMembership {
   kind: ConversationKind;
   participantIds: number[];
   friendship: { userOneId: number; userTwoId: number } | null;
+  directPair: { userOneId: number; userTwoId: number } | null;
   group: {
     id: number;
     role: ChatGroupMemberRole;
@@ -110,6 +122,13 @@ const friendshipInclude = {
 } satisfies Prisma.FriendshipInclude;
 
 type FriendshipRecord = Prisma.FriendshipGetPayload<{ include: typeof friendshipInclude }>;
+
+const strangerRequestInclude = {
+  requester: { select: socialUserSelect },
+  recipient: { select: socialUserSelect },
+} satisfies Prisma.StrangerMessageRequestInclude;
+
+type StrangerRequestRecord = Prisma.StrangerMessageRequestGetPayload<{ include: typeof strangerRequestInclude }>;
 
 const messageInclude = {
   sender: { select: socialUserSelect },
@@ -199,13 +218,29 @@ export class SocialService {
       showStats: true,
       showFollowingCount: true,
       showPinnedContent: true,
+      profileAccess: ProfileAccessLevel.public,
+      searchable: true,
+      friendRequestPolicy: FriendRequestPolicy.everyone,
+      directMessagePolicy: DirectMessagePolicy.request,
+      groupInvitationPolicy: GroupInvitationPolicy.everyone,
     };
+    const relationship = !viewer || isSelf ? null : await this.findFriendship(viewer.id, target.id);
+    const isFriend = relationship?.status === FriendshipStatus.accepted;
+    if (relationship?.status === FriendshipStatus.blocked) {
+      throw new NotFoundException("用户不存在或当前不可查看。");
+    }
+    if (!isSelf && (
+      settings.profileAccess === ProfileAccessLevel.private ||
+      (settings.profileAccess === ProfileAccessLevel.authenticated && !viewer) ||
+      (settings.profileAccess === ProfileAccessLevel.friends && !isFriend)
+    )) {
+      throw new NotFoundException("用户不存在或当前不可查看。");
+    }
     const showBio = isSelf || settings.showBio;
     const showJoinedAt = isSelf || settings.showJoinedAt;
     const showStats = isSelf || settings.showStats;
     const showFollowingCount = isSelf || settings.showFollowingCount;
-    const [relationship, subscription, subscriberCount, followingCount, publicArticleStats] = await Promise.all([
-      !viewer || viewer.id === target.id ? Promise.resolve(null) : this.findFriendship(viewer.id, target.id),
+    const [subscription, subscriberCount, followingCount, publicArticleStats, directConversation] = await Promise.all([
       !viewer || viewer.id === target.id
         ? Promise.resolve(null)
         : this.prisma.userSubscription.findUnique({
@@ -229,7 +264,31 @@ export class SocialService {
             _sum: { likeCount: true, viewCount: true },
           })
         : Promise.resolve(null),
+      !viewer || isSelf || isFriend
+        ? Promise.resolve(null)
+        : this.prisma.conversation.findUnique({
+            where: {
+              directUserOneId_directUserTwoId: {
+                directUserOneId: Math.min(viewer.id, target.id),
+                directUserTwoId: Math.max(viewer.id, target.id),
+              },
+            },
+            select: { id: true },
+          }),
     ]);
+    const canRequestFriend = Boolean(
+      viewer &&
+      !isSelf &&
+      settings.friendRequestPolicy === FriendRequestPolicy.everyone &&
+      (!relationship || relationship.status === FriendshipStatus.removed || relationship.status === FriendshipStatus.declined),
+    );
+    const messageAccess: PublicProfileResponse["messageAccess"] = !viewer || isSelf
+      ? "none"
+      : isFriend || directConversation || settings.directMessagePolicy === DirectMessagePolicy.everyone
+        ? "conversation"
+        : settings.directMessagePolicy === DirectMessagePolicy.request
+          ? "request"
+          : "none";
     return {
       ...this.toSocialUser(target),
       profileBio: showBio ? target.profileBio : null,
@@ -250,8 +309,7 @@ export class SocialService {
       },
       relationship: viewer && relationship && (
         relationship.status === FriendshipStatus.pending ||
-        relationship.status === FriendshipStatus.accepted ||
-        (relationship.status === FriendshipStatus.blocked && relationship.blockedById === viewer.id)
+        relationship.status === FriendshipStatus.accepted
       )
         ? {
             id: relationship.id,
@@ -260,6 +318,8 @@ export class SocialService {
             note: relationship.requestNote ?? null,
           }
         : null,
+      canRequestFriend,
+      messageAccess,
     };
   }
 
@@ -337,9 +397,15 @@ export class SocialService {
       where: {
         id: { not: user.id },
         status: "active",
-        OR: [
-          { username: { contains: keyword } },
-          { nickname: { contains: keyword } },
+        AND: [
+          { OR: [
+            { username: { contains: keyword } },
+            { nickname: { contains: keyword } },
+          ] },
+          { OR: [
+            { profileSettings: null },
+            { profileSettings: { is: { searchable: true } } },
+          ] },
         ],
       },
       take: Math.min(query.limit * 2, 40),
@@ -379,23 +445,24 @@ export class SocialService {
       relationshipByUserId.set(targetId, relationship);
     });
     return {
-      items: sorted.map((candidate) => {
+      items: sorted.flatMap((candidate) => {
         const relationship = relationshipByUserId.get(candidate.id) ?? null;
+        if (relationship?.status === FriendshipStatus.blocked) return [];
         const visibleRelationship = relationship && (
           relationship.status === FriendshipStatus.pending ||
-          relationship.status === FriendshipStatus.accepted ||
-          (relationship.status === FriendshipStatus.blocked && relationship.blockedById === user.id)
+          relationship.status === FriendshipStatus.accepted
         ) ? {
             id: relationship.id,
             status: relationship.status,
             direction: this.friendshipDirection(relationship, user.id),
             note: relationship.requestNote ?? null,
           } : null;
-        return {
+        return [{
           ...this.toSocialUser(candidate),
           relationship: visibleRelationship,
-          canRequest: !relationship || relationship.status === FriendshipStatus.removed || relationship.status === FriendshipStatus.declined,
-        };
+          canRequest: candidate.profileSettings?.friendRequestPolicy !== FriendRequestPolicy.none &&
+            (!relationship || relationship.status === FriendshipStatus.removed || relationship.status === FriendshipStatus.declined),
+        }];
       }),
     };
   }
@@ -408,9 +475,19 @@ export class SocialService {
     if (user.id === targetId) {
       throw new BadRequestException("不能添加自己为好友。");
     }
-    const target = await this.prisma.user.findUnique({ where: { id: targetId }, select: { id: true, status: true } });
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetId },
+      select: {
+        id: true,
+        status: true,
+        profileSettings: { select: { friendRequestPolicy: true } },
+      },
+    });
     if (!target || target.status !== "active") {
       throw new NotFoundException("用户不存在或当前不可添加。");
+    }
+    if (target.profileSettings?.friendRequestPolicy === FriendRequestPolicy.none) {
+      throw new ForbiddenException("对方当前不接收好友申请。");
     }
     const [userOneId, userTwoId] = this.normalizePair(user.id, targetId);
     const requestNote = rawNote?.trim() || null;
@@ -569,23 +646,48 @@ export class SocialService {
       if (friendship.blockedById === user.id) return { success: true };
       throw new ForbiddenException("当前好友关系不可操作。");
     }
-    if (friendship.status !== FriendshipStatus.accepted) {
-      throw new BadRequestException("只能拉黑当前好友。当前关系不是好友状态。");
+    return this.blockPair(user.id, friendship);
+  }
+
+  async blockUser(user: AuthenticatedUser, targetId: number): Promise<{ success: true }> {
+    if (user.id === targetId) throw new BadRequestException("不能拉黑自己。");
+    const target = await this.prisma.user.findUnique({ where: { id: targetId }, select: { id: true, status: true } });
+    if (!target || target.status !== "active") throw new NotFoundException("用户不存在或当前不可操作。");
+    const [userOneId, userTwoId] = this.normalizePair(user.id, targetId);
+    const friendship = await this.prisma.friendship.upsert({
+      where: { userOneId_userTwoId: { userOneId, userTwoId } },
+      create: {
+        userOneId,
+        userTwoId,
+        requestedById: user.id,
+        blockedById: user.id,
+        status: FriendshipStatus.blocked,
+        respondedAt: new Date(),
+      },
+      update: {},
+      include: friendshipInclude,
+    });
+    if (friendship.status === FriendshipStatus.blocked && friendship.blockedById !== user.id) {
+      throw new ForbiddenException("当前用户关系不可操作。");
     }
+    return this.blockPair(user.id, friendship);
+  }
+
+  private async blockPair(blockerId: number, friendship: FriendshipRecord): Promise<{ success: true }> {
     const now = new Date();
     await this.prisma.$transaction([
       this.prisma.friendship.update({
-        where: { id: friendshipId },
+        where: { id: friendship.id },
         data: {
           status: FriendshipStatus.blocked,
-          blockedById: user.id,
+          blockedById: blockerId,
           respondedAt: now,
           acceptedAt: null,
         },
       }),
       this.prisma.userNotification.updateMany({
         where: {
-          friendshipId,
+          friendshipId: friendship.id,
           type: UserNotificationType.friend_request_received,
           readAt: null,
         },
@@ -596,6 +698,26 @@ export class SocialService {
           { subscriberId: friendship.userOneId, authorId: friendship.userTwoId },
           { subscriberId: friendship.userTwoId, authorId: friendship.userOneId },
         ] },
+      }),
+      this.prisma.strangerMessageRequest.updateMany({
+        where: {
+          status: StrangerMessageRequestStatus.pending,
+          OR: [
+            { requesterId: friendship.userOneId, recipientId: friendship.userTwoId },
+            { requesterId: friendship.userTwoId, recipientId: friendship.userOneId },
+          ],
+        },
+        data: { status: StrangerMessageRequestStatus.cancelled, respondedAt: now },
+      }),
+      this.prisma.chatGroupInvitation.updateMany({
+        where: {
+          status: ChatGroupInvitationStatus.pending,
+          OR: [
+            { inviterId: friendship.userOneId, inviteeId: friendship.userTwoId },
+            { inviterId: friendship.userTwoId, inviteeId: friendship.userOneId },
+          ],
+        },
+        data: { status: ChatGroupInvitationStatus.cancelled, respondedAt: now },
       }),
     ]);
     return { success: true };
@@ -618,10 +740,186 @@ export class SocialService {
     return { success: true };
   }
 
+  /** Returns the current inbox without exposing requests from blocked users. */
+  async listStrangerMessageRequests(user: AuthenticatedUser): Promise<{
+    incoming: StrangerMessageRequestResponse[];
+    outgoing: StrangerMessageRequestResponse[];
+  }> {
+    const records = await this.prisma.strangerMessageRequest.findMany({
+      where: {
+        OR: [
+          { recipientId: user.id, status: StrangerMessageRequestStatus.pending },
+          { requesterId: user.id, status: StrangerMessageRequestStatus.pending },
+        ],
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      include: strangerRequestInclude,
+    });
+    const blocked = await this.blockedPairSet(user.id, records.flatMap((record) => [record.requesterId, record.recipientId]));
+    const visible = records.filter((record) => !blocked.has(record.requesterId === user.id ? record.recipientId : record.requesterId));
+    return {
+      incoming: visible.filter((record) => record.recipientId === user.id).map((record) => this.toStrangerRequest(record, user.id)),
+      outgoing: visible.filter((record) => record.requesterId === user.id).map((record) => this.toStrangerRequest(record, user.id)),
+    };
+  }
+
+  async createStrangerMessageRequest(
+    user: AuthenticatedUser,
+    recipientId: number,
+    rawBody: string,
+  ): Promise<StrangerMessageRequestResponse> {
+    if (user.id === recipientId) throw new BadRequestException("不能给自己发送陌生消息请求。");
+    const recipient = await this.prisma.user.findUnique({
+      where: { id: recipientId },
+      select: { id: true, status: true, profileSettings: { select: { directMessagePolicy: true } } },
+    });
+    if (!recipient || recipient.status !== "active") throw new NotFoundException("用户不存在或当前不可联系。");
+    await this.assertPairNotBlocked(user.id, recipientId);
+    if ((recipient.profileSettings?.directMessagePolicy ?? DirectMessagePolicy.request) !== DirectMessagePolicy.request) {
+      throw new ForbiddenException("对方当前不接收陌生人消息请求。");
+    }
+    const body = rawBody.trim();
+    const existing = await this.prisma.strangerMessageRequest.findUnique({
+      where: { requesterId_recipientId: { requesterId: user.id, recipientId } },
+      include: strangerRequestInclude,
+    });
+    if (existing?.status === StrangerMessageRequestStatus.pending) return this.toStrangerRequest(existing, user.id);
+    const record = await this.prisma.strangerMessageRequest.upsert({
+      where: { requesterId_recipientId: { requesterId: user.id, recipientId } },
+      create: { requesterId: user.id, recipientId, body, status: StrangerMessageRequestStatus.pending },
+      update: { body, status: StrangerMessageRequestStatus.pending, conversationId: null, respondedAt: null },
+      include: strangerRequestInclude,
+    });
+    await this.prisma.userNotification.create({
+      data: {
+        userId: recipientId,
+        actorId: user.id,
+        type: UserNotificationType.system,
+        channel: UserNotificationChannel.interaction,
+        title: "新的陌生消息请求",
+        body: `${user.nickname || user.username} 向你发送了消息请求。`,
+        actionUrl: "/messages?strangerRequests=1",
+        strangerMessageRequestId: record.id,
+      },
+    });
+    return this.toStrangerRequest(record, user.id);
+  }
+
+  async respondStrangerMessageRequest(
+    user: AuthenticatedUser,
+    requestId: number,
+    status: "accepted" | "declined",
+  ): Promise<{ request: StrangerMessageRequestResponse; conversation: ConversationResponse | null }> {
+    const existing = await this.prisma.strangerMessageRequest.findUnique({
+      where: { id: requestId },
+      include: strangerRequestInclude,
+    });
+    if (!existing || existing.recipientId !== user.id || existing.status !== StrangerMessageRequestStatus.pending) {
+      throw new ForbiddenException("这条消息请求不能由当前账号处理。");
+    }
+    await this.assertPairNotBlocked(existing.requesterId, existing.recipientId);
+    const now = new Date();
+    if (status === "declined") {
+      const updated = await this.prisma.$transaction(async (transaction) => {
+        const record = await transaction.strangerMessageRequest.update({
+          where: { id: requestId },
+          data: { status: StrangerMessageRequestStatus.declined, respondedAt: now },
+          include: strangerRequestInclude,
+        });
+        await transaction.userNotification.updateMany({
+          where: { userId: user.id, strangerMessageRequestId: requestId, readAt: null },
+          data: { readAt: now },
+        });
+        await transaction.userNotification.create({
+          data: {
+            userId: existing.requesterId,
+            actorId: user.id,
+            type: UserNotificationType.system,
+            channel: UserNotificationChannel.interaction,
+            title: "陌生消息请求未通过",
+            body: `${user.nickname || user.username} 拒绝了你的消息请求。`,
+            actionUrl: "/messages?strangerRequests=1",
+            strangerMessageRequestId: requestId,
+          },
+        });
+        return record;
+      });
+      return { request: this.toStrangerRequest(updated, user.id), conversation: null };
+    }
+    const conversationId = await this.prisma.$transaction(async (transaction) => {
+      const [directUserOneId, directUserTwoId] = this.normalizePair(existing.requesterId, existing.recipientId);
+      const conversation = await transaction.conversation.upsert({
+        where: { directUserOneId_directUserTwoId: { directUserOneId, directUserTwoId } },
+        create: { kind: ConversationKind.direct, directUserOneId, directUserTwoId },
+        update: { updatedAt: now },
+        select: { id: true },
+      });
+      await transaction.conversationParticipantState.createMany({
+        data: [
+          { conversationId: conversation.id, userId: existing.requesterId },
+          { conversationId: conversation.id, userId: existing.recipientId },
+        ],
+        skipDuplicates: true,
+      });
+      if (existing.body.trim()) {
+        await transaction.chatMessage.create({
+          data: {
+            conversationId: conversation.id,
+            senderId: existing.requesterId,
+            body: existing.body,
+            type: ChatMessageType.text,
+          },
+        });
+      }
+      await transaction.strangerMessageRequest.update({
+        where: { id: requestId },
+        data: { status: StrangerMessageRequestStatus.accepted, conversationId: conversation.id, respondedAt: now },
+      });
+      await transaction.userNotification.updateMany({
+        where: { userId: user.id, strangerMessageRequestId: requestId, readAt: null },
+        data: { readAt: now },
+      });
+      await transaction.userNotification.create({
+        data: {
+          userId: existing.requesterId,
+          actorId: user.id,
+          type: UserNotificationType.system,
+          channel: UserNotificationChannel.interaction,
+          title: "陌生消息请求已通过",
+          body: `${user.nickname || user.username} 接受了你的消息请求。`,
+          actionUrl: `/messages?conversation=${conversation.id}`,
+          strangerMessageRequestId: requestId,
+        },
+      });
+      return conversation.id;
+    });
+    const updated = await this.prisma.strangerMessageRequest.findUniqueOrThrow({ where: { id: requestId }, include: strangerRequestInclude });
+    return { request: this.toStrangerRequest(updated, user.id), conversation: await this.getConversation(user.id, conversationId) };
+  }
+
   async getOrCreateConversation(user: AuthenticatedUser, targetId: number): Promise<ConversationResponse> {
     const friendship = await this.findFriendship(user.id, targetId);
-    if (!friendship || friendship.status !== FriendshipStatus.accepted) {
-      throw new ForbiddenException("成为好友后才能发起聊天。");
+    if (friendship?.status === FriendshipStatus.blocked) throw new ForbiddenException("当前无法发起聊天。");
+    if (friendship?.status !== FriendshipStatus.accepted) {
+      const direct = await this.prisma.conversation.findUnique({
+        where: { directUserOneId_directUserTwoId: {
+          directUserOneId: Math.min(user.id, targetId),
+          directUserTwoId: Math.max(user.id, targetId),
+        } },
+        select: { id: true },
+      });
+      if (direct) return this.getConversation(user.id, direct.id);
+      const target = await this.prisma.user.findUnique({
+        where: { id: targetId },
+        select: { id: true, status: true, profileSettings: { select: { directMessagePolicy: true } } },
+      });
+      if (!target || target.status !== "active") throw new NotFoundException("用户不存在或当前不可联系。");
+      await this.assertPairNotBlocked(user.id, targetId);
+      if (target.profileSettings?.directMessagePolicy !== DirectMessagePolicy.everyone) {
+        throw new ForbiddenException("请先发送消息请求，等待对方接受后再聊天。");
+      }
+      const directConversation = await this.createDirectConversation(user.id, targetId);
+      return this.getConversation(user.id, directConversation.id);
     }
     const conversation = await this.prisma.$transaction(async (transaction) => {
       const record = await transaction.conversation.upsert({
@@ -656,6 +954,8 @@ export class SocialService {
               OR: [{ userOneId: user.id }, { userTwoId: user.id }],
             },
           },
+          { directUserOneId: user.id, directUserTwoId: { not: null } },
+          { directUserTwoId: user.id, directUserOneId: { not: null } },
           {
             group: {
               status: ChatGroupStatus.active,
@@ -669,12 +969,24 @@ export class SocialService {
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       include: {
         friendship: { include: friendshipInclude },
+        directUserOne: { select: socialUserSelect },
+        directUserTwo: { select: socialUserSelect },
         group: { include: conversationGroupInclude },
         participantStates: { where: { userId: user.id }, take: 1 },
       },
     });
+    const directCounterpartIds = conversations.flatMap((conversation) => {
+      if (!conversation.directUserOne || !conversation.directUserTwo) return [];
+      return [conversation.directUserOne.id === user.id ? conversation.directUserTwo.id : conversation.directUserOne.id];
+    });
+    const blockedDirectUsers = await this.blockedPairSet(user.id, directCounterpartIds);
+    const visibleConversations = conversations.filter((conversation) => {
+      if (!conversation.directUserOne || !conversation.directUserTwo) return true;
+      const counterpartId = conversation.directUserOne.id === user.id ? conversation.directUserTwo.id : conversation.directUserOne.id;
+      return !blockedDirectUsers.has(counterpartId);
+    });
     return {
-      items: await Promise.all(conversations.map(async (conversation) => {
+      items: await Promise.all(visibleConversations.map(async (conversation) => {
         const clearedBeforeMessageId = conversation.participantStates[0]?.clearedBeforeMessageId ?? null;
         const visibleWhere = this.visibleMessageWhere(user.id, conversation.id, clearedBeforeMessageId);
         const lastReadMessageId = conversation.participantStates[0]?.lastReadMessageId ?? null;
@@ -702,6 +1014,21 @@ export class SocialService {
             lastMessage: lastMessage ? this.toMessage(lastMessage) : null,
             unreadCount,
             muted: conversation.participantStates[0]?.muted ?? false,
+            canCall: true,
+            updatedAt: conversation.updatedAt.toISOString(),
+          };
+        }
+        if (conversation.directUserOne && conversation.directUserTwo) {
+          const counterpart = conversation.directUserOne.id === user.id ? conversation.directUserTwo : conversation.directUserOne;
+          return {
+            id: conversation.id,
+            kind: ConversationKind.direct,
+            user: this.toSocialUser(counterpart),
+            group: null,
+            lastMessage: lastMessage ? this.toMessage(lastMessage) : null,
+            unreadCount,
+            muted: conversation.participantStates[0]?.muted ?? false,
+            canCall: false,
             updatedAt: conversation.updatedAt.toISOString(),
           };
         }
@@ -714,6 +1041,7 @@ export class SocialService {
           lastMessage: lastMessage ? this.toMessage(lastMessage) : null,
           unreadCount,
           muted: conversation.participantStates[0]?.muted ?? false,
+          canCall: false,
           updatedAt: conversation.updatedAt.toISOString(),
         };
       })),
@@ -1223,55 +1551,20 @@ export class SocialService {
 
   async getSummary(user: AuthenticatedUser): Promise<SocialSummaryResponse> {
     const pushDisabledChannels = await this.listPushDisabledNotificationChannels(user.id);
-    const [unreadMessages, pendingFriendRequests, unreadNotifications] = await Promise.all([
-      (async () => {
-        const [directUnread, groupStates] = await Promise.all([
-          this.prisma.chatMessage.count({
-            where: {
-              senderId: { not: user.id },
-              readAt: null,
-              deletions: { none: { userId: user.id } },
-              conversation: {
-                friendship: {
-                  status: FriendshipStatus.accepted,
-                  OR: [{ userOneId: user.id }, { userTwoId: user.id }],
-                },
-                participantStates: { none: { userId: user.id, OR: [{ hidden: true }, { muted: true }] } },
-              },
-            },
-          }),
-          this.prisma.conversationParticipantState.findMany({
-            where: {
-              userId: user.id,
-              hidden: false,
-              muted: false,
-              conversation: {
-                group: {
-                  status: ChatGroupStatus.active,
-                  OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-                  members: { some: { userId: user.id, status: ChatGroupMemberStatus.active } },
-                },
-              },
-            },
-            select: { conversationId: true, lastReadMessageId: true, clearedBeforeMessageId: true },
-          }),
-        ]);
-        const groupUnread = await Promise.all(groupStates.map((state) => this.prisma.chatMessage.count({
-          where: {
-            conversationId: state.conversationId,
-            senderId: { not: user.id },
-            deletions: { none: { userId: user.id } },
-            id: { gt: Math.max(state.lastReadMessageId ?? 0, state.clearedBeforeMessageId ?? 0) },
-          },
-        })));
-        return directUnread + groupUnread.reduce((total, count) => total + count, 0);
-      })(),
+    const [unreadMessages, pendingFriendRequests, pendingStrangerRequests, unreadNotifications] = await Promise.all([
+      this.listConversations(user).then(({ items }) => items.reduce(
+        (total, conversation) => total + (conversation.muted ? 0 : conversation.unreadCount),
+        0,
+      )),
       this.prisma.friendship.count({
         where: {
           status: FriendshipStatus.pending,
           requestedById: { not: user.id },
           OR: [{ userOneId: user.id }, { userTwoId: user.id }],
         },
+      }),
+      this.prisma.strangerMessageRequest.count({
+        where: { recipientId: user.id, status: StrangerMessageRequestStatus.pending },
       }),
       this.prisma.userNotification.count({
         where: {
@@ -1281,7 +1574,7 @@ export class SocialService {
         },
       }),
     ]);
-    return { unreadMessages, pendingFriendRequests, unreadNotifications };
+    return { unreadMessages, pendingFriendRequests, pendingStrangerRequests, unreadNotifications };
   }
 
   async listNotifications(
@@ -1499,6 +1792,8 @@ export class SocialService {
       where: { id: conversationId },
       include: {
         friendship: { include: friendshipInclude },
+        directUserOne: { select: socialUserSelect },
+        directUserTwo: { select: socialUserSelect },
         group: { include: conversationGroupInclude },
         participantStates: { where: { userId }, take: 1 },
       },
@@ -1538,6 +1833,21 @@ export class SocialService {
         lastMessage: lastMessage ? this.toMessage(lastMessage) : null,
         unreadCount,
         muted: participantState?.muted ?? false,
+        canCall: true,
+        updatedAt: conversation.updatedAt.toISOString(),
+      };
+    }
+    if (conversation.directUserOne && conversation.directUserTwo) {
+      const counterpart = conversation.directUserOne.id === userId ? conversation.directUserTwo : conversation.directUserOne;
+      return {
+        id: conversation.id,
+        kind: ConversationKind.direct,
+        user: this.toSocialUser(counterpart),
+        group: null,
+        lastMessage: lastMessage ? this.toMessage(lastMessage) : null,
+        unreadCount,
+        muted: participantState?.muted ?? false,
+        canCall: false,
         updatedAt: conversation.updatedAt.toISOString(),
       };
     }
@@ -1550,6 +1860,7 @@ export class SocialService {
       lastMessage: lastMessage ? this.toMessage(lastMessage) : null,
       unreadCount,
       muted: participantState?.muted ?? false,
+      canCall: false,
       updatedAt: conversation.updatedAt.toISOString(),
     };
   }
@@ -1559,6 +1870,8 @@ export class SocialService {
       where: { id: conversationId },
       select: {
         kind: true,
+        directUserOneId: true,
+        directUserTwoId: true,
         friendship: { select: { userOneId: true, userTwoId: true, status: true } },
         group: {
           select: {
@@ -1588,6 +1901,21 @@ export class SocialService {
           userOneId: conversation.friendship.userOneId,
           userTwoId: conversation.friendship.userTwoId,
         },
+        directPair: null,
+        group: null,
+      };
+    }
+    if (
+      conversation.directUserOneId &&
+      conversation.directUserTwoId &&
+      [conversation.directUserOneId, conversation.directUserTwoId].includes(userId)
+    ) {
+      await this.assertPairNotBlocked(conversation.directUserOneId, conversation.directUserTwoId);
+      return {
+        kind: ConversationKind.direct,
+        participantIds: [conversation.directUserOneId, conversation.directUserTwoId],
+        friendship: null,
+        directPair: { userOneId: conversation.directUserOneId, userTwoId: conversation.directUserTwoId },
         group: null,
       };
     }
@@ -1601,6 +1929,7 @@ export class SocialService {
         kind: conversation.kind,
         participantIds: conversation.group.members.map((member) => member.userId),
         friendship: null,
+        directPair: null,
         group: {
           id: conversation.group.id,
           role: groupMember.role,
@@ -1621,6 +1950,68 @@ export class SocialService {
       where: { userOneId_userTwoId: { userOneId, userTwoId } },
       include: friendshipInclude,
     });
+  }
+
+  private async assertPairNotBlocked(userId: number, targetId: number): Promise<void> {
+    const friendship = await this.findFriendship(userId, targetId);
+    if (friendship?.status === FriendshipStatus.blocked) {
+      throw new ForbiddenException("当前用户关系不可操作。");
+    }
+  }
+
+  private async blockedPairSet(userId: number, rawTargetIds: number[]): Promise<Set<number>> {
+    const targetIds = [...new Set(rawTargetIds.filter((id) => id > 0 && id !== userId))];
+    if (!targetIds.length) return new Set<number>();
+    const records = await this.prisma.friendship.findMany({
+      where: {
+        status: FriendshipStatus.blocked,
+        OR: [
+          { userOneId: userId, userTwoId: { in: targetIds } },
+          { userTwoId: userId, userOneId: { in: targetIds } },
+        ],
+      },
+      select: { userOneId: true, userTwoId: true },
+    });
+    return new Set(records.map((record) => record.userOneId === userId ? record.userTwoId : record.userOneId));
+  }
+
+  private async createDirectConversation(userId: number, targetId: number): Promise<{ id: number }> {
+    const [directUserOneId, directUserTwoId] = this.normalizePair(userId, targetId);
+    return this.prisma.$transaction(async (transaction) => {
+      const conversation = await transaction.conversation.upsert({
+        where: { directUserOneId_directUserTwoId: { directUserOneId, directUserTwoId } },
+        create: { kind: ConversationKind.direct, directUserOneId, directUserTwoId },
+        update: { updatedAt: new Date() },
+        select: { id: true },
+      });
+      await transaction.conversationParticipantState.createMany({
+        data: [
+          { conversationId: conversation.id, userId: directUserOneId },
+          { conversationId: conversation.id, userId: directUserTwoId },
+        ],
+        skipDuplicates: true,
+      });
+      await transaction.conversationParticipantState.update({
+        where: { conversationId_userId: { conversationId: conversation.id, userId } },
+        data: { hidden: false },
+      });
+      return conversation;
+    });
+  }
+
+  private toStrangerRequest(record: StrangerRequestRecord, viewerId: number): StrangerMessageRequestResponse {
+    const incoming = record.recipientId === viewerId;
+    return {
+      id: record.id,
+      user: this.toSocialUser(incoming ? record.requester : record.recipient),
+      body: record.body,
+      status: record.status,
+      direction: incoming ? "incoming" : "outgoing",
+      conversationId: record.conversationId,
+      respondedAt: record.respondedAt?.toISOString() ?? null,
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
+    };
   }
 
   private assertGroupCanSend(group: ConversationMembership["group"]): void {

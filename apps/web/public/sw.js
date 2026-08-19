@@ -1,6 +1,7 @@
-const VERSION = "hlovet-pwa-v4";
+const VERSION = "hlovet-pwa-v5";
 const PUSH_IDENTITY_CACHE = `${VERSION}-identity`;
 const PUSH_IDENTITY_KEY = "/__hlovet_push_identity__";
+const PWA_ICON_KEY = "/__hlovet_pwa_icon__";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -17,6 +18,10 @@ self.addEventListener("message", (event) => {
   }
   if (event.data?.type === "SET_ACTIVE_PUSH_USER") {
     event.waitUntil(writeActivePushUser(event.data.userId));
+    return;
+  }
+  if (event.data?.type === "SET_PWA_ICON") {
+    event.waitUntil(writePwaIcon(event.data.icon));
   }
 });
 
@@ -32,9 +37,10 @@ self.addEventListener("push", (event) => {
     if (recipientUserId && recipientUserId !== await readActivePushUser()) return;
 
     const title = payload.title || "HLOVET";
+    const fallbackIcon = await readPwaIcon();
     await self.registration.showNotification(title, {
       body: payload.body || "你有一条新消息。",
-      icon: payload.icon || "/icon-192.png",
+      icon: payload.icon || fallbackIcon,
       badge: payload.badge || "/favicon-48x48.png",
       tag: payload.tag || "hlovet-notification",
       renotify: true,
@@ -87,6 +93,18 @@ async function readActivePushUser() {
   const cache = await caches.open(PUSH_IDENTITY_CACHE);
   const response = await cache.match(PUSH_IDENTITY_KEY);
   return response ? normalizeUserId(await response.text()) : null;
+}
+
+async function writePwaIcon(value) {
+  const icon = typeof value === "string" && value.trim() ? value.trim() : "/pwa-logo.png";
+  const cache = await caches.open(PUSH_IDENTITY_CACHE);
+  await cache.put(PWA_ICON_KEY, new Response(icon, { headers: { "Content-Type": "text/plain" } }));
+}
+
+async function readPwaIcon() {
+  const cache = await caches.open(PUSH_IDENTITY_CACHE);
+  const response = await cache.match(PWA_ICON_KEY);
+  return response ? await response.text() : "/pwa-logo.png";
 }
 
 function normalizeUserId(value) {

@@ -20,6 +20,8 @@ import {
   ChatGroupStatus,
   ChatMessageType,
   ConversationKind,
+  FriendshipStatus,
+  GroupInvitationPolicy,
   Prisma,
   UserNotificationType,
 } from "../generated/prisma/client";
@@ -462,9 +464,31 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     if (activeCount + userIds.length > group.memberLimit) throw new BadRequestException(`群成员最多 ${group.memberLimit} 人。`);
     const targets = await this.prisma.user.findMany({
       where: { id: { in: userIds }, status: "active" },
-      select: { id: true },
+      select: { id: true, profileSettings: { select: { groupInvitationPolicy: true } } },
     });
     if (targets.length !== userIds.length) throw new BadRequestException("邀请列表中包含不存在或已停用的账号。");
+    const relationships = await this.prisma.friendship.findMany({
+      where: {
+        OR: [
+          { userOneId: user.id, userTwoId: { in: userIds } },
+          { userTwoId: user.id, userOneId: { in: userIds } },
+        ],
+      },
+      select: { userOneId: true, userTwoId: true, status: true },
+    });
+    const relationshipByTarget = new Map(relationships.map((relationship) => [
+      relationship.userOneId === user.id ? relationship.userTwoId : relationship.userOneId,
+      relationship.status,
+    ]));
+    if (relationships.some((relationship) => relationship.status === FriendshipStatus.blocked)) {
+      throw new ForbiddenException("邀请列表中包含当前不可联系的用户。");
+    }
+    const disallowed = targets.some((target) => {
+      const policy = target.profileSettings?.groupInvitationPolicy ?? GroupInvitationPolicy.everyone;
+      if (policy === GroupInvitationPolicy.none) return true;
+      return policy === GroupInvitationPolicy.friends && relationshipByTarget.get(target.id) !== FriendshipStatus.accepted;
+    });
+    if (disallowed) throw new ForbiddenException("邀请列表中包含不接收当前邀请的用户。");
     const blocked = group.members.find((item) => userIds.includes(item.userId) && item.status === ChatGroupMemberStatus.blocked);
     if (blocked) throw new ForbiddenException("邀请列表中包含已被群聊拉黑的成员。");
     const existingActive = new Set(group.members.filter((item) => item.status === ChatGroupMemberStatus.active).map((item) => item.userId));

@@ -21,11 +21,11 @@ interface DashboardData {
   groupCount: number;
   groupPending: number;
   groupReports: number;
-  social: { unreadMessages: number; pendingFriendRequests: number; unreadNotifications: number };
+  social: { unreadMessages: number; pendingFriendRequests: number; pendingStrangerRequests: number; unreadNotifications: number };
   commentReports: number;
 }
 
-const emptyDashboard: DashboardData = { article: { total: 0, draft: 0, published: 0, unpublished: 0, blocked: 0, deleted: 0 }, groupCount: 0, groupPending: 0, groupReports: 0, social: { unreadMessages: 0, pendingFriendRequests: 0, unreadNotifications: 0 }, commentReports: 0 };
+const emptyDashboard: DashboardData = { article: { total: 0, draft: 0, published: 0, unpublished: 0, blocked: 0, deleted: 0 }, groupCount: 0, groupPending: 0, groupReports: 0, social: { unreadMessages: 0, pendingFriendRequests: 0, pendingStrangerRequests: 0, unreadNotifications: 0 }, commentReports: 0 };
 
 export function DashboardWorkspace() {
   const [data, setData] = useState<DashboardData>(emptyDashboard);
@@ -66,7 +66,7 @@ export function DashboardWorkspace() {
 
   const canManage = isSiteManager(user);
   const managementIdentity = user ? getManagementIdentity(user) : null;
-  const notificationCount = data.social.unreadMessages + data.social.pendingFriendRequests + data.social.unreadNotifications;
+  const notificationCount = data.social.unreadMessages + data.social.pendingFriendRequests + data.social.pendingStrangerRequests + data.social.unreadNotifications;
   const moderationCount = data.commentReports + data.groupReports;
 
   return <section className="p8-page p8-dashboard-page">
@@ -78,7 +78,7 @@ export function DashboardWorkspace() {
       </section>
       <div className="p8-dashboard-grid">
         <section className="p8-surface p8-dashboard-card"><div className="p8-dashboard-card-heading"><FilePenLine aria-hidden="true" size={18} /><span><h2>我的创作</h2><small>文章状态与写作入口</small></span><b>{data.article.total}</b></div><div className="p8-dashboard-links"><Link href="/articles/mine">草稿 {data.article.draft}</Link><Link href="/articles/mine">已发布 {data.article.published}</Link><Link href="/articles/mine">已下架 {data.article.unpublished}</Link></div><Link className="p8-card-footer-link" href="/articles/mine">进入我的创作</Link></section>
-        <section className="p8-surface p8-dashboard-card"><div className="p8-dashboard-card-heading"><MessageCircleMore aria-hidden="true" size={18} /><span><h2>消息待办</h2><small>私信、好友申请和站内通知</small></span><b>{notificationCount}</b></div><div className="p8-dashboard-links"><button onClick={() => openChatDock({ tab: "chats" })} type="button">未读消息 {data.social.unreadMessages}</button><button onClick={() => openChatDock({ tab: "friends" })} type="button">好友申请 {data.social.pendingFriendRequests}</button><button onClick={() => openChatDock({ tab: "chats" })} type="button">通知 {data.social.unreadNotifications}</button></div><button className="p8-card-footer-link" onClick={() => openChatDock({ tab: "chats" })} type="button">打开聊天</button></section>
+        <section className="p8-surface p8-dashboard-card"><div className="p8-dashboard-card-heading"><MessageCircleMore aria-hidden="true" size={18} /><span><h2>消息待办</h2><small>私信、请求和站内通知</small></span><b>{notificationCount}</b></div><div className="p8-dashboard-links"><button onClick={() => openChatDock({ tab: "chats" })} type="button">未读消息 {data.social.unreadMessages}</button><button onClick={() => openChatDock({ tab: "friends" })} type="button">好友申请 {data.social.pendingFriendRequests}</button><button onClick={() => openChatDock({ tab: "chats" })} type="button">消息请求 {data.social.pendingStrangerRequests}</button><button onClick={() => openChatDock({ tab: "chats" })} type="button">通知 {data.social.unreadNotifications}</button></div><button className="p8-card-footer-link" onClick={() => openChatDock({ tab: "chats" })} type="button">打开聊天</button></section>
         <section className="p8-surface p8-dashboard-card"><div className="p8-dashboard-card-heading"><UsersRound aria-hidden="true" size={18} /><span><h2>我的群聊</h2><small>加入的群聊与待审批事项</small></span><b>{data.groupCount}</b></div><div className="p8-dashboard-links"><button onClick={() => openChatDock({ tab: "chats" })} type="button">待审批 {data.groupPending}</button><button onClick={() => openChatDock({ tab: "chats" })} type="button">聊天列表 {data.groupCount}</button></div><button className="p8-card-footer-link" onClick={() => openChatDock({ tab: "chats" })} type="button">进入群聊</button></section>
         {canManage ? <section className="p8-surface p8-dashboard-card management"><div className="p8-dashboard-card-heading"><ShieldAlert aria-hidden="true" size={18} /><span><h2>管理待办</h2><small>举报与匿名话题管理</small></span><b>{moderationCount}</b></div><div className="p8-dashboard-links"><Link href="/admin/articles?tab=comments">评论举报 {data.commentReports}</Link><Link href="/admin/groups?tab=reports">群聊举报 {data.groupReports}</Link><Link href="/admin/voices"><MessagesSquare aria-hidden="true" size={13} />匿名话题</Link></div><Link className="p8-card-footer-link" href="/admin/voices">管理匿名话题</Link></section> : <SuggestionsPanel className="p8-dashboard-suggestion-card" mode="mine" pageSize={8} title="我的建议" />}
       </div>

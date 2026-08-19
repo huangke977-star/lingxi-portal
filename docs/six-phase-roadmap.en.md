@@ -2,8 +2,8 @@
 
 - Document status: Active
 - Created: 2026-08-04
-- Last updated: 2026-08-14
-- Current phase: Phase 9 not started (the Phase 8 portal entry upgrade is complete)
+- Last updated: 2026-08-19
+- Current phase: Phase 9 passed local acceptance and awaits commit, deployment, and production verification
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -41,7 +41,7 @@ Status definitions:
 | Phase 6 | Operations Console | Operational analytics, announcements, scheduling, read statistics | Completed |
 | Phase 7 | Backup Recovery Closure | Paired database/media snapshots, integrity verification, restore preflight | Completed |
 | Phase 8 | Portal Entry Upgrade | Home, dashboard, and tools-center redesign | Completed |
-| Phase 9 | Privacy And Discovery Extension | Social permissions, search scope, discovery entry points | Not started |
+| Phase 9 | Privacy And Discovery Extension | Social permissions, search scope, discovery entry points | In progress (production verification pending) |
 | Phase 10 | Moderation Automation | Unified reports, anti-spam, and review rules | Not started |
 
 ## 4. External Prerequisites
@@ -392,10 +392,20 @@ Goal: provide controlled social boundaries for real user growth and make public 
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P9-01 | Add visibility and delivery settings for profiles, friend requests, private messages, and group invitations | Not started |
-| P9-02 | Add a stranger-message request inbox and consistent blacklist behavior | Not started |
-| P9-03 | Extend global search to permission-visible topics, collections, groups, and site announcements | Not started |
-| P9-04 | Add permission-filtered recommended topics, collections, and active groups to discovery | Not started |
+| P9-01 | Add visibility and delivery settings for profiles, friend requests, private messages, and group invitations | In progress (local acceptance passed) |
+| P9-02 | Add a stranger-message request inbox and consistent blacklist behavior | In progress (local acceptance passed) |
+| P9-03 | Extend global search to permission-visible topics, collections, groups, and site announcements | In progress (local acceptance passed) |
+| P9-04 | Add permission-filtered recommended topics, collections, and active groups to discovery | In progress (local acceptance passed) |
+
+### Current Implementation Results
+
+- Profile settings now cover profile access, friend requests, stranger direct messages, and group invitations. Changes save automatically and are enforced consistently by public profiles, profile popovers, search, friend requests, direct messages, and group invitations.
+- Stranger direct messages enter a request inbox by default. Recipients can accept or decline; acceptance creates a standalone conversation and system notifications link directly to it. Blocking in either direction cancels pending requests and prevents later conversations and invitations.
+- Global search now covers permission-visible articles, users, navigation entries, tools, topics, collections, groups, and site announcements, with authentication, role, and membership filtering enforced by the API.
+- Discovery supports topic and collection subscriptions and recommends visible topics, collections, and active groups that the user has neither joined nor blocked. New articles from subscribed topics and collections enter the subscription feed.
+- The configured `pwaIconPath` is now the single source for the browser tab icon, iOS Apple Touch icon, dynamic manifest, shortcuts, push notifications, and service-worker fallback icon. The site-settings update timestamp provides cache invalidation.
+- Prisma format/generate/validate, API/Web lint, API/Web builds, 42 focused P9 tests, and the complete API suite of 40 suites and 259 tests passed. All 48 migrations apply in order to a fresh database and seed successfully.
+- Playwright acceptance at 390x844 and 1440x900 covered profile settings, global search, discovery, and the main chat window without page-level horizontal overflow. Privacy settings persisted across reloads. Production deployment and verification have not run, so this phase remains in progress.
 
 ### Phase 10: Moderation Automation
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowRight, BookOpen, FolderOpen, Search, SlidersHorizontal, UsersRound, X } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
@@ -13,8 +14,10 @@ import {
   listPublicArticles,
   listVisibleArticles,
 } from "@/lib/article-api";
-import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
+import { AuthUser, getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { listDiscoveryRecommendations, subscribeCollection, subscribeTopic, unsubscribeCollection, unsubscribeTopic, type DiscoveryRecommendations } from "@/lib/discovery-api";
+import { requestChatGroupJoin } from "@/lib/social-api";
 
 type DiscoverFeed = "recommended" | "latest" | "popular";
 type DiscoverOrder = "default" | "latest" | "popular" | "views" | "likes" | "favorites" | "comments";
@@ -47,6 +50,7 @@ function ArticlesContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const [recommendations, setRecommendations] = useState<DiscoveryRecommendations | null>(null);
   const composingRef = useRef(false);
 
   function replaceQuery(next: { q?: string; feed?: DiscoverFeed; order?: DiscoverOrder }) {
@@ -84,11 +88,12 @@ function ArticlesContent() {
         search: querySearch,
         sort: resolveSort(feed, order),
       });
-      Promise.all([token ? getMe(token) : Promise.resolve(null), request])
-      .then(([currentUser, result]) => {
+      Promise.all([token ? getMe(token) : Promise.resolve(null), request, token ? listDiscoveryRecommendations(token).catch(() => null) : Promise.resolve(null)])
+      .then(([currentUser, result, nextRecommendations]) => {
         if (!active) return;
         setUser(currentUser);
         setList(result);
+        setRecommendations(nextRecommendations);
       })
       .catch(async (loadError) => {
         if (!active) return;
@@ -111,6 +116,33 @@ function ArticlesContent() {
     }, 0);
     return () => { active = false; window.clearTimeout(timer); };
   }, [feed, order, querySearch]);
+
+  async function toggleTopic(id: number, subscribed: boolean) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      const result = subscribed ? await unsubscribeTopic(token, id) : await subscribeTopic(token, id);
+      setRecommendations((current) => current ? { ...current, topics: current.topics.map((item) => item.id === id ? { ...item, subscribed: result.subscribed, subscriberCount: result.subscriberCount } : item) } : current);
+    } catch (actionError) { setError(actionError instanceof Error ? actionError.message : "专题订阅失败。"); }
+  }
+
+  async function toggleCollection(id: number, subscribed: boolean) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      const result = subscribed ? await unsubscribeCollection(token, id) : await subscribeCollection(token, id);
+      setRecommendations((current) => current ? { ...current, collections: current.collections.map((item) => item.id === id ? { ...item, subscribed: result.subscribed, subscriberCount: result.subscriberCount } : item) } : current);
+    } catch (actionError) { setError(actionError instanceof Error ? actionError.message : "合集订阅失败。"); }
+  }
+
+  async function joinRecommendedGroup(id: number) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      await requestChatGroupJoin(token, id);
+      setRecommendations((current) => current ? { ...current, groups: current.groups.filter((group) => group.id !== id) } : current);
+    } catch (actionError) { setError(actionError instanceof Error ? actionError.message : "申请加入群聊失败。"); }
+  }
 
   const loadMore = useCallback(() => {
     if (isLoading || isLoadingMore || list.page >= list.totalPages) return;
@@ -147,6 +179,7 @@ function ArticlesContent() {
         </label>
         <div className="article-order-select"><SlidersHorizontal aria-hidden="true" size={16} /><span>排序</span><GlassSelect ariaLabel="文章排序" onChange={(value) => replaceQuery({ order: value })} options={ARTICLE_ORDER_OPTIONS} value={order} /></div>
       </div>
+      {recommendations && (recommendations.topics.length || recommendations.collections.length || recommendations.groups.length) ? <DiscoveryRecommendationsPanel recommendations={recommendations} onJoinGroup={joinRecommendedGroup} onToggleCollection={toggleCollection} onToggleTopic={toggleTopic} /> : null}
       {isLoading ? <div className="article-empty-state">正在读取文章。</div>
         : list.items.length ? <div className="article-feed-list">{list.items.map((article) => <ArticleCard article={article} key={article.id} />)}</div>
           : <div className="article-empty-state"><strong>还没有找到文章</strong><span>{querySearch ? "换一个关键词试试。" : "这里还没有发布内容。"}</span></div>}
@@ -154,6 +187,14 @@ function ArticlesContent() {
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );
+}
+
+function DiscoveryRecommendationsPanel({ recommendations, onJoinGroup, onToggleCollection, onToggleTopic }: { recommendations: DiscoveryRecommendations; onJoinGroup: (id: number) => void; onToggleCollection: (id: number, subscribed: boolean) => void; onToggleTopic: (id: number, subscribed: boolean) => void }) {
+  return <section className="discovery-recommendations"><header><span><ArrowRight aria-hidden="true" size={17} /><strong>为你推荐</strong></span><small>订阅专题、合集，发现活跃群聊</small></header><div className="discovery-recommendation-columns">
+    {recommendations.topics.length ? <div><h2><BookOpen aria-hidden="true" size={15} />专题</h2>{recommendations.topics.slice(0, 4).map((topic) => <article key={topic.id}><Link href={`/topics/${topic.slug}`}><span className="discovery-recommendation-icon">{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <BookOpen aria-hidden="true" size={17} />}</span><span><strong>{topic.title}</strong><small>{topic.articleCount} 篇 · {topic.subscriberCount} 订阅</small></span></Link><button aria-pressed={topic.subscribed} onClick={() => onToggleTopic(topic.id, topic.subscribed)} type="button">{topic.subscribed ? "已订阅" : "订阅"}</button></article>)}</div> : null}
+    {recommendations.collections.length ? <div><h2><FolderOpen aria-hidden="true" size={15} />合集</h2>{recommendations.collections.slice(0, 4).map((collection) => <article key={collection.id}><Link href={`/collections/${collection.id}`}><span className="discovery-recommendation-icon"><FolderOpen aria-hidden="true" size={17} /></span><span><strong>{collection.name}</strong><small>{collection.articleCount} 篇 · {collection.owner.nickname}</small></span></Link><button aria-pressed={collection.subscribed} onClick={() => onToggleCollection(collection.id, collection.subscribed)} type="button">{collection.subscribed ? "已订阅" : "订阅"}</button></article>)}</div> : null}
+    {recommendations.groups.length ? <div><h2><UsersRound aria-hidden="true" size={15} />活跃群聊</h2>{recommendations.groups.slice(0, 4).map((group) => <article key={group.id}><Link href={`/messages?conversation=${group.conversationId}`}><span className="discovery-recommendation-icon group">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <UsersRound aria-hidden="true" size={17} />}</span><span><strong>{group.name}</strong><small>{group.memberCount} 位成员 · {group.announcement || "暂无群公告"}</small></span></Link>{group.isMember ? <em>已加入</em> : <button onClick={() => onJoinGroup(group.id)} type="button">申请加入</button>}</article>)}</div> : null}
+  </div></section>;
 }
 
 function articleRequest(feed: DiscoverFeed, token: string | null, query: { page: number; pageSize: number; search: string; sort: string }): Promise<ArticleList> {

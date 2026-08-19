@@ -42,6 +42,8 @@ export interface PublicProfileResponse extends Omit<SocialUserResponse, "profile
     pinnedContent: boolean;
   };
   relationship: Omit<FriendshipResponse, "user" | "createdAt" | "updatedAt"> | null;
+  canRequestFriend: boolean;
+  messageAccess: "conversation" | "request" | "none";
 }
 
 export interface SocialUserSearchResult extends SocialUserResponse {
@@ -75,6 +77,19 @@ export interface ConversationResponse {
   lastMessage: ChatMessageResponse | null;
   unreadCount: number;
   muted: boolean;
+  canCall: boolean;
+  updatedAt: string;
+}
+
+export interface StrangerMessageRequestResponse {
+  id: number;
+  user: SocialUserResponse;
+  body: string;
+  status: "pending" | "accepted" | "declined" | "cancelled";
+  direction: "incoming" | "outgoing";
+  conversationId: number | null;
+  respondedAt: string | null;
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -174,6 +189,7 @@ export interface ChatGroupReportResponse {
 export interface SocialSummaryResponse {
   unreadMessages: number;
   pendingFriendRequests: number;
+  pendingStrangerRequests: number;
   unreadNotifications: number;
 }
 

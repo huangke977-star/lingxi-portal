@@ -11,8 +11,15 @@ import {
   ArticleStatus,
   ArticleTopicStatus,
   ArticleVisibility,
+  ChatGroupMemberStatus,
+  ChatGroupStatus,
+  DirectMessagePolicy,
+  FriendRequestPolicy,
+  FriendshipStatus,
+  GroupInvitationPolicy,
   PortalVisibility,
   Prisma,
+  ProfileAccessLevel,
   UserStatus,
 } from "../generated/prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -33,6 +40,7 @@ import {
   ArticleTopicResponse,
   DiscoveryArticleResponse,
   DiscoveryAuthorResponse,
+  DiscoveryRecommendationsResponse,
   ProfileSettingsResponse,
   ProfileShowcaseResponse,
   SubscriptionFeedResponse,
@@ -161,6 +169,73 @@ export class DiscoveryService {
   );
 
   constructor(private readonly prisma: PrismaService) {}
+
+  async listRecommendations(user: AuthenticatedUser): Promise<DiscoveryRecommendationsResponse> {
+    const topicWhere: Prisma.ArticleTopicWhereInput = { ...this.topicVisibleWhere(user), subscribers: { none: { userId: user.id } } };
+    const collectionWhere: Prisma.ArticleCollectionWhereInput = {
+      AND: [this.collectionVisibleWhere(user), { ownerId: { not: user.id } }, { subscribers: { none: { userId: user.id } } }],
+    };
+    const now = new Date();
+    const [topics, collections, groups] = await Promise.all([
+      this.prisma.articleTopic.findMany({
+        where: topicWhere, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: 8,
+        select: { id: true, title: true, slug: true, description: true, coverPath: true, updatedAt: true, _count: { select: { items: true, subscribers: true } } },
+      }),
+      this.prisma.articleCollection.findMany({
+        where: collectionWhere, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: 8,
+        select: {
+          id: true, name: true, description: true, updatedAt: true,
+          _count: { select: { items: true, subscribers: true } },
+          owner: { select: { id: true, nickname: true, username: true, avatarStoredName: true, isSuperAdmin: true, isAdministrator: true, role: { select: { code: true, name: true, level: true } } } },
+        },
+      }),
+      this.prisma.chatGroup.findMany({
+        where: {
+          status: ChatGroupStatus.active,
+          isBanned: false,
+          temporary: false,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          members: { none: { userId: user.id, status: { in: [ChatGroupMemberStatus.active, ChatGroupMemberStatus.blocked] } } },
+          joinMode: "approval",
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: 8,
+        select: {
+          id: true, conversationId: true, name: true, announcement: true, avatarUrl: true, avatarStoredName: true, joinMode: true, updatedAt: true,
+          members: { where: { userId: user.id, status: ChatGroupMemberStatus.active }, select: { userId: true }, take: 1 },
+          _count: { select: { members: { where: { status: ChatGroupMemberStatus.active } } } },
+        },
+      }),
+    ]);
+    return {
+      topics: topics.map((topic) => ({ id: topic.id, title: topic.title, slug: topic.slug, description: topic.description, coverPath: topic.coverPath, articleCount: topic._count.items, subscriberCount: topic._count.subscribers, subscribed: false, updatedAt: topic.updatedAt.toISOString() })),
+      collections: collections.map((collection) => ({ id: collection.id, name: collection.name, description: collection.description, articleCount: collection._count.items, subscriberCount: collection._count.subscribers, subscribed: false, owner: this.toAuthor(collection.owner), updatedAt: collection.updatedAt.toISOString() })),
+      groups: groups.map((group) => ({ id: group.id, conversationId: group.conversationId, name: group.name, avatarUrl: group.avatarStoredName ? `/social/groups/${group.id}/avatar` : group.avatarUrl, announcement: group.announcement, memberCount: group._count.members, joinMode: group.joinMode, isMember: Boolean(group.members.length), updatedAt: group.updatedAt.toISOString() })),
+    };
+  }
+
+  async subscribeTopic(user: AuthenticatedUser, topicId: number) {
+    const topic = await this.prisma.articleTopic.findFirst({ where: { id: topicId, ...this.topicVisibleWhere(user) }, select: { id: true } });
+    if (!topic) throw new NotFoundException("专题不存在或当前不可订阅。");
+    await this.prisma.articleTopicSubscription.upsert({ where: { userId_topicId: { userId: user.id, topicId } }, create: { userId: user.id, topicId }, update: {} });
+    return { subscribed: true, subscriberCount: await this.prisma.articleTopicSubscription.count({ where: { topicId } }) };
+  }
+
+  async unsubscribeTopic(user: AuthenticatedUser, topicId: number) {
+    await this.prisma.articleTopicSubscription.deleteMany({ where: { userId: user.id, topicId } });
+    return { subscribed: false, subscriberCount: await this.prisma.articleTopicSubscription.count({ where: { topicId } }) };
+  }
+
+  async subscribeCollection(user: AuthenticatedUser, collectionId: number) {
+    const collection = await this.prisma.articleCollection.findFirst({ where: { id: collectionId, ...this.collectionVisibleWhere(user), ownerId: { not: user.id } }, select: { id: true } });
+    if (!collection) throw new NotFoundException("合集不存在或当前不可订阅。");
+    await this.prisma.articleCollectionSubscription.upsert({ where: { userId_collectionId: { userId: user.id, collectionId } }, create: { userId: user.id, collectionId }, update: {} });
+    return { subscribed: true, subscriberCount: await this.prisma.articleCollectionSubscription.count({ where: { collectionId } }) };
+  }
+
+  async unsubscribeCollection(user: AuthenticatedUser, collectionId: number) {
+    await this.prisma.articleCollectionSubscription.deleteMany({ where: { userId: user.id, collectionId } });
+    return { subscribed: false, subscriberCount: await this.prisma.articleCollectionSubscription.count({ where: { collectionId } }) };
+  }
 
   /** Subscription feed counts only currently readable published articles from active subscriptions. */
   async listSubscriptionFeed(
@@ -722,6 +797,8 @@ export class DiscoveryService {
       select: { id: true, status: true, profileSettings: true },
     });
     if (!target || target.status !== UserStatus.active) throw new NotFoundException("用户不存在或已停用。");
+    const settings = target.profileSettings ?? this.defaultProfileSettings(target.id);
+    await this.assertProfileVisible(target.id, settings.profileAccess, viewer);
     if (target.id !== viewer?.id) {
       await this.prisma.profileVisit.upsert({
         where: {
@@ -739,7 +816,6 @@ export class DiscoveryService {
         update: {},
       });
     }
-    const settings = target.profileSettings ?? this.defaultProfileSettings(target.id);
     const collections = await this.prisma.articleCollection.findMany({
       where: { ownerId: target.id, ...this.collectionVisibleWhere(viewer) },
       orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
@@ -781,7 +857,39 @@ export class DiscoveryService {
     return {
       AND: [
         this.articleVisibleWhere(user),
-        { author: { is: { subscriptionsReceived: { some: { subscriberId: user.id } } } } },
+        {
+          OR: [
+            { author: { is: { subscriptionsReceived: { some: { subscriberId: user.id } } } } },
+            {
+              collectionItems: {
+                some: {
+                  collection: {
+                    is: {
+                      AND: [
+                        this.collectionVisibleWhere(user),
+                        { subscribers: { some: { userId: user.id } } },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+            {
+              topicItems: {
+                some: {
+                  topic: {
+                    is: {
+                      AND: [
+                        this.topicVisibleWhere(user),
+                        { subscribers: { some: { userId: user.id } } },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
       ],
     };
   }
@@ -959,6 +1067,11 @@ export class DiscoveryService {
   }
 
   private toProfileSettings(settings: {
+    profileAccess: ProfileAccessLevel;
+    searchable: boolean;
+    friendRequestPolicy: FriendRequestPolicy;
+    directMessagePolicy: DirectMessagePolicy;
+    groupInvitationPolicy: GroupInvitationPolicy;
     showBio: boolean;
     showJoinedAt: boolean;
     showStats: boolean;
@@ -968,6 +1081,11 @@ export class DiscoveryService {
     pinnedCollectionId: number | null;
   }): ProfileSettingsResponse {
     return {
+      profileAccess: settings.profileAccess,
+      searchable: settings.searchable,
+      friendRequestPolicy: settings.friendRequestPolicy,
+      directMessagePolicy: settings.directMessagePolicy,
+      groupInvitationPolicy: settings.groupInvitationPolicy,
       showBio: settings.showBio,
       showJoinedAt: settings.showJoinedAt,
       showStats: settings.showStats,
@@ -981,6 +1099,11 @@ export class DiscoveryService {
   private defaultProfileSettings(userId: number) {
     return {
       userId,
+      profileAccess: ProfileAccessLevel.public,
+      searchable: true,
+      friendRequestPolicy: FriendRequestPolicy.everyone,
+      directMessagePolicy: DirectMessagePolicy.request,
+      groupInvitationPolicy: GroupInvitationPolicy.everyone,
       showBio: true,
       showJoinedAt: true,
       showStats: true,
@@ -990,6 +1113,32 @@ export class DiscoveryService {
       pinnedCollectionId: null,
       updatedAt: new Date(0),
     };
+  }
+
+  private async assertProfileVisible(
+    targetId: number,
+    accessLevel: ProfileAccessLevel,
+    viewer: AuthenticatedUser | null,
+  ): Promise<void> {
+    if (viewer?.id === targetId) return;
+    if (accessLevel === ProfileAccessLevel.public && !viewer) return;
+    if (!viewer) throw new ForbiddenException("当前主页仅登录用户可见。");
+
+    const relationship = await this.prisma.friendship.findFirst({
+      where: {
+        OR: [
+          { userOneId: viewer.id, userTwoId: targetId },
+          { userOneId: targetId, userTwoId: viewer.id },
+        ],
+      },
+      select: { status: true },
+    });
+    if (relationship?.status === FriendshipStatus.blocked) {
+      throw new ForbiddenException("当前主页不可访问。");
+    }
+    if (accessLevel === ProfileAccessLevel.public || accessLevel === ProfileAccessLevel.authenticated) return;
+    if (accessLevel === ProfileAccessLevel.friends && relationship?.status === FriendshipStatus.accepted) return;
+    throw new ForbiddenException("当前主页仅对好友开放。");
   }
 
   private async getOwnedCollection(user: AuthenticatedUser, id: number) {

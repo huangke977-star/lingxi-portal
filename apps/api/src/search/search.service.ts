@@ -1,12 +1,20 @@
 import { Injectable } from "@nestjs/common";
 import {
+  AnnouncementAudience,
+  AnnouncementStatus,
   ArticleStatus,
   ArticleTaxonomyKind,
+  ArticleTopicStatus,
   ArticleVisibility,
+  ChatGroupJoinMode,
+  ChatGroupMemberStatus,
+  ChatGroupStatus,
+  FriendshipStatus,
   PortalCategoryKind,
   PortalRecordStatus,
   PortalVisibility,
   Prisma,
+  ProfileAccessLevel,
   UserStatus,
 } from "../generated/prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -17,10 +25,14 @@ import {
   GlobalSearchResponse,
   HotSearchResponse,
   SearchArticleResult,
+  SearchAnnouncementResult,
+  SearchChatGroupResult,
   SearchCategoryFilter,
+  SearchCollectionResult,
   SearchEntryResult,
   SearchGroup,
   SearchHistoryResponse,
+  SearchTopicResult,
   SearchUserResult,
 } from "./search.types";
 
@@ -33,14 +45,18 @@ export class SearchService {
     const keyword = query.q.trim();
     const activeScope = query.scope ?? "all";
     const wants = (scope: Exclude<SearchQueryDto["scope"], undefined>) => activeScope === "all" || activeScope === scope;
-    const [articles, users, navigation, tools, filters] = await Promise.all([
+    const [articles, users, navigation, tools, topics, collections, groups, announcements, filters] = await Promise.all([
       wants("articles") ? this.searchArticles(keyword, query, user) : Promise.resolve(this.emptyGroup<SearchArticleResult>(query)),
-      wants("users") ? this.searchUsers(keyword, query) : Promise.resolve(this.emptyGroup<SearchUserResult>(query)),
+      wants("users") ? this.searchUsers(keyword, query, user) : Promise.resolve(this.emptyGroup<SearchUserResult>(query)),
       wants("navigation") ? this.searchEntries(keyword, query, user, "navigation") : Promise.resolve(this.emptyGroup<SearchEntryResult>(query)),
       wants("tools") ? this.searchEntries(keyword, query, user, "tools") : Promise.resolve(this.emptyGroup<SearchEntryResult>(query)),
+      wants("topics") ? this.searchTopics(keyword, query, user) : Promise.resolve(this.emptyGroup<SearchTopicResult>(query)),
+      wants("collections") ? this.searchCollections(keyword, query, user) : Promise.resolve(this.emptyGroup<SearchCollectionResult>(query)),
+      wants("groups") ? this.searchGroups(keyword, query, user) : Promise.resolve(this.emptyGroup<SearchChatGroupResult>(query)),
+      wants("announcements") ? this.searchAnnouncements(keyword, query, user) : Promise.resolve(this.emptyGroup<SearchAnnouncementResult>(query)),
       this.listFilters(user),
     ]);
-    return { query: keyword, sort: query.sort, articles, users, navigation, tools, filters };
+    return { query: keyword, sort: query.sort, articles, users, navigation, tools, topics, collections, groups, announcements, filters };
   }
 
   async listHistory(userId: number): Promise<{ items: SearchHistoryResponse[] }> {
@@ -168,11 +184,14 @@ export class SearchService {
     })), total, query);
   }
 
-  private async searchUsers(keyword: string, query: SearchQueryDto): Promise<SearchGroup<SearchUserResult>> {
+  private async searchUsers(keyword: string, query: SearchQueryDto, user: AuthenticatedUser | null): Promise<SearchGroup<SearchUserResult>> {
     const needles = searchNeedles(keyword);
     const where: Prisma.UserWhereInput = {
       status: UserStatus.active,
-      OR: this.indexConditions<Prisma.UserWhereInput>(needles),
+      AND: [
+        { OR: this.indexConditions<Prisma.UserWhereInput>(needles) },
+        this.searchableUserVisibility(user),
+      ],
     };
     const [total, records] = await Promise.all([
       this.prisma.user.count({ where }),
@@ -205,6 +224,148 @@ export class SearchService {
       role: record.role,
       createdAt: record.createdAt.toISOString(),
     })), total, query);
+  }
+
+  private async searchTopics(keyword: string, query: SearchQueryDto, user: AuthenticatedUser | null): Promise<SearchGroup<SearchTopicResult>> {
+    const needles = searchNeedles(keyword);
+    const where: Prisma.ArticleTopicWhereInput = {
+      AND: [
+        this.topicVisibility(user),
+        {
+          OR: needles.flatMap((needle) => [
+            { title: { contains: needle } },
+            { slug: { contains: needle } },
+            { description: { contains: needle } },
+          ]),
+        },
+      ],
+    };
+    const [total, records] = await Promise.all([
+      this.prisma.articleTopic.count({ where }),
+      this.prisma.articleTopic.findMany({
+        where,
+        orderBy: query.sort === "latest" ? [{ updatedAt: "desc" }, { id: "desc" }] : [{ sortOrder: "asc" }, { updatedAt: "desc" }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        select: { id: true, title: true, slug: true, description: true, coverPath: true, updatedAt: true, _count: { select: { items: true, subscribers: true } } },
+      }),
+    ]);
+    return this.group(records.map((record) => ({
+      id: record.id,
+      title: record.title,
+      slug: record.slug,
+      description: record.description,
+      coverPath: record.coverPath,
+      articleCount: record._count.items,
+      subscriberCount: record._count.subscribers,
+      updatedAt: record.updatedAt.toISOString(),
+    })), total, query);
+  }
+
+  private async searchCollections(keyword: string, query: SearchQueryDto, user: AuthenticatedUser | null): Promise<SearchGroup<SearchCollectionResult>> {
+    const needles = searchNeedles(keyword);
+    const where: Prisma.ArticleCollectionWhereInput = {
+      AND: [
+        this.collectionVisibility(user),
+        { OR: needles.flatMap((needle) => [
+          { name: { contains: needle } },
+          { description: { contains: needle } },
+          { owner: { is: { nickname: { contains: needle } } } },
+          { owner: { is: { username: { contains: needle } } } },
+        ]) },
+      ],
+    };
+    const [total, records] = await Promise.all([
+      this.prisma.articleCollection.count({ where }),
+      this.prisma.articleCollection.findMany({
+        where,
+        orderBy: query.sort === "latest" ? [{ updatedAt: "desc" }, { id: "desc" }] : [{ sortOrder: "asc" }, { updatedAt: "desc" }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        select: {
+          id: true, name: true, description: true, updatedAt: true,
+          _count: { select: { items: true, subscribers: true } },
+          owner: { select: { id: true, username: true, nickname: true, avatarStoredName: true } },
+        },
+      }),
+    ]);
+    return this.group(records.map((record) => ({
+      id: record.id,
+      name: record.name,
+      description: record.description,
+      articleCount: record._count.items,
+      subscriberCount: record._count.subscribers,
+      owner: {
+        id: record.owner.id,
+        username: record.owner.username,
+        nickname: record.owner.nickname || record.owner.username,
+        avatarUrl: record.owner.avatarStoredName ? `/auth/avatars/${record.owner.avatarStoredName}` : null,
+      },
+      updatedAt: record.updatedAt.toISOString(),
+    })), total, query);
+  }
+
+  private async searchGroups(keyword: string, query: SearchQueryDto, user: AuthenticatedUser | null): Promise<SearchGroup<SearchChatGroupResult>> {
+    if (!user) return this.emptyGroup<SearchChatGroupResult>(query);
+    const needles = searchNeedles(keyword);
+    const activeMember = { some: { userId: user.id, status: ChatGroupMemberStatus.active } };
+    const where: Prisma.ChatGroupWhereInput = {
+      status: ChatGroupStatus.active,
+      AND: [
+        { isBanned: false },
+        { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+        { members: { none: { userId: user.id, status: ChatGroupMemberStatus.blocked } } },
+        { OR: [{ joinMode: ChatGroupJoinMode.approval, temporary: false }, { members: activeMember }] },
+        { OR: needles.flatMap((needle) => [{ name: { contains: needle } }, { announcement: { contains: needle } }]) },
+      ],
+    };
+    const [total, records] = await Promise.all([
+      this.prisma.chatGroup.count({ where }),
+      this.prisma.chatGroup.findMany({
+        where,
+        orderBy: query.sort === "latest" ? [{ updatedAt: "desc" }, { id: "desc" }] : [{ updatedAt: "desc" }, { id: "desc" }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        select: {
+          id: true, conversationId: true, name: true, avatarUrl: true, avatarStoredName: true,
+          announcement: true, joinMode: true, updatedAt: true,
+          members: { where: { userId: user.id, status: ChatGroupMemberStatus.active }, select: { userId: true }, take: 1 },
+          _count: { select: { members: { where: { status: ChatGroupMemberStatus.active } } } },
+        },
+      }),
+    ]);
+    return this.group(records.map((record) => ({
+      id: record.id,
+      conversationId: record.conversationId,
+      name: record.name,
+      avatarUrl: record.avatarStoredName ? `/social/groups/${record.id}/avatar` : record.avatarUrl,
+      announcement: record.announcement,
+      memberCount: record._count.members,
+      joinMode: record.joinMode,
+      isMember: Boolean(record.members.length),
+      updatedAt: record.updatedAt.toISOString(),
+    })), total, query);
+  }
+
+  private async searchAnnouncements(keyword: string, query: SearchQueryDto, user: AuthenticatedUser | null): Promise<SearchGroup<SearchAnnouncementResult>> {
+    const needles = searchNeedles(keyword);
+    const where: Prisma.AnnouncementWhereInput = {
+      AND: [
+        this.announcementVisibility(user),
+        { OR: needles.flatMap((needle) => [{ title: { contains: needle } }, { summary: { contains: needle } }, { content: { contains: needle } }]) },
+      ],
+    };
+    const [total, records] = await Promise.all([
+      this.prisma.announcement.count({ where }),
+      this.prisma.announcement.findMany({
+        where,
+        orderBy: [{ isPinned: "desc" }, { publishedAt: "desc" }, { id: "desc" }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        select: { id: true, title: true, summary: true, isPinned: true, publishedAt: true, expiresAt: true },
+      }),
+    ]);
+    return this.group(records.map((record) => ({ ...record, publishedAt: record.publishedAt?.toISOString() ?? null, expiresAt: record.expiresAt?.toISOString() ?? null })), total, query);
   }
 
   private async searchEntries(
@@ -302,6 +463,90 @@ export class SearchService {
       { visibility: ArticleVisibility.private, authorId: user.id },
       { visibility: ArticleVisibility.role_restricted, allowedRoles: { some: { role: { code: user.role.code } } } },
     ] };
+  }
+
+  private searchableUserVisibility(user: AuthenticatedUser | null): Prisma.UserWhereInput {
+    const searchable: Prisma.UserWhereInput = {
+      OR: [
+        { profileSettings: null },
+        { profileSettings: { is: { searchable: true } } },
+      ],
+    };
+    if (!user) {
+      return {
+        AND: [
+          searchable,
+          { OR: [
+            { profileSettings: null },
+            { profileSettings: { is: { profileAccess: ProfileAccessLevel.public } } },
+          ] },
+        ],
+      };
+    }
+    return {
+      AND: [
+        searchable,
+        {
+          friendshipsAsOne: { none: { userTwoId: user.id, status: FriendshipStatus.blocked } },
+          friendshipsAsTwo: { none: { userOneId: user.id, status: FriendshipStatus.blocked } },
+        },
+        { OR: [
+          { id: user.id },
+          { profileSettings: null },
+          { profileSettings: { is: { profileAccess: { in: [ProfileAccessLevel.public, ProfileAccessLevel.authenticated] } } } },
+          {
+            AND: [
+              { profileSettings: { is: { profileAccess: ProfileAccessLevel.friends } } },
+              { OR: [
+                { friendshipsAsOne: { some: { userTwoId: user.id, status: FriendshipStatus.accepted } } },
+                { friendshipsAsTwo: { some: { userOneId: user.id, status: FriendshipStatus.accepted } } },
+              ] },
+            ],
+          },
+        ] },
+      ],
+    };
+  }
+
+  private collectionVisibility(user: AuthenticatedUser | null): Prisma.ArticleCollectionWhereInput {
+    if (!user) return { visibility: ArticleVisibility.public };
+    if (user.isSuperAdmin) return {};
+    return { OR: [
+      { visibility: ArticleVisibility.public },
+      { visibility: ArticleVisibility.authenticated },
+      { visibility: ArticleVisibility.private, ownerId: user.id },
+    ] };
+  }
+
+  private topicVisibility(user: AuthenticatedUser | null): Prisma.ArticleTopicWhereInput {
+    const base: Prisma.ArticleTopicWhereInput = { status: ArticleTopicStatus.active };
+    if (!user) return { ...base, visibility: PortalVisibility.public };
+    if (user.isSuperAdmin) return base;
+    return {
+      ...base,
+      OR: [
+        { visibility: PortalVisibility.public },
+        { visibility: PortalVisibility.authenticated },
+        { visibility: PortalVisibility.role_restricted, allowedRoles: { some: { role: { code: user.role.code } } } },
+      ],
+    };
+  }
+
+  private announcementVisibility(user: AuthenticatedUser | null): Prisma.AnnouncementWhereInput {
+    const now = new Date();
+    const audience: Prisma.AnnouncementWhereInput[] = [{ audience: AnnouncementAudience.public }];
+    if (user) {
+      audience.push(
+        { audience: AnnouncementAudience.authenticated },
+        { audience: AnnouncementAudience.role_restricted, allowedRoles: { some: { role: { code: user.role.code } } } },
+      );
+    }
+    return {
+      status: AnnouncementStatus.published,
+      publishedAt: { lte: now },
+      OR: audience,
+      AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }],
+    };
   }
 
   private portalVisibility(user: AuthenticatedUser | null): Prisma.PortalEntryWhereInput {

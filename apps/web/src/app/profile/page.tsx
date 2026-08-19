@@ -10,6 +10,7 @@ import Cropper, { type Area, type CropperProps } from "react-easy-crop";
 import { BookOpen, Coins, Eye, EyeOff, KeyRound, LogOut, MonitorSmartphone, Pin, Sparkles, TrendingUp, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
 import { AccountSecurityPanel } from "@/components/account-security-panel";
+import { GlassSelect } from "@/components/glass-select";
 import { PasswordInput } from "@/components/password-input";
 import { RoleSymbol } from "@/components/role-symbol";
 import { AvatarManagementBadge } from "@/components/user-identity-badges";
@@ -104,6 +105,11 @@ const levelRoadmap = [
 ];
 
 const defaultProfileSettings: ProfileSettings = {
+  profileAccess: "public",
+  searchable: true,
+  friendRequestPolicy: "everyone",
+  directMessagePolicy: "request",
+  groupInvitationPolicy: "everyone",
   showBio: true,
   showJoinedAt: true,
   showStats: true,
@@ -112,6 +118,31 @@ const defaultProfileSettings: ProfileSettings = {
   pinnedArticleId: null,
   pinnedCollectionId: null,
 };
+
+const profileAccessOptions = [
+  { label: "所有人", value: "public" },
+  { label: "仅登录用户", value: "authenticated" },
+  { label: "仅好友", value: "friends" },
+  { label: "仅自己", value: "private" },
+] as const;
+
+const friendRequestOptions = [
+  { label: "允许所有人申请", value: "everyone" },
+  { label: "不接收申请", value: "none" },
+] as const;
+
+const directMessageOptions = [
+  { label: "所有人可直接私信", value: "everyone" },
+  { label: "陌生人先进入请求箱", value: "request" },
+  { label: "仅好友可私信", value: "friends" },
+  { label: "不接收私信", value: "none" },
+] as const;
+
+const groupInvitationOptions = [
+  { label: "允许所有人邀请", value: "everyone" },
+  { label: "仅好友可邀请", value: "friends" },
+  { label: "不接收邀请", value: "none" },
+] as const;
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -1099,6 +1130,28 @@ export default function ProfilePage() {
               <span className="section-label">Public profile</span>
               <strong>主页展示</strong>
               <span>{isSavingProfileSettings ? "正在同步" : "账号级保存"}</span>
+            </div>
+            <div className="profile-policy-grid">
+              <label>
+                <span>主页可见范围</span>
+                <GlassSelect ariaLabel="主页可见范围" disabled={isSavingProfileSettings} onChange={(profileAccess) => void commitProfileSettings({ profileAccess })} options={profileAccessOptions} value={profileSettings.profileAccess} />
+              </label>
+              <label>
+                <span>好友申请</span>
+                <GlassSelect ariaLabel="好友申请接收范围" disabled={isSavingProfileSettings} onChange={(friendRequestPolicy) => void commitProfileSettings({ friendRequestPolicy })} options={friendRequestOptions} value={profileSettings.friendRequestPolicy} />
+              </label>
+              <label>
+                <span>陌生私信</span>
+                <GlassSelect ariaLabel="私信接收范围" disabled={isSavingProfileSettings} onChange={(directMessagePolicy) => void commitProfileSettings({ directMessagePolicy })} options={directMessageOptions} value={profileSettings.directMessagePolicy} />
+              </label>
+              <label>
+                <span>群聊邀请</span>
+                <GlassSelect ariaLabel="群聊邀请接收范围" disabled={isSavingProfileSettings} onChange={(groupInvitationPolicy) => void commitProfileSettings({ groupInvitationPolicy })} options={groupInvitationOptions} value={profileSettings.groupInvitationPolicy} />
+              </label>
+              <label className="profile-search-toggle">
+                <span>允许通过站内搜索找到我</span>
+                <input checked={profileSettings.searchable} disabled={isSavingProfileSettings} onChange={(event) => void commitProfileSettings({ searchable: event.target.checked })} type="checkbox" />
+              </label>
             </div>
             <div className="profile-display-layout">
               <div className="profile-visibility-list">

@@ -1,6 +1,11 @@
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { AuthenticatedUser } from "../src/auth/auth.types";
-import { ChatMessageType, FriendshipStatus } from "../src/generated/prisma/client";
+import {
+  ChatMessageType,
+  DirectMessagePolicy,
+  FriendshipStatus,
+  StrangerMessageRequestStatus,
+} from "../src/generated/prisma/client";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { SiteSettingsService } from "../src/site-settings/site-settings.service";
 import { ReputationService } from "../src/reputation/reputation.service";
@@ -166,6 +171,8 @@ describe("SocialService", () => {
           userTwo: socialUser(8),
         })),
       },
+      conversation: { findUnique: jest.fn(async () => null) },
+      user: { findUnique: jest.fn(async () => ({ id: 8, status: "active", profileSettings: null })) },
     };
     const service = createService(prisma);
 
@@ -221,6 +228,8 @@ describe("SocialService", () => {
       friendship: { findUnique: jest.fn(async () => existing), update: friendshipUpdate },
       userNotification: { updateMany: notificationUpdate },
       userSubscription: { deleteMany: subscriptionDelete },
+      strangerMessageRequest: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      chatGroupInvitation: { updateMany: jest.fn(async () => ({ count: 1 })) },
       $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
     };
     const service = createService(prisma);
@@ -234,6 +243,166 @@ describe("SocialService", () => {
       { subscriberId: 7, authorId: 8 },
       { subscriberId: 8, authorId: 7 },
     ] } });
+  });
+
+  it("uses the default request policy when the recipient has no profile settings row", async () => {
+    const createdAt = new Date("2026-08-19T01:00:00.000Z");
+    const request = {
+      id: 71,
+      requesterId: user.id,
+      recipientId: 8,
+      conversationId: null,
+      body: "想和你聊聊这篇文章",
+      status: StrangerMessageRequestStatus.pending,
+      respondedAt: null,
+      createdAt,
+      updatedAt: createdAt,
+      requester: socialUser(user.id),
+      recipient: socialUser(8),
+    };
+    const notificationCreate = jest.fn(async () => ({ id: 81 }));
+    const prisma = {
+      user: { findUnique: jest.fn(async () => ({ id: 8, status: "active", profileSettings: null })) },
+      friendship: { findUnique: jest.fn(async () => null) },
+      strangerMessageRequest: {
+        findUnique: jest.fn(async () => null),
+        upsert: jest.fn(async () => request),
+      },
+      userNotification: { create: notificationCreate },
+    };
+
+    await expect(createService(prisma).createStrangerMessageRequest(user, 8, request.body)).resolves.toMatchObject({
+      id: 71,
+      status: StrangerMessageRequestStatus.pending,
+      direction: "outgoing",
+    });
+    expect(notificationCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        userId: 8,
+        strangerMessageRequestId: 71,
+        actionUrl: "/messages?strangerRequests=1",
+      }),
+    }));
+  });
+
+  it("rejects stranger requests when the recipient only accepts friends", async () => {
+    const prisma = {
+      user: { findUnique: jest.fn(async () => ({
+        id: 8,
+        status: "active",
+        profileSettings: { directMessagePolicy: DirectMessagePolicy.friends },
+      })) },
+      friendship: { findUnique: jest.fn(async () => null) },
+    };
+
+    await expect(createService(prisma).createStrangerMessageRequest(user, 8, "你好"))
+      .rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("marks the request notification read and notifies the requester when declined", async () => {
+    const createdAt = new Date("2026-08-19T01:00:00.000Z");
+    const existing = {
+      id: 72,
+      requesterId: 8,
+      recipientId: user.id,
+      conversationId: null,
+      body: "你好",
+      status: StrangerMessageRequestStatus.pending,
+      respondedAt: null,
+      createdAt,
+      updatedAt: createdAt,
+      requester: socialUser(8),
+      recipient: socialUser(user.id),
+    };
+    const declined = { ...existing, status: StrangerMessageRequestStatus.declined, respondedAt: new Date() };
+    const transaction = {
+      strangerMessageRequest: { update: jest.fn(async () => declined) },
+      userNotification: {
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        create: jest.fn(async () => ({ id: 82 })),
+      },
+    };
+    const prisma = {
+      strangerMessageRequest: { findUnique: jest.fn(async () => existing) },
+      friendship: { findUnique: jest.fn(async () => null) },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    };
+
+    await expect(createService(prisma).respondStrangerMessageRequest(user, 72, "declined"))
+      .resolves.toMatchObject({ request: { status: StrangerMessageRequestStatus.declined }, conversation: null });
+    expect(transaction.userNotification.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ userId: user.id, strangerMessageRequestId: 72, readAt: null }),
+    }));
+    expect(transaction.userNotification.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ userId: 8, strangerMessageRequestId: 72, title: "陌生消息请求未通过" }),
+    }));
+  });
+
+  it("creates an independent conversation and links the acceptance notification to it", async () => {
+    const createdAt = new Date("2026-08-19T01:00:00.000Z");
+    const existing = {
+      id: 73,
+      requesterId: 8,
+      recipientId: user.id,
+      conversationId: null,
+      body: "你好",
+      status: StrangerMessageRequestStatus.pending,
+      respondedAt: null,
+      createdAt,
+      updatedAt: createdAt,
+      requester: socialUser(8),
+      recipient: socialUser(user.id),
+    };
+    const accepted = {
+      ...existing,
+      conversationId: 91,
+      status: StrangerMessageRequestStatus.accepted,
+      respondedAt: new Date(),
+    };
+    const directConversation = {
+      id: 91,
+      kind: "direct",
+      friendship: null,
+      directUserOneId: user.id,
+      directUserTwoId: 8,
+      directUserOne: socialUser(user.id),
+      directUserTwo: socialUser(8),
+      group: null,
+      participantStates: [],
+      updatedAt: new Date(),
+    };
+    const transaction = {
+      conversation: { upsert: jest.fn(async () => ({ id: 91 })) },
+      conversationParticipantState: { createMany: jest.fn(async () => ({ count: 2 })) },
+      chatMessage: { create: jest.fn(async () => ({ id: 92 })) },
+      strangerMessageRequest: { update: jest.fn(async () => accepted) },
+      userNotification: {
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        create: jest.fn(async () => ({ id: 83 })),
+      },
+    };
+    const prisma = {
+      strangerMessageRequest: {
+        findUnique: jest.fn(async () => existing),
+        findUniqueOrThrow: jest.fn(async () => accepted),
+      },
+      friendship: { findUnique: jest.fn(async () => null) },
+      conversation: { findUnique: jest.fn(async () => directConversation) },
+      chatMessage: { findFirst: jest.fn(async () => null), count: jest.fn(async () => 0) },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    };
+
+    await expect(createService(prisma).respondStrangerMessageRequest(user, 73, "accepted"))
+      .resolves.toMatchObject({
+        request: { status: StrangerMessageRequestStatus.accepted, conversationId: 91 },
+        conversation: { id: 91, canCall: false },
+      });
+    expect(transaction.chatMessage.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ conversationId: 91, senderId: 8, body: "你好" }),
+    }));
+    expect(transaction.userNotification.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ userId: 8, actionUrl: "/messages?conversation=91" }),
+    }));
   });
 
   it("creates an author subscription and an interaction notification", async () => {
@@ -689,20 +858,21 @@ describe("SocialService", () => {
   });
 
   it("includes unread friend-request notifications in the message badge total", async () => {
-    const messageCount = jest.fn(async () => 2);
     const friendshipCount = jest.fn(async () => 3);
+    const strangerRequestCount = jest.fn(async () => 1);
     const notificationCount = jest.fn(async () => 4);
     const service = createService({
-      chatMessage: { count: messageCount },
-      conversationParticipantState: { findMany: jest.fn(async () => []) },
+      conversation: { findMany: jest.fn(async () => []) },
       friendship: { count: friendshipCount },
+      strangerMessageRequest: { count: strangerRequestCount },
       userNotification: { count: notificationCount },
       userNotificationChannelState: { findMany: jest.fn(async () => []) },
     });
 
     await expect(service.getSummary(user)).resolves.toEqual({
-      unreadMessages: 2,
+      unreadMessages: 0,
       pendingFriendRequests: 3,
+      pendingStrangerRequests: 1,
       unreadNotifications: 4,
     });
     expect(notificationCount).toHaveBeenCalledWith({ where: { userId: user.id, readAt: null } });

@@ -108,6 +108,12 @@ describe("browser push subscriptions", () => {
           auth: "auth-key",
         }]),
       },
+      siteSetting: {
+        findUnique: jest.fn(async () => ({
+          pwaIconPath: "/site-settings/assets/17/content",
+          updatedAt: new Date("2026-08-19T02:00:00.000Z"),
+        })),
+      },
     };
     const service = new PushService(prisma as unknown as PrismaService);
     const message: ChatMessageResponse = {
@@ -141,6 +147,7 @@ describe("browser push subscriptions", () => {
       recipientUserId: user.id,
       url: `/messages?conversation=${message.conversationId}`,
       tag: `chat-${message.conversationId}`,
+      icon: "/site-settings/assets/17/content?v=2026-08-19T02%3A00%3A00.000Z",
     });
   });
 });

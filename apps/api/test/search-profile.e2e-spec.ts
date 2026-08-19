@@ -37,6 +37,10 @@ describe("global search and public profiles", () => {
       article: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
       user: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
       portalEntry: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
+      articleTopic: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
+      articleCollection: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
+      chatGroup: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
+      announcement: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
       articleTaxonomy: { findMany: jest.fn(async () => []) },
       portalCategory: { findMany: jest.fn(async () => []) },
     };
@@ -72,6 +76,10 @@ describe("global search and public profiles", () => {
       article: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
       user: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
       portalEntry: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
+      articleTopic: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
+      articleCollection: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
+      chatGroup: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
+      announcement: { count: jest.fn(async () => 0), findMany: jest.fn(async () => []) },
       articleTaxonomy: { findMany: jest.fn(async () => []) },
       portalCategory: { findMany: jest.fn(async () => []) },
     };
@@ -98,6 +106,24 @@ describe("global search and public profiles", () => {
             { visibility: "role_restricted", allowedRoles: { some: { role: { code: member.role.code } } } },
           ],
         }]),
+      }),
+    }));
+    expect(prisma.articleTopic.count).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        AND: expect.arrayContaining([
+          expect.objectContaining({
+            OR: expect.arrayContaining([
+              { visibility: "role_restricted", allowedRoles: { some: { role: { code: member.role.code } } } },
+            ]),
+          }),
+        ]),
+      }),
+    }));
+    expect(prisma.chatGroup.count).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        AND: expect.arrayContaining([
+          { members: { none: { userId: member.id, status: "blocked" } } },
+        ]),
       }),
     }));
   });
