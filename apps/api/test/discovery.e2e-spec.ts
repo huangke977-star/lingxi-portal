@@ -81,6 +81,7 @@ function collection(items = [article(1), article(2)]) {
     createdAt: new Date("2026-08-01T00:00:00.000Z"),
     updatedAt: new Date("2026-08-02T00:00:00.000Z"),
     owner: { ...author, id: user.id, username: user.username, nickname: user.nickname },
+    _count: { subscribers: 3 },
     items: items.map((item, sortOrder) => ({
       article: item,
       articleId: item.id,
@@ -96,6 +97,65 @@ function createService(prisma: object) {
 }
 
 describe("DiscoveryService", () => {
+  it("lists the current user's visible topic and collection subscriptions", async () => {
+    const subscribedAt = new Date("2026-08-12T09:30:00.000Z");
+    const prisma = {
+      articleTopicSubscription: {
+        findMany: jest.fn(async () => [{
+          createdAt: subscribedAt,
+          topic: {
+            id: 11,
+            title: "运维专题",
+            slug: "operations",
+            description: "专题说明",
+            coverPath: null,
+            _count: { items: 4, subscribers: 6 },
+          },
+        }]),
+      },
+      articleCollectionSubscription: {
+        findMany: jest.fn(async () => [{
+          createdAt: subscribedAt,
+          collection: {
+            id: 31,
+            name: "服务器手记",
+            description: "合集说明",
+            owner: author,
+            _count: { items: 2, subscribers: 3 },
+          },
+        }]),
+      },
+    };
+
+    await expect(createService(prisma).listContentSubscriptions(user)).resolves.toEqual({
+      topics: [{
+        id: 11,
+        title: "运维专题",
+        slug: "operations",
+        description: "专题说明",
+        coverPath: null,
+        articleCount: 4,
+        subscriberCount: 6,
+        subscribedAt: subscribedAt.toISOString(),
+      }],
+      collections: [{
+        id: 31,
+        name: "服务器手记",
+        description: "合集说明",
+        owner: expect.objectContaining({ id: author.id, username: author.username }),
+        articleCount: 2,
+        subscriberCount: 3,
+        subscribedAt: subscribedAt.toISOString(),
+      }],
+    });
+    expect(prisma.articleTopicSubscription.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ userId: user.id, topic: { is: expect.any(Object) } }),
+    }));
+    expect(prisma.articleCollectionSubscription.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ userId: user.id, collection: { is: expect.any(Object) } }),
+    }));
+  });
+
   it("keeps unread subscription items before read items across the requested page", async () => {
     const prisma = {
       article: {
@@ -201,6 +261,9 @@ describe("DiscoveryService", () => {
         count: jest.fn(async () => 1),
         findMany: jest.fn(async () => [collection()]),
       },
+      articleCollectionSubscription: {
+        findMany: jest.fn(async () => []),
+      },
     };
 
     const result = await createService(prisma).listCollections({
@@ -270,6 +333,7 @@ describe("DiscoveryService", () => {
           sortOrder: 0,
           allowedRoles: [],
           items: [],
+          _count: { subscribers: 0 },
           createdAt: new Date("2026-08-10T00:00:00.000Z"),
           updatedAt: new Date("2026-08-10T00:00:00.000Z"),
         } : { id: 9, coverStoredName: previousStoredName }),

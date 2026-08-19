@@ -171,30 +171,34 @@ function ArticlesContent() {
           <button aria-selected={feed === value} className={feed === value ? "active" : undefined} key={value} onClick={() => replaceQuery({ feed: value, order: "default" })} role="tab" type="button">{label}</button>
         ))}
       </div>
-      <div className="article-feed-toolbar">
-        <label className="article-search">
-          <Search aria-hidden="true" size={17} />
-          <input aria-label="搜索文章" name="search" onChange={(event) => setSearchInput(event.target.value)} onCompositionEnd={(event) => { composingRef.current = false; setSearchInput(event.currentTarget.value); }} onCompositionStart={() => { composingRef.current = true; }} placeholder="搜索标题、正文、标签或作者" value={searchInput} />
-          {searchInput ? <button aria-label="清除搜索" onClick={() => setSearchInput("")} title="清除搜索" type="button"><X aria-hidden="true" size={16} /></button> : null}
-        </label>
-        <div className="article-order-select"><SlidersHorizontal aria-hidden="true" size={16} /><span>排序</span><GlassSelect ariaLabel="文章排序" onChange={(value) => replaceQuery({ order: value })} options={ARTICLE_ORDER_OPTIONS} value={order} /></div>
+      <div className="article-discovery-layout">
+        <div className="article-discovery-main">
+          <div className="article-feed-toolbar">
+            <label className="article-search">
+              <Search aria-hidden="true" size={17} />
+              <input aria-label="搜索文章" name="search" onChange={(event) => setSearchInput(event.target.value)} onCompositionEnd={(event) => { composingRef.current = false; setSearchInput(event.currentTarget.value); }} onCompositionStart={() => { composingRef.current = true; }} placeholder="搜索标题、正文、标签或作者" value={searchInput} />
+              {searchInput ? <button aria-label="清除搜索" onClick={() => setSearchInput("")} title="清除搜索" type="button"><X aria-hidden="true" size={16} /></button> : null}
+            </label>
+            <div className="article-order-select"><SlidersHorizontal aria-hidden="true" size={16} /><GlassSelect ariaLabel="文章排序" onChange={(value) => replaceQuery({ order: value })} options={ARTICLE_ORDER_OPTIONS} value={order} /></div>
+          </div>
+          {isLoading ? <div className="article-empty-state">正在读取文章。</div>
+            : list.items.length ? <div className="article-feed-list">{list.items.map((article) => <ArticleCard article={article} key={article.id} />)}</div>
+              : <div className="article-empty-state"><strong>还没有找到文章</strong><span>{querySearch ? "换一个关键词试试。" : "这里还没有发布内容。"}</span></div>}
+          {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
+        </div>
+        {recommendations ? <DiscoveryRecommendationsPanel recommendations={recommendations} onJoinGroup={joinRecommendedGroup} onToggleCollection={toggleCollection} onToggleTopic={toggleTopic} /> : null}
       </div>
-      {recommendations && (recommendations.topics.length || recommendations.collections.length || recommendations.groups.length) ? <DiscoveryRecommendationsPanel recommendations={recommendations} onJoinGroup={joinRecommendedGroup} onToggleCollection={toggleCollection} onToggleTopic={toggleTopic} /> : null}
-      {isLoading ? <div className="article-empty-state">正在读取文章。</div>
-        : list.items.length ? <div className="article-feed-list">{list.items.map((article) => <ArticleCard article={article} key={article.id} />)}</div>
-          : <div className="article-empty-state"><strong>还没有找到文章</strong><span>{querySearch ? "换一个关键词试试。" : "这里还没有发布内容。"}</span></div>}
-      {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );
 }
 
 function DiscoveryRecommendationsPanel({ recommendations, onJoinGroup, onToggleCollection, onToggleTopic }: { recommendations: DiscoveryRecommendations; onJoinGroup: (id: number) => void; onToggleCollection: (id: number, subscribed: boolean) => void; onToggleTopic: (id: number, subscribed: boolean) => void }) {
-  return <section className="discovery-recommendations"><header><span><ArrowRight aria-hidden="true" size={17} /><strong>为你推荐</strong></span><small>订阅专题、合集，发现活跃群聊</small></header><div className="discovery-recommendation-columns">
-    {recommendations.topics.length ? <div><h2><BookOpen aria-hidden="true" size={15} />专题</h2>{recommendations.topics.slice(0, 4).map((topic) => <article key={topic.id}><Link href={`/topics/${topic.slug}`}><span className="discovery-recommendation-icon">{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <BookOpen aria-hidden="true" size={17} />}</span><span><strong>{topic.title}</strong><small>{topic.articleCount} 篇 · {topic.subscriberCount} 订阅</small></span></Link><button aria-pressed={topic.subscribed} onClick={() => onToggleTopic(topic.id, topic.subscribed)} type="button">{topic.subscribed ? "已订阅" : "订阅"}</button></article>)}</div> : null}
-    {recommendations.collections.length ? <div><h2><FolderOpen aria-hidden="true" size={15} />合集</h2>{recommendations.collections.slice(0, 4).map((collection) => <article key={collection.id}><Link href={`/collections/${collection.id}`}><span className="discovery-recommendation-icon"><FolderOpen aria-hidden="true" size={17} /></span><span><strong>{collection.name}</strong><small>{collection.articleCount} 篇 · {collection.owner.nickname}</small></span></Link><button aria-pressed={collection.subscribed} onClick={() => onToggleCollection(collection.id, collection.subscribed)} type="button">{collection.subscribed ? "已订阅" : "订阅"}</button></article>)}</div> : null}
-    {recommendations.groups.length ? <div><h2><UsersRound aria-hidden="true" size={15} />活跃群聊</h2>{recommendations.groups.slice(0, 4).map((group) => <article key={group.id}><Link href={`/messages?conversation=${group.conversationId}`}><span className="discovery-recommendation-icon group">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <UsersRound aria-hidden="true" size={17} />}</span><span><strong>{group.name}</strong><small>{group.memberCount} 位成员 · {group.announcement || "暂无群公告"}</small></span></Link>{group.isMember ? <em>已加入</em> : <button onClick={() => onJoinGroup(group.id)} type="button">申请加入</button>}</article>)}</div> : null}
-  </div></section>;
+  return <aside className="discovery-recommendations"><header><span><ArrowRight aria-hidden="true" size={17} /><strong>为你推荐</strong></span></header><div className="discovery-recommendation-columns">
+    <div><h2><BookOpen aria-hidden="true" size={15} />专题</h2>{recommendations.topics.slice(0, 3).map((topic) => <article key={topic.id}><Link href={`/topics/${topic.slug}`}><span className="discovery-recommendation-icon">{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <BookOpen aria-hidden="true" size={17} />}</span><span><strong>{topic.title}</strong><small>{topic.articleCount} 篇 · {topic.subscriberCount} 订阅</small></span></Link><button aria-pressed={topic.subscribed} onClick={() => onToggleTopic(topic.id, topic.subscribed)} type="button">{topic.subscribed ? "已订阅" : "订阅"}</button></article>)}{!recommendations.topics.length ? <p>暂无新专题推荐</p> : null}</div>
+    <div><h2><FolderOpen aria-hidden="true" size={15} />合集</h2>{recommendations.collections.slice(0, 3).map((collection) => <article key={collection.id}><Link href={`/collections/${collection.id}`}><span className="discovery-recommendation-icon"><FolderOpen aria-hidden="true" size={17} /></span><span><strong>{collection.name}</strong><small>{collection.articleCount} 篇 · {collection.owner.nickname}</small></span></Link><button aria-pressed={collection.subscribed} onClick={() => onToggleCollection(collection.id, collection.subscribed)} type="button">{collection.subscribed ? "已订阅" : "订阅"}</button></article>)}{!recommendations.collections.length ? <p>暂无新合集推荐</p> : null}</div>
+    <div><h2><UsersRound aria-hidden="true" size={15} />活跃群聊</h2>{recommendations.groups.slice(0, 3).map((group) => <article key={group.id}><span className="discovery-recommendation-copy"><span className="discovery-recommendation-icon group">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <UsersRound aria-hidden="true" size={17} />}</span><span><strong>{group.name}</strong><small>{group.memberCount} 位成员 · {group.announcement || "暂无群公告"}</small></span></span>{group.isMember ? <em>已加入</em> : <button onClick={() => onJoinGroup(group.id)} type="button">申请加入</button>}</article>)}{!recommendations.groups.length ? <p>暂无可申请加入的群聊</p> : null}</div>
+  </div></aside>;
 }
 
 function articleRequest(feed: DiscoverFeed, token: string | null, query: { page: number; pageSize: number; search: string; sort: string }): Promise<ArticleList> {

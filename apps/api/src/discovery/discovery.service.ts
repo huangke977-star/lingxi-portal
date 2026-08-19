@@ -140,6 +140,7 @@ const articleCollectionInclude = {
     orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
     include: { article: { include: discoveryArticleInclude } },
   },
+  _count: { select: { subscribers: true } },
 } satisfies Prisma.ArticleCollectionInclude;
 
 type ArticleCollectionRecord = Prisma.ArticleCollectionGetPayload<{
@@ -155,6 +156,7 @@ const articleTopicInclude = {
     orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
     include: { article: { include: discoveryArticleInclude } },
   },
+  _count: { select: { subscribers: true } },
 } satisfies Prisma.ArticleTopicInclude;
 
 type ArticleTopicRecord = Prisma.ArticleTopicGetPayload<{
@@ -348,6 +350,65 @@ export class DiscoveryService {
     return { count: articles.length, readAt: new Date().toISOString() };
   }
 
+  async listContentSubscriptions(user: AuthenticatedUser) {
+    const [topicSubscriptions, collectionSubscriptions] = await Promise.all([
+      this.prisma.articleTopicSubscription.findMany({
+        where: { userId: user.id, topic: { is: this.topicVisibleWhere(user) } },
+        orderBy: [{ createdAt: "desc" }, { topicId: "desc" }],
+        select: {
+          createdAt: true,
+          topic: {
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+              description: true,
+              coverPath: true,
+              _count: { select: { items: true, subscribers: true } },
+            },
+          },
+        },
+      }),
+      this.prisma.articleCollectionSubscription.findMany({
+        where: { userId: user.id, collection: { is: this.collectionVisibleWhere(user) } },
+        orderBy: [{ createdAt: "desc" }, { collectionId: "desc" }],
+        select: {
+          createdAt: true,
+          collection: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              owner: { select: discoveryArticleInclude.author.select },
+              _count: { select: { items: true, subscribers: true } },
+            },
+          },
+        },
+      }),
+    ]);
+    return {
+      topics: topicSubscriptions.map(({ createdAt, topic }) => ({
+        id: topic.id,
+        title: topic.title,
+        slug: topic.slug,
+        description: topic.description,
+        coverPath: topic.coverPath,
+        articleCount: topic._count.items,
+        subscriberCount: topic._count.subscribers,
+        subscribedAt: createdAt.toISOString(),
+      })),
+      collections: collectionSubscriptions.map(({ createdAt, collection }) => ({
+        id: collection.id,
+        name: collection.name,
+        description: collection.description,
+        owner: this.toAuthor(collection.owner),
+        articleCount: collection._count.items,
+        subscriberCount: collection._count.subscribers,
+        subscribedAt: createdAt.toISOString(),
+      })),
+    };
+  }
+
   async listSubscriptionSettings(user: AuthenticatedUser) {
     const items = await this.prisma.userSubscription.findMany({
       where: { subscriberId: user.id },
@@ -480,7 +541,11 @@ export class DiscoveryService {
       include: articleCollectionInclude,
     });
     if (!record) throw new NotFoundException("合集不存在或当前不可见。");
-    return this.toCollection(record, viewer, record.ownerId === viewer?.id);
+    const subscribed = viewer ? Boolean(await this.prisma.articleCollectionSubscription.findUnique({
+      where: { userId_collectionId: { userId: viewer.id, collectionId: id } },
+      select: { userId: true },
+    })) : false;
+    return this.toCollection(record, viewer, record.ownerId === viewer?.id, subscribed);
   }
 
   async listCollections(query: ListCollectionsQueryDto, viewer: AuthenticatedUser | null) {
@@ -508,8 +573,12 @@ export class DiscoveryService {
       take: query.pageSize,
       include: articleCollectionInclude,
     });
+    const subscribedIds = new Set(viewer && records.length ? (await this.prisma.articleCollectionSubscription.findMany({
+      where: { userId: viewer.id, collectionId: { in: records.map(({ id }) => id) } },
+      select: { collectionId: true },
+    })).map(({ collectionId }) => collectionId) : []);
     return {
-      items: records.map((record) => this.toCollection(record, viewer, record.ownerId === viewer?.id)),
+      items: records.map((record) => this.toCollection(record, viewer, record.ownerId === viewer?.id, subscribedIds.has(record.id))),
       total,
       page,
       pageSize: query.pageSize,
@@ -536,8 +605,12 @@ export class DiscoveryService {
       take: query.pageSize,
       include: articleTopicInclude,
     });
+    const subscribedIds = new Set(viewer && records.length ? (await this.prisma.articleTopicSubscription.findMany({
+      where: { userId: viewer.id, topicId: { in: records.map(({ id }) => id) } },
+      select: { topicId: true },
+    })).map(({ topicId }) => topicId) : []);
     return {
-      items: records.map((record) => this.toTopic(record, viewer, false)),
+      items: records.map((record) => this.toTopic(record, viewer, false, subscribedIds.has(record.id))),
       total,
       page,
       pageSize: query.pageSize,
@@ -551,7 +624,11 @@ export class DiscoveryService {
       include: articleTopicInclude,
     });
     if (!record) throw new NotFoundException("专题不存在或当前不可见。");
-    return this.toTopic(record, viewer, false);
+    const subscribed = viewer ? Boolean(await this.prisma.articleTopicSubscription.findUnique({
+      where: { userId_topicId: { userId: viewer.id, topicId: record.id } },
+      select: { userId: true },
+    })) : false;
+    return this.toTopic(record, viewer, false, subscribed);
   }
 
   async listAdminTopics(user: AuthenticatedUser) {
@@ -998,6 +1075,7 @@ export class DiscoveryService {
     collection: ArticleCollectionRecord,
     viewer: AuthenticatedUser | null,
     ownerView: boolean,
+    subscribed = false,
   ): ArticleCollectionResponse {
     const articles = collection.items
       .map(({ article }) => article)
@@ -1012,6 +1090,8 @@ export class DiscoveryService {
       owner: this.toAuthor(collection.owner),
       articles,
       articleCount: articles.length,
+      subscriberCount: collection._count.subscribers,
+      subscribed,
       createdAt: collection.createdAt.toISOString(),
       updatedAt: collection.updatedAt.toISOString(),
     };
@@ -1021,6 +1101,7 @@ export class DiscoveryService {
     topic: ArticleTopicRecord,
     viewer: AuthenticatedUser | null,
     managerView: boolean,
+    subscribed = false,
   ): ArticleTopicResponse {
     const articles = topic.items
       .map(({ article }) => article)
@@ -1038,6 +1119,8 @@ export class DiscoveryService {
       roleCodes: topic.allowedRoles.map(({ role }) => role.code),
       articles,
       articleCount: articles.length,
+      subscriberCount: topic._count.subscribers,
+      subscribed,
       createdAt: topic.createdAt.toISOString(),
       updatedAt: topic.updatedAt.toISOString(),
     };

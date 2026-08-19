@@ -1,6 +1,7 @@
 "use client";
 
-import { Bell, BellOff, CheckCheck, SlidersHorizontal } from "lucide-react";
+import { Bell, BellOff, BookOpen, CheckCheck, FolderOpen, Rss, SlidersHorizontal } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
@@ -11,15 +12,20 @@ import { getMe, isAuthExpiredError, type AuthUser } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import {
   listSubscriptionFeed,
+  listContentSubscriptions,
   listSubscriptionSettings,
   markAllSubscriptionFeedRead,
   markSubscriptionFeedRead,
   type SubscriptionFeed,
+  type ContentSubscriptions,
+  unsubscribeCollection,
+  unsubscribeTopic,
   updateSubscriptionSetting,
 } from "@/lib/discovery-api";
 
 type FeedSort = "latest" | "unread" | "popular";
 const emptyFeed: SubscriptionFeed = { items: [], total: 0, unread: 0, page: 1, pageSize: 12, totalPages: 1 };
+const emptyContentSubscriptions: ContentSubscriptions = { topics: [], collections: [] };
 
 export default function SubscriptionFeedPage() {
   return <Suspense fallback={<section className="page-shell"><div className="article-empty-state">正在读取订阅动态。</div></section>}><SubscriptionFeedContent /></Suspense>;
@@ -33,6 +39,7 @@ function SubscriptionFeedContent() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [feed, setFeed] = useState<SubscriptionFeed>(emptyFeed);
   const [settings, setSettings] = useState<Awaited<ReturnType<typeof listSubscriptionSettings>>["items"]>([]);
+  const [contentSubscriptions, setContentSubscriptions] = useState<ContentSubscriptions>(emptyContentSubscriptions);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -40,14 +47,16 @@ function SubscriptionFeedContent() {
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async (token: string) => {
-    const [currentUser, currentFeed, currentSettings] = await Promise.all([
+    const [currentUser, currentFeed, currentSettings, currentContentSubscriptions] = await Promise.all([
       getMe(token),
       listSubscriptionFeed(token, { page: 1, pageSize: 12, sort }),
       listSubscriptionSettings(token),
+      listContentSubscriptions(token),
     ]);
     setUser(currentUser);
     setFeed(currentFeed);
     setSettings(currentSettings.items);
+    setContentSubscriptions(currentContentSubscriptions);
   }, [sort]);
 
   useEffect(() => {
@@ -107,6 +116,32 @@ function SubscriptionFeedContent() {
     }
   }
 
+  async function removeTopicSubscription(topicId: number) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      await unsubscribeTopic(token, topicId);
+      setContentSubscriptions((current) => ({ ...current, topics: current.topics.filter((item) => item.id !== topicId) }));
+      setNotice("已取消专题订阅。");
+      await load(token);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "取消专题订阅失败。");
+    }
+  }
+
+  async function removeCollectionSubscription(collectionId: number) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      await unsubscribeCollection(token, collectionId);
+      setContentSubscriptions((current) => ({ ...current, collections: current.collections.filter((item) => item.id !== collectionId) }));
+      setNotice("已取消合集订阅。");
+      await load(token);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "取消合集订阅失败。");
+    }
+  }
+
   return <section className="page-shell subscription-feed-page">
     <ArticleCenterNav active="subscriptions" isLoggedIn user={user} />
     <div className="discovery-toolbar">
@@ -114,11 +149,11 @@ function SubscriptionFeedContent() {
         {(["latest", "unread", "popular"] as FeedSort[]).map((value) => <button className={sort === value ? "active" : undefined} key={value} onClick={() => router.replace(value === "latest" ? "/articles/subscriptions" : `/articles/subscriptions?sort=${value}`)} type="button">{value === "latest" ? "最新" : value === "unread" ? `未读 ${feed.unread}` : "热度"}</button>)}
       </nav>
       <span className="discovery-toolbar-actions">
-        <button aria-label="作者推送设置" className={settingsOpen ? "active" : undefined} onClick={() => setSettingsOpen((current) => !current)} title="作者推送设置" type="button"><SlidersHorizontal aria-hidden="true" size={17} /></button>
+        <button aria-label="订阅管理" className={settingsOpen ? "active" : undefined} onClick={() => setSettingsOpen((current) => !current)} title="订阅管理" type="button"><SlidersHorizontal aria-hidden="true" size={17} /></button>
         <button aria-label="全部已读" disabled={!feed.unread} onClick={() => void markAll()} title="全部已读" type="button"><CheckCheck aria-hidden="true" size={18} /></button>
       </span>
     </div>
-    {settingsOpen ? <section className="subscription-settings-panel"><header><strong>作者推送</strong><span>关闭后仍保留订阅动态，只停止新内容通知。</span></header><div>{settings.map((item) => <div className="subscription-author-setting" key={item.author.id}><span>{item.author.nickname}<small>@{item.author.username}</small></span><button aria-label={`${item.notifyNewArticles ? "关闭" : "开启"}${item.author.nickname}的新内容推送`} aria-pressed={item.notifyNewArticles} className={item.notifyNewArticles ? "active" : undefined} onClick={() => void toggleAuthor(item.author.id, !item.notifyNewArticles)} title={item.notifyNewArticles ? "关闭推送" : "开启推送"} type="button">{item.notifyNewArticles ? <Bell aria-hidden="true" size={16} /> : <BellOff aria-hidden="true" size={16} />}</button></div>)}</div>{!settings.length ? <p>还没有订阅作者。</p> : null}</section> : null}
+    {settingsOpen ? <section className="subscription-settings-panel subscription-management-panel"><header><strong>订阅管理</strong><span>作者通知、专题和合集集中管理。</span></header><div className="subscription-management-groups"><section><h3><Bell aria-hidden="true" size={14} />作者推送</h3><div>{settings.map((item) => <div className="subscription-author-setting" key={item.author.id}><span>{item.author.nickname}<small>@{item.author.username}</small></span><button aria-label={`${item.notifyNewArticles ? "关闭" : "开启"}${item.author.nickname}的新内容推送`} aria-pressed={item.notifyNewArticles} className={item.notifyNewArticles ? "active" : undefined} onClick={() => void toggleAuthor(item.author.id, !item.notifyNewArticles)} title={item.notifyNewArticles ? "关闭推送" : "开启推送"} type="button">{item.notifyNewArticles ? <Bell aria-hidden="true" size={16} /> : <BellOff aria-hidden="true" size={16} />}</button></div>)}{!settings.length ? <p>还没有订阅作者。</p> : null}</div></section><section><h3><BookOpen aria-hidden="true" size={14} />专题</h3><div>{contentSubscriptions.topics.map((topic) => <div className="subscription-content-setting" key={topic.id}><Link href={`/topics/${topic.slug}`}><strong>{topic.title}</strong><small>{topic.articleCount} 篇 · {topic.subscriberCount} 人订阅</small></Link><button aria-label={`取消订阅 ${topic.title}`} onClick={() => void removeTopicSubscription(topic.id)} title="取消订阅" type="button"><Rss aria-hidden="true" size={16} /></button></div>)}{!contentSubscriptions.topics.length ? <p>还没有订阅专题。</p> : null}</div></section><section><h3><FolderOpen aria-hidden="true" size={14} />合集</h3><div>{contentSubscriptions.collections.map((collection) => <div className="subscription-content-setting" key={collection.id}><Link href={`/collections/${collection.id}`}><strong>{collection.name}</strong><small>{collection.owner.nickname} · {collection.articleCount} 篇</small></Link><button aria-label={`取消订阅 ${collection.name}`} onClick={() => void removeCollectionSubscription(collection.id)} title="取消订阅" type="button"><Rss aria-hidden="true" size={16} /></button></div>)}{!contentSubscriptions.collections.length ? <p>还没有订阅合集。</p> : null}</div></section></div></section> : null}
     {isLoading ? <div className="article-empty-state">正在读取订阅动态。</div> : feed.items.length ? <div className="discovery-feed-list">{feed.items.map((item) => <DiscoveryArticleRow article={item.article} key={item.article.id} onOpen={() => void markRead(item.article.id)} unread={!item.readAt} />)}</div> : <div className="article-empty-state"><strong>订阅动态还是空的</strong><span>订阅作者后，新发布的内容会集中出现在这里。</span></div>}
     {feed.items.length ? <ArticleInfiniteFooter hasMore={feed.page < feed.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
     <AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />

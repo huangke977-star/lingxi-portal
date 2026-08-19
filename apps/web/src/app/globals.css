@@ -277,7 +277,8 @@
 .profile-policy-grid > label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile-policy-grid .announcement-editor-select { width: 100%; min-width: 0; }
 .profile-policy-grid .announcement-editor-select-trigger { width: 100%; min-width: 0; }
-.profile-search-toggle { grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-radius: 7px; background: color-mix(in srgb, var(--surface) 48%, transparent); padding: 8px 9px; }
+.profile-search-toggle { display: grid; min-height: 38px; box-sizing: border-box; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; border-radius: 7px; background: color-mix(in srgb, var(--surface) 48%, transparent); color: var(--foreground); padding: 7px 9px; }
+.profile-search-toggle > span { overflow: hidden; font-size: 0.76rem; text-overflow: ellipsis; white-space: nowrap; }
 .profile-visibility-list { display: grid; min-width: 0; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
 .profile-visibility-list label { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px; border-radius: 7px; background: color-mix(in srgb, var(--surface) 48%, transparent); padding: 8px; cursor: pointer; }
 .profile-visibility-list label > span { display: inline-flex; min-width: 0; align-items: center; gap: 5px; overflow: hidden; font-size: 0.68rem; text-overflow: ellipsis; white-space: nowrap; }
@@ -1083,6 +1084,10 @@ body:has(.auth-page) .topbar {
   z-index: 40;
   display: grid;
   width: 230px;
+  max-height: min(680px, calc(100dvh - 98px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border-radius: 8px;
   background: var(--popover-surface);
   box-shadow: var(--shadow-hover);
@@ -1095,6 +1100,7 @@ body:has(.auth-page) .topbar {
     opacity 160ms ease,
     transform 160ms ease;
   transition-delay: 0ms;
+  scrollbar-width: thin;
 }
 
 .account-menu.open {
@@ -1126,7 +1132,7 @@ body:has(.auth-page) .topbar {
 
 .account-menu a,
 .account-menu button {
-  min-height: 38px;
+  min-height: 34px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -16639,4 +16645,100 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .anonymous-topic-metrics { justify-content: flex-end; padding: 0 10px 8px; }
   .anonymous-topic-sort { width: 102px; }
   .anonymous-topic-subline { grid-template-columns: minmax(72px, 0.7fr) repeat(2, minmax(0, 1fr)); column-gap: 7px; }
+}
+
+/* Discovery keeps the article feed primary and moves recommendations into compact secondary context. */
+.article-discovery-layout { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) minmax(260px, 300px); align-items: start; gap: 14px; }
+.article-discovery-main { display: grid; min-width: 0; gap: 8px; }
+.article-discovery-main .article-feed-toolbar { margin-top: 2px; }
+.discovery-recommendations { position: sticky; top: 92px; min-width: 0; align-self: start; gap: 9px; padding: 11px; }
+.discovery-recommendations > header { min-height: 28px; }
+.discovery-recommendation-columns { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.discovery-recommendation-columns > div { gap: 5px; }
+.discovery-recommendation-columns > div + div { border-top: 1px solid color-mix(in srgb, var(--control-line) 68%, transparent); padding-top: 9px; }
+.discovery-recommendation-columns > div > p { margin: 0; border-radius: 6px; background: color-mix(in srgb, var(--surface) 34%, transparent); color: var(--muted); font-size: 0.65rem; padding: 9px; }
+.discovery-recommendation-columns article > .discovery-recommendation-copy { display: grid; min-width: 0; grid-template-columns: 30px minmax(0, 1fr); align-items: center; gap: 7px; color: var(--foreground); }
+.discovery-recommendation-copy > span:last-child { display: grid; min-width: 0; gap: 2px; }
+
+/* Topic and collection browse cards follow the compact group-management hierarchy. */
+.topic-list,
+.collection-browse-grid { grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); gap: 8px; }
+.topic-card,
+.collection-browse-card { display: grid; min-width: 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--control-line) 68%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--surface) 72%, transparent); box-shadow: var(--shadow-soft); padding: 0; transition: transform 150ms ease, box-shadow 150ms ease; }
+.topic-card:hover,
+.collection-browse-card:hover { box-shadow: var(--shadow-hover); transform: translateY(-1px); }
+.topic-card-link,
+.collection-browse-card > a { display: grid; min-width: 0; color: var(--foreground); }
+.topic-card-cover,
+.collection-browse-cover { position: relative; display: grid; width: 100%; aspect-ratio: 4 / 3; place-items: center; overflow: hidden; border-radius: 0; background: color-mix(in srgb, var(--accent) 17%, var(--surface)); color: var(--accent-strong); }
+.topic-card-cover > img,
+.collection-browse-cover > img { width: 100%; height: 100%; object-fit: cover; }
+.topic-card-cover > strong { font-size: 1.65rem; }
+.topic-card-cover > small,
+.collection-browse-cover > small { position: absolute; top: 8px; right: 8px; border-radius: 5px; background: rgba(24, 27, 36, 0.72); color: #fff; font-size: 0.61rem; padding: 4px 6px; }
+.topic-card-body,
+.collection-browse-copy { display: grid; min-width: 0; min-height: 82px; align-content: start; gap: 4px; padding: 10px; }
+.topic-card-body > strong,
+.collection-browse-copy > strong { overflow: hidden; font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
+.topic-card-body > small,
+.collection-browse-copy > small { display: -webkit-box; overflow: hidden; color: var(--muted-strong); font-size: 0.68rem; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.topic-card-body > em,
+.collection-browse-copy > em { overflow: hidden; color: var(--muted); font-size: 0.62rem; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.topic-card > footer,
+.collection-browse-card > footer { display: flex; min-width: 0; min-height: 40px; align-items: center; justify-content: space-between; gap: 7px; border-top: 1px solid var(--control-line); color: var(--muted); font-size: 0.63rem; padding: 5px 9px; }
+.topic-card > footer button,
+.collection-browse-card > footer button,
+.content-group-subscribe { display: grid; width: 29px; height: 29px; flex: 0 0 29px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; padding: 0; }
+.topic-card > footer button:hover,
+.topic-card > footer button.active,
+.collection-browse-card > footer button:hover,
+.collection-browse-card > footer button.active,
+.content-group-subscribe:hover,
+.content-group-subscribe.active { background: var(--accent-soft); color: var(--accent-strong); }
+.topic-card > footer button:disabled,
+.collection-browse-card > footer button:disabled,
+.content-group-subscribe:disabled { cursor: default; opacity: 0.5; }
+.collection-browse-card > footer > em { color: var(--accent-strong); font-size: 0.62rem; font-style: normal; }
+
+.content-group-header { position: relative; padding-right: 58px; }
+.content-group-subscribe { position: absolute; top: 13px; right: 14px; z-index: 2; background: color-mix(in srgb, var(--surface) 58%, transparent); }
+.content-group-header.topic.with-cover .content-group-subscribe { color: rgba(255, 255, 255, 0.88); }
+.content-group-header.topic.with-cover .content-group-subscribe.active { background: rgba(255, 255, 255, 0.2); color: #fff; }
+
+.subscription-management-panel { gap: 10px; }
+.subscription-management-groups { display: grid; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.subscription-management-groups > section { display: grid; min-width: 0; align-content: start; gap: 6px; }
+.subscription-management-groups h3 { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--muted-strong); font-size: 0.7rem; }
+.subscription-management-groups > section > div { display: grid; min-width: 0; gap: 5px; }
+.subscription-management-groups p { margin: 0; border-radius: 6px; background: color-mix(in srgb, var(--surface) 36%, transparent); color: var(--muted); font-size: 0.65rem; padding: 9px; }
+.subscription-content-setting { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; border-radius: 6px; background: color-mix(in srgb, var(--surface) 48%, transparent); padding: 7px 8px; }
+.subscription-content-setting > a { display: grid; min-width: 0; gap: 2px; }
+.subscription-content-setting strong,
+.subscription-content-setting small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subscription-content-setting strong { font-size: 0.7rem; }
+.subscription-content-setting small { color: var(--muted); font-size: 0.62rem; }
+.subscription-content-setting > button { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--accent-strong); cursor: pointer; }
+.subscription-content-setting > button:hover { background: var(--accent-soft); }
+
+@media (max-width: 1040px) {
+  .article-discovery-layout { grid-template-columns: minmax(0, 1fr); }
+  .discovery-recommendations { position: static; grid-row: 1; }
+  .discovery-recommendation-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .discovery-recommendation-columns > div + div { border-top: 0; border-left: 1px solid color-mix(in srgb, var(--control-line) 68%, transparent); padding-top: 0; padding-left: 9px; }
+}
+
+@media (max-width: 760px) {
+  .subscription-management-groups { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 680px) {
+  .topic-list,
+  .collection-browse-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .discovery-recommendation-columns { grid-template-columns: minmax(0, 1fr); }
+  .discovery-recommendation-columns > div + div { border-top: 1px solid color-mix(in srgb, var(--control-line) 68%, transparent); border-left: 0; padding-top: 9px; padding-left: 0; }
+}
+
+@media (max-width: 420px) {
+  .topic-list,
+  .collection-browse-grid { grid-template-columns: minmax(0, 1fr); }
 }

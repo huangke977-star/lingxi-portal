@@ -57,6 +57,8 @@ export interface ArticleCollectionResponse {
   owner: DiscoveryAuthorResponse;
   articles: DiscoveryArticleResponse[];
   articleCount: number;
+  subscriberCount: number;
+  subscribed: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -73,6 +75,8 @@ export interface ArticleTopicResponse {
   roleCodes: string[];
   articles: DiscoveryArticleResponse[];
   articleCount: number;
+  subscriberCount: number;
+  subscribed: boolean;
   createdAt: string;
   updatedAt: string;
 }

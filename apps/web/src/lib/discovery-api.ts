@@ -43,6 +43,8 @@ export interface ArticleCollection {
   owner: ArticleAuthor;
   articles: DiscoveryArticle[];
   articleCount: number;
+  subscriberCount: number;
+  subscribed: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -59,6 +61,8 @@ export interface ArticleTopic {
   roleCodes: string[];
   articles: DiscoveryArticle[];
   articleCount: number;
+  subscriberCount: number;
+  subscribed: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -92,6 +96,11 @@ export interface DiscoveryRecommendations {
   groups: Array<{ id: number; conversationId: number; name: string; avatarUrl: string | null; announcement: string; memberCount: number; joinMode: "approval" | "invite_only"; isMember: boolean; updatedAt: string }>;
 }
 
+export interface ContentSubscriptions {
+  topics: Array<{ id: number; title: string; slug: string; description: string; coverPath: string | null; articleCount: number; subscriberCount: number; subscribedAt: string }>;
+  collections: Array<{ id: number; name: string; description: string; owner: ArticleAuthor; articleCount: number; subscriberCount: number; subscribedAt: string }>;
+}
+
 const authHeaders = (accessToken: string) => ({ Authorization: `Bearer ${accessToken}` });
 
 function pageQuery(input: { page?: number; pageSize?: number; q?: string; sort?: string } = {}) {
@@ -116,6 +125,10 @@ export function markAllSubscriptionFeedRead(accessToken: string) {
 
 export function listSubscriptionSettings(accessToken: string) {
   return requestJson<{ items: Array<{ author: ArticleAuthor; notifyNewArticles: boolean; subscribedAt: string }> }>("/discovery/subscriptions/settings", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function listContentSubscriptions(accessToken: string) {
+  return requestJson<ContentSubscriptions>("/discovery/subscriptions/content", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
 export function updateSubscriptionSetting(accessToken: string, authorId: number, notifyNewArticles: boolean) {
@@ -191,11 +204,11 @@ export function listAdminTopics(accessToken: string) {
   return requestJson<{ items: ArticleTopic[] }>("/discovery/admin/topics", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
-export function createTopic(accessToken: string, input: Omit<ArticleTopic, "id" | "articles" | "articleCount" | "createdAt" | "updatedAt">) {
+export function createTopic(accessToken: string, input: Omit<ArticleTopic, "id" | "articles" | "articleCount" | "subscriberCount" | "subscribed" | "createdAt" | "updatedAt">) {
   return requestJson<ArticleTopic>("/discovery/admin/topics", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(input) });
 }
 
-export function updateTopic(accessToken: string, id: number, input: Partial<Omit<ArticleTopic, "id" | "articles" | "articleCount" | "createdAt" | "updatedAt">>) {
+export function updateTopic(accessToken: string, id: number, input: Partial<Omit<ArticleTopic, "id" | "articles" | "articleCount" | "subscriberCount" | "subscribed" | "createdAt" | "updatedAt">>) {
   return requestJson<ArticleTopic>(`/discovery/admin/topics/${id}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(input) });
 }
 

@@ -6,6 +6,7 @@ import {
   FolderOpen,
   FolderPlus,
   Plus,
+  Rss,
   Save,
   Search,
   Trash2,
@@ -18,7 +19,7 @@ import { AppToast } from "@/components/app-toast";
 import { ContentArticleManager } from "@/components/content-article-manager";
 import { formatArticleDate } from "@/components/article-ui";
 import { listMyArticles, type Article } from "@/lib/article-api";
-import { getMe, isAuthExpiredError, type AuthUser } from "@/lib/auth-api";
+import { getMe, isAuthExpiredError, resolveApiUrl, type AuthUser } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import {
   addCollectionArticle,
@@ -28,7 +29,9 @@ import {
   listVisibleCollections,
   removeCollectionArticle,
   reorderCollectionArticles,
+  subscribeCollection,
   type ArticleCollection,
+  unsubscribeCollection,
   updateCollection,
 } from "@/lib/discovery-api";
 
@@ -45,7 +48,7 @@ const emptyBrowse: CollectionPage = {
 export default function ArticleCollectionsPage() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [view, setView] = useState<CollectionView>("mine");
+  const [view, setView] = useState<CollectionView>("browse");
   const [collections, setCollections] = useState<ArticleCollection[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -60,6 +63,7 @@ export default function ArticleCollectionsPage() {
   const [isBrowseLoading, setIsBrowseLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [browseActionId, setBrowseActionId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const selected = collections.find((item) => item.id === selectedId) ?? null;
@@ -267,17 +271,28 @@ export default function ArticleCollectionsPage() {
     );
   }
 
+  async function toggleBrowseSubscription(collection: ArticleCollection) {
+    const token = readAccessToken();
+    if (!token || collection.owner.id === user?.id) return;
+    setBrowseActionId(collection.id);
+    try {
+      const result = collection.subscribed ? await unsubscribeCollection(token, collection.id) : await subscribeCollection(token, collection.id);
+      setBrowse((current) => ({
+        ...current,
+        items: current.items.map((item) => item.id === collection.id ? { ...item, subscribed: result.subscribed, subscriberCount: result.subscriberCount } : item),
+      }));
+      setNotice(result.subscribed ? "已订阅合集。" : "已取消合集订阅。");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "合集订阅操作失败。");
+    } finally {
+      setBrowseActionId(null);
+    }
+  }
+
   return (
     <section className="page-shell collection-manager-page">
       <ArticleCenterNav active="collections" isLoggedIn user={user} />
       <nav aria-label="合集页面" className="collection-page-tabs article-center-secondary-tabs">
-        <button
-          className={view === "mine" ? "active" : undefined}
-          onClick={() => setView("mine")}
-          type="button"
-        >
-          我的合集
-        </button>
         <button
           className={view === "browse" ? "active" : undefined}
           onClick={() => setView("browse")}
@@ -285,12 +300,22 @@ export default function ArticleCollectionsPage() {
         >
           浏览合集
         </button>
+        <button
+          className={view === "mine" ? "active" : undefined}
+          onClick={() => setView("mine")}
+          type="button"
+        >
+          我的合集
+        </button>
       </nav>
 
       {view === "browse" ? (
         <BrowseCollections
           browse={browse}
           isLoading={isBrowseLoading}
+          actingId={browseActionId}
+          currentUserId={user?.id ?? null}
+          onToggle={toggleBrowseSubscription}
           query={browseQuery}
           setQuery={setBrowseQuery}
         />
@@ -449,13 +474,19 @@ export default function ArticleCollectionsPage() {
 }
 
 function BrowseCollections({
+  actingId,
   browse,
+  currentUserId,
   isLoading,
+  onToggle,
   query,
   setQuery,
 }: {
+  actingId: number | null;
   browse: CollectionPage;
+  currentUserId: number | null;
   isLoading: boolean;
+  onToggle: (collection: ArticleCollection) => void;
   query: string;
   setQuery: (value: string) => void;
 }) {
@@ -474,21 +505,20 @@ function BrowseCollections({
       ) : browse.items.length ? (
         <div className="collection-browse-grid">
           {browse.items.map((collection) => (
-            <Link href={`/collections/${collection.id}`} key={collection.id}>
-              <span className="collection-browse-icon">
-                <FolderOpen aria-hidden="true" size={20} />
-              </span>
-              <span>
-                <strong>{collection.name}</strong>
-                <small>
-                  {collection.description || "这个合集暂时没有说明。"}
-                </small>
-                <em>
-                  {collection.owner.nickname} · {collection.articleCount} 篇
-                </em>
-              </span>
-              <ExternalLink aria-hidden="true" size={15} />
-            </Link>
+            <article className="collection-browse-card" key={collection.id}>
+              <Link href={`/collections/${collection.id}`}>
+                <span className="collection-browse-cover">
+                  {collection.articles[0]?.coverPath ? <img alt="" src={resolveApiUrl(collection.articles[0].coverPath)} /> : <FolderOpen aria-hidden="true" size={34} />}
+                  <small>{collection.articleCount} 篇</small>
+                </span>
+                <span className="collection-browse-copy">
+                  <strong>{collection.name}</strong>
+                  <small>{collection.description || "这个合集暂时没有说明。"}</small>
+                  <em>{collection.owner.nickname}</em>
+                </span>
+              </Link>
+              <footer><span>{collection.subscriberCount} 人订阅</span>{collection.owner.id !== currentUserId ? <button aria-label={collection.subscribed ? `取消订阅 ${collection.name}` : `订阅 ${collection.name}`} className={collection.subscribed ? "active" : undefined} disabled={actingId === collection.id} onClick={() => onToggle(collection)} title={collection.subscribed ? "取消订阅" : "订阅"} type="button"><Rss aria-hidden="true" size={15} /></button> : <em>我的合集</em>}</footer>
+            </article>
           ))}
         </div>
       ) : (

@@ -1148,9 +1148,12 @@ export default function ProfilePage() {
                 <span>群聊邀请</span>
                 <GlassSelect ariaLabel="群聊邀请接收范围" disabled={isSavingProfileSettings} onChange={(groupInvitationPolicy) => void commitProfileSettings({ groupInvitationPolicy })} options={groupInvitationOptions} value={profileSettings.groupInvitationPolicy} />
               </label>
-              <label className="profile-search-toggle">
-                <span>允许通过站内搜索找到我</span>
-                <input checked={profileSettings.searchable} disabled={isSavingProfileSettings} onChange={(event) => void commitProfileSettings({ searchable: event.target.checked })} type="checkbox" />
+              <label className="profile-search-field">
+                <span>站内搜索</span>
+                <span className="profile-search-toggle">
+                  <span>允许通过站内搜索找到我</span>
+                  <input checked={profileSettings.searchable} disabled={isSavingProfileSettings} onChange={(event) => void commitProfileSettings({ searchable: event.target.checked })} type="checkbox" />
+                </span>
               </label>
             </div>
             <div className="profile-display-layout">

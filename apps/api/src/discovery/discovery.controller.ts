@@ -71,6 +71,12 @@ export class DiscoveryController {
     return this.discoveryService.listSubscriptionSettings(user);
   }
 
+  @Get("subscriptions/content")
+  @UseGuards(JwtAuthGuard)
+  listContentSubscriptions(@CurrentUser() user: AuthenticatedUser) {
+    return this.discoveryService.listContentSubscriptions(user);
+  }
+
   @Patch("subscriptions/:authorId/settings")
   @UseGuards(JwtAuthGuard)
   updateSubscriptionSetting(

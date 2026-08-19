@@ -6,7 +6,7 @@ import { PrismaService } from "../src/prisma/prisma.service";
 import { RedisService } from "../src/redis/redis.service";
 import { ReputationService } from "../src/reputation/reputation.service";
 import { SearchIndexService } from "../src/search/search-index.service";
-import { buildSearchFields } from "../src/search/search-normalization";
+import { buildSearchFields, searchNeedles } from "../src/search/search-normalization";
 import { SearchService } from "../src/search/search.service";
 import { SiteSettingsService } from "../src/site-settings/site-settings.service";
 
@@ -182,6 +182,12 @@ describe("P3 content reliability and unified search", () => {
     const fields = buildSearchFields(["灵犀导航"]);
     expect(fields.searchPinyin).toContain("lingxidaohang");
     expect(fields.searchPinyin).toContain("lxdh");
+  });
+
+  it("keeps latin searches intact instead of matching individual letters", () => {
+    expect(searchNeedles("nice")).toEqual(["nice"]);
+    expect(searchNeedles("灵犀")).toEqual(expect.arrayContaining(["灵犀", "lingxi", "lx"]));
+    expect(searchNeedles("灵犀")).not.toEqual(expect.arrayContaining(["l", "x"]));
   });
 
   it("deduplicates account history while aggregating hot search counts", async () => {

@@ -13,12 +13,7 @@ export function normalizeSearchKeyword(value: string): string {
 
 export function buildSearchFields(parts: Array<string | null | undefined>): SearchFields {
   const searchText = normalizeSearchKeyword(parts.filter(Boolean).join(" "));
-  const full = pinyin(searchText, { toneType: "none", type: "array" })
-    .map((part) => normalizeSearchKeyword(part))
-    .filter(Boolean);
-  const initials = pinyin(searchText, { pattern: "first", toneType: "none", type: "array" })
-    .map((part) => normalizeSearchKeyword(part))
-    .filter(Boolean);
+  const { full, initials } = buildPinyinParts(searchText);
   const searchPinyin = Array.from(new Set([
       full.join(" "),
       full.join(""),
@@ -33,9 +28,23 @@ export function buildSearchFields(parts: Array<string | null | undefined>): Sear
 export function searchNeedles(value: string): string[] {
   const normalized = normalizeSearchKeyword(value);
   if (!normalized) return [];
-  const generated = buildSearchFields([normalized]);
+  if (!/\p{Script=Han}/u.test(normalized)) return [normalized];
+  const { full, initials } = buildPinyinParts(normalized);
   return Array.from(new Set([
     normalized,
-    ...generated.searchPinyin.split(" "),
+    full.join(" "),
+    full.join(""),
+    initials.length > 1 ? initials.join("") : "",
   ].filter(Boolean)));
+}
+
+function buildPinyinParts(value: string): { full: string[]; initials: string[] } {
+  return {
+    full: pinyin(value, { toneType: "none", type: "array" })
+      .map((part) => normalizeSearchKeyword(part))
+      .filter(Boolean),
+    initials: pinyin(value, { pattern: "first", toneType: "none", type: "array" })
+      .map((part) => normalizeSearchKeyword(part))
+      .filter(Boolean),
+  };
 }
