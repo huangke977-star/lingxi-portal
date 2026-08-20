@@ -64,6 +64,7 @@ import { io, type Socket } from "socket.io-client";
 import { AppToast } from "@/components/app-toast";
 import { ChatCallPanel, useChatCalls } from "@/components/chat-call";
 import { ChatGroupManager } from "@/components/chat-group-manager";
+import { RequestComposerDialog } from "@/components/request-composer-dialog";
 import { RoleSymbol } from "@/components/role-symbol";
 import { AvatarManagementBadge } from "@/components/user-identity-badges";
 import { getMe, refreshStoredSession, resolveApiUrl, type AuthUser } from "@/lib/auth-api";
@@ -1293,6 +1294,7 @@ export function ChatDock() {
       ));
       setFriendRequestTarget(null);
       setFriendRequestNote("");
+      setIsAddFriendOpen(false);
       await refreshSocialData();
       setNotice("好友申请已发送。");
       notifySocialStateChange();
@@ -1602,6 +1604,12 @@ export function ChatDock() {
     }
     if (notification.type === "friend_request_received") {
       setSelectedId(notificationConversationId("system"));
+      setSelectedSystemNotificationId(notification.id);
+      setIsMobileConversationOpen(true);
+      return;
+    }
+    if (notification.context?.kind === "stranger_message_request") {
+      setSelectedId(notificationConversationId(notification.channel));
       setSelectedSystemNotificationId(notification.id);
       setIsMobileConversationOpen(true);
       return;
@@ -2324,32 +2332,27 @@ export function ChatDock() {
             <small className="chat-forward-hint">将按原顺序逐条转发 {pendingMessageForward.messageIds.length} 条消息。</small>
           </div>
         </div> : null}
-        {isAddFriendOpen ? <div className="chat-confirm-backdrop" onClick={() => { if (!isFriendRequestSending) { setIsAddFriendOpen(false); setFriendRequestTarget(null); } }} role="presentation">
+        {isAddFriendOpen && !friendRequestTarget ? <div className="chat-confirm-backdrop" onClick={() => { if (!isFriendRequestSending) { setIsAddFriendOpen(false); setFriendRequestTarget(null); } }} role="presentation">
           <div aria-modal="true" className="chat-add-friend-dialog" onClick={(event) => event.stopPropagation()} role="dialog">
             <header><span><UserPlus aria-hidden="true" size={18} /><strong>添加好友</strong></span><button aria-label="关闭添加好友" onClick={() => { setIsAddFriendOpen(false); setFriendRequestTarget(null); }} type="button"><X aria-hidden="true" size={17} /></button></header>
-            {friendRequestTarget ? <div className="chat-friend-request-form">
-              <div className="chat-user-search-result identity"><UserAvatar large user={friendRequestTarget} /><span><strong>{friendRequestTarget.nickname}</strong><small>@{friendRequestTarget.username}</small></span><RoleSymbol code={friendRequestTarget.role.code} /></div>
-              <label><span>申请备注</span><textarea maxLength={120} onChange={(event) => setFriendRequestNote(event.target.value)} placeholder="简单介绍一下自己，可不填" rows={3} value={friendRequestNote} /></label>
-              <footer><button disabled={isFriendRequestSending} onClick={() => { setFriendRequestTarget(null); setFriendRequestNote(""); }} type="button">返回</button><button disabled={isFriendRequestSending} onClick={() => void sendFriendRequest()} type="button">{isFriendRequestSending ? "发送中" : "发送申请"}</button></footer>
-            </div> : <>
-              <label className="chat-user-search"><Search aria-hidden="true" size={16} /><input autoFocus maxLength={40} onChange={(event) => setUserSearch(event.target.value)} placeholder="搜索昵称或用户名" value={userSearch} />{userSearch ? <button aria-label="清空用户搜索" onClick={() => setUserSearch("")} type="button"><X aria-hidden="true" size={13} /></button> : null}</label>
-              <div className="chat-user-search-results">
-                {isUserSearching ? <span className="chat-state">正在搜索。</span> : null}
-                {!isUserSearching && userSearch.trim().length < 2 ? <span className="chat-sidebar-empty">至少输入 2 个字符。</span> : null}
-                {!isUserSearching && userSearch.trim().length >= 2 && !userSearchResults.length ? <span className="chat-sidebar-empty">没有找到匹配的用户。</span> : null}
-                {userSearchResults.map((result) => <div className="chat-user-search-result" key={result.id}>
-                  <UserAvatar user={result} />
-                  <span><strong>{result.nickname}<RoleSymbol code={result.role.code} /></strong><small>@{result.username}</small></span>
-                  {result.relationship?.status === "accepted" ? <button onClick={() => void openSearchResultChat(result)} type="button">发消息</button>
-                    : result.canRequest ? <button onClick={() => { setFriendRequestTarget(result); setFriendRequestNote(""); }} type="button">添加</button>
-                      : <small className="chat-user-search-status">{result.relationship?.status === "pending"
-                        ? result.relationship.direction === "incoming" ? "对方已申请" : "等待确认"
-                        : result.relationship?.status === "blocked" ? "暂不可添加" : "暂不可添加"}</small>}
-                </div>)}
-              </div>
-            </>}
+            <label className="chat-user-search"><Search aria-hidden="true" size={16} /><input autoFocus maxLength={40} onChange={(event) => setUserSearch(event.target.value)} placeholder="搜索昵称或用户名" value={userSearch} />{userSearch ? <button aria-label="清空用户搜索" onClick={() => setUserSearch("")} type="button"><X aria-hidden="true" size={13} /></button> : null}</label>
+            <div className="chat-user-search-results">
+              {isUserSearching ? <span className="chat-state">正在搜索。</span> : null}
+              {!isUserSearching && userSearch.trim().length < 2 ? <span className="chat-sidebar-empty">至少输入 2 个字符。</span> : null}
+              {!isUserSearching && userSearch.trim().length >= 2 && !userSearchResults.length ? <span className="chat-sidebar-empty">没有找到匹配的用户。</span> : null}
+              {userSearchResults.map((result) => <div className="chat-user-search-result" key={result.id}>
+                <UserAvatar user={result} />
+                <span><strong>{result.nickname}<RoleSymbol code={result.role.code} /></strong><small>@{result.username}</small></span>
+                {result.relationship?.status === "accepted" ? <button onClick={() => void openSearchResultChat(result)} type="button">发消息</button>
+                  : result.canRequest ? <button onClick={() => { setFriendRequestTarget(result); setFriendRequestNote(""); }} type="button">添加</button>
+                    : <small className="chat-user-search-status">{result.relationship?.status === "pending"
+                      ? result.relationship.direction === "incoming" ? "对方已申请" : "等待确认"
+                      : result.relationship?.status === "blocked" ? "暂不可添加" : "暂不可添加"}</small>}
+              </div>)}
+            </div>
           </div>
         </div> : null}
+        {friendRequestTarget ? <RequestComposerDialog icon={<UserPlus aria-hidden="true" size={18} />} isSubmitting={isFriendRequestSending} label="申请备注" maxLength={120} onChange={setFriendRequestNote} onClose={() => { setFriendRequestTarget(null); setFriendRequestNote(""); }} onSubmit={() => void sendFriendRequest()} placeholder="简单介绍一下自己，可不填" submitLabel="发送好友申请" title="发送好友申请" value={friendRequestNote}><div className="chat-user-search-result identity"><UserAvatar large user={friendRequestTarget} /><span><strong>{friendRequestTarget.nickname}</strong><small>@{friendRequestTarget.username}</small></span><RoleSymbol code={friendRequestTarget.role.code} /></div></RequestComposerDialog> : null}
         {pendingFriendAction ? <div className="chat-confirm-backdrop" onClick={() => { if (!isFriendActionRunning) setPendingFriendAction(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingFriendAction.action === "block" ? <Ban aria-hidden="true" size={20} /> : <UserMinus aria-hidden="true" size={20} />}</span><div><strong>{pendingFriendAction.action === "block" ? `拉黑 ${pendingFriendAction.friendship.user.nickname}` : `删除好友 ${pendingFriendAction.friendship.user.nickname}`}</strong><p>{pendingFriendAction.action === "block" ? "拉黑后双方不能查看或发送聊天消息。历史记录会保留，解除拉黑后仍需重新添加好友。" : "删除后聊天记录会保留，但双方需要重新添加好友才能继续聊天。"}</p></div><footer><button disabled={isFriendActionRunning} onClick={() => setPendingFriendAction(null)} type="button">取消</button><button className="danger" disabled={isFriendActionRunning} onClick={() => void executeFriendAction()} type="button">{isFriendActionRunning ? "处理中" : pendingFriendAction.action === "block" ? "确认拉黑" : "确认删除"}</button></footer></div></div> : null}
         {pendingConversationAction ? <div className="chat-confirm-backdrop" onClick={() => { if (!isConversationActionRunning) setPendingConversationAction(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingConversationAction === "clear" ? <Eraser aria-hidden="true" size={20} /> : <Trash2 aria-hidden="true" size={20} />}</span><div><strong>{pendingConversationAction === "clear" ? "清空当前聊天记录" : "从聊天列表删除会话"}</strong><p>{pendingConversationAction === "clear" ? "当前账号中的系统消息、文字、图片和文件记录都会被清空，会话入口和好友关系保留。" : "当前账号中的系统消息和全部聊天内容都会被清空，并从聊天列表移除；好友关系保留，可重新发起空会话。"}</p></div><footer><button disabled={isConversationActionRunning} onClick={() => setPendingConversationAction(null)} type="button">取消</button><button className="danger" disabled={isConversationActionRunning} onClick={() => void executeConversationAction()} type="button">{isConversationActionRunning ? "处理中" : "确认"}</button></footer></div></div> : null}
         {pendingMessageOperation ? <div className="chat-confirm-backdrop" onClick={() => { if (!isMessageActionRunning) setPendingMessageOperation(null); }} role="presentation"><div aria-modal="true" className="chat-confirm-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><span className="chat-confirm-icon">{pendingMessageOperation.operation === "recall" ? <Undo2 aria-hidden="true" size={20} /> : <Trash2 aria-hidden="true" size={20} />}</span><div><strong>{pendingMessageOperation.operation === "recall" ? "撤回这条消息" : pendingMessageOperation.operation === "delete-everyone" ? `双向删除 ${pendingMessageOperation.messageIds.length} 条消息` : `删除 ${pendingMessageOperation.messageIds.length} 条消息`}</strong><p>{pendingMessageOperation.operation === "recall" ? "原消息和附件会被物理删除，双方聊天中会保留一条撤回提示。" : pendingMessageOperation.operation === "delete-everyone" ? "消息会从双方记录中永久删除，关联附件也会从磁盘删除，操作无法恢复。" : "这些消息只会从当前账号隐藏，对方仍然可以查看。"}</p></div><footer><button disabled={isMessageActionRunning} onClick={() => setPendingMessageOperation(null)} type="button">取消</button><button className="danger" disabled={isMessageActionRunning} onClick={() => void executeMessageOperation()} type="button">{isMessageActionRunning ? "处理中" : "确认"}</button></footer></div></div> : null}
@@ -2571,7 +2574,6 @@ function NotificationPanel({
               <button className="chat-system-notification-copy" onClick={() => void onSelect(notification)} type="button"><span>
                 <span className="chat-notification-heading">
                   {notification.context?.kind === "announcement" ? <span className="chat-announcement-notification-type">站点公告</span> : <strong>{notification.title}</strong>}
-                  <time>{formatChatTime(notification.updatedAt || notification.createdAt)}</time>
                 </span>
                 {notification.context?.kind === "announcement" ? <>
                   <span className="chat-announcement-notification-title">{notification.context.announcement?.title || notification.title}</span>
@@ -2584,8 +2586,11 @@ function NotificationPanel({
               </span></button>
               {notification.context?.kind === "group_report" && notification.context.message ? <NotificationReportContent message={notification.context.message} onPreview={onPreview} /> : null}
             </div>
-            {notification.context?.actionable && (notification.context.kind === "friend_request" || notification.context.kind === "stranger_message_request" || notification.context.kind === "group_invitation" || notification.context.kind === "group_join_request") ? <div className="chat-notification-inline-actions"><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "accept")} type="button"><Check aria-hidden="true" size={13} />同意</button><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "reject")} type="button"><X aria-hidden="true" size={13} />拒绝</button></div> : null}
-            {notification.context?.actionable && notification.context.kind === "group_report" ? <div className="chat-notification-inline-actions"><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "resolve-report")} type="button"><Check aria-hidden="true" size={13} />处理</button><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "reject-report")} type="button"><X aria-hidden="true" size={13} />驳回</button></div> : null}
+            <div className="chat-notification-meta">
+              <time>{formatChatTime(notification.updatedAt || notification.createdAt)}</time>
+              {notification.context?.actionable && (notification.context.kind === "friend_request" || notification.context.kind === "stranger_message_request" || notification.context.kind === "group_invitation" || notification.context.kind === "group_join_request") ? <div className="chat-notification-inline-actions"><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "accept")} type="button"><Check aria-hidden="true" size={13} />同意</button><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "reject")} type="button"><X aria-hidden="true" size={13} />拒绝</button></div> : null}
+              {notification.context?.actionable && notification.context.kind === "group_report" ? <div className="chat-notification-inline-actions"><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "resolve-report")} type="button"><Check aria-hidden="true" size={13} />处理</button><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "reject-report")} type="button"><X aria-hidden="true" size={13} />驳回</button></div> : null}
+            </div>
           </div>
           {notification.context?.article ? <button className="chat-system-article-link" onClick={() => onOpenArticle(notification.context?.article?.slug ?? "")} type="button"><FileText aria-hidden="true" size={15} /><span><small>相关文章</small><strong>{notification.context.article.title}</strong></span><ChevronLeft aria-hidden="true" size={15} /></button> : null}
         </article>;

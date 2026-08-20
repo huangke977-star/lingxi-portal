@@ -9,6 +9,7 @@ import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleCard } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import { GlassSelect } from "@/components/glass-select";
+import { RequestComposerDialog } from "@/components/request-composer-dialog";
 import {
   ArticleList,
   listPublicArticles,
@@ -49,8 +50,12 @@ function ArticlesContent() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isJoinRequestSubmitting, setIsJoinRequestSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [recommendations, setRecommendations] = useState<DiscoveryRecommendations | null>(null);
+  const [joinRequestTarget, setJoinRequestTarget] = useState<DiscoveryRecommendations["groups"][number] | null>(null);
+  const [joinRequestNote, setJoinRequestNote] = useState("");
   const composingRef = useRef(false);
 
   function replaceQuery(next: { q?: string; feed?: DiscoverFeed; order?: DiscoverOrder }) {
@@ -135,13 +140,22 @@ function ArticlesContent() {
     } catch (actionError) { setError(actionError instanceof Error ? actionError.message : "合集订阅失败。"); }
   }
 
-  async function joinRecommendedGroup(id: number) {
+  async function joinRecommendedGroup() {
     const token = readAccessToken();
-    if (!token) return;
+    if (!token || !joinRequestTarget || isJoinRequestSubmitting) return;
+    setIsJoinRequestSubmitting(true);
+    setError("");
     try {
-      await requestChatGroupJoin(token, id);
-      setRecommendations((current) => current ? { ...current, groups: current.groups.filter((group) => group.id !== id) } : current);
-    } catch (actionError) { setError(actionError instanceof Error ? actionError.message : "申请加入群聊失败。"); }
+      const result = await requestChatGroupJoin(token, joinRequestTarget.id, joinRequestNote.trim());
+      setRecommendations((current) => current ? { ...current, groups: current.groups.filter((group) => group.id !== joinRequestTarget.id) } : current);
+      setNotice(result.status === "joined" ? "已加入群聊。" : "入群申请已提交。");
+      setJoinRequestTarget(null);
+      setJoinRequestNote("");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "申请加入群聊失败。");
+    } finally {
+      setIsJoinRequestSubmitting(false);
+    }
   }
 
   const loadMore = useCallback(() => {
@@ -186,18 +200,19 @@ function ArticlesContent() {
               : <div className="article-empty-state"><strong>还没有找到文章</strong><span>{querySearch ? "换一个关键词试试。" : "这里还没有发布内容。"}</span></div>}
           {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
         </div>
-        {recommendations ? <DiscoveryRecommendationsPanel recommendations={recommendations} onJoinGroup={joinRecommendedGroup} onToggleCollection={toggleCollection} onToggleTopic={toggleTopic} /> : null}
+        {recommendations ? <DiscoveryRecommendationsPanel recommendations={recommendations} onJoinGroup={(group) => { setError(""); setJoinRequestTarget(group); setJoinRequestNote(""); }} onToggleCollection={toggleCollection} onToggleTopic={toggleTopic} /> : null}
       </div>
-      <AppToast message={error} onDismiss={() => setError("")} tone="error" />
+      {joinRequestTarget ? <RequestComposerDialog icon={<UsersRound aria-hidden="true" size={18} />} isSubmitting={isJoinRequestSubmitting} label="申请说明" maxLength={200} onChange={setJoinRequestNote} onClose={() => { setJoinRequestTarget(null); setJoinRequestNote(""); }} onSubmit={() => void joinRecommendedGroup()} placeholder="向群管理员说明来意，可不填" submitLabel="提交入群申请" title="申请加入群聊" value={joinRequestNote}><div className="request-composer-group-target"><span className="discovery-recommendation-icon group">{joinRequestTarget.avatarUrl ? <img alt="" src={resolveApiUrl(joinRequestTarget.avatarUrl)} /> : <UsersRound aria-hidden="true" size={20} />}</span><span><strong>{joinRequestTarget.name}</strong><small>{joinRequestTarget.memberCount} 位成员</small></span></div></RequestComposerDialog> : null}
+      <AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );
 }
 
-function DiscoveryRecommendationsPanel({ recommendations, onJoinGroup, onToggleCollection, onToggleTopic }: { recommendations: DiscoveryRecommendations; onJoinGroup: (id: number) => void; onToggleCollection: (id: number, subscribed: boolean) => void; onToggleTopic: (id: number, subscribed: boolean) => void }) {
+function DiscoveryRecommendationsPanel({ recommendations, onJoinGroup, onToggleCollection, onToggleTopic }: { recommendations: DiscoveryRecommendations; onJoinGroup: (group: DiscoveryRecommendations["groups"][number]) => void; onToggleCollection: (id: number, subscribed: boolean) => void; onToggleTopic: (id: number, subscribed: boolean) => void }) {
   return <aside className="discovery-recommendations"><header><span><ArrowRight aria-hidden="true" size={17} /><strong>为你推荐</strong></span></header><div className="discovery-recommendation-columns">
     <div><h2><BookOpen aria-hidden="true" size={15} />专题</h2>{recommendations.topics.slice(0, 3).map((topic) => <article key={topic.id}><Link href={`/topics/${topic.slug}`}><span className="discovery-recommendation-icon">{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <BookOpen aria-hidden="true" size={17} />}</span><span><strong>{topic.title}</strong><small>{topic.articleCount} 篇 · {topic.subscriberCount} 订阅</small></span></Link><button aria-label={topic.subscribed ? `取消订阅专题 ${topic.title}` : `订阅专题 ${topic.title}`} aria-pressed={topic.subscribed} className="discovery-recommendation-action" onClick={() => onToggleTopic(topic.id, topic.subscribed)} title={topic.subscribed ? "取消订阅" : "订阅"} type="button"><Rss aria-hidden="true" size={15} /></button></article>)}{!recommendations.topics.length ? <p>暂无新专题推荐</p> : null}</div>
     <div><h2><FolderOpen aria-hidden="true" size={15} />合集</h2>{recommendations.collections.slice(0, 3).map((collection) => <article key={collection.id}><Link href={`/collections/${collection.id}`}><span className="discovery-recommendation-icon"><FolderOpen aria-hidden="true" size={17} /></span><span><strong>{collection.name}</strong><small>{collection.articleCount} 篇 · {collection.owner.nickname}</small></span></Link><button aria-label={collection.subscribed ? `取消订阅合集 ${collection.name}` : `订阅合集 ${collection.name}`} aria-pressed={collection.subscribed} className="discovery-recommendation-action" onClick={() => onToggleCollection(collection.id, collection.subscribed)} title={collection.subscribed ? "取消订阅" : "订阅"} type="button"><Rss aria-hidden="true" size={15} /></button></article>)}{!recommendations.collections.length ? <p>暂无新合集推荐</p> : null}</div>
-    <div><h2><UsersRound aria-hidden="true" size={15} />活跃群聊</h2>{recommendations.groups.slice(0, 3).map((group) => <article key={group.id}><span className="discovery-recommendation-copy"><span className="discovery-recommendation-icon group">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <UsersRound aria-hidden="true" size={17} />}</span><span><strong>{group.name}</strong><small>{group.memberCount} 位成员 · {group.announcement || "暂无群公告"}</small></span></span>{group.isMember ? <em>已加入</em> : <button aria-label={`申请加入群聊 ${group.name}`} className="discovery-recommendation-action" onClick={() => onJoinGroup(group.id)} title="申请加入" type="button"><UserPlus aria-hidden="true" size={15} /></button>}</article>)}{!recommendations.groups.length ? <p>暂无可申请加入的群聊</p> : null}</div>
+    <div><h2><UsersRound aria-hidden="true" size={15} />活跃群聊</h2>{recommendations.groups.slice(0, 3).map((group) => <article key={group.id}><span className="discovery-recommendation-copy"><span className="discovery-recommendation-icon group">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <UsersRound aria-hidden="true" size={17} />}</span><span><strong>{group.name}</strong><small>{group.memberCount} 位成员 · {group.announcement || "暂无群公告"}</small></span></span>{group.isMember ? <em>已加入</em> : <button aria-label={`申请加入群聊 ${group.name}`} className="discovery-recommendation-action" onClick={() => onJoinGroup(group)} title="申请加入" type="button"><UserPlus aria-hidden="true" size={15} /></button>}</article>)}{!recommendations.groups.length ? <p>暂无可申请加入的群聊</p> : null}</div>
   </div></aside>;
 }
 

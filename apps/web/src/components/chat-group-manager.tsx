@@ -25,6 +25,7 @@ import {
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { RequestComposerDialog } from "@/components/request-composer-dialog";
 import { AvatarManagementBadge } from "@/components/user-identity-badges";
 import { useRouter } from "next/navigation";
 import { resolveApiUrl } from "@/lib/auth-api";
@@ -93,6 +94,8 @@ export function ChatGroupManager({
   const [joinRequests, setJoinRequests] = useState<ChatGroupJoinRequest[]>([]);
   const [searchText, setSearchText] = useState("");
   const [searchResults, setSearchResults] = useState<ChatGroupSummary[]>([]);
+  const [joinRequestTarget, setJoinRequestTarget] = useState<ChatGroupSummary | null>(null);
+  const [joinRequestNote, setJoinRequestNote] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [busyKey, setBusyKey] = useState("");
   const [notice, setNotice] = useState("");
@@ -218,6 +221,24 @@ export function ChatGroupManager({
     }
   }
 
+  async function submitJoinRequest() {
+    if (!joinRequestTarget || busyKey) return;
+    setBusyKey(`join:${joinRequestTarget.id}`);
+    setError("");
+    try {
+      await requestChatGroupJoin(accessToken, joinRequestTarget.id, joinRequestNote.trim());
+      setJoinRequestTarget(null);
+      setJoinRequestNote("");
+      setNotice("入群申请已提交。");
+      await refreshLists();
+      await onChanged();
+    } catch (actionError) {
+      setError(messageOf(actionError, "入群申请提交失败。"));
+    } finally {
+      setBusyKey("");
+    }
+  }
+
   async function saveGroup() {
     if (!selectedGroup) return;
     await run("save", async () => {
@@ -321,7 +342,7 @@ export function ChatGroupManager({
           </div> : null}
           {!isLoading && view === "search" ? <section className="chat-group-search-pane">
             <form onSubmit={(event) => { event.preventDefault(); void searchGroupsNow(); }}><Search aria-hidden="true" size={16} /><input maxLength={60} onChange={(event) => setSearchText(event.target.value)} placeholder="输入群名称" value={searchText} /><button disabled={busyKey === "search"} type="submit">搜索</button></form>
-            <div className="chat-group-list">{searchResults.map((group) => <article key={group.id}><GroupAvatar group={group} /><span><strong>{group.name}</strong><small>{group.memberCount}/{group.memberLimit} 人{group.temporary && group.expiresAt ? ` · ${formatExpiry(group.expiresAt)}` : ""}</small></span>{group.currentMemberRole ? <button onClick={() => void openGroup(group.id)} type="button">打开</button> : <button disabled={Boolean(busyKey)} onClick={() => void run(`join:${group.id}`, async () => { await requestChatGroupJoin(accessToken, group.id); }, "入群申请已提交。")} type="button">申请加入</button>}</article>)}</div>
+            <div className="chat-group-list">{searchResults.map((group) => <article key={group.id}><GroupAvatar group={group} /><span><strong>{group.name}</strong><small>{group.memberCount}/{group.memberLimit} 人{group.temporary && group.expiresAt ? ` · ${formatExpiry(group.expiresAt)}` : ""}</small></span>{group.currentMemberRole ? <button onClick={() => void openGroup(group.id)} type="button">打开</button> : <button disabled={Boolean(busyKey)} onClick={() => { setJoinRequestTarget(group); setJoinRequestNote(""); }} type="button">申请加入</button>}</article>)}</div>
           </section> : null}
           {!isLoading && view === "create" ? <section className="chat-group-form">
             <label><span>群名称</span><input maxLength={60} onChange={(event) => setCreateName(event.target.value)} placeholder="给群聊起个名字" value={createName} /></label>
@@ -356,6 +377,7 @@ export function ChatGroupManager({
         </main>
       </div>
     </section>
+    {joinRequestTarget ? <RequestComposerDialog icon={<Users aria-hidden="true" size={18} />} isSubmitting={busyKey === `join:${joinRequestTarget.id}`} label="申请说明" maxLength={200} onChange={setJoinRequestNote} onClose={() => { setJoinRequestTarget(null); setJoinRequestNote(""); }} onSubmit={() => void submitJoinRequest()} placeholder="向群管理员说明来意，可不填" submitLabel="提交入群申请" title="申请加入群聊" value={joinRequestNote}><div className="request-composer-group-target"><GroupAvatar group={joinRequestTarget} /><span><strong>{joinRequestTarget.name}</strong><small>{joinRequestTarget.memberCount}/{joinRequestTarget.memberLimit} 人</small></span></div></RequestComposerDialog> : null}
     <AppToast duration={error ? 4200 : 2600} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
   </div>;
 }

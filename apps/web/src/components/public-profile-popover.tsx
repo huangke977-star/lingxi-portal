@@ -7,6 +7,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { AppToast } from "@/components/app-toast";
+import { RequestComposerDialog } from "@/components/request-composer-dialog";
 import { RoleSymbol } from "@/components/role-symbol";
 import { AvatarManagementBadge, ManagementIdentitySymbol } from "@/components/user-identity-badges";
 import type { ArticleAuthor } from "@/lib/article-api";
@@ -100,8 +102,7 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
     }
   }
 
-  async function addFriend(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function addFriend() {
     const token = readAccessToken();
     if (!token) return goToLogin();
     setIsActing(true);
@@ -149,8 +150,7 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
     }
   }
 
-  async function sendMessageRequest(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function sendMessageRequest() {
     const token = readAccessToken();
     const body = messageRequestBody.trim();
     if (!token) return goToLogin();
@@ -228,17 +228,18 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
           <div className="public-profile-actions">
             <Link href={`/users/${encodeURIComponent(author.username)}`} onClick={() => setIsOpen(false)}>查看主页</Link>
             {!readAccessToken() ? <button onClick={goToLogin} type="button">登录后互动</button> : null}
-            {profile && !profile.isSelf && !relationship && profile.canRequestFriend && !isFriendNoteOpen ? <button disabled={isActing} onClick={() => { setIsMessageRequestOpen(false); setIsFriendNoteOpen(true); }} type="button"><UserPlus aria-hidden="true" size={15} />加好友</button> : null}
+            {profile && !profile.isSelf && !relationship && profile.canRequestFriend ? <button disabled={isActing} onClick={() => { setError(""); setIsOpen(false); setIsMessageRequestOpen(false); setIsFriendNoteOpen(true); }} type="button"><UserPlus aria-hidden="true" size={15} />加好友</button> : null}
             {relationship?.direction === "outgoing" ? <span><Clock3 aria-hidden="true" size={14} />等待对方确认</span> : null}
             {relationship?.direction === "incoming" ? <><button disabled={isActing} onClick={() => void respond("accepted")} type="button"><Check aria-hidden="true" size={15} />接受</button><button disabled={isActing} onClick={() => void respond("declined")} type="button"><X aria-hidden="true" size={15} />拒绝</button></> : null}
             {profile?.messageAccess === "conversation" ? <button disabled={isActing} onClick={() => void startChat()} type="button"><MessageCircle aria-hidden="true" size={15} />发消息</button> : null}
-            {profile?.messageAccess === "request" && !isMessageRequestOpen ? <button disabled={isActing} onClick={() => { setIsFriendNoteOpen(false); setIsMessageRequestOpen(true); }} type="button"><Send aria-hidden="true" size={15} />消息请求</button> : null}
+            {profile?.messageAccess === "request" ? <button disabled={isActing} onClick={() => { setError(""); setIsOpen(false); setIsFriendNoteOpen(false); setIsMessageRequestOpen(true); }} type="button"><Send aria-hidden="true" size={15} />消息请求</button> : null}
           </div>
-          {profile && !profile.isSelf && !relationship && isFriendNoteOpen ? <form className="friend-request-note-form" onSubmit={addFriend}><textarea autoFocus maxLength={120} onChange={(event) => setFriendNote(event.target.value)} placeholder="申请备注，可不填" rows={2} value={friendNote} /><div><span>{friendNote.length} / 120</span><button disabled={isActing} type="submit">{isActing ? "发送中" : "发送申请"}</button><button onClick={() => { setIsFriendNoteOpen(false); setFriendNote(""); }} type="button">取消</button></div></form> : null}
-          {profile?.messageAccess === "request" && isMessageRequestOpen ? <form className="friend-request-note-form" onSubmit={sendMessageRequest}><textarea autoFocus maxLength={500} onChange={(event) => setMessageRequestBody(event.target.value)} placeholder="说明来意，对方接受后会成为第一条消息" required rows={3} value={messageRequestBody} /><div><span>{messageRequestBody.length} / 500</span><button disabled={isActing || !messageRequestBody.trim()} type="submit">{isActing ? "发送中" : "发送请求"}</button><button onClick={() => { setIsMessageRequestOpen(false); setMessageRequestBody(""); }} type="button">取消</button></div></form> : null}
         </div>,
         document.body,
       ) : null}
+      {isFriendNoteOpen ? <RequestComposerDialog icon={<UserPlus aria-hidden="true" size={18} />} isSubmitting={isActing} label="申请备注" maxLength={120} onChange={setFriendNote} onClose={() => { setIsFriendNoteOpen(false); setFriendNote(""); }} onSubmit={() => void addFriend()} placeholder="简单介绍一下自己，可不填" submitLabel="发送好友申请" title={`添加 ${author.nickname} 为好友`} value={friendNote} /> : null}
+      {isMessageRequestOpen ? <RequestComposerDialog icon={<Send aria-hidden="true" size={18} />} isSubmitting={isActing} label="首条消息" maxLength={500} onChange={setMessageRequestBody} onClose={() => { setIsMessageRequestOpen(false); setMessageRequestBody(""); }} onSubmit={() => void sendMessageRequest()} placeholder="说明来意，对方接受后这段内容会成为第一条聊天消息" requireContent submitLabel="发送消息请求" title="发送消息请求" value={messageRequestBody} /> : null}
+      <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </>
   );
 }

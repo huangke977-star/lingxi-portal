@@ -6,11 +6,11 @@ import { Ban, Check, Clock3, Eye, FileText, Heart, MessageCircle, Rss, Send, Use
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { AppToast } from "@/components/app-toast";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleCard } from "@/components/article-ui";
 import { DiscoveryArticleRow } from "@/components/discovery-ui";
+import { RequestComposerDialog } from "@/components/request-composer-dialog";
 import { RoleSymbol } from "@/components/role-symbol";
 import { AvatarManagementBadge, ManagementIdentitySymbol } from "@/components/user-identity-badges";
 import { ArticleList, listPublicArticles, listVisibleArticles } from "@/lib/article-api";
@@ -44,8 +44,10 @@ export default function UserProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isActing, setIsActing] = useState(false);
+  const [isFriendRequestOpen, setIsFriendRequestOpen] = useState(false);
   const [isMessageRequestOpen, setIsMessageRequestOpen] = useState(false);
   const [isBlockConfirmOpen, setIsBlockConfirmOpen] = useState(false);
+  const [friendRequestNote, setFriendRequestNote] = useState("");
   const [messageRequestBody, setMessageRequestBody] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -106,15 +108,15 @@ export default function UserProfilePage() {
     }
   }
 
-  async function addFriend() {
+  async function sendFriendRequest() {
     const token = requireLogin();
     if (!token || !profile) return;
-    const note = window.prompt("填写好友申请备注，可留空。", "") ?? null;
-    if (note === null) return;
     setIsActing(true);
     try {
-      await requestFriend(token, profile.id, note.trim() || undefined);
+      await requestFriend(token, profile.id, friendRequestNote.trim() || undefined);
       await refreshProfile();
+      setFriendRequestNote("");
+      setIsFriendRequestOpen(false);
       setNotice("好友申请已发送。");
       notifySocialStateChange();
     } catch (actionError) {
@@ -221,7 +223,7 @@ export default function UserProfilePage() {
           {profile.visibleFields.stats || profile.visibleFields.followingCount ? <div className="public-user-stats">{profile.publicArticleCount !== null ? <span><FileText aria-hidden="true" size={16} /><small>公开文章</small><strong>{profile.publicArticleCount}</strong></span> : null}{profile.receivedLikeCount !== null ? <span><Heart aria-hidden="true" size={16} /><small>累计获赞</small><strong>{profile.receivedLikeCount}</strong></span> : null}{profile.publicViewCount !== null ? <span><Eye aria-hidden="true" size={16} /><small>公开阅读</small><strong>{profile.publicViewCount}</strong></span> : null}{profile.subscriberCount !== null ? <span><UsersRound aria-hidden="true" size={16} /><small>订阅者</small><strong>{profile.subscriberCount}</strong></span> : null}{profile.followingCount !== null ? <span><Rss aria-hidden="true" size={16} /><small>已订阅</small><strong>{profile.followingCount}</strong></span> : null}{showcase?.visitCount !== null && showcase?.visitCount !== undefined ? <span><Eye aria-hidden="true" size={16} /><small>主页访问</small><strong>{showcase.visitCount}</strong></span> : null}</div> : null}
           {!profile.isSelf ? <div className="public-user-actions">
             <button className={profile.subscribed ? "active" : ""} disabled={isActing} onClick={() => void toggleSubscription()} type="button"><Rss aria-hidden="true" size={16} />{profile.subscribed ? "已订阅" : "订阅"}</button>
-            {!relationship && profile.canRequestFriend ? <button disabled={isActing} onClick={() => void addFriend()} type="button"><UserPlus aria-hidden="true" size={16} />加好友</button> : null}
+            {!relationship && profile.canRequestFriend ? <button disabled={isActing} onClick={() => setIsFriendRequestOpen(true)} type="button"><UserPlus aria-hidden="true" size={16} />加好友</button> : null}
             {relationship?.direction === "outgoing" ? <span><Clock3 aria-hidden="true" size={15} />等待确认</span> : null}
             {relationship?.direction === "incoming" ? <><button disabled={isActing} onClick={() => void respond("accepted")} type="button"><Check aria-hidden="true" size={16} />接受</button><button disabled={isActing} onClick={() => void respond("declined")} type="button"><X aria-hidden="true" size={16} />拒绝</button></> : null}
             {profile.messageAccess === "conversation" ? <button disabled={isActing} onClick={() => void startChat()} type="button"><MessageCircle aria-hidden="true" size={16} />发消息</button> : null}
@@ -241,7 +243,8 @@ export default function UserProfilePage() {
       {articles.items.length ? <div className="article-feed-list">{articles.items.map((article) => <ArticleCard article={article} key={article.id} taxonomyPlacement="after-stats" />)}</div> : <div className="search-page-empty"><span>暂时没有可见的发布内容。</span></div>}
       {articles.items.length ? <ArticleInfiniteFooter hasMore={articles.page < articles.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
     </section>
-    {isMessageRequestOpen ? createPortal(<div className="modal-backdrop modal-backdrop--light p9-message-request-backdrop" role="presentation"><section aria-modal="true" className="chat-add-friend-dialog p9-message-request-dialog" role="dialog"><header><span><Send aria-hidden="true" size={18} /><strong>发送消息请求</strong></span><button aria-label="关闭" disabled={isActing} onClick={() => setIsMessageRequestOpen(false)} type="button"><X aria-hidden="true" size={17} /></button></header><form onSubmit={(event) => { event.preventDefault(); void sendMessageRequest(); }}><label><span>首条消息</span><div className="p9-message-request-composer"><textarea autoFocus maxLength={500} onChange={(event) => setMessageRequestBody(event.target.value)} placeholder="说明来意，对方接受后这段内容会成为第一条聊天消息" rows={5} value={messageRequestBody} /><small>{messageRequestBody.length} / 500</small><button aria-label={isActing ? "正在发送消息请求" : "发送消息请求"} disabled={isActing || !messageRequestBody.trim()} title="发送请求" type="submit"><Send aria-hidden="true" size={17} /></button></div></label></form></section></div>, document.body) : null}
+    {isFriendRequestOpen ? <RequestComposerDialog icon={<UserPlus aria-hidden="true" size={18} />} isSubmitting={isActing} label="申请备注" maxLength={120} onChange={setFriendRequestNote} onClose={() => { setIsFriendRequestOpen(false); setFriendRequestNote(""); }} onSubmit={() => void sendFriendRequest()} placeholder="简单介绍一下自己，可不填" submitLabel="发送好友申请" title={`添加 ${profile.nickname} 为好友`} value={friendRequestNote} /> : null}
+    {isMessageRequestOpen ? <RequestComposerDialog icon={<Send aria-hidden="true" size={18} />} isSubmitting={isActing} label="首条消息" maxLength={500} onChange={setMessageRequestBody} onClose={() => { setIsMessageRequestOpen(false); setMessageRequestBody(""); }} onSubmit={() => void sendMessageRequest()} placeholder="说明来意，对方接受后这段内容会成为第一条聊天消息" requireContent submitLabel="发送消息请求" title="发送消息请求" value={messageRequestBody} /> : null}
     {isBlockConfirmOpen ? <div className="chat-confirm-backdrop" role="presentation"><section aria-modal="true" className="chat-confirm-dialog" role="dialog"><span className="chat-confirm-icon"><Ban aria-hidden="true" size={20} /></span><div><strong>将 {profile.nickname} 加入黑名单</strong><p>双方将不能查看主页、添加好友、私信、订阅或互相发送群聊邀请，现有待处理请求也会取消。</p></div><footer><button disabled={isActing} onClick={() => setIsBlockConfirmOpen(false)} type="button">取消</button><button className="danger" disabled={isActing} onClick={() => void confirmBlock()} type="button">确认拉黑</button></footer></section></div> : null}
     <AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
   </section>;

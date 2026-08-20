@@ -1,24 +1,28 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import {
-  ExternalLink,
   FolderOpen,
   FolderPlus,
   ImagePlus,
+  Pencil,
   Plus,
   Rss,
   Save,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { AppToast } from "@/components/app-toast";
 import { ContentArticleManager } from "@/components/content-article-manager";
 import { formatArticleDate } from "@/components/article-ui";
+import { GlassSelect } from "@/components/glass-select";
 import { listMyArticles, type Article } from "@/lib/article-api";
 import { getMe, isAuthExpiredError, resolveApiUrl, type AuthUser } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
@@ -46,6 +50,11 @@ const emptyBrowse: CollectionPage = {
   pageSize: 12,
   totalPages: 1,
 };
+const COLLECTION_VISIBILITY_OPTIONS = [
+  { label: "公开", value: "public" },
+  { label: "登录可见", value: "authenticated" },
+  { label: "仅自己", value: "private" },
+] as const;
 
 export default function ArticleCollectionsPage() {
   const router = useRouter();
@@ -58,9 +67,14 @@ export default function ArticleCollectionsPage() {
   const [description, setDescription] = useState("");
   const [visibility, setVisibility] =
     useState<ArticleCollection["visibility"]>("public");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newVisibility, setNewVisibility] = useState<ArticleCollection["visibility"]>("public");
   const [newCoverPath, setNewCoverPath] = useState("");
   const [newCoverFile, setNewCoverFile] = useState<File | null>(null);
+  const [editCoverFile, setEditCoverFile] = useState<File | null>(null);
   const [coverPath, setCoverPath] = useState("");
   const [browseQuery, setBrowseQuery] = useState("");
   const [browse, setBrowse] = useState<CollectionPage>(emptyBrowse);
@@ -68,11 +82,12 @@ export default function ArticleCollectionsPage() {
   const [isBrowseLoading, setIsBrowseLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [browseActionId, setBrowseActionId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const selected = collections.find((item) => item.id === selectedId) ?? null;
+  const newCoverPreview = useFilePreview(newCoverFile);
+  const editCoverPreview = useFilePreview(editCoverFile);
 
   function selectCollection(next: ArticleCollection | null) {
     setSelectedId(next?.id ?? null);
@@ -94,11 +109,9 @@ export default function ArticleCollectionsPage() {
       loadAllMyPublishedArticles(token),
     ])
       .then(([currentUser, collectionResult, articleResult]) => {
-        const first = collectionResult.items[0] ?? null;
         setUser(currentUser);
         setCollections(collectionResult.items);
         setArticles(articleResult);
-        selectCollection(first);
       })
       .catch((loadError) => {
         if (isAuthExpiredError(loadError)) {
@@ -174,7 +187,9 @@ export default function ArticleCollectionsPage() {
     try {
       const created = await createCollection(token, {
         name: newName.trim(),
+        description: newDescription.trim(),
         coverPath: newCoverPath.trim() || undefined,
+        visibility: newVisibility,
       });
       let next = created;
       if (newCoverFile) {
@@ -182,19 +197,23 @@ export default function ArticleCollectionsPage() {
           next = await uploadCollectionCover(token, created.id, newCoverFile);
         } catch (uploadError) {
           setCollections((current) => [...current, created]);
-          selectCollection(created);
           setNewName("");
+          setNewDescription("");
+          setNewVisibility("public");
           setNewCoverPath("");
           setNewCoverFile(null);
+          setIsCreateOpen(false);
           setError(uploadError instanceof Error ? `合集已创建，但封面上传失败：${uploadError.message}` : "合集已创建，但封面上传失败。");
           return;
         }
       }
       setCollections((current) => [...current, next]);
-      selectCollection(next);
       setNewName("");
+      setNewDescription("");
+      setNewVisibility("public");
       setNewCoverPath("");
       setNewCoverFile(null);
+      setIsCreateOpen(false);
       setNotice(newCoverFile ? "合集已创建，封面已上传。" : "合集已创建。");
     } catch (actionError) {
       setError(
@@ -210,14 +229,17 @@ export default function ArticleCollectionsPage() {
     if (!token || !selected) return;
     setIsSaving(true);
     try {
-      replaceCollection(
-        await updateCollection(token, selected.id, {
-          name: name.trim(),
-          description: description.trim(),
-          coverPath: coverPath.trim(),
-          visibility,
-        }),
-      );
+      let updated = await updateCollection(token, selected.id, {
+        name: name.trim(),
+        description: description.trim(),
+        coverPath: editCoverFile ? selected.coverPath ?? "" : coverPath.trim(),
+        visibility,
+      });
+      if (editCoverFile) updated = await uploadCollectionCover(token, selected.id, editCoverFile);
+      replaceCollection(updated);
+      selectCollection(updated);
+      setEditCoverFile(null);
+      setIsEditOpen(false);
       setNotice("合集设置已保存。");
     } catch (actionError) {
       setError(
@@ -240,34 +262,14 @@ export default function ArticleCollectionsPage() {
       await deleteCollection(token, selected.id);
       const remaining = collections.filter((item) => item.id !== selected.id);
       setCollections(remaining);
-      selectCollection(remaining[0] ?? null);
+      selectCollection(null);
+      setEditCoverFile(null);
+      setIsEditOpen(false);
       setNotice("合集已删除，文章内容未受影响。");
     } catch (actionError) {
       setError(
         actionError instanceof Error ? actionError.message : "合集删除失败。",
       );
-    }
-  }
-
-  async function uploadCover(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    const token = readAccessToken();
-    if (!file || !token || !selected) return;
-    if (file.size > 10 * 1024 * 1024) {
-      setError("合集封面不能超过 10 MB。");
-      return;
-    }
-    setIsUploadingCover(true);
-    try {
-      const updated = await uploadCollectionCover(token, selected.id, file);
-      replaceCollection(updated);
-      setCoverPath(updated.coverPath ?? "");
-      setNotice("合集封面已上传并立即生效。");
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "合集封面上传失败。");
-    } finally {
-      setIsUploadingCover(false);
     }
   }
 
@@ -320,6 +322,12 @@ export default function ArticleCollectionsPage() {
     );
   }
 
+  function openCollectionEditor(collection: ArticleCollection) {
+    selectCollection(collection);
+    setEditCoverFile(null);
+    setIsEditOpen(true);
+  }
+
   async function toggleBrowseSubscription(collection: ArticleCollection) {
     const token = readAccessToken();
     if (!token) return;
@@ -369,183 +377,16 @@ export default function ArticleCollectionsPage() {
           setQuery={setBrowseQuery}
         />
       ) : (
-        <>
-          <form className="collection-create-bar" onSubmit={create}>
-            <FolderPlus aria-hidden="true" size={18} />
-            <input
-              aria-label="新合集名称"
-              maxLength={80}
-              onChange={(event) => setNewName(event.target.value)}
-              placeholder="新合集名称"
-              value={newName}
-            />
-            <input
-              aria-label="合集封面图片地址"
-              maxLength={512}
-              onChange={(event) => setNewCoverPath(event.target.value)}
-              placeholder="封面图片地址（可选）"
-              value={newCoverPath}
-            />
-            <label className="collection-create-cover-upload" title="上传本地封面">
-              <ImagePlus aria-hidden="true" size={16} />
-              <span>{newCoverFile ? newCoverFile.name : "上传封面"}</span>
-              <input
-                accept="image/jpeg,image/png,image/webp,image/avif"
-                onChange={(event) => setNewCoverFile(event.target.files?.[0] ?? null)}
-                type="file"
-              />
-            </label>
-            <button disabled={isSaving || !newName.trim()} type="submit">
-              <Plus aria-hidden="true" size={16} />
-              创建
-            </button>
-          </form>
+        <section className="collection-mine-view">
+          <div className="collection-mine-toolbar"><button onClick={() => setIsCreateOpen(true)} type="button"><FolderPlus aria-hidden="true" size={16} />创建合集</button></div>
           {isLoading ? (
             <div className="article-empty-state">正在读取合集。</div>
-          ) : (
-            <div className="collection-manager-layout">
-              <aside className="collection-manager-list">
-                {collections.map((collection) => (
-                  <button
-                    className={
-                      collection.id === selectedId ? "active" : undefined
-                    }
-                    key={collection.id}
-                    onClick={() => selectCollection(collection)}
-                    type="button"
-                  >
-                    <span>
-                      <strong>{collection.name}</strong>
-                      <small>{collection.articleCount} 篇文章</small>
-                    </span>
-                    <em>
-                      {collection.visibility === "public"
-                        ? "公开"
-                        : collection.visibility === "authenticated"
-                          ? "登录可见"
-                          : "仅自己"}
-                    </em>
-                  </button>
-                ))}
-                {!collections.length ? (
-                  <div className="article-empty-inline">先创建一个合集。</div>
-                ) : null}
-              </aside>
-              <section className="collection-inspector">
-                {selected ? (
-                  <>
-                    <header>
-                      <div>
-                        <strong>{selected.name}</strong>
-                        <span>
-                          更新于 {formatArticleDate(selected.updatedAt)}
-                        </span>
-                      </div>
-                      <span className="inspector-header-actions">
-                        <Link href={`/collections/${selected.id}`}>
-                          <ExternalLink aria-hidden="true" size={15} />
-                          查看
-                        </Link>
-                        <button
-                          disabled={isSaving || !name.trim()}
-                          onClick={() => void save()}
-                          type="button"
-                        >
-                          <Save aria-hidden="true" size={15} />
-                          保存
-                        </button>
-                        <button
-                          className="danger"
-                          onClick={() => void removeCollection()}
-                          type="button"
-                        >
-                          <Trash2 aria-hidden="true" size={15} />
-                          删除
-                        </button>
-                      </span>
-                    </header>
-                    <div className="collection-form-grid">
-                      <label>
-                        <span>合集名称</span>
-                        <input
-                          maxLength={80}
-                          onChange={(event) => setName(event.target.value)}
-                          value={name}
-                        />
-                      </label>
-                      <label>
-                        <span>可见范围</span>
-                        <select
-                          onChange={(event) =>
-                            setVisibility(
-                              event.target
-                                .value as ArticleCollection["visibility"],
-                            )
-                          }
-                          value={visibility}
-                        >
-                          <option value="public">公开</option>
-                          <option value="authenticated">登录可见</option>
-                          <option value="private">仅自己</option>
-                        </select>
-                      </label>
-                      <label className="wide">
-                        <span>封面图片地址</span>
-                        <input
-                          maxLength={512}
-                          onChange={(event) => setCoverPath(event.target.value)}
-                          placeholder="https://example.com/collection-cover.webp"
-                          value={coverPath}
-                        />
-                      </label>
-                      <label className="wide">
-                        <span>合集说明</span>
-                        <textarea
-                          maxLength={300}
-                          onChange={(event) =>
-                            setDescription(event.target.value)
-                          }
-                          rows={2}
-                          value={description}
-                        />
-                      </label>
-                    </div>
-                    <div className="collection-cover-control">
-                      <div className="collection-cover-preview">
-                        {coverPath ? <img alt="合集封面预览" src={resolveApiUrl(coverPath)} /> : <FolderOpen aria-hidden="true" size={28} />}
-                      </div>
-                      <span>
-                        <strong>本地封面</strong>
-                        <small>支持 JPEG、PNG、WebP、AVIF，最大 10 MB；上传后立即生效。</small>
-                      </span>
-                      <label className={isUploadingCover ? "disabled" : ""}>
-                        <ImagePlus aria-hidden="true" size={16} />
-                        {isUploadingCover ? "上传中" : "上传图片"}
-                        <input
-                          accept="image/jpeg,image/png,image/webp,image/avif"
-                          disabled={isUploadingCover}
-                          onChange={(event) => void uploadCover(event)}
-                          type="file"
-                        />
-                      </label>
-                    </div>
-                    <ContentArticleManager
-                      articles={articles}
-                      noun="合集"
-                      onReorder={reorderArticles}
-                      onToggle={toggleArticle}
-                      selectedArticles={selected.articles}
-                    />
-                  </>
-                ) : (
-                  <div className="article-empty-state">
-                    选择或创建一个合集。
-                  </div>
-                )}
-              </section>
-            </div>
-          )}
-        </>
+          ) : collections.length ? <div className="collection-browse-grid collection-mine-grid">{collections.map((collection) => <article aria-label={`打开合集 ${collection.name}`} className="collection-browse-card collection-mine-card" key={collection.id} onClick={() => router.push(`/collections/${collection.id}`)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) router.push(`/collections/${collection.id}`); }} role="link" tabIndex={0}>
+            <span className="collection-browse-cover">{collection.coverPath ? <Image alt="" height={258} src={resolveApiUrl(collection.coverPath)} unoptimized width={344} /> : <FolderOpen aria-hidden="true" size={34} />}<small>{collection.articleCount} 篇</small></span>
+            <span className="collection-browse-copy"><strong>{collection.name}</strong><small>{collection.description || "这个合集暂时没有说明。"}</small><em>更新于 {formatArticleDate(collection.updatedAt)}</em></span>
+            <footer><span>{collectionVisibilityLabel(collection.visibility)} · {collection.subscriberCount} 人订阅</span><button aria-label={`编辑 ${collection.name}`} onClick={(event) => { event.stopPropagation(); openCollectionEditor(collection); }} onKeyDown={(event) => event.stopPropagation()} title="编辑合集" type="button"><Pencil aria-hidden="true" size={15} /></button></footer>
+          </article>)}</div> : <div className="article-empty-state">还没有合集，先创建一个。</div>}
+        </section>
       )}
       {view === "browse" && browse.items.length ? (
         <ArticleInfiniteFooter
@@ -554,6 +395,8 @@ export default function ArticleCollectionsPage() {
           onLoadMore={loadMore}
         />
       ) : null}
+      {isCreateOpen ? <CollectionEditorDialog coverFile={newCoverFile} coverPath={newCoverPath} coverPreview={newCoverPreview} description={newDescription} isSaving={isSaving} name={newName} onClose={() => { if (!isSaving) { setIsCreateOpen(false); setNewName(""); setNewDescription(""); setNewVisibility("public"); setNewCoverPath(""); setNewCoverFile(null); } }} onCoverFileChange={(file) => { if (file && file.size > 10 * 1024 * 1024) { setError("合集封面不能超过 10 MB。"); return; } setNewCoverFile(file); if (file) setNewCoverPath(""); }} onCoverPathChange={(value) => { setNewCoverPath(value); if (value) setNewCoverFile(null); }} onDescriptionChange={setNewDescription} onNameChange={setNewName} onSubmit={create} onVisibilityChange={setNewVisibility} submitLabel="创建合集" title="创建合集" visibility={newVisibility} /> : null}
+      {isEditOpen && selected ? <CollectionEditorDialog coverFile={editCoverFile} coverPath={coverPath} coverPreview={editCoverPreview || (coverPath ? resolveApiUrl(coverPath) : "")} description={description} isSaving={isSaving} name={name} onClose={() => { if (!isSaving) { setIsEditOpen(false); setEditCoverFile(null); selectCollection(null); } }} onCoverFileChange={(file) => { if (file && file.size > 10 * 1024 * 1024) { setError("合集封面不能超过 10 MB。"); return; } setEditCoverFile(file); if (file) setCoverPath(""); }} onCoverPathChange={(value) => { setCoverPath(value); if (value) setEditCoverFile(null); }} onDelete={() => void removeCollection()} onDescriptionChange={setDescription} onNameChange={setName} onSubmit={(event) => { event.preventDefault(); void save(); }} onVisibilityChange={setVisibility} submitLabel="保存合集" title="编辑合集" visibility={visibility}><ContentArticleManager articles={articles} noun="合集" onReorder={reorderArticles} onToggle={toggleArticle} selectedArticles={selected.articles} /></CollectionEditorDialog> : null}
       <AppToast
         message={error || notice}
         onDismiss={() => {
@@ -564,6 +407,78 @@ export default function ArticleCollectionsPage() {
       />
     </section>
   );
+}
+
+function CollectionEditorDialog({
+  children,
+  coverFile,
+  coverPath,
+  coverPreview,
+  description,
+  isSaving,
+  name,
+  onClose,
+  onCoverFileChange,
+  onCoverPathChange,
+  onDelete,
+  onDescriptionChange,
+  onNameChange,
+  onSubmit,
+  onVisibilityChange,
+  submitLabel,
+  title,
+  visibility,
+}: {
+  children?: ReactNode;
+  coverFile: File | null;
+  coverPath: string;
+  coverPreview: string;
+  description: string;
+  isSaving: boolean;
+  name: string;
+  onClose: () => void;
+  onCoverFileChange: (file: File | null) => void;
+  onCoverPathChange: (value: string) => void;
+  onDelete?: () => void;
+  onDescriptionChange: (value: string) => void;
+  onNameChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onVisibilityChange: (value: ArticleCollection["visibility"]) => void;
+  submitLabel: string;
+  title: string;
+  visibility: ArticleCollection["visibility"];
+}) {
+  if (typeof document === "undefined") return null;
+  return createPortal(<div className="modal-backdrop modal-backdrop--light collection-editor-backdrop" role="presentation"><form aria-modal="true" className="chat-add-friend-dialog collection-editor-dialog" onSubmit={onSubmit} role="dialog">
+    <header><span><FolderOpen aria-hidden="true" size={18} /><strong>{title}</strong></span><button aria-label="关闭" disabled={isSaving} onClick={onClose} type="button"><X aria-hidden="true" size={17} /></button></header>
+    <main>
+      <div className="collection-form-grid">
+        <label><span>合集名称</span><input autoFocus maxLength={80} onChange={(event) => onNameChange(event.target.value)} required value={name} /></label>
+        <label><span>可见范围</span><GlassSelect ariaLabel="合集可见范围" disabled={isSaving} onChange={onVisibilityChange} options={COLLECTION_VISIBILITY_OPTIONS} value={visibility} /></label>
+        <label className="wide"><span>封面图片地址</span><input maxLength={512} onChange={(event) => onCoverPathChange(event.target.value)} placeholder="https://example.com/collection-cover.webp" value={coverPath} /></label>
+        <label className="wide"><span>合集说明</span><textarea maxLength={300} onChange={(event) => onDescriptionChange(event.target.value)} rows={3} value={description} /></label>
+      </div>
+      <div className="collection-editor-cover-control">
+        <div className="collection-cover-preview">{coverPreview ? <Image alt="合集封面预览" height={258} src={coverPreview} unoptimized width={344} /> : <FolderOpen aria-hidden="true" size={28} />}</div>
+        <span><strong>{coverFile?.name || "本地封面"}</strong><small>支持 JPEG、PNG、WebP、AVIF，最大 10 MB；本地图片优先于图片地址。</small></span>
+        <label title="选择本地封面"><ImagePlus aria-hidden="true" size={16} /><span>上传图片</span><input accept="image/jpeg,image/png,image/webp,image/avif" disabled={isSaving} onChange={(event) => { onCoverFileChange(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} type="file" /></label>
+      </div>
+      {children}
+    </main>
+    <footer>{onDelete ? <button className="danger" disabled={isSaving} onClick={onDelete} type="button"><Trash2 aria-hidden="true" size={15} />删除合集</button> : <span />}<button disabled={isSaving || !name.trim()} type="submit">{title === "创建合集" ? <Plus aria-hidden="true" size={15} /> : <Save aria-hidden="true" size={15} />}{isSaving ? "处理中" : submitLabel}</button></footer>
+  </form></div>, document.body);
+}
+
+function useFilePreview(file: File | null): string {
+  const preview = useMemo(() => file ? URL.createObjectURL(file) : "", [file]);
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+  return preview;
+}
+
+function collectionVisibilityLabel(visibility: ArticleCollection["visibility"]): string {
+  if (visibility === "authenticated") return "登录可见";
+  if (visibility === "private") return "仅自己";
+  return "公开";
 }
 
 function BrowseCollections({
@@ -601,7 +516,7 @@ function BrowseCollections({
             <article className="collection-browse-card" key={collection.id}>
               <Link href={`/collections/${collection.id}`}>
                 <span className="collection-browse-cover">
-                  {collection.coverPath || collection.articles[0]?.coverPath ? <img alt="" src={resolveApiUrl(collection.coverPath ?? collection.articles[0]?.coverPath ?? "")} /> : <FolderOpen aria-hidden="true" size={34} />}
+                  {collection.coverPath ? <Image alt="" height={258} src={resolveApiUrl(collection.coverPath)} unoptimized width={344} /> : <FolderOpen aria-hidden="true" size={34} />}
                   <small>{collection.articleCount} 篇</small>
                 </span>
                 <span className="collection-browse-copy">
@@ -610,7 +525,7 @@ function BrowseCollections({
                   <em>{collection.owner.nickname}</em>
                 </span>
               </Link>
-              <footer><span>{collection.subscriberCount} 人订阅</span>{collection.subscribed ? <button aria-label={`取消订阅 ${collection.name}`} className="active collection-subscribe-cancel" disabled={actingId === collection.id} onClick={() => onToggle(collection)} title="取消订阅" type="button"><Rss aria-hidden="true" size={15} /><span>取消订阅</span></button> : collection.owner.id !== currentUserId ? <button aria-label={`订阅 ${collection.name}`} disabled={actingId === collection.id} onClick={() => onToggle(collection)} title="订阅" type="button"><Rss aria-hidden="true" size={15} /></button> : <em>我的合集</em>}</footer>
+              <footer><span>{collection.subscriberCount} 人订阅</span>{collection.subscribed ? <button aria-label={`取消订阅 ${collection.name}`} className="active collection-subscribe-cancel" disabled={actingId === collection.id} onClick={() => onToggle(collection)} title="取消订阅" type="button"><Rss aria-hidden="true" size={15} /></button> : collection.owner.id !== currentUserId ? <button aria-label={`订阅 ${collection.name}`} disabled={actingId === collection.id} onClick={() => onToggle(collection)} title="订阅" type="button"><Rss aria-hidden="true" size={15} /></button> : <em>我的合集</em>}</footer>
             </article>
           ))}
         </div>
