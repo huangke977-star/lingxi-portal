@@ -16694,9 +16694,9 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .topic-card { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; align-items: stretch; gap: 0; }
 .topic-card:hover,
 .collection-browse-card:hover { box-shadow: var(--shadow-hover); transform: translateY(-1px); }
-.topic-card > a.topic-card-link,
+.topic-card > .topic-card-link,
 .collection-browse-card > a { display: grid; min-width: 0; color: var(--foreground); }
-.topic-card > a.topic-card-link { width: 100%; height: auto; grid-template-rows: auto 1fr; place-items: stretch; border-radius: 0; }
+.topic-card > .topic-card-link { width: 100%; height: auto; grid-template-rows: auto 1fr; place-items: stretch; border-radius: 0; }
 .topic-card-cover,
 .collection-browse-cover { position: relative; display: grid; width: 100%; aspect-ratio: 4 / 3; place-items: center; overflow: hidden; border-radius: 0; background: color-mix(in srgb, var(--accent) 17%, var(--surface)); color: var(--accent-strong); }
 .topic-card-cover > img,
@@ -16807,4 +16807,85 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 @media (max-width: 420px) {
   .topic-list,
   .collection-browse-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Collection and topic controls share one compact row and one dialog scroll treatment. */
+.collection-page-toolbar {
+  display: flex;
+  min-width: 0;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--control-line);
+}
+.collection-page-toolbar .collection-page-tabs { flex: 0 0 auto; border: 0; }
+.collection-page-toolbar .collection-browse-search {
+  width: min(286px, 38vw);
+  min-height: 30px;
+  flex: 0 1 286px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
+  padding: 6px 9px;
+}
+.collection-page-toolbar .collection-browse-search input { font-size: 0.72rem; }
+.collection-create-action,
+.topic-create-action {
+  display: inline-flex;
+  min-height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0 7px;
+}
+.collection-create-action:hover,
+.topic-create-action:hover { background: var(--accent-soft); }
+.collection-browse { gap: 8px; }
+
+.topic-card.disabled { border-color: color-mix(in srgb, #9b6673 34%, var(--control-line)); }
+.topic-card.disabled .topic-card-cover > img { filter: saturate(0.72); }
+.topic-card-cover > em {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  border-radius: 5px;
+  background: rgba(117, 68, 81, 0.78);
+  color: #fff;
+  font-size: 0.61rem;
+  font-style: normal;
+  padding: 4px 6px;
+}
+.topic-card-actions { display: inline-flex; min-width: 0; align-items: center; gap: 2px; }
+.topic-card-actions > button { color: var(--muted); }
+.topic-card-actions > button:first-child { color: var(--accent-strong); }
+.topic-editor-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.topic-editor-cover-control { margin: 0; }
+
+:is(.collection-editor-dialog > main, .glass-multi-select-options) {
+  scrollbar-color: color-mix(in srgb, var(--accent-strong) 42%, transparent) transparent;
+  scrollbar-width: thin;
+}
+:is(.collection-editor-dialog > main, .glass-multi-select-options)::-webkit-scrollbar { width: 5px; height: 5px; }
+:is(.collection-editor-dialog > main, .glass-multi-select-options)::-webkit-scrollbar-track { background: transparent; }
+:is(.collection-editor-dialog > main, .glass-multi-select-options)::-webkit-scrollbar-thumb {
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent-strong) 42%, transparent);
+}
+:is(.collection-editor-dialog > main, .glass-multi-select-options)::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+
+@media (max-width: 680px) {
+  .collection-page-toolbar { flex-wrap: wrap; gap: 4px 8px; padding-bottom: 6px; }
+  .collection-page-toolbar .collection-page-tabs { flex: 1 1 auto; }
+  .collection-page-toolbar .collection-browse-search { width: 100%; flex: 1 1 100%; }
+  .topic-editor-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .topics-toolbar { align-items: stretch; flex-direction: column; }
+  .topics-toolbar > div { width: 100%; }
+  .topics-toolbar .topics-search { flex: 1 1 auto; width: auto; }
 }

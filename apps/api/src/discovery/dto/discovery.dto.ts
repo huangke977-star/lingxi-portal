@@ -64,6 +64,15 @@ export class CreateArticleCollectionDto {
   @IsOptional()
   @IsIn(["public", "authenticated", "private"])
   visibility?: "public" | "authenticated" | "private";
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(500)
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  articleIds?: number[];
 }
 
 export class UpdateArticleCollectionDto {
@@ -140,6 +149,15 @@ export class CreateArticleTopicDto {
   @IsOptional()
   @IsString({ each: true })
   roleCodes?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(500)
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  articleIds?: number[];
 }
 
 export class UpdateArticleTopicDto {

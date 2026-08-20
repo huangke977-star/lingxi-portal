@@ -74,12 +74,13 @@ export default function ArticleCollectionsPage() {
   const [newVisibility, setNewVisibility] = useState<ArticleCollection["visibility"]>("public");
   const [newCoverPath, setNewCoverPath] = useState("");
   const [newCoverFile, setNewCoverFile] = useState<File | null>(null);
+  const [newSelectedArticles, setNewSelectedArticles] = useState<Article[]>([]);
   const [editCoverFile, setEditCoverFile] = useState<File | null>(null);
   const [coverPath, setCoverPath] = useState("");
   const [browseQuery, setBrowseQuery] = useState("");
   const [browse, setBrowse] = useState<CollectionPage>(emptyBrowse);
   const [isLoading, setIsLoading] = useState(true);
-  const [isBrowseLoading, setIsBrowseLoading] = useState(false);
+  const [hasLoadedBrowse, setHasLoadedBrowse] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [browseActionId, setBrowseActionId] = useState<number | null>(null);
@@ -130,24 +131,31 @@ export default function ArticleCollectionsPage() {
     if (view !== "browse") return;
     const token = readAccessToken();
     if (!token) return;
+    let active = true;
     const timer = window.setTimeout(() => {
-      setIsBrowseLoading(true);
       listVisibleCollections(token, {
         q: browseQuery.trim(),
         page: 1,
         pageSize: 12,
       })
-        .then(setBrowse)
-        .catch((loadError) =>
-          setError(
+        .then((result) => {
+          if (active) setBrowse(result);
+        })
+        .catch((loadError) => {
+          if (active) setError(
             loadError instanceof Error
               ? loadError.message
               : "可见合集加载失败。",
-          ),
-        )
-        .finally(() => setIsBrowseLoading(false));
+          );
+        })
+        .finally(() => {
+          if (active) setHasLoadedBrowse(true);
+        });
     }, 220);
-    return () => window.clearTimeout(timer);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [browseQuery, view]);
 
   const loadMore = useCallback(() => {
@@ -190,6 +198,7 @@ export default function ArticleCollectionsPage() {
         description: newDescription.trim(),
         coverPath: newCoverPath.trim() || undefined,
         visibility: newVisibility,
+        articleIds: newSelectedArticles.map((article) => article.id),
       });
       let next = created;
       if (newCoverFile) {
@@ -202,6 +211,7 @@ export default function ArticleCollectionsPage() {
           setNewVisibility("public");
           setNewCoverPath("");
           setNewCoverFile(null);
+          setNewSelectedArticles([]);
           setIsCreateOpen(false);
           setError(uploadError instanceof Error ? `合集已创建，但封面上传失败：${uploadError.message}` : "合集已创建，但封面上传失败。");
           return;
@@ -213,6 +223,7 @@ export default function ArticleCollectionsPage() {
       setNewVisibility("public");
       setNewCoverPath("");
       setNewCoverFile(null);
+      setNewSelectedArticles([]);
       setIsCreateOpen(false);
       setNotice(newCoverFile ? "合集已创建，封面已上传。" : "合集已创建。");
     } catch (actionError) {
@@ -316,6 +327,19 @@ export default function ArticleCollectionsPage() {
     }
   }
 
+  async function toggleNewArticle(articleId: number, included: boolean) {
+    setNewSelectedArticles((current) => included
+      ? current.filter((article) => article.id !== articleId)
+      : [...current, ...articles.filter((article) => article.id === articleId)]);
+  }
+
+  async function reorderNewArticles(ids: number[]) {
+    setNewSelectedArticles((current) => {
+      const articleById = new Map(current.map((article) => [article.id, article]));
+      return ids.flatMap((id) => articleById.get(id) ?? []);
+    });
+  }
+
   function replaceCollection(next: ArticleCollection) {
     setCollections((current) =>
       current.map((item) => (item.id === next.id ? next : item)),
@@ -349,36 +373,48 @@ export default function ArticleCollectionsPage() {
   return (
     <section className="page-shell collection-manager-page">
       <ArticleCenterNav active="collections" isLoggedIn user={user} />
-      <nav aria-label="合集页面" className="collection-page-tabs article-center-secondary-tabs">
-        <button
-          className={view === "browse" ? "active" : undefined}
-          onClick={() => setView("browse")}
-          type="button"
-        >
-          浏览合集
-        </button>
-        <button
-          className={view === "mine" ? "active" : undefined}
-          onClick={() => setView("mine")}
-          type="button"
-        >
-          我的合集
-        </button>
-      </nav>
+      <div className="collection-page-toolbar">
+        <nav aria-label="合集页面" className="collection-page-tabs article-center-secondary-tabs">
+          <button
+            className={view === "browse" ? "active" : undefined}
+            onClick={() => setView("browse")}
+            type="button"
+          >
+            浏览合集
+          </button>
+          <button
+            className={view === "mine" ? "active" : undefined}
+            onClick={() => setView("mine")}
+            type="button"
+          >
+            我的合集
+          </button>
+        </nav>
+        {view === "browse" ? (
+          <label className="collection-browse-search">
+            <Search aria-hidden="true" size={15} />
+            <input
+              aria-label="搜索合集"
+              onChange={(event) => setBrowseQuery(event.target.value)}
+              placeholder="搜索合集、说明、昵称或用户名"
+              value={browseQuery}
+            />
+          </label>
+        ) : (
+          <button className="collection-create-action" onClick={() => setIsCreateOpen(true)} type="button"><FolderPlus aria-hidden="true" size={16} />创建合集</button>
+        )}
+      </div>
 
       {view === "browse" ? (
         <BrowseCollections
           browse={browse}
-          isLoading={isBrowseLoading}
+          hasLoaded={hasLoadedBrowse}
           actingId={browseActionId}
           currentUserId={user?.id ?? null}
           onToggle={toggleBrowseSubscription}
-          query={browseQuery}
-          setQuery={setBrowseQuery}
         />
       ) : (
         <section className="collection-mine-view">
-          <div className="collection-mine-toolbar"><button onClick={() => setIsCreateOpen(true)} type="button"><FolderPlus aria-hidden="true" size={16} />创建合集</button></div>
           {isLoading ? (
             <div className="article-empty-state">正在读取合集。</div>
           ) : collections.length ? <div className="collection-browse-grid collection-mine-grid">{collections.map((collection) => <article aria-label={`打开合集 ${collection.name}`} className="collection-browse-card collection-mine-card" key={collection.id} onClick={() => router.push(`/collections/${collection.id}`)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) router.push(`/collections/${collection.id}`); }} role="link" tabIndex={0}>
@@ -395,7 +431,7 @@ export default function ArticleCollectionsPage() {
           onLoadMore={loadMore}
         />
       ) : null}
-      {isCreateOpen ? <CollectionEditorDialog coverFile={newCoverFile} coverPath={newCoverPath} coverPreview={newCoverPreview} description={newDescription} isSaving={isSaving} name={newName} onClose={() => { if (!isSaving) { setIsCreateOpen(false); setNewName(""); setNewDescription(""); setNewVisibility("public"); setNewCoverPath(""); setNewCoverFile(null); } }} onCoverFileChange={(file) => { if (file && file.size > 10 * 1024 * 1024) { setError("合集封面不能超过 10 MB。"); return; } setNewCoverFile(file); if (file) setNewCoverPath(""); }} onCoverPathChange={(value) => { setNewCoverPath(value); if (value) setNewCoverFile(null); }} onDescriptionChange={setNewDescription} onNameChange={setNewName} onSubmit={create} onVisibilityChange={setNewVisibility} submitLabel="创建合集" title="创建合集" visibility={newVisibility} /> : null}
+      {isCreateOpen ? <CollectionEditorDialog coverFile={newCoverFile} coverPath={newCoverPath} coverPreview={newCoverPreview} description={newDescription} isSaving={isSaving} name={newName} onClose={() => { if (!isSaving) { setIsCreateOpen(false); setNewName(""); setNewDescription(""); setNewVisibility("public"); setNewCoverPath(""); setNewCoverFile(null); setNewSelectedArticles([]); } }} onCoverFileChange={(file) => { if (file && file.size > 10 * 1024 * 1024) { setError("合集封面不能超过 10 MB。"); return; } setNewCoverFile(file); if (file) setNewCoverPath(""); }} onCoverPathChange={(value) => { setNewCoverPath(value); if (value) setNewCoverFile(null); }} onDescriptionChange={setNewDescription} onNameChange={setNewName} onSubmit={create} onVisibilityChange={setNewVisibility} submitLabel="创建合集" title="创建合集" visibility={newVisibility}><ContentArticleManager articles={articles} noun="合集" onReorder={reorderNewArticles} onToggle={toggleNewArticle} selectedArticles={newSelectedArticles} /></CollectionEditorDialog> : null}
       {isEditOpen && selected ? <CollectionEditorDialog coverFile={editCoverFile} coverPath={coverPath} coverPreview={editCoverPreview || (coverPath ? resolveApiUrl(coverPath) : "")} description={description} isSaving={isSaving} name={name} onClose={() => { if (!isSaving) { setIsEditOpen(false); setEditCoverFile(null); selectCollection(null); } }} onCoverFileChange={(file) => { if (file && file.size > 10 * 1024 * 1024) { setError("合集封面不能超过 10 MB。"); return; } setEditCoverFile(file); if (file) setCoverPath(""); }} onCoverPathChange={(value) => { setCoverPath(value); if (value) setEditCoverFile(null); }} onDelete={() => void removeCollection()} onDescriptionChange={setDescription} onNameChange={setName} onSubmit={(event) => { event.preventDefault(); void save(); }} onVisibilityChange={setVisibility} submitLabel="保存合集" title="编辑合集" visibility={visibility}><ContentArticleManager articles={articles} noun="合集" onReorder={reorderArticles} onToggle={toggleArticle} selectedArticles={selected.articles} /></CollectionEditorDialog> : null}
       <AppToast
         message={error || notice}
@@ -485,32 +521,18 @@ function BrowseCollections({
   actingId,
   browse,
   currentUserId,
-  isLoading,
+  hasLoaded,
   onToggle,
-  query,
-  setQuery,
 }: {
   actingId: number | null;
   browse: CollectionPage;
   currentUserId: number | null;
-  isLoading: boolean;
+  hasLoaded: boolean;
   onToggle: (collection: ArticleCollection) => void;
-  query: string;
-  setQuery: (value: string) => void;
 }) {
   return (
     <section className="collection-browse">
-      <label className="collection-browse-search">
-        <Search aria-hidden="true" size={16} />
-        <input
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="搜索合集、说明、昵称或用户名"
-          value={query}
-        />
-      </label>
-      {isLoading ? (
-        <div className="article-empty-state">正在搜索可见合集。</div>
-      ) : browse.items.length ? (
+      {!hasLoaded ? null : browse.items.length ? (
         <div className="collection-browse-grid">
           {browse.items.map((collection) => (
             <article className="collection-browse-card" key={collection.id}>
@@ -525,7 +547,7 @@ function BrowseCollections({
                   <em>{collection.owner.nickname}</em>
                 </span>
               </Link>
-              <footer><span>{collection.subscriberCount} 人订阅</span>{collection.subscribed ? <button aria-label={`取消订阅 ${collection.name}`} className="active collection-subscribe-cancel" disabled={actingId === collection.id} onClick={() => onToggle(collection)} title="取消订阅" type="button"><Rss aria-hidden="true" size={15} /></button> : collection.owner.id !== currentUserId ? <button aria-label={`订阅 ${collection.name}`} disabled={actingId === collection.id} onClick={() => onToggle(collection)} title="订阅" type="button"><Rss aria-hidden="true" size={15} /></button> : <em>我的合集</em>}</footer>
+              <footer><span>{collection.subscriberCount} 人订阅</span>{collection.owner.id === currentUserId ? null : collection.subscribed ? <button aria-label={`取消订阅 ${collection.name}`} className="active collection-subscribe-cancel" disabled={actingId === collection.id} onClick={() => onToggle(collection)} title="取消订阅" type="button"><Rss aria-hidden="true" size={15} /></button> : <button aria-label={`订阅 ${collection.name}`} disabled={actingId === collection.id} onClick={() => onToggle(collection)} title="订阅" type="button"><Rss aria-hidden="true" size={15} /></button>}</footer>
             </article>
           ))}
         </div>

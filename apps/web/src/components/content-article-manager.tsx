@@ -54,12 +54,15 @@ export function ContentArticleManager({
   const filtered = useMemo(() => {
     const keyword = query.trim().toLocaleLowerCase();
     if (!keyword) return articles;
-    return articles.filter((article) =>
-      `${article.title} ${article.author.nickname} ${article.category}`
+    return articles.filter((article) => {
+      const searchable = noun === "合集"
+        ? `${article.title} ${article.category}`
+        : `${article.title} ${article.author.nickname} ${article.category}`;
+      return searchable
         .toLocaleLowerCase()
-        .includes(keyword),
-    );
-  }, [articles, query]);
+        .includes(keyword);
+    });
+  }, [articles, noun, query]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, {
@@ -126,7 +129,7 @@ export function ContentArticleManager({
               <input
                 autoFocus
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索标题、作者或分类"
+                placeholder={noun === "合集" ? "搜索标题或分类" : "搜索标题、作者或分类"}
                 value={query}
               />
             </label>

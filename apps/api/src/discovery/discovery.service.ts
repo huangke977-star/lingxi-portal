@@ -464,15 +464,33 @@ export class DiscoveryService {
   async createCollection(user: AuthenticatedUser, dto: CreateArticleCollectionDto) {
     const name = dto.name.trim();
     if (!name) throw new BadRequestException("合集名称不能为空。");
-    const record = await this.prisma.articleCollection.create({
-      data: {
-        ownerId: user.id,
-        name,
-        description: dto.description?.trim() ?? "",
-        coverPath: dto.coverPath?.trim() || null,
-        visibility: this.collectionVisibility(dto.visibility),
-      },
-      include: articleCollectionInclude,
+    const articleIds = dto.articleIds ?? [];
+    const record = await this.prisma.$transaction(async (transaction) => {
+      if (articleIds.length) {
+        const validCount = await transaction.article.count({
+          where: {
+            id: { in: articleIds },
+            authorId: user.id,
+            status: { not: ArticleStatus.deleted },
+          },
+        });
+        if (validCount !== articleIds.length) {
+          throw new BadRequestException("合集只能收录你自己的有效文章。");
+        }
+      }
+      return transaction.articleCollection.create({
+        data: {
+          ownerId: user.id,
+          name,
+          description: dto.description?.trim() ?? "",
+          coverPath: dto.coverPath?.trim() || null,
+          visibility: this.collectionVisibility(dto.visibility),
+          items: articleIds.length ? {
+            create: articleIds.map((articleId, sortOrder) => ({ articleId, sortOrder })),
+          } : undefined,
+        },
+        include: articleCollectionInclude,
+      });
     });
     return this.toCollection(record, user, true);
   }
@@ -703,7 +721,11 @@ export class DiscoveryService {
       orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }, { id: "desc" }],
       include: articleTopicInclude,
     });
-    return { items: records.map((record) => this.toTopic(record, user, true)) };
+    const subscribedIds = new Set(records.length ? (await this.prisma.articleTopicSubscription.findMany({
+      where: { userId: user.id, topicId: { in: records.map(({ id }) => id) } },
+      select: { topicId: true },
+    })).map(({ topicId }) => topicId) : []);
+    return { items: records.map((record) => this.toTopic(record, user, true, subscribedIds.has(record.id))) };
   }
 
   async uploadTopicCover(
@@ -786,20 +808,35 @@ export class DiscoveryService {
     if (!title) throw new BadRequestException("专题名称不能为空。");
     const visibility = this.topicVisibility(dto.visibility);
     const roleIds = await this.resolveTopicRoleIds(visibility, dto.roleCodes ?? []);
-    const record = await this.prisma.articleTopic.create({
-      data: {
-        title,
-        slug: await this.uniqueTopicSlug(dto.slug || title),
-        description: dto.description?.trim() ?? "",
-        coverPath: dto.coverPath?.trim() || null,
-        visibility,
-        status: dto.status === "disabled" ? ArticleTopicStatus.disabled : ArticleTopicStatus.active,
-        sortOrder: dto.sortOrder ?? 0,
-        createdById: user.id,
-        updatedById: user.id,
-        allowedRoles: { create: roleIds.map((roleId) => ({ roleId })) },
-      },
-      include: articleTopicInclude,
+    const slug = await this.uniqueTopicSlug(dto.slug || title);
+    const articleIds = dto.articleIds ?? [];
+    const record = await this.prisma.$transaction(async (transaction) => {
+      if (articleIds.length) {
+        const validCount = await transaction.article.count({
+          where: { id: { in: articleIds }, status: { not: ArticleStatus.deleted } },
+        });
+        if (validCount !== articleIds.length) {
+          throw new BadRequestException("专题只能收录有效文章。");
+        }
+      }
+      return transaction.articleTopic.create({
+        data: {
+          title,
+          slug,
+          description: dto.description?.trim() ?? "",
+          coverPath: dto.coverPath?.trim() || null,
+          visibility,
+          status: dto.status === "disabled" ? ArticleTopicStatus.disabled : ArticleTopicStatus.active,
+          sortOrder: dto.sortOrder ?? 0,
+          createdById: user.id,
+          updatedById: user.id,
+          allowedRoles: { create: roleIds.map((roleId) => ({ roleId })) },
+          items: articleIds.length ? {
+            create: articleIds.map((articleId, sortOrder) => ({ articleId, sortOrder })),
+          } : undefined,
+        },
+        include: articleTopicInclude,
+      });
     });
     return this.toTopic(record, user, true);
   }

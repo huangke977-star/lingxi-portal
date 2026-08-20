@@ -256,6 +256,102 @@ describe("DiscoveryService", () => {
       .rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it("creates a collection and its selected articles in one ordered transaction", async () => {
+    const created = collection([article(2), article(1)]);
+    const transaction = {
+      article: { count: jest.fn(async () => 2) },
+      articleCollection: { create: jest.fn(async () => created) },
+    };
+    const prisma = {
+      ...transaction,
+      $transaction: jest.fn(async (callback: (value: unknown) => Promise<unknown>) => callback(transaction)),
+    };
+
+    await expect(createService(prisma).createCollection(user, {
+      name: "服务器手记",
+      visibility: "public",
+      articleIds: [2, 1],
+    })).resolves.toMatchObject({ id: created.id, articles: [{ id: 2 }, { id: 1 }] });
+    expect(prisma.article.count).toHaveBeenCalledWith({
+      where: {
+        id: { in: [2, 1] },
+        authorId: user.id,
+        status: { not: ArticleStatus.deleted },
+      },
+    });
+    expect(prisma.articleCollection.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        items: { create: [{ articleId: 2, sortOrder: 0 }, { articleId: 1, sortOrder: 1 }] },
+      }),
+    }));
+  });
+
+  it("rejects the entire collection creation when a selected article is invalid", async () => {
+    const transaction = {
+      article: { count: jest.fn(async () => 1) },
+      articleCollection: { create: jest.fn() },
+    };
+    const prisma = {
+      ...transaction,
+      $transaction: jest.fn(async (callback: (value: unknown) => Promise<unknown>) => callback(transaction)),
+    };
+
+    await expect(createService(prisma).createCollection(user, {
+      name: "无效合集",
+      articleIds: [1, 2],
+    })).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.articleCollection.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a topic and its selected articles in one ordered transaction", async () => {
+    const admin = { ...user, isSuperAdmin: true };
+    const created = {
+      id: 11,
+      title: "运维专题",
+      slug: "operations",
+      description: "专题说明",
+      coverPath: null,
+      visibility: PortalVisibility.public,
+      status: ArticleTopicStatus.active,
+      sortOrder: 0,
+      allowedRoles: [],
+      items: [article(2), article(1)].map((item, sortOrder) => ({
+        article: item,
+        articleId: item.id,
+        topicId: 11,
+        sortOrder,
+        createdAt: new Date("2026-08-01T00:00:00.000Z"),
+      })),
+      _count: { subscribers: 0 },
+      createdAt: new Date("2026-08-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-02T00:00:00.000Z"),
+    };
+    const transaction = {
+      article: { count: jest.fn(async () => 2) },
+      articleTopic: {
+        create: jest.fn(async () => created),
+      },
+    };
+    const prisma = {
+      ...transaction,
+      articleTopic: {
+        ...transaction.articleTopic,
+        findFirst: jest.fn(async () => null),
+      },
+      $transaction: jest.fn(async (callback: (value: unknown) => Promise<unknown>) => callback(transaction)),
+    };
+
+    await expect(createService(prisma).createTopic(admin, {
+      title: "运维专题",
+      articleIds: [2, 1],
+    })).resolves.toMatchObject({ id: created.id, articles: [{ id: 2 }, { id: 1 }] });
+    expect(prisma.articleTopic.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        items: { create: [{ articleId: 2, sortOrder: 0 }, { articleId: 1, sortOrder: 1 }] },
+      }),
+    }));
+  });
+
   it("searches only collections visible to the current viewer", async () => {
     const prisma = {
       articleCollection: {

@@ -164,7 +164,7 @@ export function listVisibleCollections(accessToken: string, input: { q?: string;
   return requestJson<{ items: ArticleCollection[]; total: number; page: number; pageSize: number; totalPages: number }>(`/discovery/collections/visible${pageQuery(input)}`, { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
-export function createCollection(accessToken: string, input: { name: string; description?: string; coverPath?: string; visibility?: ArticleCollection["visibility"] }) {
+export function createCollection(accessToken: string, input: { name: string; description?: string; coverPath?: string; visibility?: ArticleCollection["visibility"]; articleIds?: number[] }) {
   return requestJson<ArticleCollection>("/discovery/collections", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(input) });
 }
 
@@ -211,11 +211,13 @@ export function listAdminTopics(accessToken: string) {
   return requestJson<{ items: ArticleTopic[] }>("/discovery/admin/topics", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
-export function createTopic(accessToken: string, input: Omit<ArticleTopic, "id" | "articles" | "articleCount" | "subscriberCount" | "subscribed" | "createdAt" | "updatedAt">) {
+export type ArticleTopicInput = Omit<ArticleTopic, "id" | "articles" | "articleCount" | "subscriberCount" | "subscribed" | "createdAt" | "updatedAt">;
+
+export function createTopic(accessToken: string, input: ArticleTopicInput & { articleIds?: number[] }) {
   return requestJson<ArticleTopic>("/discovery/admin/topics", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(input) });
 }
 
-export function updateTopic(accessToken: string, id: number, input: Partial<Omit<ArticleTopic, "id" | "articles" | "articleCount" | "subscriberCount" | "subscribed" | "createdAt" | "updatedAt">>) {
+export function updateTopic(accessToken: string, id: number, input: Partial<ArticleTopicInput>) {
   return requestJson<ArticleTopic>(`/discovery/admin/topics/${id}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(input) });
 }
 
