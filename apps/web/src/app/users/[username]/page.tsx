@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Ban, Check, Clock3, Eye, FileText, Heart, MessageCircle, Rss, Send, UserPlus, UsersRound, X } from "lucide-react";
+import { Ban, Check, Clock3, Eye, FileText, FolderOpen, Heart, MessageCircle, Rss, Send, UserPlus, UsersRound, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -236,13 +236,14 @@ export default function UserProfilePage() {
 
     {showcase?.settings.showPinnedContent && (showcase.pinnedArticle || showcase.pinnedCollection) ? <section className="public-user-featured"><header><strong>代表内容</strong></header>{showcase.pinnedArticle ? <DiscoveryArticleRow article={showcase.pinnedArticle} /> : null}{showcase.pinnedCollection ? <Link className="profile-featured-collection" href={`/collections/${showcase.pinnedCollection.id}`}><span>代表合集</span><strong>{showcase.pinnedCollection.name}</strong><small>{showcase.pinnedCollection.articleCount} 篇文章</small></Link> : null}</section> : null}
 
-    {showcase?.collections.length ? <section className="public-user-collections"><header><strong>文章合集</strong><span>{showcase.collections.length}</span></header><div>{showcase.collections.map((collection) => <Link href={`/collections/${collection.id}`} key={collection.id}><strong>{collection.name}</strong><span>{collection.description || "暂无说明"}</span><small>{collection.articleCount} 篇文章</small></Link>)}</div></section> : null}
-
-    <section className="public-user-articles">
-      <header><strong>发布内容</strong><span>{articles.total}</span></header>
-      {articles.items.length ? <div className="article-feed-list">{articles.items.map((article) => <ArticleCard article={article} key={article.id} taxonomyPlacement="after-stats" />)}</div> : <div className="search-page-empty"><span>暂时没有可见的发布内容。</span></div>}
-      {articles.items.length ? <ArticleInfiniteFooter hasMore={articles.page < articles.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
-    </section>
+    <div className={`public-user-content-layout${showcase?.collections.length ? " has-collections" : ""}`}>
+      <section className="public-user-articles">
+        <header><strong>发布内容</strong><span>{articles.total}</span></header>
+        {articles.items.length ? <div className="article-feed-list">{articles.items.map((article) => <ArticleCard article={article} key={article.id} taxonomyPlacement="after-stats" />)}</div> : <div className="search-page-empty"><span>暂时没有可见的发布内容。</span></div>}
+        {articles.items.length ? <ArticleInfiniteFooter hasMore={articles.page < articles.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
+      </section>
+      {showcase?.collections.length ? <aside className="public-user-collections"><header><FolderOpen aria-hidden="true" size={16} /><strong>文章合集</strong><span>{showcase.collections.length}</span></header><div className="public-user-collection-list">{showcase.collections.map((collection) => <Link href={`/collections/${collection.id}`} key={collection.id}><span className="public-user-collection-icon"><FolderOpen aria-hidden="true" size={17} /></span><span className="public-user-collection-copy"><strong>{collection.name}</strong><small>{collection.articleCount} 篇 · {collection.description || "暂无说明"}</small></span></Link>)}</div></aside> : null}
+    </div>
     {isFriendRequestOpen ? <RequestComposerDialog icon={<UserPlus aria-hidden="true" size={18} />} isSubmitting={isActing} label="申请备注" maxLength={120} onChange={setFriendRequestNote} onClose={() => { setIsFriendRequestOpen(false); setFriendRequestNote(""); }} onSubmit={() => void sendFriendRequest()} placeholder="简单介绍一下自己，可不填" submitLabel="发送好友申请" title={`添加 ${profile.nickname} 为好友`} value={friendRequestNote} /> : null}
     {isMessageRequestOpen ? <RequestComposerDialog icon={<Send aria-hidden="true" size={18} />} isSubmitting={isActing} label="首条消息" maxLength={500} onChange={setMessageRequestBody} onClose={() => { setIsMessageRequestOpen(false); setMessageRequestBody(""); }} onSubmit={() => void sendMessageRequest()} placeholder="说明来意，对方接受后这段内容会成为第一条聊天消息" requireContent submitLabel="发送消息请求" title="发送消息请求" value={messageRequestBody} /> : null}
     {isBlockConfirmOpen ? <div className="chat-confirm-backdrop" role="presentation"><section aria-modal="true" className="chat-confirm-dialog" role="dialog"><span className="chat-confirm-icon"><Ban aria-hidden="true" size={20} /></span><div><strong>将 {profile.nickname} 加入黑名单</strong><p>双方将不能查看主页、添加好友、私信、订阅或互相发送群聊邀请，现有待处理请求也会取消。</p></div><footer><button disabled={isActing} onClick={() => setIsBlockConfirmOpen(false)} type="button">取消</button><button className="danger" disabled={isActing} onClick={() => void confirmBlock()} type="button">确认拉黑</button></footer></section></div> : null}
