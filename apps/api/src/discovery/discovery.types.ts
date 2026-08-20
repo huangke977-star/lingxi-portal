@@ -15,6 +15,8 @@ export interface UploadedTopicCover {
   size: number;
 }
 
+export type UploadedCollectionCover = UploadedTopicCover;
+
 export interface DiscoveryTaxonomyLink {
   id: number;
   label: string;
@@ -52,6 +54,7 @@ export interface ArticleCollectionResponse {
   id: number;
   name: string;
   description: string;
+  coverPath: string | null;
   visibility: "public" | "authenticated" | "private";
   sortOrder: number;
   owner: DiscoveryAuthorResponse;

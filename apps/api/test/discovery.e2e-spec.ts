@@ -76,6 +76,7 @@ function collection(items = [article(1), article(2)]) {
     ownerId: user.id,
     name: "服务器手记",
     description: "合集说明",
+    coverPath: null,
     visibility: ArticleVisibility.public,
     sortOrder: 0,
     createdAt: new Date("2026-08-01T00:00:00.000Z"),
@@ -355,6 +356,45 @@ describe("DiscoveryService", () => {
 
       const storedName = String(updatedData.coverStoredName);
       expect(result.coverPath).toBe(`/discovery/topics/covers/${storedName}`);
+      expect((await stat(join(coverDirectory, storedName))).size).toBe(png.length);
+      await expect(stat(join(coverDirectory, previousStoredName))).rejects.toThrow();
+    } finally {
+      if (previousUploadRoot === undefined) delete process.env.ARTICLE_UPLOAD_DIR;
+      else process.env.ARTICLE_UPLOAD_DIR = previousUploadRoot;
+      await rm(uploadRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("writes a managed collection cover and physically removes the previous file", async () => {
+    const uploadRoot = await mkdtemp(join(tmpdir(), "hlovet-collection-cover-"));
+    const previousUploadRoot = process.env.ARTICLE_UPLOAD_DIR;
+    process.env.ARTICLE_UPLOAD_DIR = uploadRoot;
+    const coverDirectory = join(uploadRoot, "collection-covers");
+    const previousStoredName = "collection-00000000-0000-4000-8000-000000000001.webp";
+    await mkdir(coverDirectory, { recursive: true });
+    await writeFile(join(coverDirectory, previousStoredName), Buffer.from("old-cover"));
+    let updatedData: Record<string, unknown> = {};
+    const prisma = {
+      articleCollection: {
+        findFirst: jest.fn(async (args: { include?: unknown }) => args.include ? { ...collection(), coverPath: updatedData.coverPath ?? null } : { id: 31, coverStoredName: previousStoredName }),
+        update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          updatedData = data;
+          return {};
+        }),
+      },
+    };
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+    try {
+      const result = await createService(prisma).uploadCollectionCover(user, 31, {
+        buffer: png,
+        mimetype: "image/png",
+        originalname: "new-cover.png",
+        size: png.length,
+      });
+
+      const storedName = String(updatedData.coverStoredName);
+      expect(result.coverPath).toBe(`/discovery/collections/covers/${storedName}`);
       expect((await stat(join(coverDirectory, storedName))).size).toBe(png.length);
       await expect(stat(join(coverDirectory, previousStoredName))).rejects.toThrow();
     } finally {

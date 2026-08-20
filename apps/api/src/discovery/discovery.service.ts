@@ -44,11 +44,13 @@ import {
   ProfileSettingsResponse,
   ProfileShowcaseResponse,
   SubscriptionFeedResponse,
+  UploadedCollectionCover,
   UploadedTopicCover,
 } from "./discovery.types";
 
 export const TOPIC_COVER_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const TOPIC_COVER_PUBLIC_PREFIX = "/discovery/topics/covers/";
+const COLLECTION_COVER_PUBLIC_PREFIX = "/discovery/collections/covers/";
 
 interface SupportedTopicCoverFormat {
   extension: string;
@@ -168,6 +170,10 @@ export class DiscoveryService {
   private readonly topicCoverDirectory = resolve(
     process.env.ARTICLE_UPLOAD_DIR ?? join(process.cwd(), "uploads", "articles"),
     "topic-covers",
+  );
+  private readonly collectionCoverDirectory = resolve(
+    process.env.ARTICLE_UPLOAD_DIR ?? join(process.cwd(), "uploads", "articles"),
+    "collection-covers",
   );
 
   constructor(private readonly prisma: PrismaService) {}
@@ -463,6 +469,7 @@ export class DiscoveryService {
         ownerId: user.id,
         name,
         description: dto.description?.trim() ?? "",
+        coverPath: dto.coverPath?.trim() || null,
         visibility: this.collectionVisibility(dto.visibility),
       },
       include: articleCollectionInclude,
@@ -475,25 +482,84 @@ export class DiscoveryService {
     id: number,
     dto: UpdateArticleCollectionDto,
   ) {
-    await this.assertCollectionOwner(id, user.id);
     const name = dto.name?.trim();
     if (dto.name !== undefined && !name) throw new BadRequestException("合集名称不能为空。");
+    const existing = await this.prisma.articleCollection.findFirst({
+      where: { id, ownerId: user.id },
+      select: { id: true, coverPath: true, coverStoredName: true },
+    });
+    if (!existing) throw new NotFoundException("合集不存在或不属于当前账号。");
+    const nextCoverPath = dto.coverPath === undefined ? undefined : dto.coverPath.trim() || null;
+    const replacesManagedCover = Boolean(
+      existing.coverStoredName && nextCoverPath !== undefined && nextCoverPath !== existing.coverPath,
+    );
     const record = await this.prisma.articleCollection.update({
       where: { id },
       data: {
         ...(name !== undefined ? { name } : {}),
         ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
+        ...(nextCoverPath !== undefined ? { coverPath: nextCoverPath } : {}),
+        ...(replacesManagedCover ? {
+          coverOriginalName: null,
+          coverStoredName: null,
+          coverMimeType: null,
+          coverSizeBytes: null,
+        } : {}),
         ...(dto.visibility !== undefined ? { visibility: this.collectionVisibility(dto.visibility) } : {}),
         ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
       },
       include: articleCollectionInclude,
     });
+    if (replacesManagedCover) await this.deleteManagedCollectionCover(existing.coverStoredName);
     return this.toCollection(record, user, true);
   }
 
+  async uploadCollectionCover(
+    user: AuthenticatedUser,
+    id: number,
+    file: UploadedCollectionCover | undefined,
+  ) {
+    if (!file) throw new BadRequestException("请选择要上传的合集封面。");
+    if (file.size > TOPIC_COVER_MAX_FILE_SIZE_BYTES) {
+      throw new BadRequestException("合集封面不能超过 10 MB。");
+    }
+    const collection = await this.prisma.articleCollection.findFirst({
+      where: { id, ownerId: user.id },
+      select: { id: true, coverStoredName: true },
+    });
+    if (!collection) throw new NotFoundException("合集不存在或不属于当前账号。");
+    const format = this.validateCover(file, "合集");
+    const storedName = `collection-${randomUUID()}${format.extension}`;
+    const filePath = this.resolveCollectionCoverPath(storedName);
+    await mkdir(this.collectionCoverDirectory, { recursive: true });
+    try {
+      await writeFile(filePath, file.buffer, { flag: "wx" });
+      await this.prisma.articleCollection.update({
+        where: { id },
+        data: {
+          coverPath: `${COLLECTION_COVER_PUBLIC_PREFIX}${storedName}`,
+          coverOriginalName: basename(file.originalname).slice(0, 255),
+          coverStoredName: storedName,
+          coverMimeType: format.mimeType,
+          coverSizeBytes: file.size,
+        },
+      });
+    } catch (error) {
+      await unlink(filePath).catch(() => undefined);
+      throw error;
+    }
+    await this.deleteManagedCollectionCover(collection.coverStoredName);
+    return this.getOwnedCollection(user, id);
+  }
+
   async deleteCollection(user: AuthenticatedUser, id: number) {
-    await this.assertCollectionOwner(id, user.id);
+    const collection = await this.prisma.articleCollection.findFirst({
+      where: { id, ownerId: user.id },
+      select: { id: true, coverStoredName: true },
+    });
+    if (!collection) throw new NotFoundException("合集不存在或不属于当前账号。");
     await this.prisma.articleCollection.delete({ where: { id } });
+    await this.deleteManagedCollectionCover(collection.coverStoredName);
     return { success: true };
   }
 
@@ -695,6 +761,23 @@ export class DiscoveryService {
       throw new NotFoundException("专题封面文件不存在。");
     }
     return { filePath, mimeType: topic.coverMimeType, sizeBytes: topic.coverSizeBytes };
+  }
+
+  async getCollectionCover(storedName: string): Promise<{ filePath: string; mimeType: string; sizeBytes: number }> {
+    const filePath = this.resolveCollectionCoverPath(storedName);
+    const collection = await this.prisma.articleCollection.findUnique({
+      where: { coverStoredName: storedName },
+      select: { coverMimeType: true, coverSizeBytes: true },
+    });
+    if (!collection?.coverMimeType || collection.coverSizeBytes === null) {
+      throw new NotFoundException("合集封面不存在。");
+    }
+    try {
+      await access(filePath);
+    } catch {
+      throw new NotFoundException("合集封面文件不存在。");
+    }
+    return { filePath, mimeType: collection.coverMimeType, sizeBytes: collection.coverSizeBytes };
   }
 
   async createTopic(user: AuthenticatedUser, dto: CreateArticleTopicDto) {
@@ -1085,6 +1168,7 @@ export class DiscoveryService {
       id: collection.id,
       name: collection.name,
       description: collection.description,
+      coverPath: collection.coverPath,
       visibility: collection.visibility as ArticleCollectionResponse["visibility"],
       sortOrder: collection.sortOrder,
       owner: this.toAuthor(collection.owner),
@@ -1266,14 +1350,18 @@ export class DiscoveryService {
     }
   }
 
-  private validateTopicCover(file: UploadedTopicCover): SupportedTopicCoverFormat {
+  private validateCover(file: UploadedTopicCover, label: "专题" | "合集"): SupportedTopicCoverFormat {
     const mimeType = file.mimetype.toLowerCase();
     const extension = extname(file.originalname).toLowerCase();
     const format = TOPIC_COVER_FORMATS.find((candidate) => candidate.matches(file.buffer));
     if (!format || mimeType !== format.mimeType || !format.extensions.includes(extension)) {
-      throw new BadRequestException("专题封面只支持有效的 JPEG、PNG、WebP 或 AVIF 图片。");
+      throw new BadRequestException(`${label}封面只支持有效的 JPEG、PNG、WebP 或 AVIF 图片。`);
     }
     return format;
+  }
+
+  private validateTopicCover(file: UploadedTopicCover): SupportedTopicCoverFormat {
+    return this.validateCover(file, "专题");
   }
 
   private resolveTopicCoverPath(storedName: string): string {
@@ -1289,6 +1377,21 @@ export class DiscoveryService {
   private async deleteManagedTopicCover(storedName: string | null): Promise<void> {
     if (!storedName) return;
     await unlink(this.resolveTopicCoverPath(storedName)).catch(() => undefined);
+  }
+
+  private resolveCollectionCoverPath(storedName: string): string {
+    if (!/^collection-[0-9a-f-]{36}\.(?:jpg|png|webp|avif)$/i.test(storedName) || basename(storedName) !== storedName) {
+      throw new NotFoundException("合集封面不存在。");
+    }
+    const filePath = resolve(this.collectionCoverDirectory, storedName);
+    const prefix = `${this.collectionCoverDirectory}${process.platform === "win32" ? "\\" : "/"}`;
+    if (!filePath.startsWith(prefix)) throw new NotFoundException("合集封面不存在。");
+    return filePath;
+  }
+
+  private async deleteManagedCollectionCover(storedName: string | null): Promise<void> {
+    if (!storedName) return;
+    await unlink(this.resolveCollectionCoverPath(storedName)).catch(() => undefined);
   }
 
   private collectionVisibility(value?: "public" | "authenticated" | "private"): ArticleVisibility {

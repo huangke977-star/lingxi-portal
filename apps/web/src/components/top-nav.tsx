@@ -52,6 +52,7 @@ import {
   respondChatGroupInvitationByGroup,
   respondChatGroupJoinRequest,
   respondFriendRequest,
+  respondStrangerMessageRequest,
 } from "@/lib/social-api";
 import {
   SOCIAL_STATE_CHANGE_EVENT,
@@ -87,7 +88,7 @@ function HeaderNotificationCopy({ notification }: { notification: SocialNotifica
     </span>;
   }
 
-  return <span><strong>{notification.title}</strong><small>{notification.context?.commentBody ?? notification.body}</small></span>;
+  return <span><strong>{notification.title}</strong><small>{notification.context?.requestBody ?? notification.context?.commentBody ?? notification.body}</small></span>;
 }
 
 export function TopNav() {
@@ -303,6 +304,8 @@ export function TopNav() {
     try {
       if (context.kind === "friend_request" && notification.friendshipId) {
         await respondFriendRequest(token, notification.friendshipId, action === "accept" ? "accepted" : "declined");
+      } else if (context.kind === "stranger_message_request" && context.requestId) {
+        await respondStrangerMessageRequest(token, context.requestId, action === "accept" ? "accepted" : "declined");
       } else if (context.kind === "group_invitation" && context.groupId) {
         await respondChatGroupInvitationByGroup(token, context.groupId, action === "accept" ? "accepted" : "declined");
       } else if (context.kind === "group_join_request" && context.groupId && context.joinRequestId) {

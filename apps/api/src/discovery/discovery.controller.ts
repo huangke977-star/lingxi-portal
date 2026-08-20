@@ -35,7 +35,7 @@ import {
   UpdateAuthorSubscriptionDto,
   UpdateProfileSettingsDto,
 } from "./dto/discovery.dto";
-import type { UploadedTopicCover } from "./discovery.types";
+import type { UploadedCollectionCover, UploadedTopicCover } from "./discovery.types";
 
 @Controller("discovery")
 export class DiscoveryController {
@@ -146,6 +146,17 @@ export class DiscoveryController {
     return this.discoveryService.createCollection(user, dto);
   }
 
+  @Post("collections/:id/cover")
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: TOPIC_COVER_MAX_FILE_SIZE_BYTES } }))
+  uploadCollectionCover(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @UploadedFile() file: UploadedCollectionCover | undefined,
+  ) {
+    return this.discoveryService.uploadCollectionCover(user, id, file);
+  }
+
   @Patch("collections/:id")
   @UseGuards(JwtAuthGuard)
   updateCollection(
@@ -198,6 +209,16 @@ export class DiscoveryController {
   @Get("collections/public/:id")
   getPublicCollection(@Param("id", ParseIntPipe) id: number) {
     return this.discoveryService.getCollection(id, null);
+  }
+
+  @Get("collections/covers/:storedName")
+  @Header("Cache-Control", "public, max-age=31536000, immutable")
+  async getCollectionCover(@Param("storedName") storedName: string): Promise<StreamableFile> {
+    const file = await this.discoveryService.getCollectionCover(storedName);
+    return new StreamableFile(createReadStream(file.filePath), {
+      length: file.sizeBytes,
+      type: file.mimeType,
+    });
   }
 
   @Get("collections/visible/:id")

@@ -232,6 +232,38 @@ describe("storage management scanning (e2e)", () => {
     }));
   });
 
+  it("treats managed collection covers as referenced article media", async () => {
+    const storedName = "collection-00000000-0000-4000-8000-000000000001.webp";
+    await mkdir(join(process.env.ARTICLE_UPLOAD_DIR!, "collection-covers"), { recursive: true });
+    await writeFile(
+      join(process.env.ARTICLE_UPLOAD_DIR!, "collection-covers", storedName),
+      Buffer.from("collection-cover"),
+    );
+    prisma.articleCollection.findMany.mockResolvedValueOnce([{
+      id: 7,
+      name: "运维合集",
+      coverOriginalName: "operations.webp",
+      coverStoredName: storedName,
+      coverMimeType: "image/webp",
+      coverSizeBytes: 16,
+      owner: { username: "author" },
+    }]);
+
+    const scan = await service.startScan(1);
+    const completed = await waitForScan(service, scan.id);
+
+    expect(completed.status).toBe(StorageScanStatus.completed);
+    expect(completed.summary?.categories.find((item) => item.key === "articles"))
+      .toMatchObject({ healthyCount: 1 });
+    expect(prisma.mediaBackupFile.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        category: "articles",
+        storedName: `collection-covers/${storedName}`,
+        sourceType: "collection_cover",
+      }),
+    }));
+  });
+
   it("invalidates the previous hash when a cataloged file changes", async () => {
     const firstScan = await service.startScan(1);
     await waitForScan(service, firstScan.id);
@@ -453,6 +485,10 @@ function prismaMock() {
       findMany: jest.fn(
         async (): Promise<Array<Record<string, unknown>>> => [],
       ),
+      findUnique: jest.fn(async () => null),
+    },
+    articleCollection: {
+      findMany: jest.fn(async (): Promise<Array<Record<string, unknown>>> => []),
       findUnique: jest.fn(async () => null),
     },
     chatAttachment: {

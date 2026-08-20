@@ -5,6 +5,7 @@ import {
   ExternalLink,
   FolderOpen,
   FolderPlus,
+  ImagePlus,
   Plus,
   Rss,
   Save,
@@ -12,7 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { AppToast } from "@/components/app-toast";
@@ -33,6 +34,7 @@ import {
   type ArticleCollection,
   unsubscribeCollection,
   updateCollection,
+  uploadCollectionCover,
 } from "@/lib/discovery-api";
 
 type CollectionView = "mine" | "browse";
@@ -57,12 +59,16 @@ export default function ArticleCollectionsPage() {
   const [visibility, setVisibility] =
     useState<ArticleCollection["visibility"]>("public");
   const [newName, setNewName] = useState("");
+  const [newCoverPath, setNewCoverPath] = useState("");
+  const [newCoverFile, setNewCoverFile] = useState<File | null>(null);
+  const [coverPath, setCoverPath] = useState("");
   const [browseQuery, setBrowseQuery] = useState("");
   const [browse, setBrowse] = useState<CollectionPage>(emptyBrowse);
   const [isLoading, setIsLoading] = useState(true);
   const [isBrowseLoading, setIsBrowseLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [browseActionId, setBrowseActionId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -73,6 +79,7 @@ export default function ArticleCollectionsPage() {
     setName(next?.name ?? "");
     setDescription(next?.description ?? "");
     setVisibility(next?.visibility ?? "public");
+    setCoverPath(next?.coverPath ?? "");
   }
 
   useEffect(() => {
@@ -165,11 +172,30 @@ export default function ArticleCollectionsPage() {
     if (!token || !newName.trim()) return;
     setIsSaving(true);
     try {
-      const created = await createCollection(token, { name: newName.trim() });
-      setCollections((current) => [...current, created]);
-      selectCollection(created);
+      const created = await createCollection(token, {
+        name: newName.trim(),
+        coverPath: newCoverPath.trim() || undefined,
+      });
+      let next = created;
+      if (newCoverFile) {
+        try {
+          next = await uploadCollectionCover(token, created.id, newCoverFile);
+        } catch (uploadError) {
+          setCollections((current) => [...current, created]);
+          selectCollection(created);
+          setNewName("");
+          setNewCoverPath("");
+          setNewCoverFile(null);
+          setError(uploadError instanceof Error ? `合集已创建，但封面上传失败：${uploadError.message}` : "合集已创建，但封面上传失败。");
+          return;
+        }
+      }
+      setCollections((current) => [...current, next]);
+      selectCollection(next);
       setNewName("");
-      setNotice("合集已创建。");
+      setNewCoverPath("");
+      setNewCoverFile(null);
+      setNotice(newCoverFile ? "合集已创建，封面已上传。" : "合集已创建。");
     } catch (actionError) {
       setError(
         actionError instanceof Error ? actionError.message : "合集创建失败。",
@@ -188,6 +214,7 @@ export default function ArticleCollectionsPage() {
         await updateCollection(token, selected.id, {
           name: name.trim(),
           description: description.trim(),
+          coverPath: coverPath.trim(),
           visibility,
         }),
       );
@@ -219,6 +246,28 @@ export default function ArticleCollectionsPage() {
       setError(
         actionError instanceof Error ? actionError.message : "合集删除失败。",
       );
+    }
+  }
+
+  async function uploadCover(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    const token = readAccessToken();
+    if (!file || !token || !selected) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setError("合集封面不能超过 10 MB。");
+      return;
+    }
+    setIsUploadingCover(true);
+    try {
+      const updated = await uploadCollectionCover(token, selected.id, file);
+      replaceCollection(updated);
+      setCoverPath(updated.coverPath ?? "");
+      setNotice("合集封面已上传并立即生效。");
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "合集封面上传失败。");
+    } finally {
+      setIsUploadingCover(false);
     }
   }
 
@@ -273,7 +322,7 @@ export default function ArticleCollectionsPage() {
 
   async function toggleBrowseSubscription(collection: ArticleCollection) {
     const token = readAccessToken();
-    if (!token || collection.owner.id === user?.id) return;
+    if (!token) return;
     setBrowseActionId(collection.id);
     try {
       const result = collection.subscribed ? await unsubscribeCollection(token, collection.id) : await subscribeCollection(token, collection.id);
@@ -330,6 +379,22 @@ export default function ArticleCollectionsPage() {
               placeholder="新合集名称"
               value={newName}
             />
+            <input
+              aria-label="合集封面图片地址"
+              maxLength={512}
+              onChange={(event) => setNewCoverPath(event.target.value)}
+              placeholder="封面图片地址（可选）"
+              value={newCoverPath}
+            />
+            <label className="collection-create-cover-upload" title="上传本地封面">
+              <ImagePlus aria-hidden="true" size={16} />
+              <span>{newCoverFile ? newCoverFile.name : "上传封面"}</span>
+              <input
+                accept="image/jpeg,image/png,image/webp,image/avif"
+                onChange={(event) => setNewCoverFile(event.target.files?.[0] ?? null)}
+                type="file"
+              />
+            </label>
             <button disabled={isSaving || !newName.trim()} type="submit">
               <Plus aria-hidden="true" size={16} />
               创建
@@ -425,6 +490,15 @@ export default function ArticleCollectionsPage() {
                         </select>
                       </label>
                       <label className="wide">
+                        <span>封面图片地址</span>
+                        <input
+                          maxLength={512}
+                          onChange={(event) => setCoverPath(event.target.value)}
+                          placeholder="https://example.com/collection-cover.webp"
+                          value={coverPath}
+                        />
+                      </label>
+                      <label className="wide">
                         <span>合集说明</span>
                         <textarea
                           maxLength={300}
@@ -433,6 +507,25 @@ export default function ArticleCollectionsPage() {
                           }
                           rows={2}
                           value={description}
+                        />
+                      </label>
+                    </div>
+                    <div className="collection-cover-control">
+                      <div className="collection-cover-preview">
+                        {coverPath ? <img alt="合集封面预览" src={resolveApiUrl(coverPath)} /> : <FolderOpen aria-hidden="true" size={28} />}
+                      </div>
+                      <span>
+                        <strong>本地封面</strong>
+                        <small>支持 JPEG、PNG、WebP、AVIF，最大 10 MB；上传后立即生效。</small>
+                      </span>
+                      <label className={isUploadingCover ? "disabled" : ""}>
+                        <ImagePlus aria-hidden="true" size={16} />
+                        {isUploadingCover ? "上传中" : "上传图片"}
+                        <input
+                          accept="image/jpeg,image/png,image/webp,image/avif"
+                          disabled={isUploadingCover}
+                          onChange={(event) => void uploadCover(event)}
+                          type="file"
                         />
                       </label>
                     </div>
@@ -508,7 +601,7 @@ function BrowseCollections({
             <article className="collection-browse-card" key={collection.id}>
               <Link href={`/collections/${collection.id}`}>
                 <span className="collection-browse-cover">
-                  {collection.articles[0]?.coverPath ? <img alt="" src={resolveApiUrl(collection.articles[0].coverPath)} /> : <FolderOpen aria-hidden="true" size={34} />}
+                  {collection.coverPath || collection.articles[0]?.coverPath ? <img alt="" src={resolveApiUrl(collection.coverPath ?? collection.articles[0]?.coverPath ?? "")} /> : <FolderOpen aria-hidden="true" size={34} />}
                   <small>{collection.articleCount} 篇</small>
                 </span>
                 <span className="collection-browse-copy">
@@ -517,7 +610,7 @@ function BrowseCollections({
                   <em>{collection.owner.nickname}</em>
                 </span>
               </Link>
-              <footer><span>{collection.subscriberCount} 人订阅</span>{collection.owner.id !== currentUserId ? <button aria-label={collection.subscribed ? `取消订阅 ${collection.name}` : `订阅 ${collection.name}`} className={collection.subscribed ? "active" : undefined} disabled={actingId === collection.id} onClick={() => onToggle(collection)} title={collection.subscribed ? "取消订阅" : "订阅"} type="button"><Rss aria-hidden="true" size={15} /></button> : <em>我的合集</em>}</footer>
+              <footer><span>{collection.subscriberCount} 人订阅</span>{collection.subscribed ? <button aria-label={`取消订阅 ${collection.name}`} className="active collection-subscribe-cancel" disabled={actingId === collection.id} onClick={() => onToggle(collection)} title="取消订阅" type="button"><Rss aria-hidden="true" size={15} /><span>取消订阅</span></button> : collection.owner.id !== currentUserId ? <button aria-label={`订阅 ${collection.name}`} disabled={actingId === collection.id} onClick={() => onToggle(collection)} title="订阅" type="button"><Rss aria-hidden="true" size={15} /></button> : <em>我的合集</em>}</footer>
             </article>
           ))}
         </div>

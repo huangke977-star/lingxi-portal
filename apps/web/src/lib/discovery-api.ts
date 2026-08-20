@@ -38,6 +38,7 @@ export interface ArticleCollection {
   id: number;
   name: string;
   description: string;
+  coverPath: string | null;
   visibility: Exclude<ArticleVisibility, "role_restricted">;
   sortOrder: number;
   owner: ArticleAuthor;
@@ -163,12 +164,18 @@ export function listVisibleCollections(accessToken: string, input: { q?: string;
   return requestJson<{ items: ArticleCollection[]; total: number; page: number; pageSize: number; totalPages: number }>(`/discovery/collections/visible${pageQuery(input)}`, { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
-export function createCollection(accessToken: string, input: { name: string; description?: string; visibility?: ArticleCollection["visibility"] }) {
+export function createCollection(accessToken: string, input: { name: string; description?: string; coverPath?: string; visibility?: ArticleCollection["visibility"] }) {
   return requestJson<ArticleCollection>("/discovery/collections", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(input) });
 }
 
-export function updateCollection(accessToken: string, id: number, input: Partial<Pick<ArticleCollection, "name" | "description" | "visibility" | "sortOrder">>) {
+export function updateCollection(accessToken: string, id: number, input: Partial<Pick<ArticleCollection, "name" | "description" | "coverPath" | "visibility" | "sortOrder">>) {
   return requestJson<ArticleCollection>(`/discovery/collections/${id}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(input) });
+}
+
+export function uploadCollectionCover(accessToken: string, id: number, file: File) {
+  const body = new FormData();
+  body.set("file", file);
+  return requestJson<ArticleCollection>(`/discovery/collections/${id}/cover`, { method: "POST", headers: authHeaders(accessToken), body });
 }
 
 export function deleteCollection(accessToken: string, id: number) {

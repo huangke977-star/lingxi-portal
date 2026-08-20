@@ -285,6 +285,68 @@ describe("SocialService", () => {
     }));
   });
 
+  it("exposes the latest pending stranger request as an actionable interaction notification", async () => {
+    const createdAt = new Date("2026-08-20T02:00:00.000Z");
+    const notification = {
+      id: 81,
+      userId: user.id,
+      actorId: 8,
+      type: "system",
+      channel: "interaction",
+      title: "新的陌生消息请求",
+      body: "用户8 向你发送了消息请求。",
+      actionUrl: "/messages?strangerRequests=1",
+      articleId: null,
+      commentId: null,
+      friendshipId: null,
+      strangerMessageRequestId: 71,
+      commentReportId: null,
+      articleReportId: null,
+      announcementId: null,
+      aggregateCount: 1,
+      readAt: null,
+      openedAt: null,
+      pushDeliveredAt: null,
+      dedupeKey: null,
+      createdAt,
+      updatedAt: createdAt,
+      actor: socialUser(8),
+      friendship: null,
+      strangerMessageRequest: {
+        id: 71,
+        recipientId: user.id,
+        body: "想和你聊聊这篇文章",
+        status: StrangerMessageRequestStatus.pending,
+      },
+      article: null,
+      comment: null,
+      commentReport: null,
+      articleReport: null,
+      announcement: null,
+    };
+    const findMany = jest.fn(async (args: { where?: { strangerMessageRequestId?: unknown } }) =>
+      args.where?.strangerMessageRequestId
+        ? [{ id: 81, userId: user.id, strangerMessageRequestId: 71 }]
+        : [notification]);
+    const service = createService({
+      userNotification: { findMany },
+      userNotificationChannelState: { findMany: jest.fn(async () => []) },
+    });
+
+    await expect(service.listNotifications(user, { limit: 20 })).resolves.toMatchObject({
+      items: [{
+        id: 81,
+        context: {
+          kind: "stranger_message_request",
+          requestId: 71,
+          requestBody: "想和你聊聊这篇文章",
+          status: StrangerMessageRequestStatus.pending,
+          actionable: true,
+        },
+      }],
+    });
+  });
+
   it("rejects stranger requests when the recipient only accepts friends", async () => {
     const prisma = {
       user: { findUnique: jest.fn(async () => ({
@@ -591,6 +653,24 @@ describe("SocialService", () => {
     expect(result.type).toBe("attachment");
     expect(result.attachments).toHaveLength(1);
     expect(attachmentsService.bindToMessage).toHaveBeenCalledWith(transaction, user.id, 5, [41], 31);
+  });
+
+  it("delivers an accepted stranger-request conversation to both direct participants", async () => {
+    const service = createService({
+      conversation: { findUnique: jest.fn(async () => ({
+        kind: "direct",
+        directUserOneId: user.id,
+        directUserTwoId: 8,
+        friendship: null,
+        group: null,
+      })) },
+      friendship: { findUnique: jest.fn(async () => null) },
+    });
+
+    await expect(service.getConversationDelivery(91)).resolves.toEqual({
+      kind: "direct",
+      participantIds: [user.id, 8],
+    });
   });
 
   it("searches by nickname or username and returns the current relationship state", async () => {

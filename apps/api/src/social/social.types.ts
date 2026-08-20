@@ -265,7 +265,7 @@ export interface UserNotificationResponse {
   announcementId: number | null;
   actor: SocialUserResponse | null;
   context: {
-    kind: "comment_report" | "article_report" | "article" | "article_comment" | "friend_request" | "group_invitation" | "group_join_request" | "group_report" | "group_ban" | "announcement";
+    kind: "comment_report" | "article_report" | "article" | "article_comment" | "friend_request" | "stranger_message_request" | "group_invitation" | "group_join_request" | "group_report" | "group_ban" | "announcement";
     announcementId?: number;
     announcement?: { id: number; title: string; summary: string };
     article?: { id: number; title: string; slug: string };
@@ -276,6 +276,8 @@ export interface UserNotificationResponse {
     conversationId?: number;
     invitationId?: number;
     joinRequestId?: number;
+    requestId?: number;
+    requestBody?: string;
     reportId?: number;
     actionable?: boolean;
     status?: string;

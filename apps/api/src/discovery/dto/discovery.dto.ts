@@ -57,6 +57,11 @@ export class CreateArticleCollectionDto {
   description?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  coverPath?: string;
+
+  @IsOptional()
   @IsIn(["public", "authenticated", "private"])
   visibility?: "public" | "authenticated" | "private";
 }
@@ -71,6 +76,11 @@ export class UpdateArticleCollectionDto {
   @IsString()
   @MaxLength(300)
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  coverPath?: string;
 
   @IsOptional()
   @IsIn(["public", "authenticated", "private"])

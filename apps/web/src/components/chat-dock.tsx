@@ -78,7 +78,6 @@ import {
   type Conversation,
   type Friendship,
   type SocialNotification,
-  type StrangerMessageRequest,
   type SocialUserSearchResult,
   type SocialUser,
   type NotificationChannel,
@@ -97,7 +96,6 @@ import {
   listFriendships,
   listMessages,
   listNotifications,
-  listStrangerMessageRequests,
   markAllNotificationsRead,
   markConversationRead,
   markNotificationRead,
@@ -250,6 +248,7 @@ export function ChatDock() {
   const systemMessageListRef = useRef<HTMLDivElement | null>(null);
   const dockRef = useRef<HTMLElement | null>(null);
   const pendingAttachmentsRef = useRef<PendingAttachment[]>([]);
+  const sendInFlightRef = useRef(false);
   const selectedIdRef = useRef(0);
   const sessionUserIdRef = useRef(0);
   const openRef = useRef(false);
@@ -268,7 +267,6 @@ export function ChatDock() {
     blocked: Friendship[];
   }>({ friends: [], incoming: [], outgoing: [], blocked: [] });
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
-  const [strangerRequests, setStrangerRequests] = useState<{ incoming: StrangerMessageRequest[]; outgoing: StrangerMessageRequest[] }>({ incoming: [], outgoing: [] });
   const [notificationChannelStates, setNotificationChannelStates] = useState<NotificationChannelState[]>([]);
   const [hiddenNotificationChannels, setHiddenNotificationChannels] = useState<NotificationChannel[]>([]);
   const [selectedId, setSelectedId] = useState(0);
@@ -541,7 +539,6 @@ export function ChatDock() {
       setConversations([]);
       setFriendships({ friends: [], incoming: [], outgoing: [], blocked: [] });
       setNotifications([]);
-      setStrangerRequests({ incoming: [], outgoing: [] });
       setNotificationChannelStates([]);
       setBrowserPushState(null);
       setHiddenNotificationChannels([]);
@@ -554,12 +551,11 @@ export function ChatDock() {
     }
     if (showLoading) setIsLoading(true);
     try {
-      const [currentUser, conversationResult, friendshipResult, notificationResult, strangerRequestResult] = await Promise.all([
+      const [currentUser, conversationResult, friendshipResult, notificationResult] = await Promise.all([
         getMe(token),
         listConversations(token),
         listFriendships(token),
         listNotifications(token),
-        listStrangerMessageRequests(token),
       ]);
       if (sessionUserIdRef.current && sessionUserIdRef.current !== currentUser.id) {
         pendingAttachmentsRef.current.forEach((attachment) => {
@@ -573,7 +569,6 @@ export function ChatDock() {
       setConversations(conversationResult.items);
       setFriendships(friendshipResult);
       setNotifications(notificationResult.items);
-      setStrangerRequests(strangerRequestResult);
       setNotificationChannelStates(notificationResult.channelStates ?? []);
       const nextHiddenChannels = notificationResult.hiddenChannels ?? [];
       setHiddenNotificationChannels(nextHiddenChannels);
@@ -981,6 +976,27 @@ export function ChatDock() {
     });
   }
 
+  function clearComposerForConversation(conversationId: number, sentBody: string, sentFiles: File[]) {
+    setDrafts((current) => {
+      if ((current[conversationId] ?? "").trim() !== sentBody) return current;
+      const { [conversationId]: _removed, ...rest } = current;
+      void _removed;
+      return rest;
+    });
+    setPendingAttachmentsByConversation((current) => {
+      const attachments = current[conversationId] ?? [];
+      const sentFileSet = new Set(sentFiles);
+      const remaining = attachments.filter((attachment) => !sentFileSet.has(attachment.file));
+      attachments.filter((attachment) => sentFileSet.has(attachment.file)).forEach((attachment) => {
+        if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+      });
+      if (remaining.length) return { ...current, [conversationId]: remaining };
+      const { [conversationId]: _removed, ...rest } = current;
+      void _removed;
+      return rest;
+    });
+  }
+
   function clearVoiceTimer() {
     if (voiceTimerRef.current !== null) {
       window.clearInterval(voiceTimerRef.current);
@@ -1178,6 +1194,7 @@ export function ChatDock() {
     const socket = socketRef.current;
     const token = readAccessToken();
     if ((!body && !files.length) || !conversationId || !token) return;
+    if (sendInFlightRef.current) return;
     if (selectedGroupIsBanned) {
       setError(selectedGroupBanNotice);
       return;
@@ -1186,7 +1203,9 @@ export function ChatDock() {
       setError("聊天连接尚未建立，请稍后重试。");
       return;
     }
+    sendInFlightRef.current = true;
     setIsSending(true);
+    setError("");
     try {
       const attachments = files.length
         ? await uploadChatAttachments(token, conversationId, files)
@@ -1198,17 +1217,14 @@ export function ChatDock() {
       }) as ChatAck;
       if (!response.ok) throw new Error(response.error || "消息发送失败。");
       if (clearComposer) {
-        updateDraft("");
-        pendingAttachments.forEach((attachment) => {
-          if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
-        });
-        setPendingAttachments([]);
+        clearComposerForConversation(conversationId, body, files);
         setIsEmojiOpen(false);
         setIsMobileToolsOpen(false);
       }
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "消息发送失败，请重试。");
     } finally {
+      sendInFlightRef.current = false;
       setIsSending(false);
     }
   }
@@ -1858,30 +1874,6 @@ export function ChatDock() {
     setIsMinimized(false);
   }
 
-  async function handleStrangerRequest(request: StrangerMessageRequest, status: "accepted" | "declined") {
-    const token = readAccessToken();
-    if (!token || isFriendRequestSending) return;
-    setIsFriendRequestSending(true);
-    try {
-      const result = await respondStrangerMessageRequest(token, request.id, status);
-      setStrangerRequests((current) => ({
-        ...current,
-        incoming: current.incoming.filter((item) => item.id !== request.id),
-      }));
-      if (result.conversation) {
-        setConversations((current) => [result.conversation!, ...current.filter((item) => item.id !== result.conversation!.id)]);
-        setSelectedId(result.conversation.id);
-        setIsMobileConversationOpen(true);
-      }
-      setNotice(status === "accepted" ? "已接受消息请求。" : "已拒绝消息请求。");
-      notifySocialStateChange();
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "消息请求处理失败。");
-    } finally {
-      setIsFriendRequestSending(false);
-    }
-  }
-
   async function handleGroupNotificationAction(
     notification: SocialNotification,
     action: "accept" | "reject" | "resolve-report" | "reject-report",
@@ -1893,6 +1885,11 @@ export function ChatDock() {
     try {
       if (context.kind === "friend_request" && notification.friendshipId) {
         await respondFriendRequest(token, notification.friendshipId, action === "accept" ? "accepted" : "declined");
+      } else if (context.kind === "stranger_message_request" && context.requestId) {
+        const result = await respondStrangerMessageRequest(token, context.requestId, action === "accept" ? "accepted" : "declined");
+        if (result.conversation) {
+          setConversations((current) => [result.conversation!, ...current.filter((item) => item.id !== result.conversation!.id)]);
+        }
       } else if (context.kind === "group_invitation" && context.groupId) {
         await respondChatGroupInvitationByGroup(token, context.groupId, action === "accept" ? "accepted" : "declined");
       } else if (context.kind === "group_join_request" && context.groupId && context.joinRequestId) {
@@ -2198,16 +2195,6 @@ export function ChatDock() {
                     user={friendship.user}
                   />
                 ))}
-
-                {!normalizedFriendSearch && (strangerRequests.incoming.length || strangerRequests.outgoing.length) ? <details className="chat-stranger-request-list" open={Boolean(strangerRequests.incoming.length)}>
-                  <summary><MessageCircleMore aria-hidden="true" size={14} />消息请求 <b>{strangerRequests.incoming.length}</b></summary>
-                  {strangerRequests.incoming.map((request) => <article key={request.id}>
-                    <UserAvatar user={request.user} />
-                    <span><strong>{request.user.nickname}</strong><small>{request.body}</small></span>
-                    <div><button aria-label={`接受 ${request.user.nickname} 的消息请求`} disabled={isFriendRequestSending} onClick={() => void handleStrangerRequest(request, "accepted")} title="接受" type="button"><Check aria-hidden="true" size={14} /></button><button aria-label={`拒绝 ${request.user.nickname} 的消息请求`} disabled={isFriendRequestSending} onClick={() => void handleStrangerRequest(request, "declined")} title="拒绝" type="button"><X aria-hidden="true" size={14} /></button></div>
-                  </article>)}
-                  {strangerRequests.outgoing.map((request) => <article className="outgoing" key={request.id}><UserAvatar user={request.user} /><span><strong>{request.user.nickname}</strong><small>{request.body}</small></span><em>等待对方接受</em></article>)}
-                </details> : null}
 
                 {friendships.blocked.length ? <details className="chat-blocked-list">
                   <summary><Ban aria-hidden="true" size={14} />黑名单 <b>{friendships.blocked.length}</b></summary>
@@ -2591,13 +2578,13 @@ function NotificationPanel({
                   <small className="chat-announcement-notification-summary">{notification.context.announcement?.summary || notification.body}</small>
                 </> : null}
                 {notification.context?.group?.name ? <small className="chat-notification-group-name">{notification.context.group.name}</small> : null}
-                {notification.context?.kind !== "announcement" && notification.context?.kind !== "group_report" ? <small>{notification.context?.kind === "friend_request" && notification.context.requestNote ? notification.context.requestNote : notification.body}</small> : null}
+                {notification.context?.kind !== "announcement" && notification.context?.kind !== "group_report" ? <small>{notification.context?.kind === "friend_request" && notification.context.requestNote ? notification.context.requestNote : notification.context?.kind === "stranger_message_request" && notification.context.requestBody ? notification.context.requestBody : notification.body}</small> : null}
                 {notification.context?.commentBody ? <q>{notification.context.commentBody}</q> : null}
                 {notification.context && !notification.context.actionable && notification.context.status ? <em>{notificationStatusLabel(notification.context.kind, notification.context.status)}</em> : null}
               </span></button>
               {notification.context?.kind === "group_report" && notification.context.message ? <NotificationReportContent message={notification.context.message} onPreview={onPreview} /> : null}
             </div>
-            {notification.context?.actionable && (notification.context.kind === "friend_request" || notification.context.kind === "group_invitation" || notification.context.kind === "group_join_request") ? <div className="chat-notification-inline-actions"><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "accept")} type="button"><Check aria-hidden="true" size={13} />同意</button><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "reject")} type="button"><X aria-hidden="true" size={13} />拒绝</button></div> : null}
+            {notification.context?.actionable && (notification.context.kind === "friend_request" || notification.context.kind === "stranger_message_request" || notification.context.kind === "group_invitation" || notification.context.kind === "group_join_request") ? <div className="chat-notification-inline-actions"><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "accept")} type="button"><Check aria-hidden="true" size={13} />同意</button><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "reject")} type="button"><X aria-hidden="true" size={13} />拒绝</button></div> : null}
             {notification.context?.actionable && notification.context.kind === "group_report" ? <div className="chat-notification-inline-actions"><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "resolve-report")} type="button"><Check aria-hidden="true" size={13} />处理</button><button disabled={isActionRunning} onClick={() => onGroupAction(notification, "reject-report")} type="button"><X aria-hidden="true" size={13} />驳回</button></div> : null}
           </div>
           {notification.context?.article ? <button className="chat-system-article-link" onClick={() => onOpenArticle(notification.context?.article?.slug ?? "")} type="button"><FileText aria-hidden="true" size={15} /><span><small>相关文章</small><strong>{notification.context.article.title}</strong></span><ChevronLeft aria-hidden="true" size={15} /></button> : null}
@@ -2650,6 +2637,11 @@ function notificationStatusLabel(kind: NonNullable<SocialNotification["context"]
     if (status === "declined") return "好友申请已拒绝";
     if (status === "blocked") return "该好友关系已被拉黑";
     return "好友申请已失效";
+  }
+  if (kind === "stranger_message_request") {
+    if (status === "accepted") return "消息请求已接受";
+    if (status === "declined") return "消息请求已拒绝";
+    return "消息请求已失效";
   }
   if (kind === "group_report") return status === "rejected" ? "举报已驳回" : "举报已处理";
   if (status === "accepted" || status === "approved") return "已通过";

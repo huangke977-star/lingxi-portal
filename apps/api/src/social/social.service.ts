@@ -147,6 +147,14 @@ const notificationInclude = {
       requestNote: true,
     },
   },
+  strangerMessageRequest: {
+    select: {
+      id: true,
+      recipientId: true,
+      body: true,
+      status: true,
+    },
+  },
   article: { select: { id: true, title: true, slug: true } },
   comment: {
     select: {
@@ -1503,6 +1511,8 @@ export class SocialService {
       where: { id: conversationId },
       select: {
         kind: true,
+        directUserOneId: true,
+        directUserTwoId: true,
         friendship: { select: { userOneId: true, userTwoId: true, status: true } },
         group: {
           select: {
@@ -1518,6 +1528,10 @@ export class SocialService {
     }
     if (conversation.friendship?.status === FriendshipStatus.accepted) {
       return { kind: ConversationKind.direct, participantIds: [conversation.friendship.userOneId, conversation.friendship.userTwoId] };
+    }
+    if (conversation.directUserOneId && conversation.directUserTwoId) {
+      await this.assertPairNotBlocked(conversation.directUserOneId, conversation.directUserTwoId);
+      return { kind: ConversationKind.direct, participantIds: [conversation.directUserOneId, conversation.directUserTwoId] };
     }
     if (
       conversation.group?.status === ChatGroupStatus.active &&
@@ -2217,14 +2231,20 @@ export class SocialService {
   private async buildNotificationContexts(notifications: NotificationRecord[]): Promise<Map<number, NotificationContext>> {
     const contexts = new Map<number, NotificationContext>();
     const friendshipIds = [...new Set(notifications.map((notification) => notification.friendshipId).filter((id): id is number => Boolean(id)))];
+    const strangerRequestIds = [...new Set(notifications.map((notification) => notification.strangerMessageRequestId).filter((id): id is number => Boolean(id)))];
     const invitationKeys = [...new Set(notifications
       .filter((notification) => this.groupNotificationContext(notification.actionUrl, notification.title)?.kind === "group_invitation" && notification.actionUrl)
       .map((notification) => `${notification.userId}:${notification.actionUrl}`))];
-    const [latestFriendNotifications, latestInvitationNotifications] = await Promise.all([
+    const [latestFriendNotifications, latestStrangerRequestNotifications, latestInvitationNotifications] = await Promise.all([
       friendshipIds.length ? this.prisma.userNotification.findMany({
         where: { friendshipId: { in: friendshipIds }, type: UserNotificationType.friend_request_received },
         orderBy: [{ id: "desc" }],
         select: { id: true, friendshipId: true, userId: true },
+      }) : [],
+      strangerRequestIds.length ? this.prisma.userNotification.findMany({
+        where: { strangerMessageRequestId: { in: strangerRequestIds } },
+        orderBy: [{ id: "desc" }],
+        select: { id: true, strangerMessageRequestId: true, userId: true },
       }) : [],
       invitationKeys.length ? this.prisma.userNotification.findMany({
         where: {
@@ -2241,6 +2261,11 @@ export class SocialService {
     latestFriendNotifications.forEach((notification) => {
       const key = `${notification.userId}:${notification.friendshipId}`;
       if (!latestFriendNotificationId.has(key)) latestFriendNotificationId.set(key, notification.id);
+    });
+    const latestStrangerRequestNotificationId = new Map<string, number>();
+    latestStrangerRequestNotifications.forEach((notification) => {
+      const key = `${notification.userId}:${notification.strangerMessageRequestId}`;
+      if (!latestStrangerRequestNotificationId.has(key)) latestStrangerRequestNotificationId.set(key, notification.id);
     });
     const latestInvitationNotificationId = new Map<string, number>();
     latestInvitationNotifications.forEach((notification) => {
@@ -2260,6 +2285,19 @@ export class SocialService {
           notification.friendship.requestedById !== notification.userId &&
           latestFriendNotificationId.get(`${notification.userId}:${notification.friendshipId}`) === notification.id,
         requestNote: notification.friendship.requestNote,
+      });
+    }
+    for (const notification of notifications) {
+      const request = notification.strangerMessageRequest;
+      if (!request) continue;
+      contexts.set(notification.id, {
+        kind: "stranger_message_request",
+        requestId: request.id,
+        requestBody: request.body,
+        status: request.status,
+        actionable: request.status === StrangerMessageRequestStatus.pending &&
+          request.recipientId === notification.userId &&
+          latestStrangerRequestNotificationId.get(`${notification.userId}:${request.id}`) === notification.id,
       });
     }
     if (!groupDescriptors.length) return contexts;

@@ -1553,13 +1553,18 @@ model SubscriptionFeedRead {
 }
 
 model ArticleCollection {
-  id          Int                             @id @default(autoincrement())
-  ownerId     Int                             @map("owner_id")
-  owner       User                            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  name        String                          @db.VarChar(80)
-  description String                          @default("") @db.VarChar(300)
-  visibility  ArticleVisibility               @default(public)
-  sortOrder   Int                             @default(0) @map("sort_order")
+  id                Int                             @id @default(autoincrement())
+  ownerId           Int                             @map("owner_id")
+  owner             User                            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name              String                          @db.VarChar(80)
+  description       String                          @default("") @db.VarChar(300)
+  coverPath         String?                         @map("cover_path") @db.VarChar(512)
+  coverOriginalName String?                         @map("cover_original_name") @db.VarChar(255)
+  coverStoredName   String?                         @unique @map("cover_stored_name") @db.VarChar(255)
+  coverMimeType     String?                         @map("cover_mime_type") @db.VarChar(100)
+  coverSizeBytes    Int?                            @map("cover_size_bytes")
+  visibility        ArticleVisibility               @default(public)
+  sortOrder         Int                             @default(0) @map("sort_order")
   items       ArticleCollectionItem[]
   subscribers ArticleCollectionSubscription[]
   profilePins UserProfileSettings[]           @relation("PinnedProfileCollection")
