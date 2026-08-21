@@ -1,15 +1,15 @@
 "use client";
 
-import { Ban, Check, Download, FileText, Flag, Image as ImageIcon, LoaderCircle, Search, ShieldOff, UserRound, X } from "lucide-react";
+import { Ban, Check, Flag, LoaderCircle, Search, ShieldOff, UserRound, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { GroupReportMessagePreview } from "@/components/group-report-message-preview";
 import { getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { isSiteManager } from "@/lib/user-permissions";
 import {
   banChatGroup,
-  downloadChatAttachment,
   downloadChatAttachmentThumbnail,
   handleChatGroupReport,
   liftChatGroupBan,
@@ -83,10 +83,10 @@ export default function GroupReportsAdminPage() {
     if (!keyword) return reports;
     return reports.filter((report) => [
       report.group.name,
-      report.message.body,
       report.message.sender.nickname,
+      report.message.sender.username,
       report.reporter.nickname,
-      report.detail ?? "",
+      report.reporter.username,
     ].some((value) => value.toLocaleLowerCase().includes(keyword)));
   }, [reports, search]);
 
@@ -175,12 +175,14 @@ export default function GroupReportsAdminPage() {
     <header className="group-management-admin-header"><div><span className="page-kicker">SITE MODERATION</span><h1>群聊管理</h1><p>管理全站群聊状态，并集中处理群聊举报。</p></div><span className="group-management-admin-summary"><b>{groups.length}</b><small>个群聊</small></span></header>
     <div className="group-management-admin-toolbar">
       <nav aria-label="群聊管理页签"><button className={tab === "groups" ? "active" : ""} onClick={() => setTab("groups")} type="button"><ShieldOff aria-hidden="true" size={16} />群聊列表</button><button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")} type="button"><Flag aria-hidden="true" size={16} />群聊举报{reportStatus === "pending" && reports.length ? <b>{reports.length}</b> : null}</button></nav>
-      <label className="group-management-search"><Search aria-hidden="true" size={16} /><input aria-label="搜索群聊管理内容" onChange={(event) => setSearch(event.target.value)} placeholder="搜索群名称、成员或内容" value={search} />{search ? <button aria-label="清空搜索" onClick={() => setSearch("")} type="button"><X aria-hidden="true" size={14} /></button> : null}</label>
+      <div className="group-management-toolbar-actions">
+        {tab === "reports" ? <nav aria-label="举报状态" className="group-management-report-filter"><button className={reportStatus === "pending" ? "active" : ""} onClick={() => setReportStatus("pending")} type="button">待处理</button><button className={reportStatus === "resolved" ? "active" : ""} onClick={() => setReportStatus("resolved")} type="button">已处理</button><button className={reportStatus === "rejected" ? "active" : ""} onClick={() => setReportStatus("rejected")} type="button">已驳回</button></nav> : null}
+        <label className="group-management-search"><Search aria-hidden="true" size={16} /><input aria-label={tab === "reports" ? "搜索群聊举报" : "搜索群聊列表"} onChange={(event) => setSearch(event.target.value)} placeholder={tab === "reports" ? "搜索群名称、举报者或被举报者" : "搜索群名称、群主或群成员"} value={search} />{search ? <button aria-label="清空搜索" onClick={() => setSearch("")} type="button"><X aria-hidden="true" size={14} /></button> : null}</label>
+      </div>
     </div>
-    {tab === "reports" ? <div className="group-management-report-filter"><nav aria-label="举报状态"><button className={reportStatus === "pending" ? "active" : ""} onClick={() => setReportStatus("pending")} type="button">待处理</button><button className={reportStatus === "resolved" ? "active" : ""} onClick={() => setReportStatus("resolved")} type="button">已处理</button><button className={reportStatus === "rejected" ? "active" : ""} onClick={() => setReportStatus("rejected")} type="button">已驳回</button></nav></div> : null}
     {isLoading ? <div className="article-empty-state"><LoaderCircle aria-hidden="true" className="spin" size={22} />正在读取群聊管理数据。</div> : tab === "groups" ? <GroupAdminGrid groups={groups} busyKey={busyKey} membersLoadingId={membersLoadingId} onBan={openBanDialog} onLift={liftBan} onOpenMembers={openMembers} onOpenProfile={(username) => router.push(`/users/${encodeURIComponent(username)}`)} /> : <ReportAdminGrid reports={filteredReports} status={reportStatus} busyKey={busyKey} onHandle={handleReport} onOpenProfile={(username) => router.push(`/users/${encodeURIComponent(username)}`)} onPreview={setPreviewReport} />}
     {banTarget ? <div className="group-management-modal-backdrop" onClick={() => setBanTarget(null)} role="presentation"><section aria-modal="true" className="group-management-ban-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><header><span><Ban aria-hidden="true" size={18} /><strong>{banTarget.isBanned ? "调整群聊封禁" : "封禁群聊"}</strong></span><button aria-label="关闭封禁窗口" onClick={() => setBanTarget(null)} type="button"><X aria-hidden="true" size={17} /></button></header><p>群成员仍可进入并查看历史消息，但无法发送文字、图片、文件或转发内容。</p><label className="group-management-switch"><input checked={permanent} onChange={(event) => setPermanent(event.target.checked)} type="checkbox" /><span>永久封禁</span></label>{!permanent ? <label><span>封禁时长（分钟）</span><input min={1} max={525600} onChange={(event) => setDurationMinutes(Number(event.target.value))} type="number" value={durationMinutes} /></label> : null}<label><span>封禁理由</span><textarea maxLength={300} onChange={(event) => setReason(event.target.value)} placeholder="说明封禁原因" rows={4} value={reason} /></label><footer><button onClick={() => setBanTarget(null)} type="button">取消</button><button disabled={busyKey === `ban:${banTarget.id}`} onClick={() => void submitBan()} type="button">{busyKey === `ban:${banTarget.id}` ? "处理中" : "确认封禁"}</button></footer></section></div> : null}
-    {previewReport ? <ReportPreview report={previewReport} onClose={() => setPreviewReport(null)} /> : null}
+    {previewReport ? <GroupReportMessagePreview group={previewReport.group} message={previewReport.message} onClose={() => setPreviewReport(null)} /> : null}
     {membersTarget ? <GroupMembersDialog group={membersTarget.group} members={membersTarget.members} onClose={() => setMembersTarget(null)} onOpenProfile={(username) => router.push(`/users/${encodeURIComponent(username)}`)} /> : null}
     <AppToast duration={error ? 4200 : 2800} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
   </section>;
@@ -208,7 +210,7 @@ function ReportAdminGrid({ reports, status, busyKey, onHandle, onOpenProfile, on
       <div className="group-admin-card-body">
         <button className="report-admin-sender" onClick={() => onOpenProfile(report.message.sender.username)} title={`查看被举报者 ${report.message.sender.nickname}`} type="button"><Avatar user={report.message.sender} /><span><small>被举报者</small><strong>{report.message.sender.nickname}</strong></span></button>
         <div className="report-admin-group"><GroupAvatar group={report.group} /><div className="group-admin-card-title"><strong>{report.group.name}</strong><small>{formatMinute(report.createdAt)} · {report.reason}</small></div></div>
-        <footer><button aria-label={`查看举报者 ${report.reporter.nickname}`} className="report-admin-reporter" onClick={() => onOpenProfile(report.reporter.username)} title={`举报者：${report.reporter.nickname}`} type="button"><Avatar user={report.reporter} /></button><span>{status === "pending" ? <><button className="icon-action" disabled={busyKey === `report:${report.id}`} onClick={() => void onHandle(report, "rejected")} title="驳回举报" type="button"><X aria-hidden="true" size={16} /></button><button className="icon-action danger" disabled={busyKey === `report:${report.id}`} onClick={() => void onHandle(report, "resolved")} title="处理并删除消息" type="button"><Check aria-hidden="true" size={16} /></button></> : <small className="report-admin-status">{status === "resolved" ? "已处理" : "已驳回"}</small>}</span></footer>
+        <footer><button aria-label={`查看 ${report.reporter.nickname} 的主页`} className="report-admin-reporter" onClick={() => onOpenProfile(report.reporter.username)} title={`查看 ${report.reporter.nickname} 的主页`} type="button"><Avatar user={report.reporter} /><strong>{report.reporter.nickname}</strong></button><span>{status === "pending" ? <><button className="icon-action" disabled={busyKey === `report:${report.id}`} onClick={() => void onHandle(report, "rejected")} title="驳回举报" type="button"><X aria-hidden="true" size={16} /></button><button className="icon-action danger" disabled={busyKey === `report:${report.id}`} onClick={() => void onHandle(report, "resolved")} title="处理并删除消息" type="button"><Check aria-hidden="true" size={16} /></button></> : <small className="report-admin-status">{status === "resolved" ? "已处理" : "已驳回"}</small>}</span></footer>
       </div>
     </article>;
   })}</div>;
@@ -231,98 +233,6 @@ function ReportCardImage({ attachment }: { attachment: ChatAttachment }) {
   return url ? <img alt={attachment.originalName} src={url} /> : <span>正在读取图片</span>;
 }
 
-function ReportPreview({ report, onClose }: { report: ChatGroupReport; onClose: () => void }) {
-  const [previewAttachment, setPreviewAttachment] = useState<ChatAttachment | null>(null);
-  const images = report.message.attachments?.filter((attachment) => attachment.kind === "image") ?? [];
-  const otherAttachments = report.message.attachments?.filter((attachment) => attachment.kind !== "image") ?? [];
-  return <><div className="group-management-preview-backdrop" onClick={onClose} role="presentation"><section aria-modal="true" className="group-management-preview" onClick={(event) => event.stopPropagation()} role="dialog"><header><span className="report-admin-group"><GroupAvatar group={report.group} /><strong>{report.group.name} · 被举报内容</strong></span><button aria-label="关闭内容预览" onClick={onClose} type="button"><X aria-hidden="true" size={18} /></button></header><div className="group-management-preview-content"><div className="chat-message theirs group-report-preview-message"><span className="chat-message-sender"><PreviewUserAvatar user={report.message.sender} /><small>{report.message.senderDisplayName || report.message.sender.nickname}</small></span><div>{images.length ? <div className={`chat-message-attachments chat-message-images count-${images.length}`}>{images.map((attachment) => <ReportMessageImage attachment={attachment} key={attachment.id} onPreview={() => setPreviewAttachment(attachment)} />)}</div> : null}{otherAttachments.length ? <div className={`chat-message-attachments chat-message-files${otherAttachments.length === 1 && otherAttachments[0].kind === "audio" ? " audio-only" : ""}`}>{otherAttachments.map((attachment) => attachment.kind === "audio" || attachment.kind === "video" ? <ReportMessageMedia attachment={attachment} key={attachment.id} /> : <ReportMessageFile attachment={attachment} key={attachment.id} />)}</div> : null}{report.message.body ? <p>{report.message.body}</p> : null}<span>{formatMinute(report.message.createdAt)}</span></div></div></div></section></div>{previewAttachment ? <ReportAttachmentPreview attachment={previewAttachment} onClose={() => setPreviewAttachment(null)} /> : null}</>;
-}
-
-function ReportMessageImage({ attachment, onPreview }: { attachment: ChatAttachment; onPreview: () => void }) {
-  const [url, setUrl] = useState("");
-  useEffect(() => {
-    const token = readAccessToken();
-    if (!token) return;
-    let active = true;
-    let objectUrl = "";
-    downloadChatAttachmentThumbnail(token, attachment).then((blob) => {
-      if (!active) return;
-      objectUrl = URL.createObjectURL(blob);
-      setUrl(objectUrl);
-    }).catch(() => undefined);
-    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [attachment]);
-  return <button className="chat-image-attachment" disabled={!url} onClick={onPreview} type="button">{url ? <img alt={attachment.originalName} src={url} /> : <ImageIcon aria-hidden="true" size={22} />}</button>;
-}
-
-function ReportMessageMedia({ attachment }: { attachment: ChatAttachment }) {
-  const [previewUrl, setPreviewUrl] = useState("");
-  const [error, setError] = useState("");
-  useEffect(() => {
-    const token = readAccessToken();
-    if (!token) return;
-    let active = true;
-    let objectUrl = "";
-    downloadChatAttachment(token, attachment).then((blob) => {
-      if (!active) return;
-      objectUrl = URL.createObjectURL(blob);
-      setPreviewUrl(objectUrl);
-    }).catch((mediaError) => {
-      if (active) setError(mediaError instanceof Error ? mediaError.message : "媒体读取失败。");
-    });
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [attachment]);
-  if (!previewUrl) return <><span className="chat-media-loading">{error ? "媒体暂时无法读取" : <LoaderCircle aria-hidden="true" className="spin" size={18} />}</span><AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" /></>;
-  return <>{attachment.kind === "audio" ? <audio className="chat-audio-attachment" controls onEnded={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} preload="metadata" src={previewUrl} /> : <video className="chat-video-attachment" controls playsInline preload="metadata" src={previewUrl} />}<AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" /></>;
-}
-
-function ReportMessageFile({ attachment }: { attachment: ChatAttachment }) {
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [error, setError] = useState("");
-  async function download() {
-    const token = readAccessToken();
-    if (!token || isDownloading) return;
-    setIsDownloading(true);
-    try {
-      const blob = await downloadChatAttachment(token, attachment);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = attachment.originalName;
-      anchor.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (downloadError) {
-      setError(downloadError instanceof Error ? downloadError.message : "附件下载失败。");
-    } finally {
-      setIsDownloading(false);
-    }
-  }
-  return <><button className="chat-file-attachment" onClick={() => void download()} type="button"><FileText aria-hidden="true" size={22} /><span><strong title={attachment.originalName}>{attachment.originalName}</strong><small>{formatBytes(attachment.sizeBytes)}</small></span>{isDownloading ? <LoaderCircle aria-hidden="true" className="spin" size={16} /> : <Download aria-hidden="true" size={16} />}</button><AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" /></>;
-}
-
-function ReportAttachmentPreview({ attachment, onClose }: { attachment: ChatAttachment; onClose: () => void }) {
-  const [url, setUrl] = useState("");
-  const [error, setError] = useState("");
-  useEffect(() => {
-    const token = readAccessToken();
-    if (!token) return;
-    let objectUrl = "";
-    downloadChatAttachment(token, attachment).then((blob) => {
-      objectUrl = URL.createObjectURL(blob);
-      setUrl(objectUrl);
-    }).catch((previewError) => setError(previewError instanceof Error ? previewError.message : "附件预览失败。"));
-    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [attachment, onClose]);
-  return <><div className="chat-attachment-preview" onClick={onClose} role="presentation"><button aria-label="关闭图片预览" onClick={onClose} type="button"><X aria-hidden="true" size={22} /></button>{url ? <img alt={attachment.originalName} onClick={(event) => event.stopPropagation()} src={url} /> : error ? <span>{error}</span> : <LoaderCircle aria-hidden="true" className="spin" size={26} />}</div><AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" /></>;
-}
-
-function PreviewUserAvatar({ user }: { user: SocialUser }) {
-  return <span className="chat-user-avatar">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : fallbackText(user.nickname)}</span>;
-}
-
 function Avatar({ user, className = "" }: { user: SocialUser; className?: string }) {
   return <span className={`group-admin-avatar${className ? ` ${className}` : ""}`}>{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : <strong>{fallbackText(user.nickname)}</strong>}</span>;
 }
@@ -343,10 +253,4 @@ function memberRoleLabel(role: ChatGroupMember["role"]): string {
 
 function formatMinute(value: string): string {
   return new Date(value).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
-}
-
-function formatBytes(value: number): string {
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }

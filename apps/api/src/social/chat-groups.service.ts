@@ -166,7 +166,13 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     const groups = await this.prisma.chatGroup.findMany({
       where: {
         status: ChatGroupStatus.active,
-        ...(keyword ? { OR: [{ name: { contains: keyword } }, { announcement: { contains: keyword } }] } : {}),
+        ...(keyword ? {
+          OR: [
+            { name: { contains: keyword } },
+            { owner: { is: { OR: [{ nickname: { contains: keyword } }, { username: { contains: keyword } }] } } },
+            { members: { some: { status: ChatGroupMemberStatus.active, user: { OR: [{ nickname: { contains: keyword } }, { username: { contains: keyword } }] } } } },
+          ],
+        } : {}),
       },
       orderBy: [{ isBanned: "desc" }, { updatedAt: "desc" }, { id: "desc" }],
       take: query.limit,

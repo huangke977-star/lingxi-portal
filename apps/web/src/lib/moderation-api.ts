@@ -32,7 +32,17 @@ export interface ModerationReport {
     body: string;
     type: string;
     sender: ModerationUser;
-    attachments: Array<{ kind: string; originalName: string }>;
+    attachments: Array<{
+      id: number;
+      conversationId: number;
+      kind: "image" | "file" | "audio" | "video";
+      originalName: string;
+      mimeType: string;
+      sizeBytes: number;
+      downloadUrl: string;
+      thumbnailUrl: string | null;
+      createdAt: string;
+    }>;
     createdAt: string;
   } | null;
   createdAt: string;

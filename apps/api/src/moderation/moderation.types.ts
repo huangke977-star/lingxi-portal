@@ -43,7 +43,17 @@ export interface ModerationReportResponse {
     body: string;
     type: string;
     sender: ModerationUserResponse;
-    attachments: Array<{ kind: string; originalName: string }>;
+    attachments: Array<{
+      id: number;
+      conversationId: number;
+      kind: "image" | "file" | "audio" | "video";
+      originalName: string;
+      mimeType: string;
+      sizeBytes: number;
+      downloadUrl: string;
+      thumbnailUrl: string | null;
+      createdAt: string;
+    }>;
     createdAt: string;
   } | null;
   createdAt: string;
