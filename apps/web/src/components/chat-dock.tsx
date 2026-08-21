@@ -1602,6 +1602,30 @@ export function ChatDock() {
       setIsMinimized(true);
       return;
     }
+    if (notification.context?.kind === "article_report") {
+      const reportUrl = notification.context.status === "pending" && notification.context.reportId
+        ? `/admin/articles?tab=articles&report=${notification.context.reportId}&reportSource=article`
+        : notification.context.article?.slug
+          ? `/articles/${notification.context.article.slug}`
+          : notification.actionUrl;
+      if (reportUrl) {
+        router.push(reportUrl);
+        setIsMinimized(true);
+        return;
+      }
+    }
+    if (notification.context?.kind === "comment_report") {
+      const reportUrl = notification.context.status === "pending" && notification.context.reportId
+        ? `/admin/articles?tab=comments&report=${notification.context.reportId}&reportSource=comment`
+        : notification.context.article?.slug
+        ? `/articles/${notification.context.article.slug}${notification.context.commentId ? `?commentId=${notification.context.commentId}` : ""}`
+        : notification.actionUrl;
+      if (reportUrl) {
+        router.push(reportUrl);
+        setIsMinimized(true);
+        return;
+      }
+    }
     if (notification.type === "friend_request_received") {
       setSelectedId(notificationConversationId("system"));
       setSelectedSystemNotificationId(notification.id);
@@ -2649,6 +2673,11 @@ function notificationStatusLabel(kind: NonNullable<SocialNotification["context"]
     return "消息请求已失效";
   }
   if (kind === "group_report") return status === "rejected" ? "举报已驳回" : "举报已处理";
+  if (kind === "article_report" || kind === "comment_report") {
+    if (status === "pending") return "待处理";
+    if (status === "resolved") return "举报已处理";
+    if (status === "rejected") return "举报已驳回";
+  }
   if (status === "accepted" || status === "approved") return "已通过";
   if (status === "declined" || status === "rejected") return "已拒绝";
   if (status === "expired") return "邀请已过期";

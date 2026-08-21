@@ -87,6 +87,14 @@ function HeaderNotificationCopy({ notification }: { notification: SocialNotifica
   return <span><strong>{notification.title}</strong><small>{notification.context?.requestBody ?? notification.context?.commentBody ?? notification.body}</small></span>;
 }
 
+function pendingReportActionUrl(report: ModerationReport): string {
+  if (report.source === "article") return `/admin/articles?tab=articles&report=${report.id}&reportSource=article`;
+  if (report.source === "comment") return `/admin/articles?tab=comments&report=${report.id}&reportSource=comment`;
+  return report.group
+    ? `/messages?groupApproval=${report.group.id}&report=${report.id}`
+    : "/messages";
+}
+
 export function TopNav() {
   const router = useRouter();
   const pathname = usePathname();
@@ -365,7 +373,7 @@ export function TopNav() {
               <button aria-expanded={isTaskPopoverOpen} aria-label="待处理举报" className={`header-action-button${isTaskPopoverOpen ? " active" : ""}`} onClick={() => setIsTaskPopoverOpen((current) => !current)} title="待处理举报" type="button"><ListTodo aria-hidden="true" size={19} />{pendingReportCount ? <b>{pendingReportCount > 99 ? "99+" : pendingReportCount}</b> : null}</button>
               <div className={`header-popover task-popover${isTaskPopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(taskCloseTimerRef)}>
                 <div className="header-popover-heading"><strong>待处理举报</strong><button onClick={() => { setIsTaskPopoverOpen(false); router.push("/admin/reports"); }} type="button">进入管理</button></div>
-                <div className="header-popover-list">{pendingReports.length ? pendingReports.slice(0, 6).map((report) => <button key={report.key} onClick={() => { setIsTaskPopoverOpen(false); router.push("/admin/reports"); }} type="button"><span className="header-popover-icon"><ListTodo aria-hidden="true" size={16} /></span><span><strong>{report.sourceLabel} · {report.article?.title || report.group?.name || report.comment?.body || report.message?.body || "待处理内容"}</strong><small>{report.reporter.nickname} · {formatHeaderTime(report.createdAt)}</small></span></button>) : <span className="header-popover-empty">暂无待处理举报。</span>}</div>
+                <div className="header-popover-list">{pendingReports.length ? pendingReports.slice(0, 6).map((report) => <button key={report.key} onClick={() => { setIsTaskPopoverOpen(false); router.push(pendingReportActionUrl(report)); }} type="button"><span className="header-popover-icon"><ListTodo aria-hidden="true" size={16} /></span><span><strong>{report.sourceLabel} · {report.article?.title || report.group?.name || report.comment?.body || report.message?.body || "待处理内容"}</strong><small>{report.reporter.nickname} · {formatHeaderTime(report.createdAt)}</small></span></button>) : <span className="header-popover-empty">暂无待处理举报。</span>}</div>
               </div>
             </div> : null}
             <div className="header-action-wrap" ref={messagePopoverRef} onPointerEnter={(event) => handleHoverOpen(event, messageCloseTimerRef, () => setIsMessagePopoverOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(messageCloseTimerRef, () => setIsMessagePopoverOpen(false)); }}>

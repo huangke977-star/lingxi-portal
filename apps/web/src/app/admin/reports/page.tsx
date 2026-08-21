@@ -21,6 +21,24 @@ const SOURCE_LABEL: Record<ModerationReportSource | "all", string> = { article: 
 const REASON_LABEL: Record<string, string> = { spam: "垃圾广告", harassment: "辱骂骚扰", illegal: "违法违规", privacy: "隐私泄露", misinformation: "不实内容", other: "其他" };
 type ModerationActionStatus = Exclude<ModerationReportStatus, "pending">;
 type ActionTarget = { report: ModerationReport; status: ModerationActionStatus };
+type ResolutionMode = "keep" | "block" | "delete";
+
+const RESOLUTION_OPTIONS: Record<ModerationReportSource, Array<{ label: string; value: ResolutionMode }>> = {
+  article: [
+    { value: "keep", label: "处理但不修改文章" },
+    { value: "block", label: "屏蔽文章" },
+    { value: "delete", label: "删除文章" },
+  ],
+  comment: [
+    { value: "keep", label: "处理但保留评论" },
+    { value: "block", label: "屏蔽评论" },
+    { value: "delete", label: "删除评论" },
+  ],
+  group_message: [
+    { value: "keep", label: "处理但保留消息" },
+    { value: "delete", label: "处理并删除消息" },
+  ],
+};
 
 export default function ModerationReportsPage() {
   const router = useRouter();
@@ -38,6 +56,7 @@ export default function ModerationReportsPage() {
   const [previewArticle, setPreviewArticle] = useState<Article | null>(null);
   const previewRequestRef = useRef(0);
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
+  const [resolutionMode, setResolutionMode] = useState<ResolutionMode>("keep");
   const [resolution, setResolution] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -93,10 +112,27 @@ export default function ModerationReportsPage() {
     const feedback = resolution.trim() || (nextStatus === "resolved" ? "举报已处理。" : "未发现违规。");
     setBusyKey(report.key);
     try {
-      if (report.source === "article") await moderateArticleReport(token, report.id, { status: nextStatus, resolution: feedback });
-      else if (report.source === "comment") await moderateCommentReport(token, report.id, { status: nextStatus, resolution: feedback });
-      else await handleChatGroupReport(token, report.id, { status: nextStatus, resolution: feedback, deleteMessage: nextStatus === "resolved" });
+      if (report.source === "article") {
+        await moderateArticleReport(token, report.id, {
+          status: nextStatus,
+          resolution: feedback,
+          articleStatus: nextStatus === "resolved" && resolutionMode !== "keep" ? (resolutionMode === "block" ? "blocked" : "deleted") : undefined,
+        });
+      } else if (report.source === "comment") {
+        await moderateCommentReport(token, report.id, {
+          status: nextStatus,
+          resolution: feedback,
+          commentStatus: nextStatus === "resolved" && resolutionMode !== "keep" ? (resolutionMode === "block" ? "blocked" : "deleted") : undefined,
+        });
+      } else {
+        await handleChatGroupReport(token, report.id, {
+          status: nextStatus,
+          resolution: feedback,
+          deleteMessage: nextStatus === "resolved" && resolutionMode === "delete",
+        });
+      }
       setActionTarget(null);
+      setResolutionMode("keep");
       setResolution("");
       setNotice(nextStatus === "resolved" ? "举报已处理。" : "举报已驳回。");
       await load(token, page);
@@ -133,11 +169,11 @@ export default function ModerationReportsPage() {
   return <section className="page-shell moderation-reports-page">
     <header className="moderation-reports-header"><div><span className="page-kicker">CONTENT MODERATION</span><h1>举报中心</h1><p>将文章、评论和群消息举报集中到同一条处理队列中。</p></div><div className="moderation-summary"><span><b>{summary.pending}</b><small>待处理</small></span><span><b>{summary.total}</b><small>全部记录</small></span></div></header>
     <div className="moderation-reports-toolbar"><div className="moderation-filter-group"><GlassSelect ariaLabel="举报状态" onChange={setStatus} options={Object.entries(STATUS_LABEL).map(([value, label]) => ({ value: value as ModerationReportStatus | "all", label }))} value={status} /><GlassSelect ariaLabel="举报来源" onChange={setSource} options={Object.entries(SOURCE_LABEL).map(([value, label]) => ({ value: value as ModerationReportSource | "all", label }))} value={source} /></div><div className="moderation-source-summary"><span><FileText aria-hidden="true" size={14} />文章 {summary.bySource.article}</span><span><MessageSquare aria-hidden="true" size={14} />评论 {summary.bySource.comment}</span><span><Flag aria-hidden="true" size={14} />群消息 {summary.bySource.group_message}</span></div></div>
-    {isLoading ? <div className="article-empty-state"><LoaderCircle className="spin" size={22} />正在读取举报队列。</div> : items.length ? <div className="moderation-report-list">{items.map((report) => <ModerationReportRow busy={busyKey === report.key} key={report.key} onAction={(nextReport, nextStatus) => { setActionTarget({ report: nextReport, status: nextStatus }); setResolution(""); }} onPreview={(nextReport) => void openPreview(nextReport)} report={report} />)}</div> : <div className="article-empty-state"><AlertTriangle size={22} />当前筛选下没有举报记录。</div>}
+    {isLoading ? <div className="article-empty-state"><LoaderCircle className="spin" size={22} />正在读取举报队列。</div> : items.length ? <div className="moderation-report-list">{items.map((report) => <ModerationReportRow busy={busyKey === report.key} key={report.key} onAction={(nextReport, nextStatus) => { setActionTarget({ report: nextReport, status: nextStatus }); setResolutionMode(nextStatus === "resolved" && nextReport.source === "group_message" ? "delete" : "keep"); setResolution(""); }} onPreview={(nextReport) => void openPreview(nextReport)} report={report} />)}</div> : <div className="article-empty-state"><AlertTriangle size={22} />当前筛选下没有举报记录。</div>}
     {totalPages > 1 ? <footer className="moderation-pagination"><button aria-label="上一页" disabled={page <= 1 || isLoading} onClick={() => { const next = page - 1; setPage(next); const token = readAccessToken(); if (token) void load(token, next); }} type="button"><ChevronLeft size={16} /></button><span>第 {page} / {totalPages} 页 · 共 {total} 条</span><button aria-label="下一页" disabled={page >= totalPages || isLoading} onClick={() => { const next = page + 1; setPage(next); const token = readAccessToken(); if (token) void load(token, next); }} type="button"><ChevronRight size={16} /></button></footer> : null}
     {previewReport ? <ModerationReportPreview report={previewReport} onClose={() => setPreviewReport(null)} /> : null}
     {previewArticle ? <AdminArticlePreviewModal article={previewArticle} onClose={() => setPreviewArticle(null)} /> : null}
-    {actionTarget ? <div className="modal-backdrop moderation-action-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setActionTarget(null); }} role="presentation"><form aria-modal="true" className="moderation-action-dialog" onSubmit={(event) => { event.preventDefault(); void submitAction(); }} role="dialog"><header><span><AlertTriangle size={17} /><strong>{actionTarget.status === "resolved" ? "处理举报" : "驳回举报"}</strong></span><button aria-label="关闭" onClick={() => setActionTarget(null)} type="button"><X size={17} /></button></header><p>{actionTarget.report.source === "group_message" && actionTarget.status === "resolved" ? "处理后会删除被举报群消息，并通知举报者和消息发送者。" : "填写的反馈会记录在举报记录中，并沿用原有通知流程。"}</p><textarea autoFocus maxLength={500} onChange={(event) => setResolution(event.target.value)} placeholder="填写处理反馈" required value={resolution} /><footer><button onClick={() => setActionTarget(null)} type="button">取消</button><button disabled={busyKey === actionTarget.report.key} type="submit">{busyKey === actionTarget.report.key ? "处理中" : "确认"}</button></footer></form></div> : null}
+    {actionTarget ? <div className="modal-backdrop moderation-action-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setActionTarget(null); }} role="presentation"><form aria-modal="true" className="moderation-action-dialog" onSubmit={(event) => { event.preventDefault(); void submitAction(); }} role="dialog"><header><span><AlertTriangle size={17} /><strong>{actionTarget.status === "resolved" ? "处理举报" : "驳回举报"}</strong></span><button aria-label="关闭" onClick={() => setActionTarget(null)} type="button"><X size={17} /></button></header>{actionTarget.status === "resolved" ? <label className="moderation-action-field"><span>处理方式</span><GlassSelect ariaLabel="处理方式" onChange={setResolutionMode} options={RESOLUTION_OPTIONS[actionTarget.report.source]} value={resolutionMode} /></label> : null}<p>{actionDescription(actionTarget, resolutionMode)}</p><textarea autoFocus maxLength={500} onChange={(event) => setResolution(event.target.value)} placeholder="填写处理反馈" required value={resolution} /><footer><button onClick={() => setActionTarget(null)} type="button">取消</button><button disabled={busyKey === actionTarget.report.key} type="submit">{busyKey === actionTarget.report.key ? "处理中" : "确认"}</button></footer></form></div> : null}
     <AppToast duration={error ? 4200 : 2800} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
   </section>;
 }
@@ -161,4 +197,10 @@ function ModerationReportPreview({ report, onClose }: { report: ModerationReport
 }
 
 function SourceIcon({ source }: { source: ModerationReportSource }) { if (source === "article") return <FileText aria-hidden="true" size={14} />; if (source === "comment") return <MessageSquare aria-hidden="true" size={14} />; return <Flag aria-hidden="true" size={14} />; }
+function actionDescription(target: ActionTarget, mode: ResolutionMode): string {
+  if (target.status === "rejected") return "填写的反馈会记录在举报记录中，并通知举报者。";
+  if (mode === "keep") return `举报将标记为已处理，但保留原${target.report.source === "article" ? "文章" : target.report.source === "comment" ? "评论" : "群消息"}。`;
+  if (mode === "block") return `举报将标记为已处理，并屏蔽被举报${target.report.source === "article" ? "文章" : "评论"}。`;
+  return `举报将标记为已处理，并删除被举报${target.report.source === "article" ? "文章" : target.report.source === "comment" ? "评论" : "群消息"}。`;
+}
 function formatTime(value: string): string { return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)); }

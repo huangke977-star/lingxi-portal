@@ -16978,6 +16978,10 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .moderation-action-dialog > header span { display: inline-flex; align-items: center; gap: 7px; color: var(--foreground); }
 .moderation-action-dialog > header button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
 .moderation-action-dialog > p { margin: 0; color: var(--muted); font-size: 0.74rem; line-height: 1.55; }
+.moderation-action-field { display: grid; min-width: 0; gap: 5px; color: var(--muted-strong); font-size: 0.7rem; }
+.moderation-action-field .announcement-editor-select { width: 100%; }
+.moderation-action-field .announcement-editor-select-trigger { min-height: 38px; border: 0; background: color-mix(in srgb, var(--surface) 76%, transparent); font-size: 0.78rem; }
+.moderation-action-field .announcement-editor-select-menu { z-index: 30; border: 0; }
 .moderation-action-dialog textarea { min-height: 108px; resize: vertical; border: 1px solid var(--control-line); border-radius: 7px; background: var(--surface-soft); color: var(--foreground); font: inherit; font-size: 0.78rem; line-height: 1.5; outline: 0; padding: 10px 11px; }
 .moderation-action-dialog textarea:focus { border-color: var(--accent); }
 .moderation-action-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; }
