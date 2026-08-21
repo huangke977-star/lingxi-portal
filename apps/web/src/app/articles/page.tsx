@@ -3,7 +3,7 @@
 import { ArrowRight, BookOpen, FolderOpen, Rss, Search, SlidersHorizontal, UserPlus, UsersRound, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleCard } from "@/components/article-ui";
@@ -56,7 +56,7 @@ function ArticlesContent() {
   const [recommendations, setRecommendations] = useState<DiscoveryRecommendations | null>(null);
   const [joinRequestTarget, setJoinRequestTarget] = useState<DiscoveryRecommendations["groups"][number] | null>(null);
   const [joinRequestNote, setJoinRequestNote] = useState("");
-  const composingRef = useRef(false);
+  const [isComposing, setIsComposing] = useState(false);
 
   function replaceQuery(next: { q?: string; feed?: DiscoverFeed; order?: DiscoverOrder }) {
     const params = new URLSearchParams(searchParams.toString());
@@ -73,12 +73,12 @@ function ArticlesContent() {
   }
 
   useEffect(() => {
-    if (composingRef.current || searchInput === querySearch) return;
+    if (isComposing || searchInput === querySearch) return;
     const timer = window.setTimeout(() => replaceQuery({ q: searchInput }), 300);
     return () => window.clearTimeout(timer);
     // Search state stays in the URL for refresh and back navigation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [querySearch, searchInput]);
+  }, [isComposing, querySearch, searchInput]);
 
   useEffect(() => {
     let active = true;
@@ -190,7 +190,7 @@ function ArticlesContent() {
           <div className="article-feed-toolbar">
             <label className="article-search">
               <Search aria-hidden="true" size={17} />
-              <input aria-label="搜索文章" name="search" onChange={(event) => setSearchInput(event.target.value)} onCompositionEnd={(event) => { composingRef.current = false; setSearchInput(event.currentTarget.value); }} onCompositionStart={() => { composingRef.current = true; }} placeholder="搜索标题、正文、标签或作者" value={searchInput} />
+              <input aria-label="搜索文章" name="search" onChange={(event) => setSearchInput(event.target.value)} onCompositionEnd={(event) => { setSearchInput(event.currentTarget.value); setIsComposing(false); }} onCompositionStart={() => setIsComposing(true)} placeholder="搜索标题、正文、标签或作者" value={searchInput} />
               {searchInput ? <button aria-label="清除搜索" onClick={() => setSearchInput("")} title="清除搜索" type="button"><X aria-hidden="true" size={16} /></button> : null}
             </label>
             <div className="article-order-select"><SlidersHorizontal aria-hidden="true" size={16} /><GlassSelect ariaLabel="文章排序" onChange={(value) => replaceQuery({ order: value })} options={ARTICLE_ORDER_OPTIONS} value={order} /></div>

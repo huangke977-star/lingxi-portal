@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticlePinBadge, ArticleStats, ArticleTaxonomy, RecentCommenters, formatArticleDate } from "@/components/article-ui";
@@ -73,7 +73,7 @@ function MyArticlesContent() {
   const [appealArticle, setAppealArticle] = useState<Article | null>(null);
   const [appealReason, setAppealReason] = useState("");
   const [isAppealSaving, setIsAppealSaving] = useState(false);
-  const composingRef = useRef(false);
+  const [isComposing, setIsComposing] = useState(false);
 
   function replaceQuery(next: { status?: "all" | ArticleStatus; q?: string }) {
     const params = new URLSearchParams(searchParams.toString());
@@ -104,12 +104,12 @@ function MyArticlesContent() {
   }
 
   useEffect(() => {
-    if (composingRef.current || searchInput === querySearch) return;
+    if (isComposing || searchInput === querySearch) return;
     const timer = window.setTimeout(() => replaceQuery({ q: searchInput }), 300);
     return () => window.clearTimeout(timer);
     // Query replacement is intentionally driven by the input value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchInput, querySearch]);
+  }, [isComposing, searchInput, querySearch]);
 
   useEffect(() => {
     const token = readAccessToken();
@@ -199,8 +199,8 @@ function MyArticlesContent() {
           <input
             aria-label="搜索我的文章"
             onChange={(event) => setSearchInput(event.target.value)}
-            onCompositionEnd={(event) => { composingRef.current = false; setSearchInput(event.currentTarget.value); }}
-            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={(event) => { setSearchInput(event.currentTarget.value); setIsComposing(false); }}
+            onCompositionStart={() => setIsComposing(true)}
             placeholder="搜索我的文章"
             value={searchInput}
           />

@@ -16945,7 +16945,6 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .moderation-source-summary span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .moderation-report-list { display: grid; min-width: 0; }
 .moderation-report-row { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: 14px; border-bottom: 1px solid var(--control-line); padding: 10px 4px; background: transparent; cursor: pointer; }
-.moderation-report-row:first-child { border-top: 1px solid var(--control-line); }
 .moderation-report-row:hover, .moderation-report-row:focus-visible { background: color-mix(in srgb, var(--surface-strong) 52%, transparent); outline: 0; }
 .moderation-report-row-main { display: grid; min-width: 0; gap: 7px; }
 .moderation-report-row-heading { display: flex; min-width: 0; align-items: center; gap: 8px; }

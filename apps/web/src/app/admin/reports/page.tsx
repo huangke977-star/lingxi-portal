@@ -2,15 +2,16 @@
 
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, FileText, Flag, LoaderCircle, MessageSquare, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
+import { AdminArticlePreviewModal } from "@/components/admin-article-preview-modal";
 import { AppToast } from "@/components/app-toast";
 import { GroupReportMessagePreview } from "@/components/group-report-message-preview";
 import { GlassSelect } from "@/components/glass-select";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { getModerationReportSummary, listModerationReports, ModerationReport, ModerationReportSource, ModerationReportStatus } from "@/lib/moderation-api";
-import { moderateArticleReport, moderateCommentReport } from "@/lib/article-api";
+import { getMyArticleReportPreview, moderateArticleReport, moderateCommentReport, type Article } from "@/lib/article-api";
 import { handleChatGroupReport } from "@/lib/social-api";
 import { isSiteManager } from "@/lib/user-permissions";
 
@@ -34,6 +35,8 @@ export default function ModerationReportsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [busyKey, setBusyKey] = useState("");
   const [previewReport, setPreviewReport] = useState<ModerationReport | null>(null);
+  const [previewArticle, setPreviewArticle] = useState<Article | null>(null);
+  const previewRequestRef = useRef(0);
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
   const [resolution, setResolution] = useState("");
   const [notice, setNotice] = useState("");
@@ -101,13 +104,39 @@ export default function ModerationReportsPage() {
     finally { setBusyKey(""); }
   }
 
+  async function openPreview(report: ModerationReport) {
+    const requestId = ++previewRequestRef.current;
+    setPreviewArticle(null);
+    if (report.source !== "article") {
+      setPreviewReport(report);
+      return;
+    }
+
+    setPreviewReport(null);
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      const article = await getMyArticleReportPreview(token, report.id);
+      if (previewRequestRef.current === requestId) setPreviewArticle(article);
+    } catch (previewError) {
+      if (previewRequestRef.current !== requestId) return;
+      if (isAuthExpiredError(previewError)) {
+        clearAuthTokens();
+        router.replace("/login?from=%2Fadmin%2Freports");
+        return;
+      }
+      setError(previewError instanceof Error ? previewError.message : "文章内容加载失败。");
+    }
+  }
+
   if (!user && isLoading && !error) return <section className="page-shell moderation-reports-page"><div className="article-empty-state"><LoaderCircle className="spin" size={22} />正在打开举报中心。</div></section>;
   return <section className="page-shell moderation-reports-page">
     <header className="moderation-reports-header"><div><span className="page-kicker">CONTENT MODERATION</span><h1>举报中心</h1><p>将文章、评论和群消息举报集中到同一条处理队列中。</p></div><div className="moderation-summary"><span><b>{summary.pending}</b><small>待处理</small></span><span><b>{summary.total}</b><small>全部记录</small></span></div></header>
     <div className="moderation-reports-toolbar"><div className="moderation-filter-group"><GlassSelect ariaLabel="举报状态" onChange={setStatus} options={Object.entries(STATUS_LABEL).map(([value, label]) => ({ value: value as ModerationReportStatus | "all", label }))} value={status} /><GlassSelect ariaLabel="举报来源" onChange={setSource} options={Object.entries(SOURCE_LABEL).map(([value, label]) => ({ value: value as ModerationReportSource | "all", label }))} value={source} /></div><div className="moderation-source-summary"><span><FileText aria-hidden="true" size={14} />文章 {summary.bySource.article}</span><span><MessageSquare aria-hidden="true" size={14} />评论 {summary.bySource.comment}</span><span><Flag aria-hidden="true" size={14} />群消息 {summary.bySource.group_message}</span></div></div>
-    {isLoading ? <div className="article-empty-state"><LoaderCircle className="spin" size={22} />正在读取举报队列。</div> : items.length ? <div className="moderation-report-list">{items.map((report) => <ModerationReportRow busy={busyKey === report.key} key={report.key} onAction={(nextReport, nextStatus) => { setActionTarget({ report: nextReport, status: nextStatus }); setResolution(""); }} onPreview={setPreviewReport} report={report} />)}</div> : <div className="article-empty-state"><AlertTriangle size={22} />当前筛选下没有举报记录。</div>}
+    {isLoading ? <div className="article-empty-state"><LoaderCircle className="spin" size={22} />正在读取举报队列。</div> : items.length ? <div className="moderation-report-list">{items.map((report) => <ModerationReportRow busy={busyKey === report.key} key={report.key} onAction={(nextReport, nextStatus) => { setActionTarget({ report: nextReport, status: nextStatus }); setResolution(""); }} onPreview={(nextReport) => void openPreview(nextReport)} report={report} />)}</div> : <div className="article-empty-state"><AlertTriangle size={22} />当前筛选下没有举报记录。</div>}
     {totalPages > 1 ? <footer className="moderation-pagination"><button aria-label="上一页" disabled={page <= 1 || isLoading} onClick={() => { const next = page - 1; setPage(next); const token = readAccessToken(); if (token) void load(token, next); }} type="button"><ChevronLeft size={16} /></button><span>第 {page} / {totalPages} 页 · 共 {total} 条</span><button aria-label="下一页" disabled={page >= totalPages || isLoading} onClick={() => { const next = page + 1; setPage(next); const token = readAccessToken(); if (token) void load(token, next); }} type="button"><ChevronRight size={16} /></button></footer> : null}
     {previewReport ? <ModerationReportPreview report={previewReport} onClose={() => setPreviewReport(null)} /> : null}
+    {previewArticle ? <AdminArticlePreviewModal article={previewArticle} onClose={() => setPreviewArticle(null)} /> : null}
     {actionTarget ? <div className="modal-backdrop moderation-action-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setActionTarget(null); }} role="presentation"><form aria-modal="true" className="moderation-action-dialog" onSubmit={(event) => { event.preventDefault(); void submitAction(); }} role="dialog"><header><span><AlertTriangle size={17} /><strong>{actionTarget.status === "resolved" ? "处理举报" : "驳回举报"}</strong></span><button aria-label="关闭" onClick={() => setActionTarget(null)} type="button"><X size={17} /></button></header><p>{actionTarget.report.source === "group_message" && actionTarget.status === "resolved" ? "处理后会删除被举报群消息，并通知举报者和消息发送者。" : "填写的反馈会记录在举报记录中，并沿用原有通知流程。"}</p><textarea autoFocus maxLength={500} onChange={(event) => setResolution(event.target.value)} placeholder="填写处理反馈" required value={resolution} /><footer><button onClick={() => setActionTarget(null)} type="button">取消</button><button disabled={busyKey === actionTarget.report.key} type="submit">{busyKey === actionTarget.report.key ? "处理中" : "确认"}</button></footer></form></div> : null}
     <AppToast duration={error ? 4200 : 2800} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
   </section>;

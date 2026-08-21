@@ -2,7 +2,7 @@
 
 import { Bookmark, Clock3, Heart, History, Search, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleCard, formatArticleDate } from "@/components/article-ui";
@@ -40,7 +40,7 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const composingRef = useRef(false);
+  const [isComposing, setIsComposing] = useState(false);
 
   function replaceQuery(next: { q?: string; tab?: ReadingMode }) {
     const params = new URLSearchParams(searchParams.toString());
@@ -54,12 +54,12 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
   }
 
   useEffect(() => {
-    if (composingRef.current || searchInput === querySearch) return;
+    if (isComposing || searchInput === querySearch) return;
     const timer = window.setTimeout(() => replaceQuery({ q: searchInput }), 300);
     return () => window.clearTimeout(timer);
     // Query replacement is intentionally driven by the input value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchInput, querySearch]);
+  }, [isComposing, searchInput, querySearch]);
 
   useEffect(() => {
     const token = readAccessToken();
@@ -174,7 +174,7 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
         ] as const).map(([value, label, Icon, count]) => <button aria-selected={mode === value} className={mode === value ? "active" : undefined} key={value} onClick={() => replaceQuery({ tab: value })} role="tab" type="button"><Icon aria-hidden="true" size={15} />{label}<span>{count}</span></button>)}
       </div>
       <div className="article-feed-toolbar article-collection-toolbar">
-        <label className="article-search"><Search aria-hidden="true" size={17} /><input aria-label="搜索文章" name="search" onChange={(event) => setSearchInput(event.target.value)} onCompositionEnd={(event) => { composingRef.current = false; setSearchInput(event.currentTarget.value); }} onCompositionStart={() => { composingRef.current = true; }} placeholder="搜索标题、正文、标签或作者" value={searchInput} />{searchInput ? <button aria-label="清除搜索" onClick={() => setSearchInput("")} title="清除搜索" type="button"><X aria-hidden="true" size={16} /></button> : null}</label>
+        <label className="article-search"><Search aria-hidden="true" size={17} /><input aria-label="搜索文章" name="search" onChange={(event) => setSearchInput(event.target.value)} onCompositionEnd={(event) => { setSearchInput(event.currentTarget.value); setIsComposing(false); }} onCompositionStart={() => setIsComposing(true)} placeholder="搜索标题、正文、标签或作者" value={searchInput} />{searchInput ? <button aria-label="清除搜索" onClick={() => setSearchInput("")} title="清除搜索" type="button"><X aria-hidden="true" size={16} /></button> : null}</label>
         {mode === "history" && list.total ? <button className="article-clear-history" onClick={() => void clearHistory()} type="button"><Trash2 aria-hidden="true" size={15} />清空历史</button> : null}
       </div>
       {isLoading ? <div className="article-empty-state">正在读取内容。</div>

@@ -99,7 +99,7 @@ function AdminArticlesWorkspace() {
   const [reportResolution, setReportResolution] = useState("");
   const [appealAction, setAppealAction] = useState<{ appeal: ArticleAppeal; status: "approved" | "rejected" } | null>(null);
   const [appealResolution, setAppealResolution] = useState("");
-  const composingRef = useRef(false);
+  const [isComposing, setIsComposing] = useState(false);
   const initializedRef = useRef(false);
   const reportQueueRef = useRef<HTMLDivElement | null>(null);
   const reportQueueCloseTimerRef = useRef<number | null>(null);
@@ -180,10 +180,10 @@ function AdminArticlesWorkspace() {
   }
 
   useEffect(() => {
-    if (composingRef.current) return;
+    if (isComposing) return;
     const timer = window.setTimeout(() => setSearchQuery(searchInput.trim()), 300);
     return () => window.clearTimeout(timer);
-  }, [searchInput]);
+  }, [isComposing, searchInput]);
 
   useEffect(() => {
     const token = readAccessToken();
@@ -641,7 +641,7 @@ function AdminArticlesWorkspace() {
         </div>
         <label className="article-search admin-article-search">
           <Search aria-hidden="true" size={16} />
-          <input aria-label="搜索管理文章" onChange={(event) => setSearchInput(event.target.value)} onCompositionEnd={(event) => { composingRef.current = false; setSearchInput(event.currentTarget.value); }} onCompositionStart={() => { composingRef.current = true; }} placeholder="搜索标题、作者、分类或正文" value={searchInput} />
+          <input aria-label="搜索管理文章" onChange={(event) => setSearchInput(event.target.value)} onCompositionEnd={(event) => { setSearchInput(event.currentTarget.value); setIsComposing(false); }} onCompositionStart={() => setIsComposing(true)} placeholder="搜索标题、作者、分类或正文" value={searchInput} />
           {searchInput ? <button aria-label="清除搜索" onClick={() => setSearchInput("")} title="清除搜索" type="button"><X aria-hidden="true" size={15} /></button> : null}
         </label>
       </div>
