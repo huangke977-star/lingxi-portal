@@ -42,7 +42,7 @@ Status definitions:
 | Phase 7 | Backup Recovery Closure | Paired database/media snapshots, integrity verification, restore preflight | Completed |
 | Phase 8 | Portal Entry Upgrade | Home, dashboard, and tools-center redesign | Completed |
 | Phase 9 | Privacy And Discovery Extension | Social permissions, search scope, discovery entry points | Completed |
-| Phase 10 | Moderation Automation | Unified reports, anti-spam, and review rules | Not started |
+| Phase 10 | Moderation Automation | Unified reports, anti-spam, and review rules | In progress (P10-01 awaiting deployment) |
 
 ## 4. External Prerequisites
 
@@ -414,10 +414,18 @@ Goal: reduce manual review pressure while retaining a complete handling record a
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P10-01 | Consolidate article-comment, group-message, and user-related reports into one pending queue | Not started |
+| P10-01 | Consolidate article-comment, group-message, and user-related reports into one pending queue | In progress (code and local verification complete; awaiting deployment) |
 | P10-02 | Add configurable sensitive-word, link-frequency, duplicate-content, and high-frequency-message rules | Not started |
 | P10-03 | Add bulk handling, resolution templates, handling deadlines, and automatic notices | Not started |
 | P10-04 | Add moderation audit, statistics, and administrator permission-boundary coverage | Not started |
+
+### Current P10-01 Implementation Results
+
+- Added unified report-query and summary endpoints that merge article, comment, and group-message reports into one time-ordered pending queue with source, status, and pagination filters.
+- Added an administrator report center, a unified header pending-report popover, a dashboard entry, and an account-menu entry. User feedback remains an independent workflow.
+- Resolution and rejection continue to call the existing article, comment, and group-message moderation endpoints, preserving notifications, reputation awards, message deletion, and duplicate-handling protection.
+- API/Web lint and production builds passed. Two focused unified-report service tests passed, and the full API suite passed with 41 suites and 270 tests.
+- Playwright covered the unified list, header pending queue, filters, and action dialog at 1280px desktop and 390x844 mobile viewports without page-level horizontal overflow. The task will be marked completed after production deployment and health verification.
 
 The fixed delivery order is remaining P7 work -> P8 home/dashboard/tools center -> P9 -> P10. Each phase must be independently accepted, deployed, and recorded under this roadmap's definition of done.
 

@@ -103,8 +103,10 @@ function AdminArticlesWorkspace() {
   const initializedRef = useRef(false);
   const reportQueueRef = useRef<HTMLDivElement | null>(null);
   const reportQueueCloseTimerRef = useRef<number | null>(null);
-  const lastLocatedReportIdRef = useRef(0);
+  const lastLocatedReportKeyRef = useRef("");
   const requestedReportId = Number(searchParams.get("report") ?? 0);
+  const requestedReportSource = searchParams.get("reportSource");
+  const requestedReportKey = requestedReportId > 0 ? `${requestedReportSource ?? "any"}-${requestedReportId}` : "";
   const requestedTab = searchParams.get("tab");
 
   const commentThreads = useMemo(() => buildArticleCommentThreads(comments), [comments]);
@@ -200,15 +202,19 @@ function AdminArticlesWorkspace() {
         setUser(currentUser);
         initializedRef.current = true;
         if (requestedReportId > 0) {
-          const requestedReport = reportQueue.reportResult.items.find((report) => report.id === requestedReportId);
-          const requestedArticleReport = reportQueue.articleReportResult.items.find((report) => report.id === requestedReportId);
+          const requestedReport = requestedReportSource !== "article"
+            ? reportQueue.reportResult.items.find((report) => report.id === requestedReportId)
+            : undefined;
+          const requestedArticleReport = requestedReportSource !== "comment"
+            ? reportQueue.articleReportResult.items.find((report) => report.id === requestedReportId)
+            : undefined;
           if (requestedReport) {
-            lastLocatedReportIdRef.current = requestedReportId;
+            lastLocatedReportKeyRef.current = requestedReportKey;
             void locateReportedComment(requestedReport);
             return;
           }
           if (requestedArticleReport) {
-            lastLocatedReportIdRef.current = requestedReportId;
+            lastLocatedReportKeyRef.current = requestedReportKey;
             void locateArticleReport(requestedArticleReport);
             return;
           }
@@ -225,15 +231,19 @@ function AdminArticlesWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (!initializedRef.current || requestedReportId <= 0 || lastLocatedReportIdRef.current === requestedReportId) return;
-    const requestedReport = reports.find((report) => report.id === requestedReportId);
-    const requestedArticleReport = articleReports.find((report) => report.id === requestedReportId);
+    if (!initializedRef.current || requestedReportId <= 0 || lastLocatedReportKeyRef.current === requestedReportKey) return;
+    const requestedReport = requestedReportSource !== "article"
+      ? reports.find((report) => report.id === requestedReportId)
+      : undefined;
+    const requestedArticleReport = requestedReportSource !== "comment"
+      ? articleReports.find((report) => report.id === requestedReportId)
+      : undefined;
     if (!requestedReport && !requestedArticleReport) return;
-    lastLocatedReportIdRef.current = requestedReportId;
+    lastLocatedReportKeyRef.current = requestedReportKey;
     void (requestedReport ? locateReportedComment(requestedReport) : locateArticleReport(requestedArticleReport!));
     // The report query is an external navigation target and should retrigger when only its id changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [articleReports, reports, requestedReportId]);
+  }, [articleReports, reports, requestedReportId, requestedReportKey, requestedReportSource]);
 
   useEffect(() => {
     if (!isReportQueueOpen) return;

@@ -26,11 +26,7 @@ import { PwaInstallButton } from "@/components/pwa-install-button";
 import { GlobalSearch } from "@/components/global-search";
 import { RoleSymbol } from "@/components/role-symbol";
 import { AvatarManagementBadge } from "@/components/user-identity-badges";
-import {
-  type ArticleCommentReport,
-  getCommentReportSummary,
-  listCommentReports,
-} from "@/lib/article-api";
+import { getModerationReportSummary, listModerationReports, type ModerationReport } from "@/lib/moderation-api";
 import { type AuthUser, getMe, logout, resolveApiUrl } from "@/lib/auth-api";
 import {
   AUTH_STATE_CHANGE_EVENT,
@@ -112,7 +108,7 @@ export function TopNav() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [notifications, setNotifications] = useState<SocialNotification[]>([]);
   const [notificationChannelStates, setNotificationChannelStates] = useState<NotificationChannelState[]>([]);
-  const [pendingReports, setPendingReports] = useState<ArticleCommentReport[]>([]);
+  const [pendingReports, setPendingReports] = useState<ModerationReport[]>([]);
   const [pendingReportCount, setPendingReportCount] = useState(0);
   const [siteBrand, setSiteBrand] = useState({ logoPath: "/favicon.svg", siteName: "HLOVET" });
   const [headerError, setHeaderError] = useState("");
@@ -138,8 +134,8 @@ export function TopNav() {
         getSocialSummary(accessToken).catch(() => emptySummary),
         listConversations(accessToken).catch(() => ({ items: [] })),
         listNotifications(accessToken).catch(() => ({ items: [], hasMore: false, hiddenChannels: [], channelStates: [] })),
-        canModerate ? getCommentReportSummary(accessToken).catch(() => ({ pending: 0 })) : Promise.resolve({ pending: 0 }),
-        canModerate ? listCommentReports(accessToken, "pending").catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
+        canModerate ? getModerationReportSummary(accessToken).catch(() => ({ pending: 0, total: 0, bySource: { article: 0, comment: 0, group_message: 0 } })) : Promise.resolve({ pending: 0, total: 0, bySource: { article: 0, comment: 0, group_message: 0 } }),
+        canModerate ? listModerationReports(accessToken, { status: "pending", type: "all", page: 1, pageSize: 8 }).catch(() => ({ items: [], total: 0, page: 1, pageSize: 8, totalPages: 1 })) : Promise.resolve({ items: [] }),
       ]);
       setUser(currentUser);
       setSocialSummary(summary);
@@ -368,8 +364,8 @@ export function TopNav() {
             {isSiteManager(user) ? <div className="header-action-wrap" ref={taskPopoverRef} onPointerEnter={(event) => handleHoverOpen(event, taskCloseTimerRef, () => setIsTaskPopoverOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(taskCloseTimerRef, () => setIsTaskPopoverOpen(false)); }}>
               <button aria-expanded={isTaskPopoverOpen} aria-label="待处理举报" className={`header-action-button${isTaskPopoverOpen ? " active" : ""}`} onClick={() => setIsTaskPopoverOpen((current) => !current)} title="待处理举报" type="button"><ListTodo aria-hidden="true" size={19} />{pendingReportCount ? <b>{pendingReportCount > 99 ? "99+" : pendingReportCount}</b> : null}</button>
               <div className={`header-popover task-popover${isTaskPopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(taskCloseTimerRef)}>
-                <div className="header-popover-heading"><strong>待处理举报</strong><button onClick={() => { setIsTaskPopoverOpen(false); router.push("/admin/articles?tab=comments"); }} type="button">进入管理</button></div>
-                <div className="header-popover-list">{pendingReports.length ? pendingReports.slice(0, 6).map((report) => <button key={report.id} onClick={() => { setIsTaskPopoverOpen(false); router.push(`/admin/articles?tab=comments&report=${report.id}`); }} type="button"><span className="header-popover-icon"><ListTodo aria-hidden="true" size={16} /></span><span><strong>{report.commentBody || report.article.title}</strong><small>《{report.article.title}》 · {report.reporter.nickname} · {formatHeaderTime(report.createdAt)}</small></span></button>) : <span className="header-popover-empty">暂无待处理举报。</span>}</div>
+                <div className="header-popover-heading"><strong>待处理举报</strong><button onClick={() => { setIsTaskPopoverOpen(false); router.push("/admin/reports"); }} type="button">进入管理</button></div>
+                <div className="header-popover-list">{pendingReports.length ? pendingReports.slice(0, 6).map((report) => <button key={report.key} onClick={() => { setIsTaskPopoverOpen(false); router.push("/admin/reports"); }} type="button"><span className="header-popover-icon"><ListTodo aria-hidden="true" size={16} /></span><span><strong>{report.sourceLabel} · {report.article?.title || report.group?.name || report.comment?.body || report.message?.body || "待处理内容"}</strong><small>{report.reporter.nickname} · {formatHeaderTime(report.createdAt)}</small></span></button>) : <span className="header-popover-empty">暂无待处理举报。</span>}</div>
               </div>
             </div> : null}
             <div className="header-action-wrap" ref={messagePopoverRef} onPointerEnter={(event) => handleHoverOpen(event, messageCloseTimerRef, () => setIsMessagePopoverOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(messageCloseTimerRef, () => setIsMessagePopoverOpen(false)); }}>
@@ -396,7 +392,7 @@ export function TopNav() {
                  <Link href="/profile" onClick={() => setIsAccountMenuOpen(false)}>个人中心</Link>
                  <Link href="/profile/reports" onClick={() => setIsAccountMenuOpen(false)}>我的举报</Link>
                  <Link href="/feedback" onClick={() => setIsAccountMenuOpen(false)}>用户反馈</Link>
-                {isSiteManager(user) ? <><Link href="/admin" onClick={() => setIsAccountMenuOpen(false)}>用户管理</Link><Link href="/admin/content" onClick={() => setIsAccountMenuOpen(false)}>内容管理</Link><Link href="/admin/violations" onClick={() => setIsAccountMenuOpen(false)}>违规作者</Link><Link href="/admin/feedback" onClick={() => setIsAccountMenuOpen(false)}>用户反馈管理</Link><Link href="/admin/groups" onClick={() => setIsAccountMenuOpen(false)}>群聊管理</Link><Link href="/admin/voices" onClick={() => setIsAccountMenuOpen(false)}>匿名话题管理</Link><Link href="/admin/analytics" onClick={() => setIsAccountMenuOpen(false)}>运营数据</Link><Link href="/admin/announcements" onClick={() => setIsAccountMenuOpen(false)}>公告管理</Link><Link href="/admin/audit" onClick={() => setIsAccountMenuOpen(false)}>审计日志</Link><Link href="/admin/security" onClick={() => setIsAccountMenuOpen(false)}><ShieldCheck aria-hidden="true" size={15} />安全管理</Link></> : null}
+                {isSiteManager(user) ? <><Link href="/admin" onClick={() => setIsAccountMenuOpen(false)}>用户管理</Link><Link href="/admin/reports" onClick={() => setIsAccountMenuOpen(false)}>举报中心</Link><Link href="/admin/content" onClick={() => setIsAccountMenuOpen(false)}>内容管理</Link><Link href="/admin/violations" onClick={() => setIsAccountMenuOpen(false)}>违规作者</Link><Link href="/admin/feedback" onClick={() => setIsAccountMenuOpen(false)}>用户反馈管理</Link><Link href="/admin/groups" onClick={() => setIsAccountMenuOpen(false)}>群聊管理</Link><Link href="/admin/voices" onClick={() => setIsAccountMenuOpen(false)}>匿名话题管理</Link><Link href="/admin/analytics" onClick={() => setIsAccountMenuOpen(false)}>运营数据</Link><Link href="/admin/announcements" onClick={() => setIsAccountMenuOpen(false)}>公告管理</Link><Link href="/admin/audit" onClick={() => setIsAccountMenuOpen(false)}>审计日志</Link><Link href="/admin/security" onClick={() => setIsAccountMenuOpen(false)}><ShieldCheck aria-hidden="true" size={15} />安全管理</Link></> : null}
                 {user.isSuperAdmin ? <><Link href="/admin/settings" onClick={() => setIsAccountMenuOpen(false)}>站点设置</Link><Link href="/admin/android" onClick={() => setIsAccountMenuOpen(false)}>安装包管理</Link><Link href="/admin/cache" onClick={() => setIsAccountMenuOpen(false)}>缓存管理</Link><Link href="/admin/system" onClick={() => setIsAccountMenuOpen(false)}>系统概览</Link></> : null}
                 <button disabled={isLoggingOut} onClick={() => void handleLogout()} type="button">{isLoggingOut ? "退出中" : "退出登录"}</button>
               </div>

@@ -20,8 +20,9 @@ import { SuggestionsModule } from './suggestions/suggestions.module';
 import { AnonymousTopicsModule } from './anonymous-topics/anonymous-topics.module';
 import { ReputationModule } from './reputation/reputation.module';
 import { FeedbackModule } from './feedback/feedback.module';
+import { ModerationModule } from './moderation/moderation.module';
 
 @Module({
-  imports: [PrismaModule, HealthModule, RolesModule, SiteSettingsModule, AuthModule, AuditModule, SearchModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, SystemStatusModule, PortalModule, ReputationModule, ArticlesModule, SocialModule, AnalyticsModule, DiscoveryModule, AnnouncementsModule, SuggestionsModule, AnonymousTopicsModule, FeedbackModule],
+  imports: [PrismaModule, HealthModule, RolesModule, SiteSettingsModule, AuthModule, AuditModule, SearchModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, SystemStatusModule, PortalModule, ReputationModule, ArticlesModule, SocialModule, AnalyticsModule, DiscoveryModule, AnnouncementsModule, SuggestionsModule, AnonymousTopicsModule, FeedbackModule, ModerationModule],
 })
 export class AppModule {}
