@@ -42,7 +42,7 @@ Status definitions:
 | Phase 7 | Backup Recovery Closure | Paired database/media snapshots, integrity verification, restore preflight | Completed |
 | Phase 8 | Portal Entry Upgrade | Home, dashboard, and tools-center redesign | Completed |
 | Phase 9 | Privacy And Discovery Extension | Social permissions, search scope, discovery entry points | Completed |
-| Phase 10 | Moderation Automation | Unified reports, anti-spam, and review rules | In progress (P10-01 awaiting deployment) |
+| Phase 10 | Moderation Automation | Unified reports, anti-spam, and review rules | In progress (P10-01 completed) |
 
 ## 4. External Prerequisites
 
@@ -347,6 +347,7 @@ A phase can be marked `Completed` only when all conditions are met:
 | Phase 6 | 2026-08-13 | `3ddfd18` | Deployed; Actions `31657738785` succeeded and production migration applied | P6-01 through P6-10 passed automated checks, migration, health endpoint, and desktop/mobile baseline acceptance; announcement-delivery and administrator-page manual regression will be repeated when a test announcement and current administrator password are available |
 | Phase 7 | 2026-08-14 | `c8b0e3e`, `f813700` | Deployed 2026-08-14 with no pending migrations | Paired snapshots, archive verification, restore preflight, and the post-restore attachment scan are complete; 14 focused API tests, API/Web builds, and the production health endpoint passed |
 | Phase 8 | 2026-08-14 | `d809d19` | Deployed 2026-08-14 with the portal-preference migration applied | Home, dashboard, tools center, personal shortcuts, administrator recommendations, and mobile restore-dialog centering are complete; focused portal API tests, builds, and desktop/mobile no-overflow checks passed |
+| Phase 10 P10-01 | 2026-08-21 | `fc183f4` | Deployed 2026-08-21; Actions `32441111237` succeeded with no pending migrations | Article, comment, and group-message reports now share one queue; all 41 API suites and 270 tests passed, desktop/mobile acceptance and production route, health, and log checks passed, and the previous API/Web images were removed |
 
 ## 13. Phase 7 And Beyond Delivery Plan
 
@@ -414,7 +415,7 @@ Goal: reduce manual review pressure while retaining a complete handling record a
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P10-01 | Consolidate article-comment, group-message, and user-related reports into one pending queue | In progress (code and local verification complete; awaiting deployment) |
+| P10-01 | Consolidate article-comment, group-message, and user-related reports into one pending queue | Completed |
 | P10-02 | Add configurable sensitive-word, link-frequency, duplicate-content, and high-frequency-message rules | Not started |
 | P10-03 | Add bulk handling, resolution templates, handling deadlines, and automatic notices | Not started |
 | P10-04 | Add moderation audit, statistics, and administrator permission-boundary coverage | Not started |
@@ -425,7 +426,8 @@ Goal: reduce manual review pressure while retaining a complete handling record a
 - Added an administrator report center, a unified header pending-report popover, a dashboard entry, and an account-menu entry. User feedback remains an independent workflow.
 - Resolution and rejection continue to call the existing article, comment, and group-message moderation endpoints, preserving notifications, reputation awards, message deletion, and duplicate-handling protection.
 - API/Web lint and production builds passed. Two focused unified-report service tests passed, and the full API suite passed with 41 suites and 270 tests.
-- Playwright covered the unified list, header pending queue, filters, and action dialog at 1280px desktop and 390x844 mobile viewports without page-level horizontal overflow. The task will be marked completed after production deployment and health verification.
+- Playwright covered the unified list, header pending queue, filters, and action dialog at 1280px desktop and 390x844 mobile viewports without page-level horizontal overflow.
+- Commit `fc183f4` was pushed and GitHub Actions `32441111237` published the API and Web images successfully. Production bootstrap confirmed all 49 migrations were already applied with none pending; only API and Web were recreated, the external home page, `/admin/reports`, and `/api/health` returned `200`, all six core containers retained restart count zero, and the previous API/Web images plus the stopped bootstrap container were removed.
 
 The fixed delivery order is remaining P7 work -> P8 home/dashboard/tools center -> P9 -> P10. Each phase must be independently accepted, deployed, and recorded under this roadmap's definition of done.
 
