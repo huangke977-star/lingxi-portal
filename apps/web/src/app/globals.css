@@ -16384,6 +16384,11 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   -webkit-backdrop-filter: blur(30px) saturate(142%);
 }
 
+/* Keep article-report queue text compact enough to scan like the other message popovers. */
+.admin-report-popover > button strong { font-size: 0.74rem; line-height: 1.35; }
+.admin-report-popover > button span,
+.admin-report-popover > span { font-size: 0.64rem; }
+
 .article-status-preview-page { display: grid; min-width: 0; gap: 14px; }
 .article-status-preview-heading { display: flex; align-items: flex-end; gap: 10px; }
 .article-status-preview-heading > a { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 50%; color: var(--muted); }
@@ -16900,4 +16905,23 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .topics-toolbar { align-items: stretch; flex-direction: column; }
   .topics-toolbar > div { width: 100%; }
   .topics-toolbar .topics-search { flex: 1 1 auto; width: auto; }
+}
+
+/* Make the cover action states distinct without changing the subscription behavior. */
+.content-group-header.topic.with-cover > .topic-detail-subscribe {
+  background: rgba(12, 22, 38, 0.76);
+  box-shadow: 0 2px 8px rgba(4, 12, 24, 0.28);
+  color: #f3f8ff;
+}
+.content-group-header.topic.with-cover > .topic-detail-subscribe:hover {
+  background: rgba(4, 14, 30, 0.9);
+  color: #fff;
+}
+.content-group-header.topic.with-cover > .topic-detail-subscribe.active {
+  background: #ffd66b;
+  color: #4b3500;
+}
+.content-group-header.topic.with-cover > .topic-detail-subscribe.active:hover {
+  background: #ffe08e;
+  color: #3b2900;
 }

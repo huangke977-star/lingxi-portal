@@ -24,6 +24,7 @@ import { PortalEntryVisual } from "@/components/portal-entry-visual";
 import { SuggestionsPanel } from "@/components/suggestions-panel";
 import { listVisibleArticles, listPublicArticles, type Article } from "@/lib/article-api";
 import { listAnnouncements, type AnnouncementSummary } from "@/lib/announcements-api";
+import { resolveApiUrl } from "@/lib/auth-api";
 import { AUTH_STATE_CHANGE_EVENT, readAccessToken } from "@/lib/auth-storage";
 import { listTopics, listVisibleCollections, type ArticleCollection, type ArticleTopic } from "@/lib/discovery-api";
 import {
@@ -174,7 +175,7 @@ export function HomeWorkspace() {
 
             <section className="p8-surface p8-discovery-panel">
               <div className="p8-section-heading"><div><Compass aria-hidden="true" size={17} /><h2>专题</h2></div><Link href="/topics">查看全部<ArrowRight aria-hidden="true" size={14} /></Link></div>
-              {data.topics.length ? <div className="p8-discovery-list">{data.topics.slice(0, 3).map((topic) => <Link href={`/topics/${topic.slug}`} key={topic.id}><span>{topic.coverPath ? <img alt="" src={topic.coverPath} /> : <Compass aria-hidden="true" size={16} />}</span><strong>{topic.title}</strong><small>{topic.articleCount} 篇</small></Link>)}</div> : <P8Empty text="暂无可见专题。" />}
+              {data.topics.length ? <div className="p8-discovery-list">{data.topics.slice(0, 3).map((topic) => <Link href={`/topics/${topic.slug}`} key={topic.id}><span>{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <Compass aria-hidden="true" size={16} />}</span><strong>{topic.title}</strong><small>{topic.articleCount} 篇</small></Link>)}</div> : <P8Empty text="暂无可见专题。" />}
               {data.collections.length ? <><div className="p8-subsection-label"><FolderOpen aria-hidden="true" size={14} />合集</div><div className="p8-collection-list">{data.collections.map((collection) => <Link href={`/collections/${collection.id}`} key={collection.id}><strong>{collection.name}</strong><small>{collection.articleCount} 篇 · {collection.owner.nickname}</small></Link>)}</div></> : null}
             </section>
           </aside>
