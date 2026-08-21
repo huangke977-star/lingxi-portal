@@ -16943,19 +16943,20 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .moderation-filter-group .announcement-editor-select-menu button { min-height: 28px; font-size: 0.67rem; }
 .moderation-source-summary { flex-wrap: wrap; justify-content: flex-end; color: var(--muted); font-size: 0.68rem; }
 .moderation-source-summary span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.moderation-report-list { display: grid; min-width: 0; }
-.moderation-report-row { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: 14px; border-bottom: 1px solid var(--control-line); padding: 10px 4px; background: transparent; cursor: pointer; }
+.moderation-report-list { display: grid; min-width: 0; margin-top: -10px; }
+.moderation-report-row { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: 12px; border-bottom: 1px solid var(--control-line); padding: 6px 4px; background: transparent; cursor: pointer; }
 .moderation-report-row:hover, .moderation-report-row:focus-visible { background: color-mix(in srgb, var(--surface-strong) 52%, transparent); outline: 0; }
-.moderation-report-row-main { display: grid; min-width: 0; gap: 7px; }
+.moderation-report-row-main { display: grid; min-width: 0; gap: 3px; }
 .moderation-report-row-heading { display: flex; min-width: 0; align-items: center; gap: 8px; }
 .moderation-report-heading-meta { min-width: 0; overflow: hidden; color: var(--muted); font-size: 0.68rem; text-overflow: ellipsis; white-space: nowrap; }
-.moderation-report-source, .moderation-report-reason { display: inline-flex; align-items: center; gap: 4px; min-width: 0; border-radius: 999px; padding: 3px 7px; font-size: 0.67rem; line-height: 1.1; white-space: nowrap; }
+.moderation-report-source, .moderation-report-reason { display: inline-flex; align-items: center; gap: 4px; min-width: 0; border-radius: 999px; padding: 2px 6px; font-size: 0.67rem; line-height: 1.1; white-space: nowrap; }
 .moderation-report-source { color: var(--accent-strong); background: var(--accent-soft); }
 .moderation-report-source.comment { color: #4e78a5; background: rgba(91, 146, 205, 0.14); }
 .moderation-report-source.group_message { color: #8c5b26; background: rgba(219, 161, 71, 0.16); }
 .moderation-report-reason { color: var(--muted-strong); background: color-mix(in srgb, var(--surface-strong) 72%, transparent); }
-.moderation-report-content { display: grid; min-width: 0; }
-.moderation-report-content strong { overflow: hidden; color: var(--foreground); font-size: 0.8rem; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.moderation-report-content { display: grid; min-width: 0; gap: 2px; }
+.moderation-report-content strong { overflow: hidden; color: var(--foreground); font-size: 0.78rem; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.moderation-report-content p { overflow: hidden; margin: 0; color: var(--muted); font-size: 0.67rem; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
 .moderation-report-meta { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 5px 14px; color: var(--muted); font-size: 0.68rem; }
 .moderation-report-meta span { display: inline-flex; min-width: 0; align-items: center; gap: 4px; }
 .moderation-report-row-side { display: grid; min-width: 96px; align-content: space-between; justify-items: end; gap: 4px; }
@@ -16996,7 +16997,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .moderation-filter-group { width: 100%; }
   .moderation-filter-group .announcement-editor-select { flex: 1 1 0; min-width: 0; }
   .moderation-source-summary { justify-content: flex-start; }
-  .moderation-report-row { grid-template-columns: minmax(0, 1fr); gap: 9px; padding: 12px; }
+  .moderation-report-row { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 8px 9px; }
   .moderation-report-row-side { width: 100%; min-width: 0; justify-self: stretch; }
   .moderation-report-row-actions { justify-content: flex-end; }
   .moderation-report-row-heading { flex-wrap: wrap; }
