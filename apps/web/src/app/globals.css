@@ -793,6 +793,47 @@ body:has(.auth-page) .topbar {
   padding: 0 2px;
 }
 
+.language-switcher {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-strong);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.language-switcher svg {
+  color: var(--accent-strong);
+}
+
+.language-switcher button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 3px 2px;
+}
+
+.language-switcher button:hover,
+.language-switcher button:focus-visible,
+.language-switcher button[aria-pressed="true"] {
+  color: var(--accent-strong);
+  outline: none;
+}
+
+.language-switcher > span {
+  color: var(--control-line-strong);
+}
+
+.auth-language-control {
+  position: absolute;
+  top: 14px;
+  right: 17px;
+  z-index: 1;
+}
+
 .login-chip:hover,
 .avatar-button:hover,
 .login-chip-action:focus-visible,
@@ -4600,7 +4641,8 @@ a.entry-item:hover {
 
   .topbar-inner::before {
     position: absolute;
-    inset: 50% 54px auto;
+    top: 50%;
+    left: 54px;
     z-index: 0;
     overflow: hidden;
     background: linear-gradient(
@@ -4612,11 +4654,11 @@ a.entry-item:hover {
     background-clip: text;
     color: transparent;
     content: "HLOVET";
-    font-size: 2.3rem;
+    font-size: 1.15rem;
     font-weight: 650;
     line-height: 1;
     pointer-events: none;
-    text-align: center;
+    text-align: left;
     transform: translateY(-50%);
     white-space: nowrap;
   }

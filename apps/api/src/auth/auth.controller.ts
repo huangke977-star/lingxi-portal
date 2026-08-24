@@ -22,6 +22,7 @@ import { createReadStream } from 'node:fs';
 import { UsersService, AVATAR_MAX_FILE_SIZE_BYTES } from '../users/users.service';
 import { UpdateUserAppearanceDto } from '../users/dto/update-user-appearance.dto';
 import { UpdateUserProfileDto } from '../users/dto/update-user-profile.dto';
+import { UpdateUserLocaleDto } from '../users/dto/update-user-locale.dto';
 import { AuthService } from './auth.service';
 import {
   AuthResponse,
@@ -192,6 +193,12 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   updateProfile(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateUserProfileDto): Promise<AuthenticatedUser> {
     return this.usersService.updateOwnProfile(user.id, dto);
+  }
+
+  @Patch('me/locale')
+  @UseGuards(JwtAuthGuard)
+  updateLocale(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateUserLocaleDto): Promise<AuthenticatedUser> {
+    return this.usersService.updateOwnLocale(user.id, dto);
   }
 
   @Patch('me/password')

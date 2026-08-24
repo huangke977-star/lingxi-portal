@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useLanguage } from "@/components/language-provider";
 
 export function ArticleInfiniteFooter({
   hasMore,
@@ -11,6 +12,7 @@ export function ArticleInfiniteFooter({
   isLoading: boolean;
   onLoadMore: () => void;
 }) {
+  const { t } = useLanguage();
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -28,7 +30,7 @@ export function ArticleInfiniteFooter({
 
   return (
     <div className="article-infinite-footer" ref={sentinelRef}>
-      {isLoading ? <span>正在加载更多</span> : hasMore ? null : <span>已经到底了</span>}
+      {isLoading ? <span>{t("common.loadingMore")}</span> : hasMore ? null : <span>{t("common.endOfList")}</span>}
     </div>
   );
 }

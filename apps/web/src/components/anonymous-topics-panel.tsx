@@ -9,6 +9,8 @@ import { GlassSelect } from "@/components/glass-select";
 import { getMe } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
 import { isSiteManager } from "@/lib/user-permissions";
+import { useLanguage } from "@/components/language-provider";
+import { localizedPath } from "@/lib/i18n";
 import {
   claimAnonymousIdentity,
   createAnonymousTopic,
@@ -31,20 +33,8 @@ import {
   updateAnonymousTopicAsCreator,
 } from "@/lib/anonymous-topics-api";
 
-const TOPIC_SORT_OPTIONS: ReadonlyArray<{ label: string; value: AnonymousTopicSort }> = [
-  { label: "最近活跃", value: "time" },
-  { label: "参与最多", value: "participation" },
-  { label: "点赞最多", value: "likes" },
-  { label: "喜欢最多", value: "favorites" },
-];
-
-const TOPIC_VISIBILITY_OPTIONS: ReadonlyArray<{ label: string; value: AnonymousTopicVisibility }> = [
-  { label: "全部", value: "all" },
-  { label: "正常", value: "visible" },
-  { label: "隐藏", value: "hidden" },
-];
-
-export function AnonymousTopicsPanel({ initialSort = "time", management = false, pageSize = 5, title = "匿名话题", moreHref, showLoadMore = false, showSearch = false, showSort = false }: { initialSort?: AnonymousTopicSort; management?: boolean; pageSize?: number; title?: string; moreHref?: string; showLoadMore?: boolean; showSearch?: boolean; showSort?: boolean }) {
+export function AnonymousTopicsPanel({ initialSort = "time", management = false, pageSize = 5, title, moreHref, showLoadMore = false, showSearch = false, showSort = false }: { initialSort?: AnonymousTopicSort; management?: boolean; pageSize?: number; title?: string; moreHref?: string; showLoadMore?: boolean; showSearch?: boolean; showSort?: boolean }) {
+  const { locale, t } = useLanguage();
   const [items, setItems] = useState<AnonymousTopicSummary[]>([]);
   const [pageInfo, setPageInfo] = useState({ page: 1, totalPages: 1 });
   const [topic, setTopic] = useState<AnonymousTopicDetail | null>(null);
@@ -61,6 +51,17 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<AnonymousTopicSort>(initialSort);
   const [visibility, setVisibility] = useState<AnonymousTopicVisibility>("visible");
+  const sortOptions: ReadonlyArray<{ label: string; value: AnonymousTopicSort }> = [
+    { label: t("voice.sort.time"), value: "time" },
+    { label: t("voice.sort.participation"), value: "participation" },
+    { label: t("voice.sort.likes"), value: "likes" },
+    { label: t("voice.sort.favorites"), value: "favorites" },
+  ];
+  const visibilityOptions: ReadonlyArray<{ label: string; value: AnonymousTopicVisibility }> = [
+    { label: t("voice.visibility.all"), value: "all" },
+    { label: t("voice.visibility.visible"), value: "visible" },
+    { label: t("voice.visibility.hidden"), value: "hidden" },
+  ];
 
   const loadTopics = useCallback(async (pageNumber = 1, append = false) => {
     setIsLoading(true);
@@ -74,9 +75,9 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
       setPageInfo({ page: page.page, totalPages: page.totalPages });
       setError("");
     }
-    catch (loadError) { setError(loadError instanceof Error ? loadError.message : "无法读取匿名话题。"); }
+    catch (loadError) { setError(loadError instanceof Error ? loadError.message : t("voice.loading")); }
     finally { setIsLoading(false); }
-  }, [isManager, management, pageSize, query, showSearch, sort, visibility]);
+  }, [isManager, management, pageSize, query, showSearch, sort, t, visibility]);
 
   function loadMoreTopics() {
     if (isLoading || pageInfo.page >= pageInfo.totalPages) return;
@@ -221,9 +222,9 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
   }
 
   return <section className="p8-surface anonymous-topics-panel">
-    <div className="p8-section-heading"><div><MessageCircleMore aria-hidden="true" size={17} /><h2>{title}</h2></div><span className="p8-heading-actions-compact">{isManager && (showSearch || management) ? <span className="anonymous-topic-visibility"><GlassSelect ariaLabel="话题可见性" onChange={setVisibility} options={TOPIC_VISIBILITY_OPTIONS} value={visibility} /></span> : null}{showSort ? <span className="anonymous-topic-sort"><GlassSelect ariaLabel="匿名话题排序" onChange={setSort} options={TOPIC_SORT_OPTIONS} value={sort} /></span> : null}{moreHref ? <Link href={moreHref}>全部</Link> : null}{!management ? <button aria-label="发起话题" className="p8-heading-icon" onClick={() => setIsCreateOpen(true)} title="发起话题" type="button"><Plus aria-hidden="true" size={17} /></button> : null}</span></div>
-    {showSearch || management ? <label className="p8-list-search"><Search aria-hidden="true" size={16} /><input onChange={(event) => setQuery(event.target.value)} placeholder="搜索话题" value={query} /></label> : null}
-    {isLoading && !items.length ? <p className="p8-empty"><LoaderCircle aria-hidden="true" className="spin" size={15} />正在读取话题</p> : items.length ? <><div className="anonymous-topic-list">{items.map((item) => <AnonymousTopicListRow item={item} key={item.id} onFavorite={toggleFavorite} onOpen={openTopic} />)}</div>{showLoadMore && pageInfo.page < pageInfo.totalPages ? <button className="p8-load-more" disabled={isLoading} onClick={loadMoreTopics} type="button">{isLoading ? "正在加载" : "加载更多话题"}</button> : null}</> : <p className="p8-empty">暂时没有话题，发起一个让大家聊聊。</p>}
+    <div className="p8-section-heading"><div><MessageCircleMore aria-hidden="true" size={17} /><h2>{title ?? t("voice.title")}</h2></div><span className="p8-heading-actions-compact">{isManager && (showSearch || management) ? <span className="anonymous-topic-visibility"><GlassSelect ariaLabel={t("voice.visibility")} onChange={setVisibility} options={visibilityOptions} value={visibility} /></span> : null}{showSort ? <span className="anonymous-topic-sort"><GlassSelect ariaLabel={t("voice.sort")} onChange={setSort} options={sortOptions} value={sort} /></span> : null}{moreHref ? <Link href={localizedPath(moreHref, locale)}>{t("voice.all")}</Link> : null}{!management ? <button aria-label={t("voice.start")} className="p8-heading-icon" onClick={() => setIsCreateOpen(true)} title={t("voice.start")} type="button"><Plus aria-hidden="true" size={17} /></button> : null}</span></div>
+    {showSearch || management ? <label className="p8-list-search"><Search aria-hidden="true" size={16} /><input onChange={(event) => setQuery(event.target.value)} placeholder={t("voice.search")} value={query} /></label> : null}
+    {isLoading && !items.length ? <p className="p8-empty"><LoaderCircle aria-hidden="true" className="spin" size={15} />{t("voice.loading")}</p> : items.length ? <><div className="anonymous-topic-list">{items.map((item) => <AnonymousTopicListRow item={item} key={item.id} onFavorite={toggleFavorite} onOpen={openTopic} />)}</div>{showLoadMore && pageInfo.page < pageInfo.totalPages ? <button className="p8-load-more" disabled={isLoading} onClick={loadMoreTopics} type="button">{isLoading ? t("common.loading") : t("voice.loadMore")}</button> : null}</> : <p className="p8-empty">{t("voice.none")}</p>}
     {topic ? <TopicDialog identityCreate={identityCreate} identityOpen={isIdentityOpen} identityDraft={identityDraft} isManager={isManager} isSaving={isSaving} message={message} onClaim={claimIdentity} onClose={() => { setIdentityCreate(false); setIsIdentityOpen(false); setTopic(null); }} onCloseIdentity={() => { setIdentityCreate(false); setIsIdentityOpen(false); }} onHideMessage={hideMessage} onLoadMore={() => void loadTopic(topic.id, topic.messages[0]?.sequence)} onModerateTopic={moderateTopic} onOpenIdentity={() => { setIdentityDraft({ nickname: "", password: "" }); setIdentityCreate(false); setIsIdentityOpen(true); }} onReact={react} onSend={sendMessage} onToggleTopicHidden={toggleTopicHidden} setIdentityCreate={setIdentityCreate} setIdentityDraft={setIdentityDraft} setMessage={setMessage} topic={topic} /> : null}
     {isCreateOpen ? <ModalPortal><div className="modal-backdrop anonymous-topic-backdrop" role="presentation"><section aria-modal="true" className="anonymous-topic-modal topic-create-modal" role="dialog"><header><span><MessageCircleMore aria-hidden="true" size={18} /><strong>发起匿名话题</strong></span><button aria-label="关闭" onClick={() => setIsCreateOpen(false)} type="button"><X aria-hidden="true" size={17} /></button></header><form onSubmit={createTopic}><label><span>话题</span><input autoFocus maxLength={120} onChange={(event) => setTopicDraft({ ...topicDraft, title: event.target.value })} placeholder="一句话描述想吐槽的内容" required value={topicDraft.title} /></label><label><span>昵称</span><input maxLength={32} onChange={(event) => setTopicDraft({ ...topicDraft, nickname: event.target.value })} placeholder="创建话题必须填写昵称" required value={topicDraft.nickname} /></label><label><span>密码</span><input minLength={6} onChange={(event) => setTopicDraft({ ...topicDraft, password: event.target.value })} placeholder="用于其他设备恢复昵称" required type="password" value={topicDraft.password} /></label><footer><button disabled={isSaving} type="submit"><Plus aria-hidden="true" size={15} />{isSaving ? "创建中" : "创建并进入"}</button></footer></form></section></div></ModalPortal> : null}
     <AppToast message={error} onDismiss={() => setError("")} tone="error" />

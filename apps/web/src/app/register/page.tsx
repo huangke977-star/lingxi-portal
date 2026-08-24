@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { useLanguage } from "@/components/language-provider";
 import { PasswordInput } from "@/components/password-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import { register } from "@/lib/auth-api";
@@ -17,6 +19,7 @@ import { getPublicSiteSettings } from "@/lib/site-settings-api";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [username, setUsername] = useState("");
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
@@ -81,7 +84,7 @@ export default function RegisterPage() {
     setError("");
     setNotice("");
     if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
-      setError("请先填写有效邮箱地址。");
+      setError(t("auth.validEmail"));
       return;
     }
     if (requiresCodeTurnstile && !turnstileToken) {
@@ -99,7 +102,7 @@ export default function RegisterPage() {
       setCodeSentTo(normalizedEmail);
       setIsCodeChallengeVisible(false);
       setRetryAfter(Math.max(1, result.retryAfterSeconds || 60));
-      setNotice("验证码已发送，请检查邮箱。");
+      setNotice(t("auth.codeSent"));
     } catch (sendError) {
       setError(
         sendError instanceof Error ? sendError.message : "验证码发送失败。",
@@ -119,7 +122,7 @@ export default function RegisterPage() {
     setNotice("");
 
     if (!registrationOpen) {
-      setError("当前暂未开放注册。");
+      setError(t("auth.registrationClosedShort"));
       return;
     }
     if (
@@ -129,11 +132,11 @@ export default function RegisterPage() {
       !password ||
       !confirmation
     ) {
-      setError("请完整填写注册信息。");
+      setError(t("auth.completeFields"));
       return;
     }
     if (requiresEmailCode && !verificationCode.trim()) {
-      setError("请输入邮箱验证码。");
+      setError(t("auth.enterEmailCode"));
       return;
     }
     if (requiresRegistrationTurnstile && !turnstileToken) {
@@ -141,7 +144,7 @@ export default function RegisterPage() {
       return;
     }
     if (password !== confirmation) {
-      setError("两次输入的密码不一致。");
+      setError(t("auth.passwordMismatch"));
       return;
     }
 
@@ -163,7 +166,7 @@ export default function RegisterPage() {
       setError(
         registerError instanceof Error
           ? registerError.message
-          : "注册失败，请稍后重试。",
+          : t("auth.registrationFailed"),
       );
       if (requiresRegistrationTurnstile) {
         setTurnstileToken("");
@@ -177,18 +180,19 @@ export default function RegisterPage() {
   return (
     <section className="auth-page auth-page-scrollable">
       <div className="auth-panel auth-panel-wide">
+        <div className="auth-language-control"><LanguageSwitcher /></div>
         <div className="auth-panel-head">
           <span className="section-label">HLOVET</span>
-          <h1>创建账号</h1>
+          <h1>{t("auth.createAccount")}</h1>
         </div>
         <form className="form-stack" onSubmit={handleSubmit}>
           {!registrationOpen ? (
             <div className="auth-inline-notice">
-              当前暂未开放注册，请联系站点管理员。
+              {t("auth.registrationClosed")}
             </div>
           ) : null}
           <label>
-            <span>用户名</span>
+            <span>{t("auth.username")}</span>
             <input
               autoComplete="username"
               maxLength={32}
@@ -199,7 +203,7 @@ export default function RegisterPage() {
             />
           </label>
           <label>
-            <span>昵称</span>
+            <span>{t("auth.nickname")}</span>
             <input
               autoComplete="nickname"
               name="nickname"
@@ -211,7 +215,7 @@ export default function RegisterPage() {
             />
           </label>
           <label>
-            <span>邮箱</span>
+            <span>{t("auth.email")}</span>
             <input
               autoComplete="email"
               name="email"
@@ -225,7 +229,7 @@ export default function RegisterPage() {
             <>
               {showCodeTurnstile ? (
                 <div className="auth-turnstile-field">
-                  <span>安全验证</span>
+                  <span>{t("auth.securityCheck")}</span>
                   <TurnstileWidget
                     action="registration-code"
                     onTokenChange={setTurnstileToken}
@@ -236,9 +240,9 @@ export default function RegisterPage() {
               ) : null}
               <label>
                 <span className="auth-label-row">
-                  <span>邮箱验证码</span>
+                  <span>{t("auth.emailCode")}</span>
                   {codeMatchesCurrentEmail ? (
-                    <small>已发送至 {codeSentTo}</small>
+                    <small>{t("auth.sentTo", { email: codeSentTo })}</small>
                   ) : null}
                 </span>
                 <span className="auth-code-row">
@@ -256,19 +260,19 @@ export default function RegisterPage() {
                     type="button"
                   >
                     {isSendingCode
-                      ? "发送中"
+                      ? t("auth.sending")
                       : retryAfter > 0
                         ? `${retryAfter} 秒后重发`
                         : codeMatchesCurrentEmail
-                          ? "重新发送"
-                          : "发送验证码"}
+                          ? t("auth.resend")
+                          : t("auth.sendCode")}
                   </button>
                 </span>
               </label>
             </>
           ) : null}
           <label>
-            <span>密码</span>
+            <span>{t("auth.password")}</span>
             <PasswordInput
               autoComplete="new-password"
               name="password"
@@ -278,7 +282,7 @@ export default function RegisterPage() {
             />
           </label>
           <label>
-            <span>确认密码</span>
+            <span>{t("auth.confirmPassword")}</span>
             <PasswordInput
               autoComplete="new-password"
               name="confirmation"
@@ -289,7 +293,7 @@ export default function RegisterPage() {
           </label>
           {requiresRegistrationTurnstile ? (
             <div className="auth-turnstile-field">
-              <span>安全验证</span>
+              <span>{t("auth.securityCheck")}</span>
               <TurnstileWidget
                 action="register"
                 onTokenChange={setTurnstileToken}
@@ -304,10 +308,10 @@ export default function RegisterPage() {
               disabled={isSubmitting || !registrationOpen}
               type="submit"
             >
-              {isSubmitting ? "注册中" : "注册"}
+              {isSubmitting ? t("auth.registering") : t("auth.register")}
             </button>
             <Link className="button secondary" href="/login">
-              返回登录
+              {t("auth.backToLogin")}
             </Link>
           </div>
         </form>

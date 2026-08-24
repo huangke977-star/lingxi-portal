@@ -6,6 +6,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { PasswordInput } from "@/components/password-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
+import { useLanguage } from "@/components/language-provider";
+import { localizedPath } from "@/lib/i18n";
 import {
   getSecurityPolicy,
   requestPasswordRecovery,
@@ -15,6 +17,7 @@ import {
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
+  const { locale, t } = useLanguage();
   const [resetToken, setResetToken] = useState<string | null>(null);
   const [policy, setPolicy] = useState<SecurityPolicy | null>(null);
   const [email, setEmail] = useState("");
@@ -52,11 +55,11 @@ export default function ForgotPasswordPage() {
     setError("");
     setNotice("");
     if (!email.trim()) {
-      setError("请输入邮箱地址。");
+      setError(t("auth.enterEmail"));
       return;
     }
     if (requiresTurnstile && !turnstileToken) {
-      setError("请先完成人机验证。");
+      setError(t("auth.completeTurnstile"));
       return;
     }
 
@@ -64,12 +67,12 @@ export default function ForgotPasswordPage() {
     try {
       await requestPasswordRecovery(email.trim(), turnstileToken || undefined);
       setRequestComplete(true);
-      setNotice("找回邮件已发送，请检查邮箱。");
+      setNotice(t("auth.recoveryEmailSent"));
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "找回邮件发送失败。",
+          : t("auth.recoveryEmailFailed"),
       );
     } finally {
       setIsSubmitting(false);
@@ -82,19 +85,19 @@ export default function ForgotPasswordPage() {
     setError("");
     setNotice("");
     if (!resetToken) {
-      setError("重置链接无效，请重新申请。");
+      setError(t("auth.invalidResetLink"));
       return;
     }
     if (newPassword.length < 8) {
-      setError("新密码至少需要 8 位。");
+      setError(t("auth.passwordAtLeastEight"));
       return;
     }
     if (newPassword !== confirmation) {
-      setError("两次输入的密码不一致。");
+      setError(t("auth.passwordMismatch"));
       return;
     }
     if (requiresTurnstile && !turnstileToken) {
-      setError("请先完成人机验证。");
+      setError(t("auth.completeTurnstile"));
       return;
     }
 
@@ -106,7 +109,7 @@ export default function ForgotPasswordPage() {
         turnstileToken: turnstileToken || undefined,
       });
       setResetComplete(true);
-      setNotice("密码已重置，请使用新密码登录。");
+      setNotice(t("auth.passwordResetDone"));
     } catch (resetError) {
       setError(
         resetError instanceof Error ? resetError.message : "密码重置失败。",
@@ -121,7 +124,7 @@ export default function ForgotPasswordPage() {
     return (
       <section className="auth-page">
         <div className="auth-panel auth-loading-panel">
-          <span className="status">正在读取重置链接</span>
+          <span className="status">{t("auth.recoveryLinkLoading")}</span>
         </div>
       </section>
     );
@@ -132,31 +135,31 @@ export default function ForgotPasswordPage() {
     <section className="auth-page">
       <div className="auth-panel">
         <button
-          aria-label="返回登录"
+          aria-label={t("auth.backToLogin")}
           className="auth-close"
-          onClick={() => router.push("/login")}
-          title="返回登录"
+          onClick={() => router.push(localizedPath("/login", locale))}
+          title={t("auth.backToLogin")}
           type="button"
         />
         <div className="auth-panel-head">
-          <span className="section-label">Account recovery</span>
-          <h1>{isResetMode ? "设置新密码" : "找回密码"}</h1>
+          <span className="section-label">{t("auth.accountRecovery")}</span>
+          <h1>{isResetMode ? t("auth.setNewPassword") : t("auth.requestPasswordReset")}</h1>
         </div>
 
         {recoveryDisabled ? (
-          <div className="auth-inline-notice">当前站点未开启密码找回。</div>
+          <div className="auth-inline-notice">{t("auth.passwordRecoveryDisabled")}</div>
         ) : isResetMode ? (
           resetComplete ? (
             <div className="auth-result-panel">
-              <strong>密码已更新</strong>
-              <Link className="text-action primary" href="/login">
-                返回登录
+              <strong>{t("auth.passwordUpdated")}</strong>
+              <Link className="text-action primary" href={localizedPath("/login", locale)}>
+                {t("auth.backToLogin")}
               </Link>
             </div>
           ) : (
             <form className="form-stack" onSubmit={handleReset}>
               <label>
-                <span>新密码</span>
+                <span>{t("auth.newPassword")}</span>
                 <PasswordInput
                   autoComplete="new-password"
                   minLength={8}
@@ -166,7 +169,7 @@ export default function ForgotPasswordPage() {
                 />
               </label>
               <label>
-                <span>确认新密码</span>
+                <span>{t("auth.confirmPassword")}</span>
                 <PasswordInput
                   autoComplete="new-password"
                   minLength={8}
@@ -177,7 +180,7 @@ export default function ForgotPasswordPage() {
               </label>
               {requiresTurnstile ? (
                 <div className="auth-turnstile-field">
-                  <span>安全验证</span>
+                  <span>{t("auth.securityCheck")}</span>
                   <TurnstileWidget
                     action="password-reset"
                     onTokenChange={setTurnstileToken}
@@ -187,26 +190,26 @@ export default function ForgotPasswordPage() {
                 </div>
               ) : null}
               <button className="button" disabled={isSubmitting} type="submit">
-                {isSubmitting ? "提交中" : "重置密码"}
+                {isSubmitting ? t("auth.resetting") : t("auth.resetPassword")}
               </button>
             </form>
           )
         ) : requestComplete ? (
           <div className="auth-result-panel">
-            <strong>请检查邮箱</strong>
-            <p>若该邮箱已注册，重置链接会发送到邮箱中。</p>
+            <strong>{t("auth.checkEmail")}</strong>
+            <p>{t("auth.resetEmailNote")}</p>
             <button
               className="text-action primary"
               onClick={() => setRequestComplete(false)}
               type="button"
             >
-              重新发送
+              {t("auth.resend")}
             </button>
           </div>
         ) : (
           <form className="form-stack" onSubmit={handleRequest}>
             <label>
-              <span>注册邮箱</span>
+              <span>{t("auth.registeredEmail")}</span>
               <input
                 autoComplete="email"
                 onChange={(event) => setEmail(event.target.value)}
@@ -217,7 +220,7 @@ export default function ForgotPasswordPage() {
             </label>
             {requiresTurnstile ? (
               <div className="auth-turnstile-field">
-                <span>安全验证</span>
+                <span>{t("auth.securityCheck")}</span>
                 <TurnstileWidget
                   action="password-recovery"
                   onTokenChange={setTurnstileToken}
@@ -227,7 +230,7 @@ export default function ForgotPasswordPage() {
               </div>
             ) : null}
             <button className="button" disabled={isSubmitting} type="submit">
-              {isSubmitting ? "发送中" : "发送找回邮件"}
+              {isSubmitting ? t("auth.sending") : t("auth.sendRecoveryEmail")}
             </button>
           </form>
         )}

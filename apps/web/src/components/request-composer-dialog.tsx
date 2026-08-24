@@ -3,6 +3,7 @@
 import { Send, X } from "lucide-react";
 import { type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useLanguage } from "@/components/language-provider";
 
 interface RequestComposerDialogProps {
   children?: ReactNode;
@@ -35,6 +36,7 @@ export function RequestComposerDialog({
   title,
   value,
 }: RequestComposerDialogProps) {
+  const { t } = useLanguage();
   if (typeof document === "undefined") return null;
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -48,7 +50,7 @@ export function RequestComposerDialog({
       <section aria-modal="true" className="chat-add-friend-dialog request-composer-dialog" role="dialog">
         <header>
           <span>{icon}<strong>{title}</strong></span>
-          <button aria-label="关闭" disabled={isSubmitting} onClick={onClose} type="button"><X aria-hidden="true" size={17} /></button>
+          <button aria-label={t("common.close")} disabled={isSubmitting} onClick={onClose} title={t("common.close")} type="button"><X aria-hidden="true" size={17} /></button>
         </header>
         <form onSubmit={submit}>
           {children ? <div className="request-composer-context">{children}</div> : null}

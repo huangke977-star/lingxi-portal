@@ -12,17 +12,22 @@ interface PublicSiteSettingsSnapshot {
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const settings = await readPublicSettings();
   const name = settings.siteName?.trim() || "HLOVET";
   const iconPath = versionedAssetPath(settings.pwaIconPath?.trim() || "/pwa-logo.png", settings.updatedAt);
+  const isEnglish = request.headers.get("x-lingxi-locale") === "en-US";
+  const startUrl = isEnglish ? "/en" : "/";
 
   return Response.json({
     id: "/",
     name,
     short_name: name.slice(0, 12),
-    description: `${name} personal portal, navigation, toolbox, articles, and chat workspace.`,
-    start_url: "/",
+    description: isEnglish
+      ? `${name} personal portal, navigation, toolbox, articles, and chat workspace.`
+      : `${name} 个人门户、导航、工具、文章与聊天工作台。`,
+    lang: isEnglish ? "en-US" : "zh-CN",
+    start_url: startUrl,
     scope: "/",
     display: "standalone",
     display_override: ["standalone", "minimal-ui", "browser"],
@@ -42,15 +47,15 @@ export async function GET() {
     ],
     shortcuts: [
       {
-        name: "发现",
-        short_name: "发现",
-        url: "/articles",
+        name: isEnglish ? "Discover" : "发现",
+        short_name: isEnglish ? "Discover" : "发现",
+        url: isEnglish ? "/en/articles" : "/articles",
         icons: [{ src: iconPath, sizes: "192x192" }],
       },
       {
-        name: "导航",
-        short_name: "导航",
-        url: "/nav",
+        name: isEnglish ? "Navigation" : "导航",
+        short_name: isEnglish ? "Navigation" : "导航",
+        url: isEnglish ? "/en/nav" : "/nav",
         icons: [{ src: iconPath, sizes: "192x192" }],
       },
     ],

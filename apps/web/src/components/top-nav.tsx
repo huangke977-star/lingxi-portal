@@ -22,6 +22,8 @@ import {
   useState,
 } from "react";
 import { AppToast } from "@/components/app-toast";
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { useLanguage } from "@/components/language-provider";
 import { PwaInstallButton } from "@/components/pwa-install-button";
 import { GlobalSearch } from "@/components/global-search";
 import { RoleSymbol } from "@/components/role-symbol";
@@ -56,14 +58,15 @@ import {
   openChatDock,
 } from "@/lib/social-events";
 import { getPublicSiteSettings } from "@/lib/site-settings-api";
+import { localizedPath, stripLocalePath } from "@/lib/i18n";
 import { getAvatarFallbackText, getUserDisplayName } from "@/lib/user-display";
 
 const navItems = [
-  { href: "/", label: "首页" },
-  { href: "/tools", label: "工具" },
-  { href: "/articles", label: "发现" },
-  { href: "/dashboard", label: "工作台" },
-];
+  { href: "/", key: "nav.home" },
+  { href: "/tools", key: "nav.tools" },
+  { href: "/articles", key: "nav.discover" },
+  { href: "/dashboard", key: "nav.workspace" },
+] as const;
 
 const emptySummary = {
   unreadMessages: 0,
@@ -74,11 +77,11 @@ const emptySummary = {
 
 const HEADER_MESSAGE_PREVIEW_LIMIT = 8;
 
-function HeaderNotificationCopy({ notification }: { notification: SocialNotification }) {
+function HeaderNotificationCopy({ notification, siteAnnouncementLabel }: { notification: SocialNotification; siteAnnouncementLabel: string }) {
   const announcement = notification.context?.kind === "announcement" ? notification.context.announcement : null;
   if (announcement) {
     return <span className="header-announcement-notification">
-      <small className="header-announcement-notification-type">站点公告</small>
+      <small className="header-announcement-notification-type">{siteAnnouncementLabel}</small>
       <strong className="header-announcement-notification-title">{announcement.title}</strong>
       <small className="header-announcement-notification-summary">{announcement.summary || notification.body}</small>
     </span>;
@@ -98,6 +101,7 @@ function pendingReportActionUrl(report: ModerationReport): string {
 export function TopNav() {
   const router = useRouter();
   const pathname = usePathname();
+  const { locale, setLocale, t } = useLanguage();
   const navRef = useRef<HTMLElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const messagePopoverRef = useRef<HTMLDivElement | null>(null);
@@ -137,6 +141,10 @@ export function TopNav() {
 
     try {
       const currentUser = await getMe(accessToken);
+      if (locale !== "en-US" && currentUser.locale === "en-US" && !pathname.startsWith("/en")) {
+        setLocale("en-US");
+        router.replace(`${localizedPath(pathname, "en-US")}${window.location.search}${window.location.hash}`);
+      }
       const canModerate = isSiteManager(currentUser);
       const [summary, conversationResult, notificationResult, reportSummary, reportResult] = await Promise.all([
         getSocialSummary(accessToken).catch(() => emptySummary),
@@ -157,7 +165,7 @@ export function TopNav() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [locale, pathname, router, setLocale]);
 
   useEffect(() => {
     // Header badges synchronize the current authenticated browser session.
@@ -277,7 +285,7 @@ export function TopNav() {
       clearAuthTokens();
       setUser(null);
       setIsLoggingOut(false);
-      router.push("/login");
+      router.push(localizedPath("/login", locale));
     }
   }
 
@@ -353,61 +361,63 @@ export function TopNav() {
   }
 
   function isActiveRoute(href: string) {
-    return href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+    const localPathname = stripLocalePath(pathname);
+    return href === "/" ? localPathname === href : localPathname === href || localPathname.startsWith(`${href}/`);
   }
 
   return (
     <>
     <header className="topbar">
-      <nav aria-label="主导航" className="topbar-inner" ref={navRef}>
-        <button aria-expanded={isMenuOpen} aria-label={isMenuOpen ? "关闭菜单" : "打开菜单"} className="menu-toggle" onClick={() => setIsMenuOpen((current) => !current)} type="button"><span /><span /><span /></button>
-        <Link className="brand" href="/"><span className="brand-mark brand-logo-mark"><img alt="" src={siteLogoUrl} /></span><span className="brand-copy"><strong>{siteBrand.siteName}</strong><span>Personal Portal</span></span></Link>
-        <div className="top-links desktop-links">{navItems.map((item) => <Link className={isActiveRoute(item.href) ? "active" : undefined} href={item.href} key={item.href}>{item.label}</Link>)}</div>
+      <nav aria-label={t("nav.main")} className="topbar-inner" ref={navRef}>
+        <button aria-expanded={isMenuOpen} aria-label={isMenuOpen ? t("nav.closeMenu") : t("nav.openMenu")} className="menu-toggle" onClick={() => setIsMenuOpen((current) => !current)} type="button"><span /><span /><span /></button>
+        <Link className="brand" href={localizedPath("/", locale)}><span className="brand-mark brand-logo-mark"><img alt="" src={siteLogoUrl} /></span><span className="brand-copy"><strong>{siteBrand.siteName}</strong><span>Personal Portal</span></span></Link>
+        <div className="top-links desktop-links">{navItems.map((item) => <Link className={isActiveRoute(item.href) ? "active" : undefined} href={localizedPath(item.href, locale)} key={item.href}>{t(item.key)}</Link>)}</div>
         <div className="account-zone">
           <PwaInstallButton />
           <GlobalSearch />
-          {isLoading ? <span className="login-chip">读取中</span> : null}
-          {!isLoading && !user ? <Link className="login-chip login-chip-action" href={`/login?from=${encodeURIComponent(pathname)}`}>登录</Link> : null}
+          <LanguageSwitcher />
+          {isLoading ? <span className="login-chip">{t("nav.loading")}</span> : null}
+          {!isLoading && !user ? <Link className="login-chip login-chip-action" href={`${localizedPath("/login", locale)}?from=${encodeURIComponent(pathname)}`}>{t("nav.login")}</Link> : null}
           {user ? <>
             {isSiteManager(user) ? <div className="header-action-wrap" ref={taskPopoverRef} onPointerEnter={(event) => handleHoverOpen(event, taskCloseTimerRef, () => setIsTaskPopoverOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(taskCloseTimerRef, () => setIsTaskPopoverOpen(false)); }}>
-              <button aria-expanded={isTaskPopoverOpen} aria-label="待处理举报" className={`header-action-button${isTaskPopoverOpen ? " active" : ""}`} onClick={() => setIsTaskPopoverOpen((current) => !current)} title="待处理举报" type="button"><ListTodo aria-hidden="true" size={19} />{pendingReportCount ? <b>{pendingReportCount > 99 ? "99+" : pendingReportCount}</b> : null}</button>
+              <button aria-expanded={isTaskPopoverOpen} aria-label={t("nav.pendingReports")} className={`header-action-button${isTaskPopoverOpen ? " active" : ""}`} onClick={() => setIsTaskPopoverOpen((current) => !current)} title={t("nav.pendingReports")} type="button"><ListTodo aria-hidden="true" size={19} />{pendingReportCount ? <b>{pendingReportCount > 99 ? "99+" : pendingReportCount}</b> : null}</button>
               <div className={`header-popover task-popover${isTaskPopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(taskCloseTimerRef)}>
-                <div className="header-popover-heading"><strong>待处理举报</strong><button onClick={() => { setIsTaskPopoverOpen(false); router.push("/admin/reports"); }} type="button">进入管理</button></div>
-                <div className="header-popover-list">{pendingReports.length ? pendingReports.slice(0, 6).map((report) => <button key={report.key} onClick={() => { setIsTaskPopoverOpen(false); router.push(pendingReportActionUrl(report)); }} type="button"><span className="header-popover-icon"><ListTodo aria-hidden="true" size={16} /></span><span><strong>{report.sourceLabel} · {report.article?.title || report.group?.name || report.comment?.body || report.message?.body || "待处理内容"}</strong><small>{report.reporter.nickname} · {formatHeaderTime(report.createdAt)}</small></span></button>) : <span className="header-popover-empty">暂无待处理举报。</span>}</div>
+                <div className="header-popover-heading"><strong>{t("nav.pendingReports")}</strong><button onClick={() => { setIsTaskPopoverOpen(false); router.push(localizedPath("/admin/reports", locale)); }} type="button">{t("nav.enterManagement")}</button></div>
+                <div className="header-popover-list">{pendingReports.length ? pendingReports.slice(0, 6).map((report) => <button key={report.key} onClick={() => { setIsTaskPopoverOpen(false); router.push(pendingReportActionUrl(report)); }} type="button"><span className="header-popover-icon"><ListTodo aria-hidden="true" size={16} /></span><span><strong>{report.sourceLabel} · {report.article?.title || report.group?.name || report.comment?.body || report.message?.body || "待处理内容"}</strong><small>{report.reporter.nickname} · {formatHeaderTime(report.createdAt, locale)}</small></span></button>) : <span className="header-popover-empty">{t("nav.noPendingReports")}</span>}</div>
               </div>
             </div> : null}
             <div className="header-action-wrap" ref={messagePopoverRef} onPointerEnter={(event) => handleHoverOpen(event, messageCloseTimerRef, () => setIsMessagePopoverOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(messageCloseTimerRef, () => setIsMessagePopoverOpen(false)); }}>
-              <button aria-expanded={isMessagePopoverOpen} aria-label="消息通知" className={`header-action-button${isMessagePopoverOpen ? " active" : ""}`} onClick={() => setIsMessagePopoverOpen((current) => !current)} title="消息通知" type="button"><MessageCircleMore aria-hidden="true" size={20} />{socialCount ? <b>{socialCount > 99 ? "99+" : socialCount}</b> : null}</button>
+              <button aria-expanded={isMessagePopoverOpen} aria-label={t("nav.messageNotification")} className={`header-action-button${isMessagePopoverOpen ? " active" : ""}`} onClick={() => setIsMessagePopoverOpen((current) => !current)} title={t("nav.messageNotification")} type="button"><MessageCircleMore aria-hidden="true" size={20} />{socialCount ? <b>{socialCount > 99 ? "99+" : socialCount}</b> : null}</button>
               <div className={`header-popover message-popover${isMessagePopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(messageCloseTimerRef)}>
-                <div className="header-popover-heading"><strong>消息</strong><button onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">打开聊天</button></div>
+                <div className="header-popover-heading"><strong>{t("nav.messages")}</strong><button onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">{t("nav.openChat")}</button></div>
                 <div className="header-popover-list">
                   {unreadConversations.map((conversation) => <button key={`conversation-${conversation.id}`} onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ conversationId: conversation.id }); }} type="button"><span className="header-popover-icon"><MessageCircleMore aria-hidden="true" size={16} /></span><span><strong>{conversation.user.nickname}</strong><small>{conversation.lastMessage?.body || "发来附件"}</small></span><b>{conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</b></button>)}
-                  {messageNotifications.map((notification) => notification.context?.actionable ? <div className="header-popover-actionable" key={`notification-${notification.id}`}><button onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy notification={notification} /></button><span className="header-popover-inline-actions"><button aria-label="同意或处理" onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "resolve-report" : "accept")} title={notification.context?.kind === "group_report" ? "处理" : "同意"} type="button"><Check aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? "处理" : "同意"}</button><button aria-label="拒绝或驳回" onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "reject-report" : "reject")} title={notification.context?.kind === "group_report" ? "驳回" : "拒绝"} type="button"><X aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? "驳回" : "拒绝"}</button></span></div> : <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy notification={notification} /></button>)}
-                  {hiddenUnreadCount ? <button className="header-popover-more" onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">还有 {hiddenUnreadCount} 条未读消息，打开聊天查看</button> : null}
-                  {!unreadConversations.length && !messageNotifications.length ? <span className="header-popover-empty">暂无新消息。</span> : null}
+                  {messageNotifications.map((notification) => notification.context?.actionable ? <div className="header-popover-actionable" key={`notification-${notification.id}`}><button onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy notification={notification} siteAnnouncementLabel={t("home.siteAnnouncements")} /></button><span className="header-popover-inline-actions"><button aria-label="同意或处理" onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "resolve-report" : "accept")} title={notification.context?.kind === "group_report" ? "处理" : "同意"} type="button"><Check aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? "处理" : "同意"}</button><button aria-label="拒绝或驳回" onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "reject-report" : "reject")} title={notification.context?.kind === "group_report" ? "驳回" : "拒绝"} type="button"><X aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? "驳回" : "拒绝"}</button></span></div> : <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy notification={notification} siteAnnouncementLabel={t("home.siteAnnouncements")} /></button>)}
+                  {hiddenUnreadCount ? <button className="header-popover-more" onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">{t("nav.moreUnread", { count: hiddenUnreadCount })}</button> : null}
+                  {!unreadConversations.length && !messageNotifications.length ? <span className="header-popover-empty">{t("nav.noNewMessages")}</span> : null}
                 </div>
               </div>
             </div>
             {roleBadge ? <button aria-label={roleBadge.tooltip} className="level-badge" data-role={roleBadge.code} data-tooltip={roleBadge.tooltip} title={roleBadge.tooltip} type="button"><RoleSymbol className="role-badge-icon" code={roleBadge.code} /></button> : null}
             <div className="account-menu-wrap" ref={accountMenuRef} onPointerEnter={(event) => handleHoverOpen(event, accountMenuCloseTimerRef, () => setIsAccountMenuOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(accountMenuCloseTimerRef, () => setIsAccountMenuOpen(false)); }}>
               <span className="top-nav-avatar-identity">
-                <button aria-expanded={isAccountMenuOpen} aria-haspopup="menu" aria-label={`${getUserDisplayName(user)} 的账户菜单`} className="avatar-button" onClick={(event) => { event.stopPropagation(); setIsAccountMenuOpen(true); }} onFocus={() => setIsAccountMenuOpen(true)} type="button">{avatarUrl ? <img alt="" src={avatarUrl} /> : avatarText}</button>
+                <button aria-expanded={isAccountMenuOpen} aria-haspopup="menu" aria-label={t("nav.accountMenu", { name: getUserDisplayName(user) })} className="avatar-button" onClick={(event) => { event.stopPropagation(); setIsAccountMenuOpen(true); }} onFocus={() => setIsAccountMenuOpen(true)} type="button">{avatarUrl ? <img alt="" src={avatarUrl} /> : avatarText}</button>
                 <AvatarManagementBadge user={user} />
               </span>
               <div className={`account-menu ${isAccountMenuOpen ? "open" : ""}`} onFocus={() => cancelClose(accountMenuCloseTimerRef)} role="menu">
                 <div className="account-menu-head"><strong>{getUserDisplayName(user)}</strong><span>@{user.username}</span></div>
-                <Link href={`/users/${encodeURIComponent(user.username)}`} onClick={() => setIsAccountMenuOpen(false)}>我的主页</Link>
-                 <Link href="/profile" onClick={() => setIsAccountMenuOpen(false)}>个人中心</Link>
-                 <Link href="/profile/reports" onClick={() => setIsAccountMenuOpen(false)}>我的举报</Link>
-                 <Link href="/feedback" onClick={() => setIsAccountMenuOpen(false)}>用户反馈</Link>
-                {isSiteManager(user) ? <><Link href="/admin" onClick={() => setIsAccountMenuOpen(false)}>用户管理</Link><Link href="/admin/reports" onClick={() => setIsAccountMenuOpen(false)}>举报中心</Link><Link href="/admin/content" onClick={() => setIsAccountMenuOpen(false)}>内容管理</Link><Link href="/admin/violations" onClick={() => setIsAccountMenuOpen(false)}>违规作者</Link><Link href="/admin/feedback" onClick={() => setIsAccountMenuOpen(false)}>用户反馈管理</Link><Link href="/admin/groups" onClick={() => setIsAccountMenuOpen(false)}>群聊管理</Link><Link href="/admin/voices" onClick={() => setIsAccountMenuOpen(false)}>匿名话题管理</Link><Link href="/admin/analytics" onClick={() => setIsAccountMenuOpen(false)}>运营数据</Link><Link href="/admin/announcements" onClick={() => setIsAccountMenuOpen(false)}>公告管理</Link><Link href="/admin/audit" onClick={() => setIsAccountMenuOpen(false)}>审计日志</Link><Link href="/admin/security" onClick={() => setIsAccountMenuOpen(false)}><ShieldCheck aria-hidden="true" size={15} />安全管理</Link></> : null}
-                {user.isSuperAdmin ? <><Link href="/admin/settings" onClick={() => setIsAccountMenuOpen(false)}>站点设置</Link><Link href="/admin/android" onClick={() => setIsAccountMenuOpen(false)}>安装包管理</Link><Link href="/admin/cache" onClick={() => setIsAccountMenuOpen(false)}>缓存管理</Link><Link href="/admin/system" onClick={() => setIsAccountMenuOpen(false)}>系统概览</Link></> : null}
-                <button disabled={isLoggingOut} onClick={() => void handleLogout()} type="button">{isLoggingOut ? "退出中" : "退出登录"}</button>
+                <Link href={localizedPath(`/users/${encodeURIComponent(user.username)}`, locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.myHomepage")}</Link>
+                 <Link href={localizedPath("/profile", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.profile")}</Link>
+                 <Link href={localizedPath("/profile/reports", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.myReports")}</Link>
+                 <Link href={localizedPath("/feedback", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.feedback")}</Link>
+                {isSiteManager(user) ? <><Link href={localizedPath("/admin", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.userManagement")}</Link><Link href={localizedPath("/admin/reports", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.reportCenter")}</Link><Link href={localizedPath("/admin/content", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.contentManagement")}</Link><Link href={localizedPath("/admin/violations", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.violations")}</Link><Link href={localizedPath("/admin/feedback", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.feedbackManagement")}</Link><Link href={localizedPath("/admin/groups", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.groupManagement")}</Link><Link href={localizedPath("/admin/voices", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.anonymousTopicManagement")}</Link><Link href={localizedPath("/admin/analytics", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.analytics")}</Link><Link href={localizedPath("/admin/announcements", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.announcementManagement")}</Link><Link href={localizedPath("/admin/audit", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.auditLog")}</Link><Link href={localizedPath("/admin/security", locale)} onClick={() => setIsAccountMenuOpen(false)}><ShieldCheck aria-hidden="true" size={15} />{t("nav.securityManagement")}</Link></> : null}
+                {user.isSuperAdmin ? <><Link href={localizedPath("/admin/settings", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.siteSettings")}</Link><Link href={localizedPath("/admin/android", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.packageManagement")}</Link><Link href={localizedPath("/admin/cache", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.cacheManagement")}</Link><Link href={localizedPath("/admin/system", locale)} onClick={() => setIsAccountMenuOpen(false)}>{t("nav.systemOverview")}</Link></> : null}
+                <button disabled={isLoggingOut} onClick={() => void handleLogout()} type="button">{isLoggingOut ? t("nav.loggingOut") : t("nav.logout")}</button>
               </div>
             </div>
           </> : null}
         </div>
-        <div className={`mobile-menu ${isMenuOpen ? "open" : ""}`}>{navItems.map((item) => <Link className={isActiveRoute(item.href) ? "active" : undefined} href={item.href} key={item.href} onClick={() => setIsMenuOpen(false)}>{item.label}</Link>)}</div>
+        <div className={`mobile-menu ${isMenuOpen ? "open" : ""}`}>{navItems.map((item) => <Link className={isActiveRoute(item.href) ? "active" : undefined} href={localizedPath(item.href, locale)} key={item.href} onClick={() => setIsMenuOpen(false)}>{t(item.key)}</Link>)}</div>
       </nav>
     </header>
     <AppToast duration={4200} message={headerError} onDismiss={() => setHeaderError("")} tone="error" />
@@ -415,10 +425,10 @@ export function TopNav() {
   );
 }
 
-function formatHeaderTime(value: string): string {
+function formatHeaderTime(value: string, locale: "zh-CN" | "en-US"): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(locale, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

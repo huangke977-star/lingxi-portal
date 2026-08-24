@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { PenLine } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/components/language-provider";
+import { localizedPath } from "@/lib/i18n";
 import {
   ArticleCenterSummary,
   getPublicArticleCenterSummary,
@@ -14,13 +16,13 @@ import { isSiteManager } from "@/lib/user-permissions";
 
 export type ArticleCenterSection = "discover" | "subscriptions" | "collections" | "topics" | "mine" | "reading" | "manage";
 
-const sections: Array<{ id: Exclude<ArticleCenterSection, "manage">; href: string; label: string; protected?: boolean; count?: "discover" | "subscriptions" | "mine" }> = [
-  { id: "discover", href: "/articles", label: "发现", count: "discover" },
-  { id: "subscriptions", href: "/articles/subscriptions", label: "订阅", protected: true, count: "subscriptions" },
-  { id: "collections", href: "/articles/collections", label: "合集", protected: true },
-  { id: "topics", href: "/topics", label: "专题" },
-  { id: "mine", href: "/articles/mine", label: "我的创作", protected: true, count: "mine" },
-  { id: "reading", href: "/articles/reading", label: "我的阅读", protected: true },
+const sections: Array<{ id: Exclude<ArticleCenterSection, "manage">; href: string; labelKey: "discover.discover" | "discover.subscriptions" | "discover.collections" | "discover.topics" | "discover.myWriting" | "discover.myReading"; protected?: boolean; count?: "discover" | "subscriptions" | "mine" }> = [
+  { id: "discover", href: "/articles", labelKey: "discover.discover", count: "discover" },
+  { id: "subscriptions", href: "/articles/subscriptions", labelKey: "discover.subscriptions", protected: true, count: "subscriptions" },
+  { id: "collections", href: "/articles/collections", labelKey: "discover.collections", protected: true },
+  { id: "topics", href: "/topics", labelKey: "discover.topics" },
+  { id: "mine", href: "/articles/mine", labelKey: "discover.myWriting", protected: true, count: "mine" },
+  { id: "reading", href: "/articles/reading", labelKey: "discover.myReading", protected: true },
 ];
 
 const emptySummary: ArticleCenterSummary = {
@@ -45,11 +47,12 @@ export function ArticleCenterNav({
   isLoggedIn: boolean;
   showWrite?: boolean;
 }) {
+  const { locale, t } = useLanguage();
   const [summary, setSummary] = useState<ArticleCenterSummary>(emptySummary);
   const canManage = isSiteManager(user);
   const protectedHref = (href: string) => isLoggedIn
-    ? href
-    : `/login?from=${encodeURIComponent(href)}`;
+    ? localizedPath(href, locale)
+    : `${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath(href, locale))}`;
 
   useEffect(() => {
     let activeRequest = true;
@@ -77,31 +80,31 @@ export function ArticleCenterNav({
 
   return (
     <div className="article-center-nav-wrap">
-      <nav aria-label="文章中心" className="article-center-nav">
+      <nav aria-label={t("article.centerNav")} className="article-center-nav">
         {sections.map((section) => (
           <Link
             aria-current={active === section.id ? "page" : undefined}
             className={active === section.id ? "active" : undefined}
-            href={section.protected ? protectedHref(section.href) : section.href}
+            href={section.protected ? protectedHref(section.href) : localizedPath(section.href, locale)}
             key={section.id}
           >
-            {section.label}{section.count ? <span className="article-nav-count">{summary[section.count]}</span> : null}
+            {t(section.labelKey)}{section.count ? <span className="article-nav-count">{summary[section.count]}</span> : null}
           </Link>
         ))}
         {canManage ? (
           <Link
             aria-current={active === "manage" ? "page" : undefined}
             className={`article-manage-tab${active === "manage" ? " active" : ""}`}
-            href="/articles/manage"
+            href={localizedPath("/articles/manage", locale)}
           >
-            管理<span className="article-nav-count">{summary.manage}</span>
+            {t("discover.manage")}<span className="article-nav-count">{summary.manage}</span>
           </Link>
         ) : null}
       </nav>
       {showWrite ? (
         <Link className="article-write-link" href={protectedHref("/articles/write")}>
           <PenLine aria-hidden="true" size={16} />
-          写文章
+          {t("discover.write")}
         </Link>
       ) : null}
     </div>

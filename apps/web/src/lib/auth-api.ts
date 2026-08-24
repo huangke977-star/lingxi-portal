@@ -37,6 +37,7 @@ export interface AuthUser {
   isAdministrator: boolean;
   avatarUrl: string | null;
   profileBio: string;
+  locale: "zh-CN" | "en-US";
   createdAt: string;
   appearance: AuthAppearance;
   role: AuthRole;
@@ -237,6 +238,18 @@ export async function updateMyAppearance(
   return normalizeAuthUser(user);
 }
 
+export async function updateMyLocale(
+  accessToken: string,
+  locale: "zh-CN" | "en-US",
+): Promise<AuthUser> {
+  const user = await requestJson<AuthUser>("/auth/me/locale", {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ locale }),
+  });
+  return normalizeAuthUser(user);
+}
+
 export async function updateMyProfile(
   accessToken: string,
   input: { nickname: string; email: string; profileBio: string },
@@ -297,6 +310,7 @@ export function normalizeAuthUser(user: AuthUser): AuthUser {
     ...user,
     nickname: user.nickname?.trim() || user.username,
     isAdministrator: Boolean(user.isAdministrator),
+    locale: user.locale === "en-US" ? "en-US" : "zh-CN",
   };
 }
 

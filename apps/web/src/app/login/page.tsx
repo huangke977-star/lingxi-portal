@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { useLanguage } from "@/components/language-provider";
 import { PasswordInput } from "@/components/password-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import {
@@ -18,6 +20,7 @@ import { getSecurityPolicy, type SecurityPolicy } from "@/lib/security-api";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -76,11 +79,11 @@ export default function LoginPage() {
     setNotice("");
 
     if (!account.trim() || !password) {
-      setError("请输入账号和密码。");
+      setError(t("auth.enterAccountPassword"));
       return;
     }
     if (turnstileRequired && !turnstileToken) {
-      setError("请先完成人机验证。");
+      setError(t("auth.completeTurnstile"));
       return;
     }
 
@@ -128,7 +131,7 @@ export default function LoginPage() {
       setError(
         loginError instanceof Error
           ? loginError.message
-          : "登录失败，请稍后重试。",
+          : t("auth.loginFailed"),
       );
     } finally {
       if (!isLeavingRef.current) setIsSubmitting(false);
@@ -138,7 +141,7 @@ export default function LoginPage() {
   async function handleDeviceVerification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!deviceChallenge || !/^\d{6}$/.test(deviceCode.trim())) {
-      setError("请输入 6 位邮箱验证码。");
+      setError(t("auth.enterCode"));
       return;
     }
 
@@ -157,7 +160,7 @@ export default function LoginPage() {
       setError(
         verificationError instanceof Error
           ? verificationError.message
-          : "设备验证失败，请重新登录。",
+          : t("auth.deviceFailed"),
       );
     } finally {
       if (!isLeavingRef.current) setIsSubmitting(false);
@@ -187,7 +190,7 @@ export default function LoginPage() {
       setNotice(`验证码已重新发送至 ${result.emailHint}`);
     } catch (resendError) {
       setError(
-        resendError instanceof Error ? resendError.message : "验证码发送失败。",
+        resendError instanceof Error ? resendError.message : t("auth.loginFailed"),
       );
     } finally {
       setIsSubmitting(false);
@@ -205,16 +208,17 @@ export default function LoginPage() {
   return (
     <section className="auth-page">
       <div className="auth-panel">
+        <div className="auth-language-control"><LanguageSwitcher /></div>
         <button
-          aria-label="返回上一页"
+          aria-label={t("auth.back")}
           className="auth-close"
           onClick={handleCancel}
-          title="返回上一页"
+          title={t("auth.back")}
           type="button"
         />
         <div className="auth-panel-head">
           <span className="section-label">HLOVET</span>
-          <h1>{deviceChallenge ? "验证新设备" : "账号登录"}</h1>
+          <h1>{deviceChallenge ? t("auth.newDevice") : t("auth.accountLogin")}</h1>
         </div>
         <form
           className="form-stack"
@@ -223,7 +227,7 @@ export default function LoginPage() {
           {deviceChallenge ? (
             <>
               <label>
-                <span>邮箱验证码</span>
+                <span>{t("auth.emailCode")}</span>
                 <input
                   autoComplete="one-time-code"
                   autoFocus
@@ -246,7 +250,7 @@ export default function LoginPage() {
                   onClick={() => void handleResendDeviceCode()}
                   type="button"
                 >
-                  {retryAfter > 0 ? `${retryAfter} 秒后重发` : "重新发送"}
+                  {retryAfter > 0 ? `${retryAfter}s` : t("auth.resend")}
                 </button>
               </div>
               <div className="actions">
@@ -255,7 +259,7 @@ export default function LoginPage() {
                   disabled={isSubmitting}
                   type="submit"
                 >
-                  {isSubmitting ? "验证中" : "验证并登录"}
+                  {isSubmitting ? t("auth.verifying") : t("auth.verifyAndLogin")}
                 </button>
                 <button
                   className="button secondary"
@@ -263,14 +267,14 @@ export default function LoginPage() {
                   onClick={resetDeviceVerification}
                   type="button"
                 >
-                  返回登录
+                  {t("auth.backToLogin")}
                 </button>
               </div>
             </>
           ) : (
             <>
               <label>
-                <span>账号或邮箱</span>
+                <span>{t("auth.account")}</span>
                 <input
                   autoComplete="username"
                   name="account"
@@ -280,8 +284,8 @@ export default function LoginPage() {
               </label>
               <label>
                 <span className="auth-label-row">
-                  <span>密码</span>
-                  <Link href="/forgot-password">忘记密码</Link>
+                  <span>{t("auth.password")}</span>
+                  <Link href="/forgot-password">{t("auth.forgotPassword")}</Link>
                 </span>
                 <PasswordInput
                   autoComplete="current-password"
@@ -292,7 +296,7 @@ export default function LoginPage() {
               </label>
               {turnstileRequired ? (
                 <div className="auth-turnstile-field">
-                  <span>安全验证</span>
+                  <span>{t("auth.securityCheck")}</span>
                   <TurnstileWidget
                     action="login"
                     onTokenChange={setTurnstileToken}
@@ -307,10 +311,10 @@ export default function LoginPage() {
                   disabled={isSubmitting}
                   type="submit"
                 >
-                  {isSubmitting ? "登录中" : "登录"}
+                  {isSubmitting ? t("auth.loggingIn") : t("auth.login")}
                 </button>
                 <Link className="button secondary" href="/register">
-                  注册账号
+                  {t("auth.register")}
                 </Link>
               </div>
             </>

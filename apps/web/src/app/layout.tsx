@@ -1,12 +1,15 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import Script from "next/script";
 import { AuthSessionController } from "@/components/auth-session-controller";
 import { ChatDock } from "@/components/chat-dock";
+import { LanguageProvider } from "@/components/language-provider";
 import { PwaController } from "@/components/pwa-controller";
 import { RouteBackButton } from "@/components/route-back-button";
 import { ScrollContainment } from "@/components/scroll-containment";
 import { ScrollToTop } from "@/components/scroll-to-top";
 import { ThemeController } from "@/components/theme-controller";
+import { isLocale, type Locale } from "@/lib/i18n";
 import { TopNav } from "@/components/top-nav";
 import "@fontsource-variable/noto-sans-sc/index.css";
 import "./misans.css";
@@ -22,6 +25,7 @@ interface PublicBrandSettings {
 }
 
 export async function generateMetadata(): Promise<Metadata> {
+  const locale = await resolveRequestLocale();
   const settings = await readPublicBrandSettings();
   const siteName = settings.siteName?.trim() || "HLOVET";
   const browserTitle = settings.browserTitle?.trim() || siteName;
@@ -29,14 +33,17 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     applicationName: siteName,
     title: browserTitle,
-    description: `${siteName} personal portal, navigation, toolbox, and account workspace`,
-    manifest: "/manifest.webmanifest",
+    description: locale === "en-US"
+      ? `${siteName} personal portal, navigation, toolbox, and account workspace`
+      : `${siteName} 个人门户、导航、工具与账号工作台`,
+    manifest: locale === "en-US" ? "/en/manifest.webmanifest" : "/manifest.webmanifest",
     icons: { icon: [{ url: iconPath }], shortcut: [{ url: iconPath }], apple: [{ url: iconPath }] },
     appleWebApp: { capable: true, statusBarStyle: "default", title: siteName },
     other: {
       "mobile-web-app-capable": "yes",
       "apple-mobile-web-app-capable": "yes",
       "apple-mobile-web-app-title": siteName,
+      "content-language": locale,
     },
   };
 }
@@ -81,29 +88,38 @@ const themeBootScript = String.raw`
 })();
 `;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await resolveRequestLocale();
   return (
-    <html data-portal-theme="cloud-blue" lang="zh-CN">
+    <html data-portal-theme="cloud-blue" lang={locale}>
       <body>
         <Script id="hlovet-theme-boot" strategy="beforeInteractive">
           {themeBootScript}
         </Script>
-        <AuthSessionController />
-        <PwaController />
-        <ThemeController />
-        <ScrollContainment />
-        <TopNav />
-        <main className="content-shell">
-          <RouteBackButton />
-          {children}
-        </main>
-        <ScrollToTop />
-        <ChatDock />
+        <LanguageProvider initialLocale={locale}>
+          <AuthSessionController />
+          <PwaController />
+          <ThemeController />
+          <ScrollContainment />
+          <TopNav />
+          <main className="content-shell">
+            <RouteBackButton />
+            {children}
+          </main>
+          <ScrollToTop />
+          <ChatDock />
+        </LanguageProvider>
       </body>
     </html>
   );
+}
+
+async function resolveRequestLocale(): Promise<Locale> {
+  const requestHeaders = await headers();
+  const value = requestHeaders.get("x-lingxi-locale");
+  return isLocale(value) ? value : "zh-CN";
 }

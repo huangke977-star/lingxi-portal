@@ -9,11 +9,14 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
+import { useLanguage } from "@/components/language-provider";
+import { localizedPath } from "@/lib/i18n";
 import { clearSearchHistory, globalSearch, GlobalSearchResult, HotSearchItem, listHotSearches, listSearchHistory, recordSearch, SearchHistoryItem } from "@/lib/search-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
 
 export function GlobalSearch() {
   const router = useRouter();
+  const { locale, t } = useLanguage();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -75,7 +78,7 @@ export function GlobalSearch() {
     const token = readAccessToken();
     if (token) void recordSearch(token, keyword).catch(() => undefined);
     close();
-    router.push(`/search?q=${encodeURIComponent(keyword)}`);
+    router.push(`${localizedPath("/search", locale)}?q=${encodeURIComponent(keyword)}`);
   }
 
   async function clearHistory() {
@@ -99,37 +102,37 @@ export function GlobalSearch() {
   }
 
   return <>
-    <button aria-label="全站搜索" className="header-action-button global-search-trigger" onClick={() => setIsOpen(true)} title="搜索" type="button">
+    <button aria-label={t("search.open")} className="header-action-button global-search-trigger" onClick={() => setIsOpen(true)} title={t("common.search")} type="button">
       <Search aria-hidden="true" size={19} />
     </button>
     {isOpen && typeof document !== "undefined" ? createPortal(
       <div className="global-search-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }} role="presentation">
-        <section aria-label="全站搜索" aria-modal="true" className="global-search-dialog" role="dialog">
+        <section aria-label={t("search.open")} aria-modal="true" className="global-search-dialog" role="dialog">
           <form className="global-search-input" onSubmit={submit}>
             <Search aria-hidden="true" size={20} />
-            <input aria-label="搜索文章、用户、导航和工具" onChange={(event) => updateQuery(event.target.value)} placeholder="搜索文章、用户、导航和工具" ref={inputRef} value={query} />
-            {query ? <button aria-label="清空搜索" onClick={() => updateQuery("")} type="button"><X aria-hidden="true" size={17} /></button> : null}
+            <input aria-label={t("search.placeholder")} onChange={(event) => updateQuery(event.target.value)} placeholder={t("search.placeholder")} ref={inputRef} value={query} />
+            {query ? <button aria-label={t("search.clear")} onClick={() => updateQuery("")} type="button"><X aria-hidden="true" size={17} /></button> : null}
           </form>
           <div className="global-search-results">
-            {!query.trim() ? <div className="global-search-suggestions">{history.length ? <section><header><span><Clock3 aria-hidden="true" size={15} /><strong>最近搜索</strong></span><button onClick={() => void clearHistory()} type="button">清空</button></header><div>{history.slice(0, 8).map((item) => <button key={item.id} onClick={() => openSearch(item.keyword)} type="button"><span>{item.keyword}</span><small>{item.searchCount > 1 ? `${item.searchCount} 次` : ""}</small></button>)}</div></section> : null}{hot.length ? <section><header><span><Flame aria-hidden="true" size={15} /><strong>热门搜索</strong></span></header><div>{hot.map((item, index) => <button key={item.keyword} onClick={() => openSearch(item.keyword)} type="button"><b>{index + 1}</b><span>{item.keyword}</span><small>{item.searchCount}</small></button>)}</div></section> : null}{!history.length && !hot.length ? <div className="global-search-hint"><Search aria-hidden="true" size={24} /><span>输入关键词开始搜索。</span></div> : null}</div> : null}
-            {isLoading ? <div className="global-search-hint"><span>正在搜索。</span></div> : null}
+            {!query.trim() ? <div className="global-search-suggestions">{history.length ? <section><header><span><Clock3 aria-hidden="true" size={15} /><strong>{t("search.recent")}</strong></span><button onClick={() => void clearHistory()} type="button">{t("common.clear")}</button></header><div>{history.slice(0, 8).map((item) => <button key={item.id} onClick={() => openSearch(item.keyword)} type="button"><span>{item.keyword}</span><small>{item.searchCount > 1 ? `${item.searchCount}` : ""}</small></button>)}</div></section> : null}{hot.length ? <section><header><span><Flame aria-hidden="true" size={15} /><strong>{t("search.hot")}</strong></span></header><div>{hot.map((item, index) => <button key={item.keyword} onClick={() => openSearch(item.keyword)} type="button"><b>{index + 1}</b><span>{item.keyword}</span><small>{item.searchCount}</small></button>)}</div></section> : null}{!history.length && !hot.length ? <div className="global-search-hint"><Search aria-hidden="true" size={24} /><span>{t("search.start")}</span></div> : null}</div> : null}
+            {isLoading ? <div className="global-search-hint"><span>{t("search.searching")}</span></div> : null}
             {!isLoading && result ? <>
-              <SearchSection count={result.articles.total} icon={FileText} title="文章">
+              <SearchSection count={result.articles.total} icon={FileText} title={t("search.articles")}>
                 {result.articles.items.map((article) => <Link href={`/articles/${article.slug}`} key={article.id} onClick={close}><span className="global-result-icon"><FileText aria-hidden="true" size={17} /></span><span><strong>{article.title}</strong><small>{article.author.nickname} · {article.category || "随笔"}</small></span></Link>)}
               </SearchSection>
-              <SearchSection count={result.users.total} icon={UserRound} title="用户">
+              <SearchSection count={result.users.total} icon={UserRound} title={t("search.users")}>
                 {result.users.items.map((user) => <Link href={`/users/${encodeURIComponent(user.username)}`} key={user.id} onClick={close}><span className="global-result-avatar">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : getAvatarFallbackText(user)}</span><span><strong>{user.nickname}</strong><small>@{user.username} · {user.role.name}</small></span></Link>)}
               </SearchSection>
-              <SearchSection count={result.navigation.total} icon={Compass} title="导航">
+              <SearchSection count={result.navigation.total} icon={Compass} title={t("search.navigation")}>
                 {result.navigation.items.map((entry) => entry.url ? <a href={entry.url} key={entry.id} onClick={close} rel="noreferrer" target={entry.openInNewTab ? "_blank" : undefined}><span className="global-result-icon">{entry.iconPath ? <img alt="" src={entry.iconPath} /> : <Compass aria-hidden="true" size={17} />}</span><span><strong>{entry.title}</strong><small>{entry.category.name}</small></span><ExternalLink aria-hidden="true" size={14} /></a> : null)}
               </SearchSection>
-              <SearchSection count={result.tools.total} icon={Wrench} title="工具">
+              <SearchSection count={result.tools.total} icon={Wrench} title={t("search.tools")}>
                 {result.tools.items.map((entry) => entry.url ? <a href={entry.url} key={entry.id} onClick={close} rel="noreferrer" target={entry.openInNewTab ? "_blank" : undefined}><span className="global-result-icon">{entry.iconPath ? <img alt="" src={entry.iconPath} /> : <Wrench aria-hidden="true" size={17} />}</span><span><strong>{entry.title}</strong><small>{entry.category.name}</small></span><ExternalLink aria-hidden="true" size={14} /></a> : null)}
               </SearchSection>
-              {!result.articles.total && !result.users.total && !result.navigation.total && !result.tools.total ? <div className="global-search-hint"><span>没有找到匹配内容。</span></div> : null}
+              {!result.articles.total && !result.users.total && !result.navigation.total && !result.tools.total ? <div className="global-search-hint"><span>{t("search.noMatches")}</span></div> : null}
             </> : null}
           </div>
-          {query.trim() ? <button className="global-search-all" onClick={() => openSearch(query.trim())} type="button">查看全部搜索结果</button> : null}
+          {query.trim() ? <button className="global-search-all" onClick={() => openSearch(query.trim())} type="button">{t("search.viewAll")}</button> : null}
         </section>
       </div>,
       document.body,

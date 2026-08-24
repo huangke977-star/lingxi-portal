@@ -19,6 +19,7 @@ interface StoredUser {
   isSuperAdmin: boolean;
   status: 'active' | 'disabled';
   profileBio: string;
+  preferredLocale: 'zh-CN' | 'en-US';
   lastLoginAt: Date | null;
   createdAt: Date;
 }
@@ -119,6 +120,7 @@ function createPrismaMock() {
     avatarStoredName: null,
     avatarMimeType: null,
     profileBio: user.profileBio,
+    preferredLocale: user.preferredLocale,
     createdAt: user.createdAt,
     role: roles.find((role) => role.id === user.roleId) ?? roles[0],
   });
@@ -160,6 +162,7 @@ function createPrismaMock() {
               isSuperAdmin: false,
               status: 'active',
               profileBio: data.profileBio ?? '我懒，我不写',
+              preferredLocale: 'zh-CN',
               lastLoginAt: null,
               createdAt: new Date('2026-07-14T00:00:00.000Z'),
             };
@@ -710,6 +713,32 @@ describe('AuthController (e2e)', () => {
     expect(prismaState.users.find((item) => item.username === 'bio_user')?.nickname).toBe('一颗测试星');
     expect(prismaState.users.find((item) => item.username === 'bio_user')?.email).toBe('bio-updated@example.com');
     expect(prismaState.users.find((item) => item.username === 'bio_user')?.profileBio).toBe('我就喜欢这个范。');
+  });
+
+  it('persists the current user locale and rejects unsupported locale values', async () => {
+    const registered = await register('locale_user', 'locale@example.com').expect(200);
+    const authorization = `Bearer ${registered.body.accessToken as string}`;
+
+    const updated = await request(app.getHttpServer())
+      .patch('/auth/me/locale')
+      .set('Authorization', authorization)
+      .send({ locale: 'en-US' })
+      .expect(200);
+
+    expect(updated.body.locale).toBe('en-US');
+    expect(prismaState.users.find((item) => item.username === 'locale_user')?.preferredLocale).toBe('en-US');
+
+    const current = await request(app.getHttpServer())
+      .get('/auth/me')
+      .set('Authorization', authorization)
+      .expect(200);
+    expect(current.body.locale).toBe('en-US');
+
+    await request(app.getHttpServer())
+      .patch('/auth/me/locale')
+      .set('Authorization', authorization)
+      .send({ locale: 'fr-FR' })
+      .expect(400);
   });
 
   it('changes the current user password and revokes other sessions', async () => {

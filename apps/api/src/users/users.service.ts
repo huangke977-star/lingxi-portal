@@ -19,6 +19,7 @@ import {
   pickDefaultProfileBio,
 } from "./default-profile-bios";
 import { UpdateUserAppearanceDto } from "./dto/update-user-appearance.dto";
+import { UpdateUserLocaleDto } from "./dto/update-user-locale.dto";
 import { ListUsersQueryDto } from "./dto/list-users-query.dto";
 import { UpdateUserProfileDto } from "./dto/update-user-profile.dto";
 
@@ -44,6 +45,7 @@ interface UserRecord {
   glassBlur: number;
   glassTint: string;
   glassTintAlpha: number;
+  preferredLocale: string;
   avatarStoredName: string | null;
   avatarMimeType: string | null;
   avatarOriginalName?: string | null;
@@ -363,6 +365,15 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
+  async updateOwnLocale(id: number, input: UpdateUserLocaleDto): Promise<AuthenticatedUser> {
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: { preferredLocale: input.locale },
+      select: this.userSelect(),
+    });
+    return this.toAuthenticatedUser(user);
+  }
+
   async updateOwnProfile(
     id: number,
     profile: UpdateUserProfileDto,
@@ -492,6 +503,7 @@ export class UsersService {
       glassBlur: true,
       glassTint: true,
       glassTintAlpha: true,
+      preferredLocale: true,
       avatarStoredName: true,
       avatarMimeType: true,
       profileBio: true,
@@ -528,6 +540,7 @@ export class UsersService {
         ? `/auth/avatars/${user.avatarStoredName}`
         : null,
       profileBio: user.profileBio?.trim() || FALLBACK_PROFILE_BIO,
+      locale: user.preferredLocale === "en-US" ? "en-US" : "zh-CN",
       createdAt: user.createdAt,
       appearance: {
         themeId: user.appearanceThemeId,

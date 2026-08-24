@@ -15,16 +15,24 @@ import { resolveApiUrl } from "@/lib/auth-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
 import { PublicProfilePopover } from "@/components/public-profile-popover";
 import { AvatarManagementBadge } from "@/components/user-identity-badges";
+import { useLanguage } from "@/components/language-provider";
+import { localizedPath, type Locale } from "@/lib/i18n";
 
-export function formatArticleDate(value: string | null): string {
-  if (!value) return "尚未发布";
+export function formatArticleDate(value: string | null, locale: Locale = "zh-CN"): string {
+  if (!value) return locale === "en-US" ? "Not published" : "尚未发布";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "时间未知";
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  if (Number.isNaN(date.getTime())) return locale === "en-US" ? "Unknown time" : "时间未知";
+  return new Intl.DateTimeFormat(locale, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 export function ArticleAuthorLine({ author, interactive = false }: { author: ArticleAuthor; interactive?: boolean }) {
+  const { locale } = useLanguage();
   const avatar = author.avatarUrl ? resolveApiUrl(author.avatarUrl) : null;
   return (
     <span className="article-author-line">
@@ -34,57 +42,61 @@ export function ArticleAuthorLine({ author, interactive = false }: { author: Art
         </span>
         <AvatarManagementBadge user={author} />
       </span>}
-      <Link className="article-author-profile-link" href={`/users/${encodeURIComponent(author.username)}`} onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}>{author.nickname}</Link>
+      <Link className="article-author-profile-link" href={localizedPath(`/users/${encodeURIComponent(author.username)}`, locale)} onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}>{author.nickname}</Link>
     </span>
   );
 }
 
 export function ArticleStats({ article, compact = false }: { article: Article; compact?: boolean }) {
+  const { t } = useLanguage();
   return (
     <span className={`article-stats${compact ? " compact" : ""}`}>
-      <span title="阅读量"><Eye aria-hidden="true" size={compact ? 13 : 15} />{article.viewCount}</span>
-      <span title="点赞数"><Heart aria-hidden="true" size={compact ? 13 : 15} />{article.likeCount}</span>
-      <span title="评论数"><MessageCircle aria-hidden="true" size={compact ? 13 : 15} />{article.commentCount}</span>
-      <span title="收藏数"><Bookmark aria-hidden="true" size={compact ? 13 : 15} />{article.favoriteCount}</span>
+      <span title={t("article.views")}><Eye aria-hidden="true" size={compact ? 13 : 15} />{article.viewCount}</span>
+      <span title={t("article.likes")}><Heart aria-hidden="true" size={compact ? 13 : 15} />{article.likeCount}</span>
+      <span title={t("article.comments")}><MessageCircle aria-hidden="true" size={compact ? 13 : 15} />{article.commentCount}</span>
+      <span title={t("article.favorites")}><Bookmark aria-hidden="true" size={compact ? 13 : 15} />{article.favoriteCount}</span>
     </span>
   );
 }
 
 export function ArticlePinBadge({ isPinned }: { isPinned: boolean }) {
+  const { t } = useLanguage();
   if (!isPinned) return null;
   return (
-    <span aria-label="置顶文章" className="article-pin-corner" role="img" title="置顶文章">
+    <span aria-label={t("article.pinned")} className="article-pin-corner" role="img" title={t("article.pinned")}>
       <Pin aria-hidden="true" fill="currentColor" size={13} />
     </span>
   );
 }
 
 export function ArticleTaxonomy({ article, limit = 3 }: { article: Article; limit?: number }) {
+  const { locale, t } = useLanguage();
   const visibleTags = article.tags.slice(0, limit);
   const hiddenCount = Math.max(0, article.tags.length - visibleTags.length);
   return (
     <span className="article-taxonomy">
-      <span className="article-category">{article.category || "随笔"}</span>
-      {article.resource.enabled ? <span className="article-resource-chip" title={`${article.resource.blocks.length} 个积分资源区域`}><Coins aria-hidden="true" size={12} />资源</span> : null}
+      <span className="article-category">{article.category || t("article.defaultCategory")}</span>
+      {article.resource.enabled ? <span className="article-resource-chip" title={`${article.resource.blocks.length} ${t("article.resource")}`}><Coins aria-hidden="true" size={12} />{t("article.resource")}</span> : null}
       {visibleTags.map((tag) => <span className="article-tag-chip" key={tag}>#{tag}</span>)}
       {hiddenCount ? <span className="article-tag-more">+{hiddenCount}</span> : null}
       {(article.collections ?? []).slice(0, 2).map((collection) => (
-        <Link className="article-group-chip collection" href={collection.href} key={`collection-${collection.id}`} onClick={(event) => event.stopPropagation()}>{collection.label}</Link>
+        <Link className="article-group-chip collection" href={localizedPath(collection.href, locale)} key={`collection-${collection.id}`} onClick={(event) => event.stopPropagation()}>{collection.label}</Link>
       ))}
       {(article.topics ?? []).slice(0, 2).map((topic) => (
-        <Link className="article-group-chip topic" href={topic.href} key={`topic-${topic.id}`} onClick={(event) => event.stopPropagation()}>{topic.label}</Link>
+        <Link className="article-group-chip topic" href={localizedPath(topic.href, locale)} key={`topic-${topic.id}`} onClick={(event) => event.stopPropagation()}>{topic.label}</Link>
       ))}
     </span>
   );
 }
 
 export function RecentCommenters({ article }: { article: Article }) {
+  const { t } = useLanguage();
   const commenters = article.recentCommenters.filter(
     (author, index, authors) => authors.findIndex((candidate) => candidate.id === author.id) === index,
   ).slice(0, 5);
   if (!commenters.length) return null;
   return (
-    <span aria-label="最近回复用户" className="article-recent-commenters">
+    <span aria-label={t("article.recentCommenters")} className="article-recent-commenters">
       {commenters.map((author) => {
         const avatar = author.avatarUrl ? resolveApiUrl(author.avatarUrl) : null;
         return (
@@ -108,15 +120,16 @@ export function ArticleCard({
   metaAccessory?: ReactNode;
   taxonomyPlacement?: "meta" | "after-stats";
 }) {
+  const { locale, t } = useLanguage();
   return (
     <article className="article-card">
-      <Link aria-label={`阅读 ${article.title}`} className="article-card-link" href={href ?? `/articles/${article.slug}`} />
+      <Link aria-label={t("article.read", { title: article.title })} className="article-card-link" href={localizedPath(href ?? `/articles/${article.slug}`, locale)} />
       <ArticlePinBadge isPinned={article.isPinned} />
       <div className="article-card-main">
         <h2 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h2>
         <div className="article-card-meta">
           <ArticleAuthorLine author={article.author} interactive />
-          <span className="article-card-date">{formatArticleDate(article.publishedAt)}</span>
+          <span className="article-card-date">{formatArticleDate(article.publishedAt, locale)}</span>
           {taxonomyPlacement === "meta" ? <ArticleTaxonomy article={article} /> : null}
           {metaAccessory ? <span className="article-card-meta-accessory">{metaAccessory}</span> : null}
         </div>
@@ -141,6 +154,7 @@ export const ArticleBody = memo(function ArticleBody({
   pendingImageUrls?: Record<string, string>;
   onRedeemResource?: (blockKey: string) => void;
 }) {
+  const { t } = useLanguage();
   const segments = contentSegments?.length ? contentSegments : parseArticleContentForDisplay(content);
   return (
     <div className="article-body">
@@ -150,8 +164,8 @@ export const ArticleBody = memo(function ArticleBody({
         ) : (
           <section className="article-resource-lock" key={segment.key ?? `resource-${index}`}>
             <LockKeyhole aria-hidden="true" size={24} />
-            <div><span>积分资源</span><strong>需要 {segment.pointCost ?? 0} 积分开启该区域内容</strong><p>兑换后永久解锁，积分将在 72 小时后入账作者账户。</p></div>
-            {segment.key && onRedeemResource ? <button onClick={() => onRedeemResource(segment.key!)} type="button"><Coins aria-hidden="true" size={16} />兑换</button> : null}
+            <div><span>{t("article.resource")}</span><strong>{t("article.resourceUnlock", { count: segment.pointCost ?? 0 })}</strong><p>{t("article.resourceNote")}</p></div>
+            {segment.key && onRedeemResource ? <button onClick={() => onRedeemResource(segment.key!)} type="button"><Coins aria-hidden="true" size={16} />{t("article.redeem")}</button> : null}
           </section>
         )
       ) : <MarkdownSegment content={segment.content ?? ""} key={`markdown-${index}`} pendingImageUrls={pendingImageUrls} />)}

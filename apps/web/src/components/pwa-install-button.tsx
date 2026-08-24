@@ -3,6 +3,7 @@
 import { AppWindow } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { useLanguage } from "@/components/language-provider";
 import {
   PWA_INSTALL_PROMPT_CHANGE_EVENT,
   clearInstallPrompt,
@@ -17,6 +18,7 @@ import {
 import { getPublicSiteSettings } from "@/lib/site-settings-api";
 
 export function PwaInstallButton() {
+  const { t } = useLanguage();
   const [hasInstallPrompt, setHasInstallPrompt] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIos, setIsIos] = useState(false);
@@ -108,10 +110,10 @@ export function PwaInstallButton() {
   return (
     <>
       <button
-        aria-label="安装与下载 HLOVET"
+        aria-label={t("pwa.installAndDownload", { name: "HLOVET" })}
         className="header-action-button pwa-install-button"
         onClick={() => void handleInstall()}
-        title={hasInstallPrompt ? "安装 HLOVET" : "安装与下载 HLOVET"}
+        title={hasInstallPrompt ? t("pwa.install", { name: "HLOVET" }) : t("pwa.installAndDownload", { name: "HLOVET" })}
         type="button"
       >
         <AppWindow aria-hidden="true" size={18} />

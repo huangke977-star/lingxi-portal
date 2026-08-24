@@ -24,6 +24,7 @@ export interface AuthenticatedUser {
   isAdministrator?: boolean;
   avatarUrl: string | null;
   profileBio: string;
+  locale?: "zh-CN" | "en-US";
   createdAt: Date;
   appearance: UserAppearancePreference;
   role: {

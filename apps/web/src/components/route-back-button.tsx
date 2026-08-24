@@ -2,26 +2,30 @@
 
 import { ArrowLeft } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
+import { useLanguage } from "@/components/language-provider";
+import { localizedPath, stripLocalePath } from "@/lib/i18n";
 
 const menuPaths = new Set(["/", "/nav", "/tools", "/articles", "/dashboard"]);
 
 export function RouteBackButton() {
   const pathname = usePathname();
   const router = useRouter();
+  const { locale, t } = useLanguage();
+  const pagePath = stripLocalePath(pathname);
 
-  if (menuPaths.has(pathname) || pathname === "/login") return null;
+  if (menuPaths.has(pagePath) || pagePath === "/login") return null;
 
   function handleBack() {
     if (window.history.length > 1) {
       router.back();
       return;
     }
-    router.push(fallbackPath(pathname));
+    router.push(localizedPath(fallbackPath(pagePath), locale));
   }
 
   return (
     <div className="route-back-row">
-      <button aria-label="返回上一页" className="route-back-button" onClick={handleBack} title="返回上一页" type="button">
+      <button aria-label={t("auth.back")} className="route-back-button" onClick={handleBack} title={t("auth.back")} type="button">
         <ArrowLeft aria-hidden="true" size={19} />
       </button>
     </div>

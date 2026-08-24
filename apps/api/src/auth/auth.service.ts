@@ -263,6 +263,7 @@ export class AuthService {
       isAdministrator: user.isAdministrator,
       avatarUrl: user.avatarUrl,
       profileBio: user.profileBio,
+      locale: user.locale,
       createdAt: user.createdAt,
       appearance: user.appearance,
       role: user.role,

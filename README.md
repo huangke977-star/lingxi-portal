@@ -92,6 +92,16 @@ API 会同时校验 MIME 类型、扩展名和图片二进制签名，磁盘文�
 
 Users can save account-level appearance settings at `/profile`, including theme, card transparency, glass blur, glass tint, glass tint opacity, and custom colors. Avatars support JPEG, PNG, and WebP up to 2 MB per file, stored in the `avatar_uploads` Docker named volume.
 
+## 界面语言 / Interface Language
+
+门户支持简体中文与英语界面。中文保持根路径，例如 `/articles`；英语使用 `/en` 前缀，例如 `/en/articles`。顶部语言切换会同时写入浏览器 Cookie、本地缓存和登录账号偏好；在其他设备登录后，会恢复账号选择的语言。用户直接访问 `/en/...` 时，URL 的英文选择优先于账号偏好。
+
+文章正文、评论、昵称、群名称、专题和合集等用户或运营内容保持原文，不会被自动翻译。系统界面文案、导航、公共页面、日期、数字和 PWA 清单则按当前语言格式化。新系统消息应优先保存消息类型与参数，而不是只保存完整的某一种语言文案，以便后续在多语言界面中正确展示。
+
+The portal supports Simplified Chinese and English. Chinese keeps the root routes, such as `/articles`, while English uses the `/en` prefix, such as `/en/articles`. The header language switcher stores the choice in a browser cookie, local storage, and the signed-in account preference. On another device, the saved account preference is restored after sign-in. A direct `/en/...` URL takes precedence over the account preference.
+
+User and editorial content, including article bodies, comments, display names, group names, topics, and collections, remains in its original language and is never machine-translated. Interface copy, navigation, public pages, dates, numbers, and the PWA manifest follow the active locale. New system messages should store a message type and parameters instead of only a fully rendered single-language sentence, so they can be rendered correctly in every supported locale.
+
 ## Redis 缓存管理 / Redis Cache Management
 
 超级管理员可以通过头像菜单或 `/admin/cache` 查看 Redis 状态、使用游标搜索缓存键、检查脱敏后的键值，并安全撤销登录会话或清除登录失败计数。管理员角色无权访问。页面不提供任意 Redis 命令、`KEYS *` 或清库功能，Redis 仍只存在于 Docker 内部网络。

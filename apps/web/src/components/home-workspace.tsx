@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { AnonymousTopicsPanel } from "@/components/anonymous-topics-panel";
 import { AppToast } from "@/components/app-toast";
+import { useLanguage } from "@/components/language-provider";
 import { PortalEntryVisual } from "@/components/portal-entry-visual";
 import { SuggestionsPanel } from "@/components/suggestions-panel";
 import { listVisibleArticles, listPublicArticles, type Article } from "@/lib/article-api";
@@ -35,6 +36,7 @@ import {
   type PortalHomeSummary,
   type PortalPreferences,
 } from "@/lib/portal-api";
+import { formatDate as formatLocaleDate, localizedPath } from "@/lib/i18n";
 
 interface HomeData {
   announcements: AnnouncementSummary[];
@@ -57,6 +59,7 @@ const emptyData: HomeData = {
 };
 
 export function HomeWorkspace() {
+  const { locale, t } = useLanguage();
   const [data, setData] = useState<HomeData>(emptyData);
   const [error, setError] = useState("");
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -95,7 +98,7 @@ export function HomeWorkspace() {
         preferences,
         topics,
       });
-      setError(content.categories.length || announcements.length || articles.length ? "" : "暂时无法读取首页内容，请稍后重试。");
+      setError(content.categories.length || announcements.length || articles.length ? "" : t("home.loadFailed"));
       setHasLoaded(true);
       setIsLoading(false);
     }
@@ -106,7 +109,7 @@ export function HomeWorkspace() {
       active = false;
       window.removeEventListener(AUTH_STATE_CHANGE_EVENT, load);
     };
-  }, []);
+  }, [t]);
 
   const shortcuts = useMemo(() => {
     const preferred = orderedEntries(data.entries, data.preferences?.homeEntryIds ?? []);
@@ -122,83 +125,84 @@ export function HomeWorkspace() {
     <section className="p8-page p8-home-page">
       <header className="p8-page-heading">
         <div>
-          <span className="section-label">HOME</span>
-          <h1>首页</h1>
+          <span className="section-label">{t("home.section")}</span>
+          <h1>{t("home.title")}</h1>
         </div>
-        <HomeStats summary={data.homeSummary} />
+        <HomeStats locale={locale} summary={data.homeSummary} />
       </header>
 
-      {!hasLoaded ? <div className="status-row compact-status-row"><span className="status">正在整理首页</span></div> : (
+      {!hasLoaded ? <div className="status-row compact-status-row"><span className="status">{t("home.organizing")}</span></div> : (
         <div className="p8-home-layout">
           <div className="p8-home-main">
             <section className="p8-surface p8-announcement-panel">
               <div className="p8-section-heading">
-                <div><Bell aria-hidden="true" size={17} /><h2>站点公告</h2></div>
-                <Link href="/announcements">全部公告<ArrowRight aria-hidden="true" size={14} /></Link>
+                <div><Bell aria-hidden="true" size={17} /><h2>{t("home.siteAnnouncements")}</h2></div>
+                <Link href={localizedPath("/announcements", locale)}>{t("home.allAnnouncements")}<ArrowRight aria-hidden="true" size={14} /></Link>
               </div>
               {data.announcements.length ? <div className="p8-announcement-list">
-                {data.announcements.map((item) => <Link href={`/announcements/${item.id}`} key={item.id}>
-                  <span>{formatDate(item.publishedAt ?? item.createdAt)}</span>
+                {data.announcements.map((item) => <Link href={localizedPath(`/announcements/${item.id}`, locale)} key={item.id}>
+                  <span>{formatDate(item.publishedAt ?? item.createdAt, locale)}</span>
                   <strong>{item.title}</strong>
-                  <small>{item.summary || "查看公告详情"}</small>
+                  <small>{item.summary || t("home.viewAnnouncement")}</small>
                 </Link>)}
-              </div> : <P8Empty text="暂时没有可见公告。" />}
+              </div> : <P8Empty text={t("home.noAnnouncements")} />}
             </section>
 
             <section className="p8-surface p8-article-panel">
               <div className="p8-section-heading">
-                <div><Compass aria-hidden="true" size={17} /><h2>热门内容</h2></div>
-                <Link href="/articles">发现更多<ArrowRight aria-hidden="true" size={14} /></Link>
+                <div><Compass aria-hidden="true" size={17} /><h2>{t("home.popularContent")}</h2></div>
+                <Link href={localizedPath("/articles", locale)}>{t("home.discoverMore")}<ArrowRight aria-hidden="true" size={14} /></Link>
               </div>
               {data.articles.length ? <div className="p8-article-list">
-                {data.articles.map((article) => <Link href={`/articles/${article.slug}`} key={article.id}>
-                  <span className="p8-article-order">{article.isPinned ? "置顶" : String(article.viewCount)}</span>
-                  <span className="p8-article-copy"><strong style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</strong><small>{article.summary || article.category || "阅读文章详情"}</small></span>
-                  <span className="p8-article-meta">{article.likeCount} 赞 · {article.commentCount} 回复</span>
+                {data.articles.map((article) => <Link href={localizedPath(`/articles/${article.slug}`, locale)} key={article.id}>
+                  <span className="p8-article-order">{article.isPinned ? t("home.pinned") : String(article.viewCount)}</span>
+                  <span className="p8-article-copy"><strong style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</strong><small>{article.summary || article.category || t("home.readArticle")}</small></span>
+                  <span className="p8-article-meta">{article.likeCount} {t("home.likes")} · {article.commentCount} {t("home.replies")}</span>
                 </Link>)}
-              </div> : <P8Empty text="暂时没有可展示的文章。" />}
+              </div> : <P8Empty text={t("home.noArticles")} />}
             </section>
-            <AnonymousTopicsPanel initialSort="home" moreHref="/voices" />
+            <AnonymousTopicsPanel initialSort="home" moreHref={localizedPath("/voices", locale)} />
           </div>
 
           <aside className="p8-home-side">
             <section className="p8-surface p8-shortcuts-panel">
               <div className="p8-section-heading">
-                <div><Wrench aria-hidden="true" size={17} /><h2>快捷入口</h2></div>
-                <Link href="/tools">管理<ArrowRight aria-hidden="true" size={14} /></Link>
+                <div><Wrench aria-hidden="true" size={17} /><h2>{t("home.quickEntries")}</h2></div>
+                <Link href={localizedPath("/tools", locale)}>{t("home.manage")}<ArrowRight aria-hidden="true" size={14} /></Link>
               </div>
               {shortcuts.length ? <div className="p8-shortcut-grid">
                 {shortcuts.map((entry) => <PortalShortcut entry={entry} key={entry.id} />)}
-              </div> : <P8Empty text="管理员尚未设置推荐入口。" />}
+              </div> : <P8Empty text={t("home.noFeaturedEntries")} />}
             </section>
-            <SuggestionsPanel moreHref="/suggestions" />
+            <SuggestionsPanel moreHref={localizedPath("/suggestions", locale)} />
 
             <section className="p8-surface p8-discovery-panel">
-              <div className="p8-section-heading"><div><Compass aria-hidden="true" size={17} /><h2>专题</h2></div><Link href="/topics">查看全部<ArrowRight aria-hidden="true" size={14} /></Link></div>
-              {data.topics.length ? <div className="p8-discovery-list">{data.topics.slice(0, 3).map((topic) => <Link href={`/topics/${topic.slug}`} key={topic.id}><span>{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <Compass aria-hidden="true" size={16} />}</span><strong>{topic.title}</strong><small>{topic.articleCount} 篇</small></Link>)}</div> : <P8Empty text="暂无可见专题。" />}
-              {data.collections.length ? <><div className="p8-subsection-label"><FolderOpen aria-hidden="true" size={14} />合集</div><div className="p8-collection-list">{data.collections.map((collection) => <Link href={`/collections/${collection.id}`} key={collection.id}><strong>{collection.name}</strong><small>{collection.articleCount} 篇 · {collection.owner.nickname}</small></Link>)}</div></> : null}
+              <div className="p8-section-heading"><div><Compass aria-hidden="true" size={17} /><h2>{t("home.topic")}</h2></div><Link href={localizedPath("/topics", locale)}>{t("home.viewAll")}<ArrowRight aria-hidden="true" size={14} /></Link></div>
+              {data.topics.length ? <div className="p8-discovery-list">{data.topics.slice(0, 3).map((topic) => <Link href={localizedPath(`/topics/${topic.slug}`, locale)} key={topic.id}><span>{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <Compass aria-hidden="true" size={16} />}</span><strong>{topic.title}</strong><small>{t("home.articleCount", { count: topic.articleCount })}</small></Link>)}</div> : <P8Empty text={t("home.noTopics")} />}
+              {data.collections.length ? <><div className="p8-subsection-label"><FolderOpen aria-hidden="true" size={14} />{t("home.collection")}</div><div className="p8-collection-list">{data.collections.map((collection) => <Link href={localizedPath(`/collections/${collection.id}`, locale)} key={collection.id}><strong>{collection.name}</strong><small>{t("home.articleCount", { count: collection.articleCount })} · {collection.owner.nickname}</small></Link>)}</div></> : null}
             </section>
           </aside>
         </div>
       )}
-      {hasLoaded && isLoading ? <span aria-live="polite" className="p8-background-refresh">正在刷新首页数据</span> : null}
+      {hasLoaded && isLoading ? <span aria-live="polite" className="p8-background-refresh">{t("home.refreshing")}</span> : null}
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );
 }
 
-function HomeStats({ summary }: { summary: PortalHomeSummary | null }) {
-  if (!summary) return <Link className="p8-home-login-stat" href="/login">登录后查看统计</Link>;
+function HomeStats({ summary, locale }: { summary: PortalHomeSummary | null; locale: "zh-CN" | "en-US" }) {
+  const { t } = useLanguage();
+  if (!summary) return <Link className="p8-home-login-stat" href={localizedPath("/login", locale)}>{t("home.loginStats")}</Link>;
   const stats = [
-    { icon: BookOpenText, label: "文章阅读", value: summary.articleViews },
-    { icon: MessageCircleMore, label: "收到评论", value: summary.commentCount },
-    { icon: Rss, label: "订阅者", value: summary.subscriberCount },
-    { icon: Heart, label: "收到点赞", value: summary.likeCount },
-    { icon: Star, label: "收到收藏", value: summary.favoriteCount },
-    { icon: Users, label: "好友", value: summary.friendCount },
-    { icon: UsersRound, label: "群聊", value: summary.groupCount },
+    { icon: BookOpenText, label: t("home.articleViews"), value: summary.articleViews },
+    { icon: MessageCircleMore, label: t("home.commentCount"), value: summary.commentCount },
+    { icon: Rss, label: t("home.subscriberCount"), value: summary.subscriberCount },
+    { icon: Heart, label: t("home.likeCount"), value: summary.likeCount },
+    { icon: Star, label: t("home.favoriteCount"), value: summary.favoriteCount },
+    { icon: Users, label: t("home.friendCount"), value: summary.friendCount },
+    { icon: UsersRound, label: t("home.groupCount"), value: summary.groupCount },
   ];
-  return <div aria-label="个人统计" className="p8-home-stats">{stats.map(({ icon: Icon, label, value }) => <span key={label} title={`${label} ${value}`}><Icon aria-hidden="true" size={15} /><b>{value}</b><small>{label}</small></span>)}</div>;
+  return <div aria-label={t("home.stats")} className="p8-home-stats">{stats.map(({ icon: Icon, label, value }) => <span key={label} title={`${label} ${value}`}><Icon aria-hidden="true" size={15} /><b>{value}</b><small>{label}</small></span>)}</div>;
 }
 
 function PortalShortcut({ entry }: { entry: PortalEntry }) {
@@ -224,8 +228,6 @@ function portalHost(url: string | null) {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "链接入口"; }
 }
 
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit" }).format(date);
+function formatDate(value: string, locale: "zh-CN" | "en-US") {
+  return formatLocaleDate(value, locale, { month: "2-digit", day: "2-digit" });
 }

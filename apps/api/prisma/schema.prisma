@@ -485,6 +485,7 @@ model User {
   glassTint                  String                          @default("#fff3f6") @map("glass_tint") @db.VarChar(7)
   glassTintAlpha             Int                             @default(0) @map("glass_tint_alpha")
   appearanceCustomized       Boolean                         @default(false) @map("appearance_customized")
+  preferredLocale            String                          @default("zh-CN") @map("preferred_locale") @db.VarChar(12)
   avatarOriginalName         String?                         @map("avatar_original_name") @db.VarChar(255)
   avatarStoredName           String?                         @unique @map("avatar_stored_name") @db.VarChar(255)
   avatarMimeType             String?                         @map("avatar_mime_type") @db.VarChar(64)
