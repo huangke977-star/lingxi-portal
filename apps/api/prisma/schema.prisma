@@ -2469,7 +2469,7 @@ model ModerationContentRecord {
 
   @@unique([source, contentRef])
   @@index([userId, source, createdAt])
-  @@index([userId, source, contentHash, createdAt])
+  @@index([userId, source, contentHash, createdAt], map: "mod_content_record_user_hash_time_idx")
   @@map("moderation_content_records")
 }
 

@@ -77,7 +77,7 @@ CREATE INDEX `moderation_rule_hits_rule_id_created_at_idx` ON `moderation_rule_h
 CREATE INDEX `moderation_rule_hits_actor_id_created_at_idx` ON `moderation_rule_hits`(`actor_id`, `created_at`);
 CREATE UNIQUE INDEX `moderation_content_records_source_content_ref_key` ON `moderation_content_records`(`source`, `content_ref`);
 CREATE INDEX `moderation_content_records_user_id_source_created_at_idx` ON `moderation_content_records`(`user_id`, `source`, `created_at`);
-CREATE INDEX `moderation_content_records_user_id_source_content_hash_created_at_idx` ON `moderation_content_records`(`user_id`, `source`, `content_hash`, `created_at`);
+CREATE INDEX `mod_content_record_user_hash_time_idx` ON `moderation_content_records`(`user_id`, `source`, `content_hash`, `created_at`);
 CREATE INDEX `moderation_templates_enabled_status_idx` ON `moderation_templates`(`enabled`, `status`);
 CREATE UNIQUE INDEX `moderation_deadline_notices_source_report_id_stage_key` ON `moderation_deadline_notices`(`source`, `report_id`, `stage`);
 CREATE INDEX `moderation_deadline_notices_created_at_idx` ON `moderation_deadline_notices`(`created_at`);
