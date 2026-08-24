@@ -2497,6 +2497,8 @@ model ModerationSetting {
   automaticRemindersEnabled  Boolean  @default(true) @map("automatic_reminders_enabled")
   updatedById                Int?     @map("updated_by_id")
   updatedAt                  DateTime @updatedAt @map("updated_at")
+
+  @@map("moderation_settings")
 }
 
 model ModerationDeadlineNotice {
