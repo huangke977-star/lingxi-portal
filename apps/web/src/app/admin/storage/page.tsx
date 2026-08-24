@@ -27,8 +27,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { GlassSelect } from "@/components/glass-select";
+import { useLanguage } from "@/components/language-provider";
 import { type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { localizedPath } from "@/lib/i18n";
 import {
   confirmStorageIssueUnrecoverable,
   deleteStorageTrash,
@@ -56,25 +59,28 @@ import {
 
 type StorageTab = "issues" | "trash" | "settings";
 
-const CATEGORY_OPTIONS: Array<{ value: StorageCategoryKey | ""; label: string }> = [
-  { value: "", label: "全部分类" },
-  { value: "backgrounds", label: "背景图片" },
-  { value: "site-assets", label: "站点资源" },
-  { value: "android-releases", label: "Android 安装包" },
-  { value: "avatars", label: "用户头像" },
-  { value: "articles", label: "文章媒体" },
-  { value: "chat", label: "聊天附件" },
+const CATEGORY_OPTIONS: Array<{ value: StorageCategoryKey | ""; chinese: string; english: string }> = [
+  { value: "", chinese: "全部分类", english: "All categories" },
+  { value: "backgrounds", chinese: "背景图片", english: "Background images" },
+  { value: "site-assets", chinese: "站点资源", english: "Site assets" },
+  { value: "android-releases", chinese: "Android 安装包", english: "Android packages" },
+  { value: "avatars", chinese: "用户头像", english: "User avatars" },
+  { value: "articles", chinese: "文章媒体", english: "Article media" },
+  { value: "chat", chinese: "聊天附件", english: "Chat attachments" },
 ];
 
-const ISSUE_OPTIONS: Array<{ value: StorageIssueKind | ""; label: string }> = [
-  { value: "", label: "全部异常" },
-  { value: "missing", label: "文件缺失" },
-  { value: "orphan", label: "孤立文件" },
-  { value: "metadata_mismatch", label: "大小不一致" },
+const ISSUE_OPTIONS: Array<{ value: StorageIssueKind | ""; chinese: string; english: string }> = [
+  { value: "", chinese: "全部异常", english: "All issues" },
+  { value: "missing", chinese: "文件缺失", english: "Missing files" },
+  { value: "orphan", chinese: "孤立文件", english: "Orphan files" },
+  { value: "metadata_mismatch", chinese: "大小不一致", english: "Size mismatch" },
 ];
+
+type Phrase = (chinese: string, english: string) => string;
 
 export default function StorageManagementPage() {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [overview, setOverview] = useState<StorageOverview | null>(null);
@@ -101,11 +107,11 @@ export default function StorageManagementPage() {
   const handleError = useCallback((loadError: unknown, fallback: string) => {
     if (isAuthExpiredError(loadError)) {
       clearAuthTokens();
-      router.replace("/");
+      router.replace(localizedPath("/", locale));
       return;
     }
     setError(loadError instanceof Error ? loadError.message : fallback);
-  }, [router]);
+  }, [locale, router]);
 
   const loadOverview = useCallback(async (token: string) => {
     const next = await getStorageOverview(token);
@@ -150,7 +156,7 @@ export default function StorageManagementPage() {
     let active = true;
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
     void getMe(token)
@@ -160,26 +166,26 @@ export default function StorageManagementPage() {
         setCurrentUser(user);
         if (user.isSuperAdmin) await loadInitial(token);
       })
-      .catch((loadError: unknown) => handleError(loadError, "无法验证访问权限。"))
+      .catch((loadError: unknown) => handleError(loadError, phrase("无法验证访问权限。", "Could not verify access.")))
       .finally(() => { if (active) setIsLoading(false); });
     return () => { active = false; };
-  }, [handleError, loadInitial, router]);
+  }, [handleError, loadInitial, locale, phrase, router]);
 
   useEffect(() => {
     if (!accessToken || !currentUser?.isSuperAdmin || isLoading) return;
     const timer = window.setTimeout(() => {
-      void loadIssues(accessToken).catch((loadError) => handleError(loadError, "异常文件读取失败。"));
+      void loadIssues(accessToken).catch((loadError) => handleError(loadError, phrase("异常文件读取失败。", "Could not load storage issues.")));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [accessToken, currentUser, handleError, isLoading, loadIssues]);
+  }, [accessToken, currentUser, handleError, isLoading, loadIssues, phrase]);
 
   useEffect(() => {
     if (!accessToken || !currentUser?.isSuperAdmin || isLoading) return;
     const timer = window.setTimeout(() => {
-      void loadTrash(accessToken).catch((loadError) => handleError(loadError, "回收站读取失败。"));
+      void loadTrash(accessToken).catch((loadError) => handleError(loadError, phrase("回收站读取失败。", "Could not load the recycle bin.")));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [accessToken, currentUser, handleError, isLoading, loadTrash]);
+  }, [accessToken, currentUser, handleError, isLoading, loadTrash, phrase]);
 
   useEffect(() => {
     if (!accessToken || !overview?.latestScan || overview.latestScan.status !== "running") return;
@@ -191,12 +197,12 @@ export default function StorageManagementPage() {
           window.clearInterval(timer);
           setIsScanning(false);
           await refreshAll(accessToken);
-          setNotice(scan.status === "completed" ? "存储扫描已完成。" : scan.error || "存储扫描失败。");
+          setNotice(scan.status === "completed" ? phrase("存储扫描已完成。", "Storage scan completed.") : scan.error || phrase("存储扫描失败。", "Storage scan failed."));
         })
-        .catch((loadError) => handleError(loadError, "扫描状态读取失败。"));
+        .catch((loadError) => handleError(loadError, phrase("扫描状态读取失败。", "Could not load scan status.")));
     }, 1_200);
     return () => window.clearInterval(timer);
-  }, [accessToken, handleError, overview?.latestScan, refreshAll]);
+  }, [accessToken, handleError, overview?.latestScan, phrase, refreshAll]);
 
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview.url);
@@ -212,10 +218,10 @@ export default function StorageManagementPage() {
     try {
       const scan = await startStorageScan(accessToken);
       setOverview((current) => current ? { ...current, latestScan: scan } : current);
-      setNotice("存储扫描已开始。");
+      setNotice(phrase("存储扫描已开始。", "Storage scan started."));
     } catch (actionError) {
       setIsScanning(false);
-      handleError(actionError, "无法启动存储扫描。");
+      handleError(actionError, phrase("无法启动存储扫描。", "Could not start the storage scan."));
     }
   }
 
@@ -238,43 +244,43 @@ export default function StorageManagementPage() {
         link.download = issue.storedName.split("/").at(-1) || "storage-file";
         link.click();
         window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-        setNotice("文件下载已开始。");
+        setNotice(phrase("文件下载已开始。", "File download started."));
       } else {
         if (preview) URL.revokeObjectURL(preview.url);
         setPreview({ name: issue.storedName, url });
       }
     } catch (actionError) {
-      handleError(actionError, "文件读取失败。");
+      handleError(actionError, phrase("文件读取失败。", "Could not load the file."));
     } finally {
       setBusyAction("");
     }
   }
 
   async function handleTrashIssue(issue: StorageIssue) {
-    if (!accessToken || busyAction || !window.confirm(`将 ${issue.storedName} 移入回收站吗？`)) return;
+    if (!accessToken || busyAction || !window.confirm(phrase(`将 ${issue.storedName} 移入回收站吗？`, `Move ${issue.storedName} to the recycle bin?`))) return;
     setBusyAction(`trash:${issue.id}`);
     setError("");
     try {
       await trashStorageIssue(accessToken, issue.id);
       await refreshAll(accessToken);
-      setNotice("孤立文件已移入回收站。" );
+      setNotice(phrase("孤立文件已移入回收站。", "Orphan file moved to the recycle bin."));
     } catch (actionError) {
-      handleError(actionError, "文件移入回收站失败。");
+      handleError(actionError, phrase("文件移入回收站失败。", "Could not move the file to the recycle bin."));
     } finally {
       setBusyAction("");
     }
   }
 
   async function handleRemoteRestore(issue: StorageIssue) {
-    if (!accessToken || busyAction || !window.confirm(`从远端备份恢复 ${issue.storedName} 吗？`)) return;
+    if (!accessToken || busyAction || !window.confirm(phrase(`从远端备份恢复 ${issue.storedName} 吗？`, `Restore ${issue.storedName} from remote backup?`))) return;
     setBusyAction(`remote:${issue.id}`);
     setError("");
     try {
       await restoreMissingStorageIssue(accessToken, issue.id);
       await refreshAll(accessToken);
-      setNotice("文件已从远端备份恢复并通过校验。");
+      setNotice(phrase("文件已从远端备份恢复并通过校验。", "File restored from remote backup and verified."));
     } catch (actionError) {
-      handleError(actionError, "远端恢复失败。");
+      handleError(actionError, phrase("远端恢复失败。", "Remote restore failed."));
     } finally {
       setBusyAction("");
     }
@@ -287,9 +293,9 @@ export default function StorageManagementPage() {
     try {
       await reuploadMissingStorageIssue(accessToken, issue.id, file);
       await refreshAll(accessToken);
-      setNotice("替换文件已上传并写回原位置。");
+      setNotice(phrase("替换文件已上传并写回原位置。", "Replacement file uploaded and restored to its original location."));
     } catch (actionError) {
-      handleError(actionError, "替换文件上传失败。");
+      handleError(actionError, phrase("替换文件上传失败。", "Could not upload the replacement file."));
     } finally {
       setBusyAction("");
     }
@@ -304,9 +310,9 @@ export default function StorageManagementPage() {
       setUnrecoverableTarget(null);
       setUnrecoverableNote("");
       await refreshAll(accessToken);
-      setNotice("已记录为无法恢复，后续扫描不会重复列为待处理项。");
+      setNotice(phrase("已记录为无法恢复，后续扫描不会重复列为待处理项。", "Marked as unrecoverable. Future scans will not list it as pending again."));
     } catch (actionError) {
-      handleError(actionError, "无法保存处理结果。");
+      handleError(actionError, phrase("无法保存处理结果。", "Could not save the handling result."));
     } finally {
       setBusyAction("");
     }
@@ -319,7 +325,7 @@ export default function StorageManagementPage() {
     try {
       setRepairHistory({ issue, items: await listStorageIssueRepairs(accessToken, issue.id) });
     } catch (actionError) {
-      handleError(actionError, "修复记录读取失败。");
+      handleError(actionError, phrase("修复记录读取失败。", "Could not load repair history."));
     } finally {
       setBusyAction("");
     }
@@ -332,24 +338,24 @@ export default function StorageManagementPage() {
     try {
       await restoreStorageTrash(accessToken, id);
       await refreshAll(accessToken);
-      setNotice("文件已恢复到原位置，请重新扫描确认状态。" );
+      setNotice(phrase("文件已恢复到原位置，请重新扫描确认状态。", "File restored to its original location. Scan again to confirm its status."));
     } catch (actionError) {
-      handleError(actionError, "文件恢复失败。");
+      handleError(actionError, phrase("文件恢复失败。", "Could not restore the file."));
     } finally {
       setBusyAction("");
     }
   }
 
   async function handleDeleteTrash(id: number, name: string) {
-    if (!accessToken || busyAction || !window.confirm(`永久删除 ${name} 吗？该操作无法撤销。`)) return;
+    if (!accessToken || busyAction || !window.confirm(phrase(`永久删除 ${name} 吗？该操作无法撤销。`, `Permanently delete ${name}? This cannot be undone.`))) return;
     setBusyAction(`delete:${id}`);
     setError("");
     try {
       await deleteStorageTrash(accessToken, id);
       await Promise.all([loadOverview(accessToken), loadTrash(accessToken)]);
-      setNotice("回收站文件已永久删除。" );
+      setNotice(phrase("回收站文件已永久删除。", "Recycle-bin file permanently deleted."));
     } catch (actionError) {
-      handleError(actionError, "文件删除失败。");
+      handleError(actionError, phrase("文件删除失败。", "Could not delete the file."));
     } finally {
       setBusyAction("");
     }
@@ -364,96 +370,96 @@ export default function StorageManagementPage() {
       const saved = await updateStorageConfiguration(accessToken, configuration);
       setConfiguration(saved);
       setOverview((current) => current ? { ...current, configuration: saved } : current);
-      setNotice("存储策略已保存。" );
+      setNotice(phrase("存储策略已保存。", "Storage policy saved."));
     } catch (actionError) {
-      handleError(actionError, "存储策略保存失败。");
+      handleError(actionError, phrase("存储策略保存失败。", "Could not save the storage policy."));
     } finally {
       setBusyAction("");
     }
   }
 
   if (isLoading) {
-    return <section className="page-shell admin-shell storage-management-shell"><span className="status">正在读取存储状态</span></section>;
+    return <section className="page-shell admin-shell storage-management-shell"><span className="status">{phrase("正在读取存储状态", "Loading storage status")}</span></section>;
   }
 
   if (!currentUser?.isSuperAdmin) {
-    return <section className="page-shell admin-shell storage-management-shell"><h1>无权访问</h1><p>存储管理仅超级管理员可以查看。</p><Link className="text-action primary" href="/">返回首页</Link></section>;
+    return <section className="page-shell admin-shell storage-management-shell"><h1>{phrase("无权访问", "Access denied")}</h1><p>{phrase("存储管理仅超级管理员可以查看。", "Only super administrators can view storage management.")}</p><Link className="text-action primary" href={localizedPath("/", locale)}>{phrase("返回首页", "Back to home")}</Link></section>;
   }
 
   return <section className="page-shell admin-shell storage-management-shell">
     <AppToast duration={error ? 4200 : 3200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     <header className="storage-management-head">
-      <div><span className="section-label">Storage integrity</span><h1>存储管理</h1></div>
+      <div><span className="section-label">{phrase("存储完整性", "STORAGE INTEGRITY")}</span><h1>{phrase("存储管理", "Storage management")}</h1></div>
       <div className="storage-management-head-actions">
-        {overview?.latestScan ? <small>最近扫描 {formatDateTime(overview.latestScan.completedAt || overview.latestScan.startedAt)}</small> : <small>尚未扫描</small>}
-        <button disabled={isScanning} onClick={() => void handleStartScan()} type="button"><RefreshCcw aria-hidden="true" className={isScanning ? "spin" : ""} size={16} /><span>{isScanning ? "扫描中" : "立即扫描"}</span></button>
+        {overview?.latestScan ? <small>{phrase("最近扫描 ", "Last scan ")}{formatDateTime(overview.latestScan.completedAt || overview.latestScan.startedAt, locale)}</small> : <small>{phrase("尚未扫描", "Not scanned yet")}</small>}
+        <button disabled={isScanning} onClick={() => void handleStartScan()} type="button"><RefreshCcw aria-hidden="true" className={isScanning ? "spin" : ""} size={16} /><span>{isScanning ? phrase("扫描中", "Scanning") : phrase("立即扫描", "Scan now")}</span></button>
       </div>
     </header>
 
     <div className="storage-health-strip">
-      <StorageMetric icon={Gauge} label="磁盘使用" tone={diskTone(summary?.disk.usedPercent, overview?.configuration.warningThresholdPercent)} value={summary?.disk.usedPercent === null || summary?.disk.usedPercent === undefined ? "未读取" : `${summary.disk.usedPercent}%`} detail={summary?.disk.availableBytes === null || summary?.disk.availableBytes === undefined ? "等待扫描" : `可用 ${formatBytes(summary.disk.availableBytes)}`} />
-      <StorageMetric icon={CircleCheck} label="健康文件" tone="ok" value={`${summary?.healthyCount ?? 0}`} detail="数据库记录与磁盘文件一致" />
-      <StorageMetric icon={FileWarning} label="文件缺失" tone={(overview?.openIssues.missing ?? 0) ? "error" : "ok"} value={`${overview?.openIssues.missing ?? 0}`} detail="数据库有记录，磁盘无文件" />
-      <StorageMetric icon={FileQuestion} label="孤立文件" tone={(overview?.openIssues.orphan ?? 0) ? "warning" : "ok"} value={`${overview?.openIssues.orphan ?? 0}`} detail="磁盘有文件，数据库无记录" />
-      <StorageMetric icon={Trash2} label="回收站" tone={(overview?.trash.expiredCount ?? 0) ? "warning" : "neutral"} value={`${overview?.trash.count ?? 0}`} detail={formatBytes(overview?.trash.sizeBytes ?? 0)} />
+      <StorageMetric icon={Gauge} label={phrase("磁盘使用", "Disk usage")} tone={diskTone(summary?.disk.usedPercent, overview?.configuration.warningThresholdPercent)} value={summary?.disk.usedPercent === null || summary?.disk.usedPercent === undefined ? phrase("未读取", "Not available") : `${summary.disk.usedPercent}%`} detail={summary?.disk.availableBytes === null || summary?.disk.availableBytes === undefined ? phrase("等待扫描", "Waiting for scan") : phrase(`可用 ${formatBytes(summary.disk.availableBytes)}`, `${formatBytes(summary.disk.availableBytes)} available`)} />
+      <StorageMetric icon={CircleCheck} label={phrase("健康文件", "Healthy files")} tone="ok" value={`${summary?.healthyCount ?? 0}`} detail={phrase("数据库记录与磁盘文件一致", "Database records match disk files")} />
+      <StorageMetric icon={FileWarning} label={phrase("文件缺失", "Missing files")} tone={(overview?.openIssues.missing ?? 0) ? "error" : "ok"} value={`${overview?.openIssues.missing ?? 0}`} detail={phrase("数据库有记录，磁盘无文件", "Database record exists but file is missing") } />
+      <StorageMetric icon={FileQuestion} label={phrase("孤立文件", "Orphan files")} tone={(overview?.openIssues.orphan ?? 0) ? "warning" : "ok"} value={`${overview?.openIssues.orphan ?? 0}`} detail={phrase("磁盘有文件，数据库无记录", "Disk file exists but has no database record")} />
+      <StorageMetric icon={Trash2} label={phrase("回收站", "Recycle bin")} tone={(overview?.trash.expiredCount ?? 0) ? "warning" : "neutral"} value={`${overview?.trash.count ?? 0}`} detail={formatBytes(overview?.trash.sizeBytes ?? 0)} />
     </div>
 
-    <nav className="storage-management-tabs" aria-label="存储管理视图">
-      <button className={tab === "issues" ? "active" : ""} onClick={() => setTab("issues")} type="button">异常文件 <b>{issueCountLabel}</b></button>
-      <button className={tab === "trash" ? "active" : ""} onClick={() => setTab("trash")} type="button">回收站 <b>{overview?.trash.count ?? 0}</b></button>
-      <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")} type="button">扫描策略</button>
+    <nav className="storage-management-tabs" aria-label={phrase("存储管理视图", "Storage management views")}>
+      <button className={tab === "issues" ? "active" : ""} onClick={() => setTab("issues")} type="button">{phrase("异常文件", "Issues")} <b>{issueCountLabel}</b></button>
+      <button className={tab === "trash" ? "active" : ""} onClick={() => setTab("trash")} type="button">{phrase("回收站", "Recycle bin")} <b>{overview?.trash.count ?? 0}</b></button>
+      <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")} type="button">{phrase("扫描策略", "Scan policy")}</button>
     </nav>
 
     {tab === "issues" ? <section className="storage-management-panel">
       <div className="storage-filter-row">
-        <form onSubmit={handleSearch}><Search aria-hidden="true" size={15} /><input onChange={(event) => setSearchText(event.target.value)} placeholder="搜索文件名、来源或上传账号" value={searchText} /><button type="submit">搜索</button></form>
-        <select onChange={(event) => { setIssuePage(1); setIssueKind(event.target.value as StorageIssueKind | ""); }} value={issueKind}>{ISSUE_OPTIONS.map((item) => <option key={item.value || "all"} value={item.value}>{item.label}</option>)}</select>
-        <select onChange={(event) => { setIssuePage(1); setCategory(event.target.value as StorageCategoryKey | ""); }} value={category}>{CATEGORY_OPTIONS.map((item) => <option key={item.value || "all"} value={item.value}>{item.label}</option>)}</select>
+        <form onSubmit={handleSearch}><Search aria-hidden="true" size={15} /><input onChange={(event) => setSearchText(event.target.value)} placeholder={phrase("搜索文件名、来源或上传账号", "Search file name, source, or uploader")} value={searchText} /><button type="submit">{phrase("搜索", "Search")}</button></form>
+        <GlassSelect ariaLabel={phrase("异常类型", "Issue type")} onChange={(value) => { setIssuePage(1); setIssueKind(value as StorageIssueKind | ""); }} options={ISSUE_OPTIONS.map((item) => ({ value: item.value, label: phrase(item.chinese, item.english) }))} value={issueKind} />
+        <GlassSelect ariaLabel={phrase("文件分类", "File category")} onChange={(value) => { setIssuePage(1); setCategory(value as StorageCategoryKey | ""); }} options={CATEGORY_OPTIONS.map((item) => ({ value: item.value, label: phrase(item.chinese, item.english) }))} value={category} />
       </div>
       <div className="storage-issue-list">
         {issues?.items.map((issue) => <article className={`storage-issue-row ${issue.kind}`} key={issue.id}>
           <span className="storage-issue-symbol">{issue.kind === "missing" ? <FileWarning aria-hidden="true" size={18} /> : issue.kind === "orphan" ? <FileQuestion aria-hidden="true" size={18} /> : <CircleAlert aria-hidden="true" size={18} />}</span>
-          <div className="storage-issue-main"><span><em>{issueLabel(issue.kind)}</em><small>{issue.categoryLabel}</small></span><strong title={issue.storedName}>{issue.storedName}</strong><p title={issue.sourceLabel}>{issue.sourceLabel}</p><footer>{issue.uploadedBy ? <span>上传：{issue.uploadedBy}</span> : null}<span>{formatIssueSize(issue)}</span>{issue.fileUpdatedAt ? <span>{formatDateTime(issue.fileUpdatedAt)}</span> : null}</footer></div>
+          <div className="storage-issue-main"><span><em>{issueLabel(issue.kind, phrase)}</em><small>{issue.categoryLabel}</small></span><strong title={issue.storedName}>{issue.storedName}</strong><p title={issue.sourceLabel}>{issue.sourceLabel}</p><footer>{issue.uploadedBy ? <span>{phrase("上传：", "Uploaded by: ")}{issue.uploadedBy}</span> : null}<span>{formatIssueSize(issue, phrase)}</span>{issue.fileUpdatedAt ? <span>{formatDateTime(issue.fileUpdatedAt, locale)}</span> : null}</footer></div>
           <div className="storage-issue-actions">
-            {issue.sourceUrl ? <Link aria-label="定位来源" href={issue.sourceUrl} title="定位来源"><Search aria-hidden="true" size={15} /></Link> : null}
-            {issue.previewable ? <button aria-label="预览文件" disabled={Boolean(busyAction)} onClick={() => void handleFile(issue, false)} title="预览" type="button"><Eye aria-hidden="true" size={15} /></button> : null}
-            {issue.kind === "orphan" ? <button aria-label="下载文件" disabled={Boolean(busyAction)} onClick={() => void handleFile(issue, true)} title="下载" type="button"><Download aria-hidden="true" size={15} /></button> : null}
-            {issue.kind === "missing" ? <button aria-label="从远端备份恢复" disabled={Boolean(busyAction)} onClick={() => void handleRemoteRestore(issue)} title="远端恢复" type="button"><CloudDownload aria-hidden="true" size={15} /></button> : null}
-            {issue.kind === "missing" ? <label aria-label="重新上传文件" className="storage-repair-upload" title="重新上传"><Upload aria-hidden="true" size={15} /><input disabled={Boolean(busyAction)} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void handleReplacementUpload(issue, file); }} type="file" /></label> : null}
-            {issue.kind === "missing" ? <button aria-label="确认无法恢复" className="danger" disabled={Boolean(busyAction)} onClick={() => { setUnrecoverableTarget(issue); setUnrecoverableNote(""); }} title="确认无法恢复" type="button"><Ban aria-hidden="true" size={15} /></button> : null}
-            {issue.kind === "missing" ? <button aria-label="查看修复记录" disabled={Boolean(busyAction)} onClick={() => void handleRepairHistory(issue)} title="修复记录" type="button"><History aria-hidden="true" size={15} /></button> : null}
-            {issue.canTrash ? <button aria-label="移入回收站" className="danger" disabled={Boolean(busyAction)} onClick={() => void handleTrashIssue(issue)} title="移入回收站" type="button"><Trash2 aria-hidden="true" size={15} /></button> : null}
+            {issue.sourceUrl ? <Link aria-label={phrase("定位来源", "Open source")} href={issue.sourceUrl} title={phrase("定位来源", "Open source")}><Search aria-hidden="true" size={15} /></Link> : null}
+            {issue.previewable ? <button aria-label={phrase("预览文件", "Preview file")} disabled={Boolean(busyAction)} onClick={() => void handleFile(issue, false)} title={phrase("预览", "Preview")} type="button"><Eye aria-hidden="true" size={15} /></button> : null}
+            {issue.kind === "orphan" ? <button aria-label={phrase("下载文件", "Download file")} disabled={Boolean(busyAction)} onClick={() => void handleFile(issue, true)} title={phrase("下载", "Download")} type="button"><Download aria-hidden="true" size={15} /></button> : null}
+            {issue.kind === "missing" ? <button aria-label={phrase("从远端备份恢复", "Restore from remote backup")} disabled={Boolean(busyAction)} onClick={() => void handleRemoteRestore(issue)} title={phrase("远端恢复", "Remote restore")} type="button"><CloudDownload aria-hidden="true" size={15} /></button> : null}
+            {issue.kind === "missing" ? <label aria-label={phrase("重新上传文件", "Re-upload file")} className="storage-repair-upload" title={phrase("重新上传", "Re-upload")}><Upload aria-hidden="true" size={15} /><input disabled={Boolean(busyAction)} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void handleReplacementUpload(issue, file); }} type="file" /></label> : null}
+            {issue.kind === "missing" ? <button aria-label={phrase("确认无法恢复", "Mark unrecoverable")} className="danger" disabled={Boolean(busyAction)} onClick={() => { setUnrecoverableTarget(issue); setUnrecoverableNote(""); }} title={phrase("确认无法恢复", "Mark unrecoverable")} type="button"><Ban aria-hidden="true" size={15} /></button> : null}
+            {issue.kind === "missing" ? <button aria-label={phrase("查看修复记录", "View repair history")} disabled={Boolean(busyAction)} onClick={() => void handleRepairHistory(issue)} title={phrase("修复记录", "Repair history")} type="button"><History aria-hidden="true" size={15} /></button> : null}
+            {issue.canTrash ? <button aria-label={phrase("移入回收站", "Move to recycle bin")} className="danger" disabled={Boolean(busyAction)} onClick={() => void handleTrashIssue(issue)} title={phrase("移入回收站", "Move to recycle bin")} type="button"><Trash2 aria-hidden="true" size={15} /></button> : null}
           </div>
         </article>)}
-        {!issues?.items.length ? <div className="storage-empty-state"><ShieldCheck aria-hidden="true" size={22} /><span>{overview?.latestScan ? "当前筛选条件下没有异常文件。" : "请先执行一次存储扫描。"}</span></div> : null}
+        {!issues?.items.length ? <div className="storage-empty-state"><ShieldCheck aria-hidden="true" size={22} /><span>{overview?.latestScan ? phrase("当前筛选条件下没有异常文件。", "No storage issues match the current filters.") : phrase("请先执行一次存储扫描。", "Run a storage scan first.")}</span></div> : null}
       </div>
-      <Pagination page={issues?.page ?? 1} pageCount={issues?.pageCount ?? 0} onChange={(page) => setIssuePage(page)} />
+      <Pagination page={issues?.page ?? 1} pageCount={issues?.pageCount ?? 0} onChange={(page) => setIssuePage(page)} phrase={phrase} />
     </section> : null}
 
     {tab === "trash" ? <section className="storage-management-panel">
-      <div className="storage-filter-row compact"><span>共 {trash?.total ?? 0} 个文件</span><select onChange={(event) => { setTrashPage(1); setCategory(event.target.value as StorageCategoryKey | ""); }} value={category}>{CATEGORY_OPTIONS.map((item) => <option key={item.value || "all"} value={item.value}>{item.label}</option>)}</select></div>
+      <div className="storage-filter-row compact"><span>{phrase(`共 ${trash?.total ?? 0} 个文件`, `${trash?.total ?? 0} files total`)}</span><GlassSelect ariaLabel={phrase("文件分类", "File category")} onChange={(value) => { setTrashPage(1); setCategory(value as StorageCategoryKey | ""); }} options={CATEGORY_OPTIONS.map((item) => ({ value: item.value, label: phrase(item.chinese, item.english) }))} value={category} /></div>
       <div className="storage-trash-list">
-        {trash?.items.map((item) => <article className="storage-trash-row" key={item.id}><span><Trash2 aria-hidden="true" size={17} /></span><div><strong title={item.originalStoredName}>{item.originalStoredName}</strong><small>{item.categoryLabel} · {formatBytes(item.sizeBytes)}</small><p>移入 {formatDateTime(item.deletedAt)} · 自动清理 {formatDateTime(item.purgeAfter)}</p></div><footer><button aria-label="恢复文件" disabled={Boolean(busyAction)} onClick={() => void handleRestore(item.id)} title="恢复" type="button"><ArchiveRestore aria-hidden="true" size={15} /></button><button aria-label="永久删除文件" className="danger" disabled={Boolean(busyAction)} onClick={() => void handleDeleteTrash(item.id, item.originalStoredName)} title="永久删除" type="button"><Trash2 aria-hidden="true" size={15} /></button></footer></article>)}
-        {!trash?.items.length ? <div className="storage-empty-state"><CircleCheck aria-hidden="true" size={22} /><span>回收站为空。</span></div> : null}
+        {trash?.items.map((item) => <article className="storage-trash-row" key={item.id}><span><Trash2 aria-hidden="true" size={17} /></span><div><strong title={item.originalStoredName}>{item.originalStoredName}</strong><small>{item.categoryLabel} · {formatBytes(item.sizeBytes)}</small><p>{phrase("移入 ", "Moved ")}{formatDateTime(item.deletedAt, locale)} · {phrase("自动清理 ", "Auto purge ")}{formatDateTime(item.purgeAfter, locale)}</p></div><footer><button aria-label={phrase("恢复文件", "Restore file")} disabled={Boolean(busyAction)} onClick={() => void handleRestore(item.id)} title={phrase("恢复", "Restore")} type="button"><ArchiveRestore aria-hidden="true" size={15} /></button><button aria-label={phrase("永久删除文件", "Permanently delete file")} className="danger" disabled={Boolean(busyAction)} onClick={() => void handleDeleteTrash(item.id, item.originalStoredName)} title={phrase("永久删除", "Delete permanently")} type="button"><Trash2 aria-hidden="true" size={15} /></button></footer></article>)}
+        {!trash?.items.length ? <div className="storage-empty-state"><CircleCheck aria-hidden="true" size={22} /><span>{phrase("回收站为空。", "Recycle bin is empty.")}</span></div> : null}
       </div>
-      <Pagination page={trash?.page ?? 1} pageCount={trash?.pageCount ?? 0} onChange={(page) => setTrashPage(page)} />
+      <Pagination page={trash?.page ?? 1} pageCount={trash?.pageCount ?? 0} onChange={(page) => setTrashPage(page)} phrase={phrase} />
     </section> : null}
 
     {tab === "settings" && configuration ? <section className="storage-management-panel storage-policy-panel">
-      <header><Settings2 aria-hidden="true" size={18} /><strong>扫描与清理策略</strong></header>
+      <header><Settings2 aria-hidden="true" size={18} /><strong>{phrase("扫描与清理策略", "Scan and cleanup policy")}</strong></header>
       <form onSubmit={(event) => void handleSaveConfiguration(event)}>
-        <label className="storage-policy-toggle"><input checked={configuration.automaticScanEnabled} onChange={(event) => setConfiguration({ ...configuration, automaticScanEnabled: event.target.checked })} type="checkbox" /><span><strong>每日自动扫描</strong><small>{configuration.nextRunAt ? `下次执行 ${formatDateTime(configuration.nextRunAt)}` : "当前已停用"}</small></span></label>
-        <label><span>执行时间</span><input onChange={(event) => setConfiguration({ ...configuration, scanTime: event.target.value })} type="time" value={configuration.scanTime} /></label>
-        <label><span>回收站保留</span><span className="storage-number-field"><input max={90} min={1} onChange={(event) => setConfiguration({ ...configuration, trashRetentionDays: Number(event.target.value) })} type="number" value={configuration.trashRetentionDays} /><em>天</em></span></label>
-        <label><span>磁盘预警阈值</span><span className="storage-number-field"><input max={95} min={50} onChange={(event) => setConfiguration({ ...configuration, warningThresholdPercent: Number(event.target.value) })} type="number" value={configuration.warningThresholdPercent} /><em>%</em></span></label>
-        <button disabled={busyAction === "configuration"} type="submit"><Save aria-hidden="true" size={15} />{busyAction === "configuration" ? "保存中" : "保存策略"}</button>
+        <label className="storage-policy-toggle"><input checked={configuration.automaticScanEnabled} onChange={(event) => setConfiguration({ ...configuration, automaticScanEnabled: event.target.checked })} type="checkbox" /><span><strong>{phrase("每日自动扫描", "Daily automatic scan")}</strong><small>{configuration.nextRunAt ? phrase(`下次执行 ${formatDateTime(configuration.nextRunAt, locale)}`, `Next run ${formatDateTime(configuration.nextRunAt, locale)}`) : phrase("当前已停用", "Currently disabled")}</small></span></label>
+        <label><span>{phrase("执行时间", "Run time")}</span><input onChange={(event) => setConfiguration({ ...configuration, scanTime: event.target.value })} type="time" value={configuration.scanTime} /></label>
+        <label><span>{phrase("回收站保留", "Recycle-bin retention")}</span><span className="storage-number-field"><input max={90} min={1} onChange={(event) => setConfiguration({ ...configuration, trashRetentionDays: Number(event.target.value) })} type="number" value={configuration.trashRetentionDays} /><em>{phrase("天", "days")}</em></span></label>
+        <label><span>{phrase("磁盘预警阈值", "Disk warning threshold")}</span><span className="storage-number-field"><input max={95} min={50} onChange={(event) => setConfiguration({ ...configuration, warningThresholdPercent: Number(event.target.value) })} type="number" value={configuration.warningThresholdPercent} /><em>%</em></span></label>
+        <button disabled={busyAction === "configuration"} type="submit"><Save aria-hidden="true" size={15} />{busyAction === "configuration" ? phrase("保存中", "Saving") : phrase("保存策略", "Save policy")}</button>
       </form>
-      <div className="storage-policy-status"><span><small>最近扫描</small><strong>{configuration.lastScanAt ? formatDateTime(configuration.lastScanAt) : "暂无"}</strong></span><span><small>最近预警</small><strong>{configuration.lastWarningAt ? formatDateTime(configuration.lastWarningAt) : "无"}</strong></span><span><small>扫描时区</small><strong>{configuration.timezone}</strong></span></div>
+      <div className="storage-policy-status"><span><small>{phrase("最近扫描", "Latest scan")}</small><strong>{configuration.lastScanAt ? formatDateTime(configuration.lastScanAt, locale) : phrase("暂无", "None")}</strong></span><span><small>{phrase("最近预警", "Latest warning")}</small><strong>{configuration.lastWarningAt ? formatDateTime(configuration.lastWarningAt, locale) : phrase("无", "None")}</strong></span><span><small>{phrase("扫描时区", "Scan time zone")}</small><strong>{configuration.timezone}</strong></span></div>
     </section> : null}
 
-    {preview ? <div className="storage-preview-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { URL.revokeObjectURL(preview.url); setPreview(null); } }} role="presentation"><div aria-modal="true" className="storage-preview-panel" role="dialog"><button aria-label="关闭预览" onClick={() => { URL.revokeObjectURL(preview.url); setPreview(null); }} title="关闭" type="button"><X aria-hidden="true" size={19} /></button><Image alt={preview.name} height={800} src={preview.url} unoptimized width={1200} /><strong title={preview.name}>{preview.name}</strong></div></div> : null}
-    {unrecoverableTarget ? <div className="modal-backdrop modal-backdrop--light" onMouseDown={(event) => { if (event.target === event.currentTarget && !busyAction) setUnrecoverableTarget(null); }} role="presentation"><div aria-modal="true" className="modal-panel storage-repair-modal" role="dialog"><header><span><small>Missing file</small><h2>确认无法恢复</h2></span><button aria-label="关闭" disabled={Boolean(busyAction)} onClick={() => setUnrecoverableTarget(null)} title="关闭" type="button"><X aria-hidden="true" size={18} /></button></header><p title={unrecoverableTarget.storedName}>{unrecoverableTarget.storedName}</p><label><span>处理说明（可选）</span><textarea maxLength={500} onChange={(event) => setUnrecoverableNote(event.target.value)} placeholder="例如：原始文件和远端备份均无法取得" rows={3} value={unrecoverableNote} /></label><footer><button className="button" disabled={Boolean(busyAction)} onClick={() => void handleConfirmUnrecoverable()} type="button">{busyAction ? "处理中" : "确认记录"}</button><button className="button secondary" disabled={Boolean(busyAction)} onClick={() => setUnrecoverableTarget(null)} type="button">取消</button></footer></div></div> : null}
-    {repairHistory ? <div className="modal-backdrop modal-backdrop--light" onMouseDown={(event) => { if (event.target === event.currentTarget) setRepairHistory(null); }} role="presentation"><div aria-modal="true" className="modal-panel storage-repair-history-modal" role="dialog"><header><span><small>Repair history</small><h2>文件修复记录</h2></span><button aria-label="关闭" onClick={() => setRepairHistory(null)} title="关闭" type="button"><X aria-hidden="true" size={18} /></button></header><p title={repairHistory.issue.storedName}>{repairHistory.issue.storedName}</p><div>{repairHistory.items.map((repair) => <article className={repair.status} key={repair.id}><span><strong>{repairActionLabel(repair.action)}</strong><small>{formatDateTime(repair.completedAt || repair.startedAt)}</small></span><i>{repairStatusLabel(repair.status)}</i>{repair.error || repair.note ? <p>{repair.error || repair.note}</p> : null}</article>)}{!repairHistory.items.length ? <div className="storage-empty-state"><History aria-hidden="true" size={20} /><span>暂无修复记录。</span></div> : null}</div></div></div> : null}
+    {preview ? <div className="storage-preview-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) { URL.revokeObjectURL(preview.url); setPreview(null); } }} role="presentation"><div aria-modal="true" className="storage-preview-panel" role="dialog"><button aria-label={phrase("关闭预览", "Close preview")} onClick={() => { URL.revokeObjectURL(preview.url); setPreview(null); }} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={19} /></button><Image alt={preview.name} height={800} src={preview.url} unoptimized width={1200} /><strong title={preview.name}>{preview.name}</strong></div></div> : null}
+    {unrecoverableTarget ? <div className="modal-backdrop modal-backdrop--light" onMouseDown={(event) => { if (event.target === event.currentTarget && !busyAction) setUnrecoverableTarget(null); }} role="presentation"><div aria-modal="true" className="modal-panel storage-repair-modal" role="dialog"><header><span><small>Missing file</small><h2>{phrase("确认无法恢复", "Mark unrecoverable")}</h2></span><button aria-label={phrase("关闭", "Close")} disabled={Boolean(busyAction)} onClick={() => setUnrecoverableTarget(null)} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={18} /></button></header><p title={unrecoverableTarget.storedName}>{unrecoverableTarget.storedName}</p><label><span>{phrase("处理说明（可选）", "Handling note (optional)")}</span><textarea maxLength={500} onChange={(event) => setUnrecoverableNote(event.target.value)} placeholder={phrase("例如：原始文件和远端备份均无法取得", "For example: neither the original file nor its remote backup is available")} rows={3} value={unrecoverableNote} /></label><footer><button className="button" disabled={Boolean(busyAction)} onClick={() => void handleConfirmUnrecoverable()} type="button">{busyAction ? phrase("处理中", "Processing") : phrase("确认记录", "Confirm record")}</button><button className="button secondary" disabled={Boolean(busyAction)} onClick={() => setUnrecoverableTarget(null)} type="button">{phrase("取消", "Cancel")}</button></footer></div></div> : null}
+    {repairHistory ? <div className="modal-backdrop modal-backdrop--light" onMouseDown={(event) => { if (event.target === event.currentTarget) setRepairHistory(null); }} role="presentation"><div aria-modal="true" className="modal-panel storage-repair-history-modal" role="dialog"><header><span><small>Repair history</small><h2>{phrase("文件修复记录", "File repair history")}</h2></span><button aria-label={phrase("关闭", "Close")} onClick={() => setRepairHistory(null)} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={18} /></button></header><p title={repairHistory.issue.storedName}>{repairHistory.issue.storedName}</p><div>{repairHistory.items.map((repair) => <article className={repair.status} key={repair.id}><span><strong>{repairActionLabel(repair.action, phrase)}</strong><small>{formatDateTime(repair.completedAt || repair.startedAt, locale)}</small></span><i>{repairStatusLabel(repair.status, phrase)}</i>{repair.error || repair.note ? <p>{repair.error || repair.note}</p> : null}</article>)}{!repairHistory.items.length ? <div className="storage-empty-state"><History aria-hidden="true" size={20} /><span>{phrase("暂无修复记录。", "No repair history.")}</span></div> : null}</div></div></div> : null}
   </section>;
 }
 
@@ -461,27 +467,31 @@ function StorageMetric({ icon: Icon, label, value, detail, tone }: { icon: typeo
   return <div className={`storage-health-metric ${tone}`}><span><Icon aria-hidden="true" size={18} /></span><div><small>{label}</small><strong>{value}</strong><em>{detail}</em></div></div>;
 }
 
-function Pagination({ page, pageCount, onChange }: { page: number; pageCount: number; onChange: (page: number) => void }) {
+function Pagination({ page, pageCount, onChange, phrase }: { page: number; pageCount: number; onChange: (page: number) => void; phrase: Phrase }) {
   if (pageCount <= 1) return null;
-  return <div className="storage-pagination"><button disabled={page <= 1} onClick={() => onChange(page - 1)} type="button">上一页</button><span>{page} / {pageCount}</span><button disabled={page >= pageCount} onClick={() => onChange(page + 1)} type="button">下一页</button></div>;
+  return <div className="storage-pagination"><button disabled={page <= 1} onClick={() => onChange(page - 1)} type="button">{phrase("上一页", "Previous")}</button><span>{page} / {pageCount}</span><button disabled={page >= pageCount} onClick={() => onChange(page + 1)} type="button">{phrase("下一页", "Next")}</button></div>;
 }
 
-function issueLabel(kind: StorageIssueKind): string {
-  if (kind === "missing") return "文件缺失";
-  if (kind === "orphan") return "孤立文件";
-  return "大小不一致";
+function issueLabel(kind: StorageIssueKind, phrase: Phrase): string {
+  if (kind === "missing") return phrase("文件缺失", "Missing file");
+  if (kind === "orphan") return phrase("孤立文件", "Orphan file");
+  return phrase("大小不一致", "Size mismatch");
 }
 
-function repairActionLabel(action: StorageFileRepair["action"]): string {
-  return ({ remote_restore: "远端恢复", reupload: "重新上传", confirm_unrecoverable: "确认无法恢复" })[action];
+function repairActionLabel(action: StorageFileRepair["action"], phrase: Phrase): string {
+  return ({
+    remote_restore: phrase("远端恢复", "Remote restore"),
+    reupload: phrase("重新上传", "Re-upload"),
+    confirm_unrecoverable: phrase("确认无法恢复", "Marked unrecoverable"),
+  })[action];
 }
 
-function repairStatusLabel(status: StorageFileRepair["status"]): string {
-  return ({ running: "处理中", completed: "已完成", failed: "失败" })[status];
+function repairStatusLabel(status: StorageFileRepair["status"], phrase: Phrase): string {
+  return ({ running: phrase("处理中", "Processing"), completed: phrase("已完成", "Completed"), failed: phrase("失败", "Failed") })[status];
 }
 
-function formatIssueSize(issue: StorageIssue): string {
-  if (issue.kind === "metadata_mismatch") return `${formatBytes(issue.expectedSizeBytes ?? 0)} / 实际 ${formatBytes(issue.actualSizeBytes ?? 0)}`;
+function formatIssueSize(issue: StorageIssue, phrase: Phrase): string {
+  if (issue.kind === "metadata_mismatch") return phrase(`${formatBytes(issue.expectedSizeBytes ?? 0)} / 实际 ${formatBytes(issue.actualSizeBytes ?? 0)}`, `${formatBytes(issue.expectedSizeBytes ?? 0)} / actual ${formatBytes(issue.actualSizeBytes ?? 0)}`);
   return formatBytes(issue.actualSizeBytes ?? issue.expectedSizeBytes ?? 0);
 }
 
@@ -500,8 +510,8 @@ function formatBytes(value: number): string {
   return `${amount >= 10 || unitIndex === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[unitIndex]}`;
 }
 
-function formatDateTime(value: string): string {
+function formatDateTime(value: string, locale: "zh-CN" | "en-US"): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date);
+  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date);
 }

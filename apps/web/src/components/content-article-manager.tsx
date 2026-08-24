@@ -21,6 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Check, ChevronDown, GripVertical, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatArticleDate } from "@/components/article-ui";
+import { useLanguage } from "@/components/language-provider";
 
 export interface ManageableArticle {
   id: number;
@@ -39,10 +40,11 @@ export function ContentArticleManager({
 }: {
   articles: ManageableArticle[];
   selectedArticles: ManageableArticle[];
-  noun: "合集" | "专题";
+  noun: string;
   onToggle: (articleId: number, selected: boolean) => Promise<void>;
   onReorder: (ids: number[]) => Promise<void>;
 }) {
+  const { phrase } = useLanguage();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState(0);
@@ -55,14 +57,12 @@ export function ContentArticleManager({
     const keyword = query.trim().toLocaleLowerCase();
     if (!keyword) return articles;
     return articles.filter((article) => {
-      const searchable = noun === "合集"
-        ? `${article.title} ${article.category}`
-        : `${article.title} ${article.author.nickname} ${article.category}`;
+      const searchable = `${article.title} ${article.author.nickname} ${article.category}`;
       return searchable
         .toLocaleLowerCase()
         .includes(keyword);
     });
-  }, [articles, noun, query]);
+  }, [articles, query]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, {
@@ -118,8 +118,8 @@ export function ContentArticleManager({
           onClick={() => setOpen((current) => !current)}
           type="button"
         >
-          <span>选择文章</span>
-          <small>已选 {selectedArticles.length} 篇</small>
+          <span>{phrase("选择文章", "Select articles")}</span>
+          <small>{phrase(`已选 ${selectedArticles.length} 篇`, `${selectedArticles.length} selected`)}</small>
           <ChevronDown aria-hidden="true" size={16} />
         </button>
         {open ? (
@@ -129,7 +129,7 @@ export function ContentArticleManager({
               <input
                 autoFocus
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder={noun === "合集" ? "搜索标题或分类" : "搜索标题、作者或分类"}
+                placeholder={phrase("搜索标题、作者或分类", "Search title, author, or category")}
                 value={query}
               />
             </label>
@@ -147,14 +147,14 @@ export function ContentArticleManager({
                     <span>
                       <strong>{article.title}</strong>
                       <small>
-                        {article.author.nickname} · {article.category || "随笔"}
+                        {article.author.nickname} · {article.category || phrase("随笔", "Notes")}
                       </small>
                     </span>
                     {active ? <Check aria-hidden="true" size={16} /> : null}
                   </button>
                 );
               })}
-              {!filtered.length ? <p>没有匹配的已发布文章。</p> : null}
+              {!filtered.length ? <p>{phrase("没有匹配的已发布文章。", "No matching published articles.")}</p> : null}
             </div>
           </div>
         ) : null}
@@ -179,7 +179,7 @@ export function ContentArticleManager({
               />
             ))}
             {!selectedArticles.length ? (
-              <div className="article-empty-inline">这个{noun}还没有文章。</div>
+              <div className="article-empty-inline">{phrase(`这个${noun}还没有文章。`, `This ${noun} has no articles yet.`)}</div>
             ) : null}
           </div>
         </SortableContext>
@@ -197,6 +197,7 @@ function SortableArticle({
   noun: string;
   onRemove: () => void;
 }) {
+  const { locale, phrase } = useLanguage();
   const {
     attributes,
     listeners,
@@ -212,7 +213,7 @@ function SortableArticle({
       style={{ transform: CSS.Transform.toString(transform), transition }}
     >
       <button
-        aria-label={`拖动调整${article.title}的顺序`}
+        aria-label={phrase(`拖动调整${article.title}的顺序`, `Drag to reorder ${article.title}`)}
         className="article-drag-handle"
         type="button"
         {...attributes}
@@ -223,14 +224,14 @@ function SortableArticle({
       <span>
         <strong>{article.title}</strong>
         <small>
-          {article.author.nickname} · {article.category || "随笔"} ·{" "}
-          {formatArticleDate(article.publishedAt)}
+          {article.author.nickname} · {article.category || phrase("随笔", "Notes")} ·{" "}
+          {formatArticleDate(article.publishedAt, locale)}
         </small>
       </span>
       <button
-        aria-label={`移出${noun}`}
+        aria-label={phrase(`移出${noun}`, `Remove from ${noun}`)}
         onClick={onRemove}
-        title={`移出${noun}`}
+        title={phrase(`移出${noun}`, `Remove from ${noun}`)}
         type="button"
       >
         <X aria-hidden="true" size={15} />

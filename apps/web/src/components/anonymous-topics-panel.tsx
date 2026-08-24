@@ -34,7 +34,7 @@ import {
 } from "@/lib/anonymous-topics-api";
 
 export function AnonymousTopicsPanel({ initialSort = "time", management = false, pageSize = 5, title, moreHref, showLoadMore = false, showSearch = false, showSort = false }: { initialSort?: AnonymousTopicSort; management?: boolean; pageSize?: number; title?: string; moreHref?: string; showLoadMore?: boolean; showSearch?: boolean; showSort?: boolean }) {
-  const { locale, t } = useLanguage();
+  const { locale, phrase, t } = useLanguage();
   const [items, setItems] = useState<AnonymousTopicSummary[]>([]);
   const [pageInfo, setPageInfo] = useState({ page: 1, totalPages: 1 });
   const [topic, setTopic] = useState<AnonymousTopicDetail | null>(null);
@@ -116,7 +116,7 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
 
   async function openTopic(id: number) {
     try { await loadTopic(id); setMessage(""); }
-    catch (loadError) { setError(loadError instanceof Error ? loadError.message : "无法打开话题。"); }
+    catch (loadError) { setError(loadError instanceof Error ? loadError.message : phrase("无法打开话题。", "Could not open the topic.")); }
   }
 
   async function createTopic(event: FormEvent<HTMLFormElement>) {
@@ -129,7 +129,7 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
       setIsCreateOpen(false);
       await loadTopics();
       await openTopic(created.id);
-    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "发起话题失败。"); }
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : phrase("发起话题失败。", "Could not create the topic.")); }
     finally { setIsSaving(false); }
   }
 
@@ -143,7 +143,7 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
       setIdentityDraft({ nickname: "", password: "" });
       setIdentityCreate(false);
       setIsIdentityOpen(false);
-    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "无法设置或恢复昵称。"); }
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : phrase("无法设置或恢复昵称。", "Could not set or recover the nickname.")); }
     finally { setIsSaving(false); }
   }
 
@@ -157,7 +157,7 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
       setTopic((current) => current ? { ...current, messageCount: Math.max(current.messageCount + 1, sent.sequence), messages: [...current.messages.filter((item) => item.id !== sent.id), sent] } : current);
       setMessage("");
       await loadTopics();
-    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "发送失败。"); }
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : phrase("发送失败。", "Could not send the message.")); }
     finally { setIsSaving(false); }
   }
 
@@ -166,7 +166,7 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
       const next = await reactToAnonymousMessage(messageId, value);
       setTopic((current) => current ? { ...current, messages: current.messages.map((item) => item.id === next.id ? next : item) } : current);
       await loadTopics();
-    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "操作失败。"); }
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : phrase("操作失败。", "Action failed.")); }
   }
 
   async function toggleFavorite(item: AnonymousTopicSummary) {
@@ -175,7 +175,7 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
       setItems((current) => current.map((known) => known.id === item.id ? { ...known, ...next } : known));
       setTopic((current) => current?.id === item.id ? { ...current, ...next } : current);
       if (sort === "favorites" || sort === "home") await loadTopics();
-    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "无法更新话题喜欢状态。"); }
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : phrase("无法更新话题喜欢状态。", "Could not update topic favorite status.")); }
   }
 
   async function moderateTopic() {
@@ -190,10 +190,10 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
         : identity?.isCreator
           ? await updateAnonymousTopicAsCreator(topic.id, nextStatus, identity.identityToken)
           : null;
-      if (!next) throw new Error("只有话题创建者或管理员可以操作话题状态。");
+      if (!next) throw new Error(phrase("只有话题创建者或管理员可以操作话题状态。", "Only the topic creator or an administrator can change the topic status."));
       setTopic({ ...topic, ...next });
       await loadTopics();
-    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "更新话题失败。"); }
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : phrase("更新话题失败。", "Could not update the topic.")); }
     finally { setIsSaving(false); }
   }
 
@@ -205,7 +205,7 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
       const next = await updateAnonymousTopic(token, topic.id, { isHidden: !topic.isHidden });
       setTopic({ ...topic, ...next });
       await loadTopics();
-    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "更新话题可见状态失败。"); }
+    } catch (saveError) { setError(saveError instanceof Error ? saveError.message : phrase("更新话题可见状态失败。", "Could not update topic visibility.")); }
     finally { setIsSaving(false); }
   }
 
@@ -217,7 +217,7 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
       await updateAnonymousMessage(token, messageId, isHidden);
       await Promise.all([loadTopic(topic.id), loadTopics()]);
     }
-    catch (saveError) { setError(saveError instanceof Error ? saveError.message : "更新消息可见状态失败。"); }
+    catch (saveError) { setError(saveError instanceof Error ? saveError.message : phrase("更新消息可见状态失败。", "Could not update message visibility.")); }
     finally { setIsSaving(false); }
   }
 
@@ -226,15 +226,24 @@ export function AnonymousTopicsPanel({ initialSort = "time", management = false,
     {showSearch || management ? <label className="p8-list-search"><Search aria-hidden="true" size={16} /><input onChange={(event) => setQuery(event.target.value)} placeholder={t("voice.search")} value={query} /></label> : null}
     {isLoading && !items.length ? <p className="p8-empty"><LoaderCircle aria-hidden="true" className="spin" size={15} />{t("voice.loading")}</p> : items.length ? <><div className="anonymous-topic-list">{items.map((item) => <AnonymousTopicListRow item={item} key={item.id} onFavorite={toggleFavorite} onOpen={openTopic} />)}</div>{showLoadMore && pageInfo.page < pageInfo.totalPages ? <button className="p8-load-more" disabled={isLoading} onClick={loadMoreTopics} type="button">{isLoading ? t("common.loading") : t("voice.loadMore")}</button> : null}</> : <p className="p8-empty">{t("voice.none")}</p>}
     {topic ? <TopicDialog identityCreate={identityCreate} identityOpen={isIdentityOpen} identityDraft={identityDraft} isManager={isManager} isSaving={isSaving} message={message} onClaim={claimIdentity} onClose={() => { setIdentityCreate(false); setIsIdentityOpen(false); setTopic(null); }} onCloseIdentity={() => { setIdentityCreate(false); setIsIdentityOpen(false); }} onHideMessage={hideMessage} onLoadMore={() => void loadTopic(topic.id, topic.messages[0]?.sequence)} onModerateTopic={moderateTopic} onOpenIdentity={() => { setIdentityDraft({ nickname: "", password: "" }); setIdentityCreate(false); setIsIdentityOpen(true); }} onReact={react} onSend={sendMessage} onToggleTopicHidden={toggleTopicHidden} setIdentityCreate={setIdentityCreate} setIdentityDraft={setIdentityDraft} setMessage={setMessage} topic={topic} /> : null}
-    {isCreateOpen ? <ModalPortal><div className="modal-backdrop anonymous-topic-backdrop" role="presentation"><section aria-modal="true" className="anonymous-topic-modal topic-create-modal" role="dialog"><header><span><MessageCircleMore aria-hidden="true" size={18} /><strong>发起匿名话题</strong></span><button aria-label="关闭" onClick={() => setIsCreateOpen(false)} type="button"><X aria-hidden="true" size={17} /></button></header><form onSubmit={createTopic}><label><span>话题</span><input autoFocus maxLength={120} onChange={(event) => setTopicDraft({ ...topicDraft, title: event.target.value })} placeholder="一句话描述想吐槽的内容" required value={topicDraft.title} /></label><label><span>昵称</span><input maxLength={32} onChange={(event) => setTopicDraft({ ...topicDraft, nickname: event.target.value })} placeholder="创建话题必须填写昵称" required value={topicDraft.nickname} /></label><label><span>密码</span><input minLength={6} onChange={(event) => setTopicDraft({ ...topicDraft, password: event.target.value })} placeholder="用于其他设备恢复昵称" required type="password" value={topicDraft.password} /></label><footer><button disabled={isSaving} type="submit"><Plus aria-hidden="true" size={15} />{isSaving ? "创建中" : "创建并进入"}</button></footer></form></section></div></ModalPortal> : null}
+    {isCreateOpen ? <ModalPortal><div className="modal-backdrop anonymous-topic-backdrop" role="presentation"><section aria-modal="true" className="anonymous-topic-modal topic-create-modal" role="dialog"><header><span><MessageCircleMore aria-hidden="true" size={18} /><strong>{phrase("发起匿名话题", "Start anonymous topic")}</strong></span><button aria-label={t("common.close")} onClick={() => setIsCreateOpen(false)} title={t("common.close")} type="button"><X aria-hidden="true" size={17} /></button></header><form onSubmit={createTopic}><label><span>{phrase("话题", "Topic")}</span><input autoFocus maxLength={120} onChange={(event) => setTopicDraft({ ...topicDraft, title: event.target.value })} placeholder={phrase("一句话描述想吐槽的内容", "Describe what you want to discuss in one sentence")} required value={topicDraft.title} /></label><label><span>{phrase("昵称", "Nickname")}</span><input maxLength={32} onChange={(event) => setTopicDraft({ ...topicDraft, nickname: event.target.value })} placeholder={phrase("创建话题必须填写昵称", "A nickname is required to create a topic")} required value={topicDraft.nickname} /></label><label><span>{phrase("密码", "Password")}</span><input minLength={6} onChange={(event) => setTopicDraft({ ...topicDraft, password: event.target.value })} placeholder={phrase("用于其他设备恢复昵称", "Use this to recover your nickname on another device")} required type="password" value={topicDraft.password} /></label><footer><button disabled={isSaving} type="submit"><Plus aria-hidden="true" size={15} />{isSaving ? phrase("创建中", "Creating") : phrase("创建并进入", "Create and enter")}</button></footer></form></section></div></ModalPortal> : null}
     <AppToast message={error} onDismiss={() => setError("")} tone="error" />
   </section>;
 }
 
 function TopicDialog({ identityCreate, identityOpen, identityDraft, isManager, isSaving, message, onClaim, onClose, onCloseIdentity, onHideMessage, onLoadMore, onModerateTopic, onOpenIdentity, onReact, onSend, onToggleTopicHidden, setIdentityCreate, setIdentityDraft, setMessage, topic }: { identityCreate: boolean; identityOpen: boolean; identityDraft: { nickname: string; password: string }; isManager: boolean; isSaving: boolean; message: string; onClaim: (event: FormEvent<HTMLFormElement>) => void; onClose: () => void; onCloseIdentity: () => void; onHideMessage: (id: number, isHidden: boolean) => void; onLoadMore: () => void; onModerateTopic: () => void; onOpenIdentity: () => void; onReact: (id: number, value: "up" | "down") => void; onSend: (event: FormEvent<HTMLFormElement>) => void; onToggleTopicHidden: () => void; setIdentityCreate: (value: boolean) => void; setIdentityDraft: (value: { nickname: string; password: string }) => void; setMessage: (value: string) => void; topic: AnonymousTopicDetail }) {
+  const { phrase, t } = useLanguage();
   const identity = readAnonymousIdentity(topic.id);
   const canModerate = isManager || Boolean(identity?.isCreator);
-  return <ModalPortal><div className="modal-backdrop anonymous-topic-backdrop" role="presentation"><section aria-modal="true" className="anonymous-topic-modal topic-chat-modal" role="dialog"><header><span className="anonymous-topic-title"><MessageCircleMore aria-hidden="true" size={18} /><strong>{topic.title}</strong><small>{identity ? `昵称：${identity.nickname}${identity.isCreator ? "（创建者）" : ""} · ` : ""}{topic.isHidden ? "话题已隐藏" : topic.status === "closed" ? "话题已关闭" : `${topic.messageCount} 条消息`}</small></span><div><button aria-label="获取昵称" onClick={onOpenIdentity} title="获取或创建昵称" type="button"><UserRoundPen aria-hidden="true" size={16} /></button>{isManager ? <button aria-label={topic.isHidden ? "取消隐藏话题" : "隐藏话题"} disabled={isSaving} onClick={() => void onToggleTopicHidden()} title={topic.isHidden ? "取消隐藏话题" : "隐藏话题"} type="button">{topic.isHidden ? <EyeOff aria-hidden="true" size={16} /> : <Eye aria-hidden="true" size={16} />}</button> : null}{canModerate ? <button aria-label={topic.status === "active" ? "关闭话题" : "重新开放话题"} disabled={isSaving} onClick={() => void onModerateTopic()} title={topic.status === "active" ? "关闭话题" : "重新开放话题"} type="button">{topic.status === "active" ? <Unlock aria-hidden="true" size={16} /> : <Lock aria-hidden="true" size={16} />}</button> : null}<button aria-label="关闭" onClick={onClose} type="button"><X aria-hidden="true" size={17} /></button></div></header><main className="anonymous-topic-chat">{identity ? <span className="anonymous-identity-note"><KeyRound aria-hidden="true" size={14} />当前昵称：{identity.nickname}</span> : <button className="anonymous-identity-note" onClick={onOpenIdentity} type="button"><KeyRound aria-hidden="true" size={14} />匿名发言，获取昵称后可在其他设备恢复</button>}{topic.hasMore ? <button className="anonymous-load-more" onClick={onLoadMore} type="button">加载更早消息</button> : null}<div className="anonymous-message-list">{topic.messages.map((item) => <AnonymousMessageRow isManager={isManager} key={item.id} message={item} onHide={onHideMessage} onReact={onReact} />)}</div></main><form className="anonymous-message-composer" onSubmit={onSend}><textarea disabled={topic.status === "closed" || topic.isHidden || isSaving} maxLength={2000} onChange={(event) => setMessage(event.target.value)} placeholder={topic.isHidden ? "话题已隐藏" : topic.status === "closed" ? "话题已关闭" : "说点什么"} rows={2} value={message} /><button aria-label="发送" disabled={topic.status === "closed" || topic.isHidden || isSaving || !message.trim()} title="发送" type="submit"><Send aria-hidden="true" size={17} /></button></form>{identityOpen ? <div className="anonymous-identity-sheet"><form onSubmit={onClaim}><header><span><KeyRound aria-hidden="true" size={17} /><strong>{identityCreate ? "创建昵称" : "获取昵称"}</strong></span><button aria-label="关闭昵称窗口" onClick={onCloseIdentity} type="button"><X aria-hidden="true" size={16} /></button></header><p>{identityCreate ? "昵称和密码在当前话题内一一绑定，创建后不能修改。" : "输入已绑定的密码，即可获取这个话题中的昵称。"}</p><label className="anonymous-identity-create"><input checked={identityCreate} onChange={(event) => setIdentityCreate(event.target.checked)} type="checkbox" /><span>创建昵称</span></label>{identityCreate ? <label><span>昵称</span><input autoFocus maxLength={32} onChange={(event) => setIdentityDraft({ ...identityDraft, nickname: event.target.value })} required value={identityDraft.nickname} /></label> : null}<label><span>密码</span><input autoFocus={!identityCreate} minLength={6} onChange={(event) => setIdentityDraft({ ...identityDraft, password: event.target.value })} required type="password" value={identityDraft.password} /></label><footer><button disabled={isSaving} type="submit">{identityCreate ? "创建并使用" : "获取昵称"}</button></footer></form></div> : null}</section></div></ModalPortal>;
+  const topicState = topic.isHidden
+    ? t("voice.hidden")
+    : topic.status === "closed"
+      ? t("voice.closed")
+      : t("voice.messageCount", { count: topic.messageCount });
+  const currentIdentity = identity
+    ? `${phrase("昵称：", "Nickname: ")}${identity.nickname}${identity.isCreator ? phrase("（创建者）", " (Creator)") : ""} · `
+    : "";
+  return <ModalPortal><div className="modal-backdrop anonymous-topic-backdrop" role="presentation"><section aria-modal="true" className="anonymous-topic-modal topic-chat-modal" role="dialog"><header><span className="anonymous-topic-title"><MessageCircleMore aria-hidden="true" size={18} /><strong>{topic.title}</strong><small>{currentIdentity}{topicState}</small></span><div><button aria-label={phrase("获取昵称", "Get nickname")} onClick={onOpenIdentity} title={phrase("获取或创建昵称", "Get or create nickname")} type="button"><UserRoundPen aria-hidden="true" size={16} /></button>{isManager ? <button aria-label={topic.isHidden ? phrase("取消隐藏话题", "Show topic") : phrase("隐藏话题", "Hide topic")} disabled={isSaving} onClick={() => void onToggleTopicHidden()} title={topic.isHidden ? phrase("取消隐藏话题", "Show topic") : phrase("隐藏话题", "Hide topic")} type="button">{topic.isHidden ? <EyeOff aria-hidden="true" size={16} /> : <Eye aria-hidden="true" size={16} />}</button> : null}{canModerate ? <button aria-label={topic.status === "active" ? phrase("关闭话题", "Close topic") : phrase("重新开放话题", "Reopen topic")} disabled={isSaving} onClick={() => void onModerateTopic()} title={topic.status === "active" ? phrase("关闭话题", "Close topic") : phrase("重新开放话题", "Reopen topic")} type="button">{topic.status === "active" ? <Unlock aria-hidden="true" size={16} /> : <Lock aria-hidden="true" size={16} />}</button> : null}<button aria-label={t("common.close")} onClick={onClose} title={t("common.close")} type="button"><X aria-hidden="true" size={17} /></button></div></header><main className="anonymous-topic-chat">{identity ? <span className="anonymous-identity-note"><KeyRound aria-hidden="true" size={14} />{phrase("当前昵称：", "Current nickname: ")}{identity.nickname}</span> : <button className="anonymous-identity-note" onClick={onOpenIdentity} type="button"><KeyRound aria-hidden="true" size={14} />{phrase("匿名发言，获取昵称后可在其他设备恢复", "Post anonymously. Get a nickname to recover it on another device.")}</button>}{topic.hasMore ? <button className="anonymous-load-more" onClick={onLoadMore} type="button">{phrase("加载更早消息", "Load earlier messages")}</button> : null}<div className="anonymous-message-list">{topic.messages.map((item) => <AnonymousMessageRow isManager={isManager} key={item.id} message={item} onHide={onHideMessage} onReact={onReact} />)}</div></main><form className="anonymous-message-composer" onSubmit={onSend}><textarea disabled={topic.status === "closed" || topic.isHidden || isSaving} maxLength={2000} onChange={(event) => setMessage(event.target.value)} placeholder={topic.isHidden ? t("voice.hidden") : topic.status === "closed" ? t("voice.closed") : phrase("说点什么", "Say something")} rows={2} value={message} /><button aria-label={t("common.send")} disabled={topic.status === "closed" || topic.isHidden || isSaving || !message.trim()} title={t("common.send")} type="submit"><Send aria-hidden="true" size={17} /></button></form>{identityOpen ? <div className="anonymous-identity-sheet"><form onSubmit={onClaim}><header><span><KeyRound aria-hidden="true" size={17} /><strong>{identityCreate ? phrase("创建昵称", "Create nickname") : phrase("获取昵称", "Get nickname")}</strong></span><button aria-label={phrase("关闭昵称窗口", "Close nickname panel")} onClick={onCloseIdentity} title={t("common.close")} type="button"><X aria-hidden="true" size={16} /></button></header><p>{identityCreate ? phrase("昵称和密码在当前话题内一一绑定，创建后不能修改。", "A nickname and password are uniquely paired within this topic and cannot be changed after creation.") : phrase("输入已绑定的密码，即可获取这个话题中的昵称。", "Enter the linked password to recover this topic nickname.")}</p><label className="anonymous-identity-create"><input checked={identityCreate} onChange={(event) => setIdentityCreate(event.target.checked)} type="checkbox" /><span>{phrase("创建昵称", "Create nickname")}</span></label>{identityCreate ? <label><span>{phrase("昵称", "Nickname")}</span><input autoFocus maxLength={32} onChange={(event) => setIdentityDraft({ ...identityDraft, nickname: event.target.value })} required value={identityDraft.nickname} /></label> : null}<label><span>{phrase("密码", "Password")}</span><input autoFocus={!identityCreate} minLength={6} onChange={(event) => setIdentityDraft({ ...identityDraft, password: event.target.value })} required type="password" value={identityDraft.password} /></label><footer><button disabled={isSaving} type="submit">{identityCreate ? phrase("创建并使用", "Create and use") : phrase("获取昵称", "Get nickname")}</button></footer></form></div> : null}</section></div></ModalPortal>;
 }
 
 function ModalPortal({ children }: { children: ReactNode }) {
@@ -247,33 +256,36 @@ function AnonymousTopicListRow({ item, onFavorite, onOpen }: {
   onFavorite: (item: AnonymousTopicSummary) => Promise<void>;
   onOpen: (id: number) => Promise<void>;
 }) {
+  const { locale, phrase, t } = useLanguage();
   return <article className={item.isHidden ? "hidden" : undefined}>
     <button className="anonymous-topic-open" onClick={() => void onOpen(item.id)} type="button">
       <span className="anonymous-topic-list-copy">
         <strong>{item.title}</strong>
-        <span className="anonymous-topic-subline"><small>{formatTime(item.updatedAt)}{item.isHidden ? " · 已隐藏" : ""}</small>{item.topLikedMessage || item.topDislikedMessage ? <span className="anonymous-topic-highlights">
-          {item.topLikedMessage ? <small className="up" title={item.topLikedMessage.body}><ThumbsUp aria-hidden="true" size={12} /><span>{topicHighlightLabel(item.topLikedMessage)}</span></small> : null}
-          {item.topDislikedMessage ? <small className="down" title={item.topDislikedMessage.body}><ThumbsDown aria-hidden="true" size={12} /><span>{topicHighlightLabel(item.topDislikedMessage)}</span></small> : null}
+        <span className="anonymous-topic-subline"><small>{formatTime(item.updatedAt, locale)}{item.isHidden ? ` · ${t("voice.hidden")}` : ""}</small>{item.topLikedMessage || item.topDislikedMessage ? <span className="anonymous-topic-highlights">
+          {item.topLikedMessage ? <small className="up" title={item.topLikedMessage.body}><ThumbsUp aria-hidden="true" size={12} /><span>{topicHighlightLabel(item.topLikedMessage, locale)}</span></small> : null}
+          {item.topDislikedMessage ? <small className="down" title={item.topDislikedMessage.body}><ThumbsDown aria-hidden="true" size={12} /><span>{topicHighlightLabel(item.topDislikedMessage, locale)}</span></small> : null}
         </span> : null}</span>
       </span>
     </button>
     <span className="anonymous-topic-metrics">
-      {item.status === "closed" ? <em className="closed">已关闭</em> : <em>{item.messageCount} 条</em>}
-      <button aria-label={item.favorited ? `取消喜欢 ${item.title}` : `喜欢 ${item.title}`} className={item.favorited ? "active" : undefined} onClick={() => void onFavorite(item)} title={item.favorited ? "取消喜欢" : "喜欢话题"} type="button"><Heart aria-hidden="true" fill={item.favorited ? "currentColor" : "none"} size={15} /><span>{item.favoriteCount}</span></button>
+      {item.status === "closed" ? <em className="closed">{t("voice.closed")}</em> : <em>{t("voice.messageCount", { count: item.messageCount })}</em>}
+      <button aria-label={item.favorited ? t("voice.unfavorite", { title: item.title }) : t("voice.favorite", { title: item.title })} className={item.favorited ? "active" : undefined} onClick={() => void onFavorite(item)} title={item.favorited ? phrase("取消喜欢", "Remove favorite") : phrase("喜欢话题", "Favorite topic")} type="button"><Heart aria-hidden="true" fill={item.favorited ? "currentColor" : "none"} size={15} /><span>{item.favoriteCount}</span></button>
     </span>
   </article>;
 }
 
-function topicHighlightLabel(message: NonNullable<AnonymousTopicSummary["topLikedMessage"]>) {
-  return `#${message.sequence}：${message.body}`;
+function topicHighlightLabel(message: NonNullable<AnonymousTopicSummary["topLikedMessage"]>, locale: "zh-CN" | "en-US") {
+  return locale === "en-US" ? `#${message.sequence}: ${message.body}` : `#${message.sequence}：${message.body}`;
 }
 
 function AnonymousMessageRow({ isManager, message, onHide, onReact }: { isManager: boolean; message: AnonymousTopicMessage; onHide: (id: number, isHidden: boolean) => void; onReact: (id: number, value: "up" | "down") => void }) {
-  return <article className={`anonymous-message${message.isHidden ? " hidden" : ""}`}><header><span>#{message.sequence}</span><time>{formatTime(message.createdAt)}</time>{isManager ? <button aria-label={message.isHidden ? "恢复消息" : "隐藏消息"} onClick={() => void onHide(message.id, !message.isHidden)} title={message.isHidden ? "恢复消息" : "隐藏消息"} type="button">{message.isHidden ? <EyeOff aria-hidden="true" size={14} /> : <Eye aria-hidden="true" size={14} />}</button> : null}</header><p>{message.body}</p><footer><button onClick={() => void onReact(message.id, "up")} type="button"><ThumbsUp aria-hidden="true" size={14} />{message.likeCount}</button><button onClick={() => void onReact(message.id, "down")} type="button"><ThumbsDown aria-hidden="true" size={14} />{message.dislikeCount}</button></footer></article>;
+  const { locale, phrase } = useLanguage();
+  const visibilityAction = message.isHidden ? phrase("恢复消息", "Show message") : phrase("隐藏消息", "Hide message");
+  return <article className={`anonymous-message${message.isHidden ? " hidden" : ""}`}><header><span>#{message.sequence}</span><time>{formatTime(message.createdAt, locale)}</time>{isManager ? <button aria-label={visibilityAction} onClick={() => void onHide(message.id, !message.isHidden)} title={visibilityAction} type="button">{message.isHidden ? <EyeOff aria-hidden="true" size={14} /> : <Eye aria-hidden="true" size={14} />}</button> : null}</header><p>{message.body}</p><footer><button aria-label={phrase("点赞", "Like")} onClick={() => void onReact(message.id, "up")} title={phrase("点赞", "Like")} type="button"><ThumbsUp aria-hidden="true" size={14} />{message.likeCount}</button><button aria-label={phrase("踩", "Dislike")} onClick={() => void onReact(message.id, "down")} title={phrase("踩", "Dislike")} type="button"><ThumbsDown aria-hidden="true" size={14} />{message.dislikeCount}</button></footer></article>;
 }
 
-function formatTime(value: string) {
+function formatTime(value: string, locale: "zh-CN" | "en-US") {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date);
+  return new Intl.DateTimeFormat(locale, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date);
 }

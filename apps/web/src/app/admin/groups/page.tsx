@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { GroupReportMessagePreview } from "@/components/group-report-message-preview";
+import { useLanguage } from "@/components/language-provider";
 import { getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { formatDate, localizedPath, type TranslationKey } from "@/lib/i18n";
 import { isSiteManager } from "@/lib/user-permissions";
 import {
   banChatGroup,
@@ -25,9 +27,11 @@ import {
 
 type ManagerTab = "groups" | "reports";
 type ReportStatus = "pending" | "resolved" | "rejected";
+type Translate = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 export default function GroupReportsAdminPage() {
   const router = useRouter();
+  const { locale, t } = useLanguage();
   const [tab, setTab] = useState<ManagerTab>("groups");
   const [groups, setGroups] = useState<ChatGroupSummary[]>([]);
   const [reports, setReports] = useState<ChatGroupReport[]>([]);
@@ -48,7 +52,7 @@ export default function GroupReportsAdminPage() {
   useEffect(() => {
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login?from=%2Fadmin%2Fgroups");
+      router.replace(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath("/admin/groups", locale))}`);
       return;
     }
     let active = true;
@@ -59,7 +63,7 @@ export default function GroupReportsAdminPage() {
       .then(([currentUser, groupResult, reportResult]) => {
         if (!active) return;
         if (!isSiteManager(currentUser)) {
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
         setGroups(groupResult.items);
@@ -69,14 +73,14 @@ export default function GroupReportsAdminPage() {
         if (!active) return;
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
-        setError(loadError instanceof Error ? loadError.message : "群聊管理读取失败。");
+        setError(loadError instanceof Error ? loadError.message : t("groupAdmin.loadFailed"));
       })
       .finally(() => { if (active) setIsLoading(false); });
     return () => { active = false; };
-  }, [reportStatus, router, search]);
+  }, [locale, reportStatus, router, search, t]);
 
   const filteredReports = useMemo(() => {
     const keyword = search.trim().toLocaleLowerCase();
@@ -101,11 +105,11 @@ export default function GroupReportsAdminPage() {
     const token = readAccessToken();
     if (!token || !banTarget) return;
     if (reason.trim().length < 2) {
-      setError("请填写至少 2 个字符的封禁理由。");
+      setError(t("groupAdmin.banReasonRequired"));
       return;
     }
     if (!permanent && (!Number.isInteger(durationMinutes) || durationMinutes < 1)) {
-      setError("限时封禁至少需要 1 分钟。");
+      setError(t("groupAdmin.banDurationRequired"));
       return;
     }
     setBusyKey(`ban:${banTarget.id}`);
@@ -113,9 +117,9 @@ export default function GroupReportsAdminPage() {
       const updated = await banChatGroup(token, banTarget.id, { permanent, durationMinutes, reason: reason.trim() });
       setGroups((current) => current.map((group) => group.id === updated.id ? updated : group));
       setBanTarget(null);
-      setNotice("群聊已封禁，群主和管理员将收到系统通知。");
+      setNotice(t("groupAdmin.bannedNotice"));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "群聊封禁失败。");
+      setError(actionError instanceof Error ? actionError.message : t("groupAdmin.banFailed"));
     } finally {
       setBusyKey("");
     }
@@ -128,9 +132,9 @@ export default function GroupReportsAdminPage() {
     try {
       const updated = await liftChatGroupBan(token, group.id);
       setGroups((current) => current.map((item) => item.id === updated.id ? updated : item));
-      setNotice("群聊封禁已解除。");
+      setNotice(t("groupAdmin.liftedNotice"));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "解除封禁失败。");
+      setError(actionError instanceof Error ? actionError.message : t("groupAdmin.liftFailed"));
     } finally {
       setBusyKey("");
     }
@@ -145,7 +149,7 @@ export default function GroupReportsAdminPage() {
       const detail = await getChatGroup(token, group.id);
       setMembersTarget({ group, members: detail.members.filter((member) => member.status === "active") });
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "群成员读取失败。");
+      setError(loadError instanceof Error ? loadError.message : t("groupAdmin.membersLoadFailed"));
     } finally {
       setMembersLoadingId(0);
     }
@@ -159,64 +163,64 @@ export default function GroupReportsAdminPage() {
       await handleChatGroupReport(token, report.id, {
         status,
         deleteMessage: status === "resolved",
-        resolution: status === "resolved" ? "站点管理员已处理" : "未发现违规",
+        resolution: status === "resolved" ? t("groupAdmin.resolved") : t("groupAdmin.rejected"),
       });
       setReports((current) => current.filter((item) => item.id !== report.id));
-      setNotice(status === "resolved" ? "举报已处理，消息已删除。" : "举报已驳回。");
+      setNotice(status === "resolved" ? t("groupAdmin.resolvedNotice") : t("groupAdmin.rejectedNotice"));
       setPreviewReport(null);
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "举报处理失败。");
+      setError(actionError instanceof Error ? actionError.message : t("groupAdmin.handleFailed"));
     } finally {
       setBusyKey("");
     }
   }
 
   return <section className="page-shell group-management-admin-page">
-    <header className="group-management-admin-header"><div><span className="page-kicker">SITE MODERATION</span><h1>群聊管理</h1><p>管理全站群聊状态，并集中处理群聊举报。</p></div><span className="group-management-admin-summary"><b>{groups.length}</b><small>个群聊</small></span></header>
+    <header className="group-management-admin-header"><div><span className="page-kicker">{t("groupAdmin.kicker")}</span><h1>{t("groupAdmin.title")}</h1><p>{t("groupAdmin.description")}</p></div><span className="group-management-admin-summary"><b>{groups.length}</b><small>{t("groupAdmin.groupCount", { count: groups.length })}</small></span></header>
     <div className="group-management-admin-toolbar">
-      <nav aria-label="群聊管理页签"><button className={tab === "groups" ? "active" : ""} onClick={() => setTab("groups")} type="button"><ShieldOff aria-hidden="true" size={16} />群聊列表</button><button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")} type="button"><Flag aria-hidden="true" size={16} />群聊举报{reportStatus === "pending" && reports.length ? <b>{reports.length}</b> : null}</button></nav>
+      <nav aria-label={t("groupAdmin.title")}><button className={tab === "groups" ? "active" : ""} onClick={() => setTab("groups")} type="button"><ShieldOff aria-hidden="true" size={16} />{t("groupAdmin.groups")}</button><button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")} type="button"><Flag aria-hidden="true" size={16} />{t("groupAdmin.reports")}{reportStatus === "pending" && reports.length ? <b>{reports.length}</b> : null}</button></nav>
       <div className="group-management-toolbar-actions">
-        {tab === "reports" ? <nav aria-label="举报状态" className="group-management-report-filter"><button className={reportStatus === "pending" ? "active" : ""} onClick={() => setReportStatus("pending")} type="button">待处理</button><button className={reportStatus === "resolved" ? "active" : ""} onClick={() => setReportStatus("resolved")} type="button">已处理</button><button className={reportStatus === "rejected" ? "active" : ""} onClick={() => setReportStatus("rejected")} type="button">已驳回</button></nav> : null}
-        <label className="group-management-search"><Search aria-hidden="true" size={16} /><input aria-label={tab === "reports" ? "搜索群聊举报" : "搜索群聊列表"} onChange={(event) => setSearch(event.target.value)} placeholder={tab === "reports" ? "搜索群名称、举报者或被举报者" : "搜索群名称、群主或群成员"} value={search} />{search ? <button aria-label="清空搜索" onClick={() => setSearch("")} type="button"><X aria-hidden="true" size={14} /></button> : null}</label>
+        {tab === "reports" ? <nav aria-label={t("groupAdmin.reportStatus")} className="group-management-report-filter"><button className={reportStatus === "pending" ? "active" : ""} onClick={() => setReportStatus("pending")} type="button">{t("groupAdmin.pending")}</button><button className={reportStatus === "resolved" ? "active" : ""} onClick={() => setReportStatus("resolved")} type="button">{t("groupAdmin.resolved")}</button><button className={reportStatus === "rejected" ? "active" : ""} onClick={() => setReportStatus("rejected")} type="button">{t("groupAdmin.rejected")}</button></nav> : null}
+        <label className="group-management-search"><Search aria-hidden="true" size={16} /><input aria-label={tab === "reports" ? t("groupAdmin.searchReports") : t("groupAdmin.searchGroups")} onChange={(event) => setSearch(event.target.value)} placeholder={tab === "reports" ? t("groupAdmin.searchReports") : t("groupAdmin.searchGroups")} value={search} />{search ? <button aria-label={t("common.clear")} onClick={() => setSearch("")} type="button"><X aria-hidden="true" size={14} /></button> : null}</label>
       </div>
     </div>
-    {isLoading ? <div className="article-empty-state"><LoaderCircle aria-hidden="true" className="spin" size={22} />正在读取群聊管理数据。</div> : tab === "groups" ? <GroupAdminGrid groups={groups} busyKey={busyKey} membersLoadingId={membersLoadingId} onBan={openBanDialog} onLift={liftBan} onOpenMembers={openMembers} onOpenProfile={(username) => router.push(`/users/${encodeURIComponent(username)}`)} /> : <ReportAdminGrid reports={filteredReports} status={reportStatus} busyKey={busyKey} onHandle={handleReport} onOpenProfile={(username) => router.push(`/users/${encodeURIComponent(username)}`)} onPreview={setPreviewReport} />}
-    {banTarget ? <div className="group-management-modal-backdrop" onClick={() => setBanTarget(null)} role="presentation"><section aria-modal="true" className="group-management-ban-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><header><span><Ban aria-hidden="true" size={18} /><strong>{banTarget.isBanned ? "调整群聊封禁" : "封禁群聊"}</strong></span><button aria-label="关闭封禁窗口" onClick={() => setBanTarget(null)} type="button"><X aria-hidden="true" size={17} /></button></header><p>群成员仍可进入并查看历史消息，但无法发送文字、图片、文件或转发内容。</p><label className="group-management-switch"><input checked={permanent} onChange={(event) => setPermanent(event.target.checked)} type="checkbox" /><span>永久封禁</span></label>{!permanent ? <label><span>封禁时长（分钟）</span><input min={1} max={525600} onChange={(event) => setDurationMinutes(Number(event.target.value))} type="number" value={durationMinutes} /></label> : null}<label><span>封禁理由</span><textarea maxLength={300} onChange={(event) => setReason(event.target.value)} placeholder="说明封禁原因" rows={4} value={reason} /></label><footer><button onClick={() => setBanTarget(null)} type="button">取消</button><button disabled={busyKey === `ban:${banTarget.id}`} onClick={() => void submitBan()} type="button">{busyKey === `ban:${banTarget.id}` ? "处理中" : "确认封禁"}</button></footer></section></div> : null}
+    {isLoading ? <div className="article-empty-state"><LoaderCircle aria-hidden="true" className="spin" size={22} />{t("groupAdmin.load")}</div> : tab === "groups" ? <GroupAdminGrid busyKey={busyKey} groups={groups} locale={locale} membersLoadingId={membersLoadingId} onBan={openBanDialog} onLift={liftBan} onOpenMembers={openMembers} onOpenProfile={(username) => router.push(localizedPath(`/users/${encodeURIComponent(username)}`, locale))} t={t} /> : <ReportAdminGrid busyKey={busyKey} locale={locale} onHandle={handleReport} onOpenProfile={(username) => router.push(localizedPath(`/users/${encodeURIComponent(username)}`, locale))} onPreview={setPreviewReport} reports={filteredReports} status={reportStatus} t={t} />}
+    {banTarget ? <div className="group-management-modal-backdrop" onClick={() => setBanTarget(null)} role="presentation"><section aria-modal="true" className="group-management-ban-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><header><span><Ban aria-hidden="true" size={18} /><strong>{banTarget.isBanned ? t("groupAdmin.adjustBan") : t("groupAdmin.banDialog")}</strong></span><button aria-label={t("groupAdmin.closeBanDialog")} onClick={() => setBanTarget(null)} type="button"><X aria-hidden="true" size={17} /></button></header><p>{t("groupAdmin.banDescription")}</p><label className="group-management-switch"><input checked={permanent} onChange={(event) => setPermanent(event.target.checked)} type="checkbox" /><span>{t("groupAdmin.banPermanently")}</span></label>{!permanent ? <label><span>{t("groupAdmin.banDuration")}</span><input min={1} max={525600} onChange={(event) => setDurationMinutes(Number(event.target.value))} type="number" value={durationMinutes} /></label> : null}<label><span>{t("groupAdmin.banReason")}</span><textarea maxLength={300} onChange={(event) => setReason(event.target.value)} placeholder={t("groupAdmin.banReasonPlaceholder")} rows={4} value={reason} /></label><footer><button onClick={() => setBanTarget(null)} type="button">{t("common.cancel")}</button><button disabled={busyKey === `ban:${banTarget.id}`} onClick={() => void submitBan()} type="button">{busyKey === `ban:${banTarget.id}` ? t("groupAdmin.processing") : t("groupAdmin.confirmBan")}</button></footer></section></div> : null}
     {previewReport ? <GroupReportMessagePreview group={previewReport.group} message={previewReport.message} onClose={() => setPreviewReport(null)} /> : null}
-    {membersTarget ? <GroupMembersDialog group={membersTarget.group} members={membersTarget.members} onClose={() => setMembersTarget(null)} onOpenProfile={(username) => router.push(`/users/${encodeURIComponent(username)}`)} /> : null}
+    {membersTarget ? <GroupMembersDialog group={membersTarget.group} members={membersTarget.members} onClose={() => setMembersTarget(null)} onOpenProfile={(username) => router.push(localizedPath(`/users/${encodeURIComponent(username)}`, locale))} t={t} /> : null}
     <AppToast duration={error ? 4200 : 2800} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
   </section>;
 }
 
-function GroupAdminGrid({ groups, busyKey, membersLoadingId, onBan, onLift, onOpenMembers, onOpenProfile }: { groups: ChatGroupSummary[]; busyKey: string; membersLoadingId: number; onBan: (group: ChatGroupSummary) => void; onLift: (group: ChatGroupSummary) => Promise<void>; onOpenMembers: (group: ChatGroupSummary) => Promise<void>; onOpenProfile: (username: string) => void }) {
-  if (!groups.length) return <div className="article-empty-state">当前没有匹配的群聊。</div>;
+function GroupAdminGrid({ groups, busyKey, locale, membersLoadingId, onBan, onLift, onOpenMembers, onOpenProfile, t }: { groups: ChatGroupSummary[]; busyKey: string; locale: "zh-CN" | "en-US"; membersLoadingId: number; onBan: (group: ChatGroupSummary) => void; onLift: (group: ChatGroupSummary) => Promise<void>; onOpenMembers: (group: ChatGroupSummary) => Promise<void>; onOpenProfile: (username: string) => void; t: Translate }) {
+  if (!groups.length) return <div className="article-empty-state">{t("groupAdmin.noGroups")}</div>;
   return <div className="group-admin-grid">{groups.map((group) => <article className={`group-admin-card${group.isBanned ? " banned" : ""}`} key={group.id}>
-    <div className="group-admin-card-cover">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <strong>{fallbackText(group.name)}</strong>}<span>{group.isBanned ? <><Ban aria-hidden="true" size={14} />已封禁</> : "正常"}</span></div>
-    <div className="group-admin-card-body"><div className="group-admin-card-title"><strong>{group.name}</strong><small>{group.memberCount} 人 · {group.temporary ? "临时群聊" : "长期群聊"}</small></div><p>{group.announcement || "暂无群介绍"}</p><div className="group-admin-owner"><button className="group-admin-owner-profile" onClick={() => onOpenProfile(group.owner.username)} title={`查看群主 ${group.owner.nickname}`} type="button"><Avatar className="group-admin-owner-avatar" user={group.owner} /><span><small>群主</small><strong>{group.owner.nickname}</strong></span></button><button aria-label={`查看 ${group.name} 的群成员`} className="group-admin-owner-members" disabled={membersLoadingId === group.id} onClick={() => void onOpenMembers(group)} title="查看群成员" type="button">{membersLoadingId === group.id ? <LoaderCircle aria-hidden="true" className="spin" size={14} /> : <UserRound aria-hidden="true" size={14} />}</button></div><footer>{group.isBanned ? <button className="icon-action" disabled={busyKey === `lift:${group.id}`} onClick={() => void onLift(group)} title="解除封禁" type="button">{busyKey === `lift:${group.id}` ? <LoaderCircle className="spin" size={16} /> : <ShieldOff aria-hidden="true" size={16} />}</button> : <button className="icon-action danger" disabled={busyKey === `ban:${group.id}`} onClick={() => onBan(group)} title="封禁群聊" type="button">{busyKey === `ban:${group.id}` ? <LoaderCircle className="spin" size={16} /> : <Ban aria-hidden="true" size={16} />}</button>}<small>{group.isBanned ? group.bannedUntil ? `至 ${formatMinute(group.bannedUntil)}` : "永久封禁" : "允许正常发言"}</small></footer></div>
+    <div className="group-admin-card-cover">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <strong>{fallbackText(group.name)}</strong>}<span>{group.isBanned ? <><Ban aria-hidden="true" size={14} />{t("groupAdmin.banned")}</> : t("groupAdmin.normal")}</span></div>
+    <div className="group-admin-card-body"><div className="group-admin-card-title"><strong>{group.name}</strong><small>{t("common.people", { count: group.memberCount })} · {group.temporary ? t("groupAdmin.temporary") : t("groupAdmin.longTerm")}</small></div><p>{group.announcement || t("groupAdmin.noIntroduction")}</p><div className="group-admin-owner"><button className="group-admin-owner-profile" onClick={() => onOpenProfile(group.owner.username)} title={t("groupAdmin.viewOwner", { name: group.owner.nickname })} type="button"><Avatar className="group-admin-owner-avatar" user={group.owner} /><span><small>{t("groupAdmin.owner")}</small><strong>{group.owner.nickname}</strong></span></button><button aria-label={t("groupAdmin.viewMembers", { name: group.name })} className="group-admin-owner-members" disabled={membersLoadingId === group.id} onClick={() => void onOpenMembers(group)} title={t("groupAdmin.members")} type="button">{membersLoadingId === group.id ? <LoaderCircle aria-hidden="true" className="spin" size={14} /> : <UserRound aria-hidden="true" size={14} />}</button></div><footer>{group.isBanned ? <button className="icon-action" disabled={busyKey === `lift:${group.id}`} onClick={() => void onLift(group)} title={t("groupAdmin.liftBan")} type="button">{busyKey === `lift:${group.id}` ? <LoaderCircle className="spin" size={16} /> : <ShieldOff aria-hidden="true" size={16} />}</button> : <button className="icon-action danger" disabled={busyKey === `ban:${group.id}`} onClick={() => onBan(group)} title={t("groupAdmin.ban")} type="button">{busyKey === `ban:${group.id}` ? <LoaderCircle className="spin" size={16} /> : <Ban aria-hidden="true" size={16} />}</button>}<small>{group.isBanned ? group.bannedUntil ? t("groupAdmin.banUntil", { time: formatMinute(group.bannedUntil, locale) }) : t("groupAdmin.permanentBan") : t("groupAdmin.canSpeak")}</small></footer></div>
   </article>)}</div>;
 }
 
-function GroupMembersDialog({ group, members, onClose, onOpenProfile }: { group: ChatGroupSummary; members: ChatGroupMember[]; onClose: () => void; onOpenProfile: (username: string) => void }) {
-  return <div className="group-management-modal-backdrop" onClick={onClose} role="presentation"><section aria-modal="true" className="group-members-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><header><span><UserRound aria-hidden="true" size={17} /><strong>{group.name} · 群成员</strong><small>{members.length} 人</small></span><button aria-label="关闭群成员列表" onClick={onClose} type="button"><X aria-hidden="true" size={17} /></button></header><div className="group-members-dialog-list">{members.map((member) => <button className="group-member-dialog-item" key={member.user.id} onClick={() => onOpenProfile(member.user.username)} title={`查看 ${member.alias || member.user.nickname} 的主页`} type="button"><Avatar user={member.user} /><span><strong>{member.alias || member.user.nickname}</strong><small>{member.alias && member.alias !== member.user.nickname ? `@${member.user.username} · ` : ""}{memberRoleLabel(member.role)}</small></span></button>)}</div></section></div>;
+function GroupMembersDialog({ group, members, onClose, onOpenProfile, t }: { group: ChatGroupSummary; members: ChatGroupMember[]; onClose: () => void; onOpenProfile: (username: string) => void; t: Translate }) {
+  return <div className="group-management-modal-backdrop" onClick={onClose} role="presentation"><section aria-modal="true" className="group-members-dialog" onClick={(event) => event.stopPropagation()} role="dialog"><header><span><UserRound aria-hidden="true" size={17} /><strong>{group.name} · {t("groupAdmin.members")}</strong><small>{t("common.people", { count: members.length })}</small></span><button aria-label={t("groupAdmin.closeMembers")} onClick={onClose} type="button"><X aria-hidden="true" size={17} /></button></header><div className="group-members-dialog-list">{members.map((member) => <button className="group-member-dialog-item" key={member.user.id} onClick={() => onOpenProfile(member.user.username)} title={t("groupAdmin.viewReporter", { name: member.alias || member.user.nickname })} type="button"><Avatar user={member.user} /><span><strong>{member.alias || member.user.nickname}</strong><small>{member.alias && member.alias !== member.user.nickname ? `@${member.user.username} · ` : ""}{memberRoleLabel(member.role, t)}</small></span></button>)}</div></section></div>;
 }
 
-function ReportAdminGrid({ reports, status, busyKey, onHandle, onOpenProfile, onPreview }: { reports: ChatGroupReport[]; status: ReportStatus; busyKey: string; onHandle: (report: ChatGroupReport, status: "resolved" | "rejected") => Promise<void>; onOpenProfile: (username: string) => void; onPreview: (report: ChatGroupReport) => void }) {
-  if (!reports.length) return <div className="article-empty-state">当前没有匹配的群聊举报。</div>;
+function ReportAdminGrid({ reports, status, busyKey, locale, onHandle, onOpenProfile, onPreview, t }: { reports: ChatGroupReport[]; status: ReportStatus; busyKey: string; locale: "zh-CN" | "en-US"; onHandle: (report: ChatGroupReport, status: "resolved" | "rejected") => Promise<void>; onOpenProfile: (username: string) => void; onPreview: (report: ChatGroupReport) => void; t: Translate }) {
+  if (!reports.length) return <div className="article-empty-state">{t("groupAdmin.noReports")}</div>;
   return <div className="group-admin-grid report-admin-grid">{reports.map((report) => {
     const images = report.message.attachments?.filter((attachment) => attachment.kind === "image") ?? [];
     const firstFile = report.message.attachments?.find((attachment) => attachment.kind !== "image");
     return <article className="group-admin-card report-admin-card" key={report.id}>
-      <div className="report-admin-content"><strong>被举报内容</strong><button onClick={() => onPreview(report)} title="查看完整举报内容" type="button">{report.message.body ? <span className="report-admin-text-excerpt">{report.message.body}</span> : null}{images.length ? <span className={`report-admin-card-images count-${Math.min(images.length, 4)}`}>{images.slice(0, 4).map((attachment) => <ReportCardImage attachment={attachment} key={attachment.id} />)}</span> : null}{!report.message.body && !images.length && firstFile ? <span className="report-admin-file-excerpt">文件：{firstFile.originalName}</span> : null}{!report.message.body && !images.length && !firstFile ? <span>附件消息，点击查看</span> : null}</button></div>
+      <div className="report-admin-content"><strong>{t("groupAdmin.reportedContent")}</strong><button onClick={() => onPreview(report)} title={t("groupAdmin.viewContent")} type="button">{report.message.body ? <span className="report-admin-text-excerpt">{report.message.body}</span> : null}{images.length ? <span className={`report-admin-card-images count-${Math.min(images.length, 4)}`}>{images.slice(0, 4).map((attachment) => <ReportCardImage attachment={attachment} key={attachment.id} t={t} />)}</span> : null}{!report.message.body && !images.length && firstFile ? <span className="report-admin-file-excerpt">{t("groupAdmin.file", { name: firstFile.originalName })}</span> : null}{!report.message.body && !images.length && !firstFile ? <span>{t("groupAdmin.attachmentMessage")}</span> : null}</button></div>
       <div className="group-admin-card-body">
-        <button className="report-admin-sender" onClick={() => onOpenProfile(report.message.sender.username)} title={`查看被举报者 ${report.message.sender.nickname}`} type="button"><Avatar user={report.message.sender} /><span><small>被举报者</small><strong>{report.message.sender.nickname}</strong></span></button>
-        <div className="report-admin-group"><GroupAvatar group={report.group} /><div className="group-admin-card-title"><strong>{report.group.name}</strong><small>{formatMinute(report.createdAt)} · {report.reason}</small></div></div>
-        <footer><button aria-label={`查看 ${report.reporter.nickname} 的主页`} className="report-admin-reporter" onClick={() => onOpenProfile(report.reporter.username)} title={`查看 ${report.reporter.nickname} 的主页`} type="button"><Avatar user={report.reporter} /><strong>{report.reporter.nickname}</strong></button><span>{status === "pending" ? <><button className="icon-action" disabled={busyKey === `report:${report.id}`} onClick={() => void onHandle(report, "rejected")} title="驳回举报" type="button"><X aria-hidden="true" size={16} /></button><button className="icon-action danger" disabled={busyKey === `report:${report.id}`} onClick={() => void onHandle(report, "resolved")} title="处理并删除消息" type="button"><Check aria-hidden="true" size={16} /></button></> : <small className="report-admin-status">{status === "resolved" ? "已处理" : "已驳回"}</small>}</span></footer>
+        <button className="report-admin-sender" onClick={() => onOpenProfile(report.message.sender.username)} title={t("groupAdmin.viewReportedUser", { name: report.message.sender.nickname })} type="button"><Avatar user={report.message.sender} /><span><small>{t("groupAdmin.reportedUser")}</small><strong>{report.message.sender.nickname}</strong></span></button>
+        <div className="report-admin-group"><GroupAvatar group={report.group} /><div className="group-admin-card-title"><strong>{report.group.name}</strong><small>{formatMinute(report.createdAt, locale)} · {reportReasonLabel(report.reason, t)}</small></div></div>
+        <footer><button aria-label={t("groupAdmin.viewReporter", { name: report.reporter.nickname })} className="report-admin-reporter" onClick={() => onOpenProfile(report.reporter.username)} title={t("groupAdmin.viewReporter", { name: report.reporter.nickname })} type="button"><Avatar user={report.reporter} /><strong>{report.reporter.nickname}</strong></button><span>{status === "pending" ? <><button className="icon-action" disabled={busyKey === `report:${report.id}`} onClick={() => void onHandle(report, "rejected")} title={t("groupAdmin.rejected")} type="button"><X aria-hidden="true" size={16} /></button><button className="icon-action danger" disabled={busyKey === `report:${report.id}`} onClick={() => void onHandle(report, "resolved")} title={t("groupAdmin.processAndDelete")} type="button"><Check aria-hidden="true" size={16} /></button></> : <small className="report-admin-status">{status === "resolved" ? t("groupAdmin.resolved") : t("groupAdmin.rejected")}</small>}</span></footer>
       </div>
     </article>;
   })}</div>;
 }
 
-function ReportCardImage({ attachment }: { attachment: ChatAttachment }) {
+function ReportCardImage({ attachment, t }: { attachment: ChatAttachment; t: Translate }) {
   const [url, setUrl] = useState("");
   useEffect(() => {
     const token = readAccessToken();
@@ -230,7 +234,7 @@ function ReportCardImage({ attachment }: { attachment: ChatAttachment }) {
     }).catch(() => undefined);
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [attachment]);
-  return url ? <img alt={attachment.originalName} src={url} /> : <span>正在读取图片</span>;
+  return url ? <img alt={attachment.originalName} src={url} /> : <span>{t("groupAdmin.loadingImage")}</span>;
 }
 
 function Avatar({ user, className = "" }: { user: SocialUser; className?: string }) {
@@ -245,12 +249,24 @@ function fallbackText(value: string): string {
   return Array.from(value.trim()).slice(0, 2).join("").toUpperCase() || "群";
 }
 
-function memberRoleLabel(role: ChatGroupMember["role"]): string {
-  if (role === "owner") return "群主";
-  if (role === "admin") return "管理员";
-  return "成员";
+function memberRoleLabel(role: ChatGroupMember["role"], t: Translate): string {
+  if (role === "owner") return t("groupAdmin.owner");
+  if (role === "admin") return t("groupAdmin.administrator");
+  return t("groupAdmin.member");
 }
 
-function formatMinute(value: string): string {
-  return new Date(value).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+function reportReasonLabel(reason: string, t: Translate): string {
+  const keys: Record<string, TranslationKey> = {
+    spam: "report.reason.spam",
+    harassment: "report.reason.harassment",
+    illegal: "report.reason.illegal",
+    privacy: "report.reason.privacy",
+    misinformation: "report.reason.misinformation",
+    other: "report.reason.other",
+  };
+  return keys[reason] ? t(keys[reason]) : reason;
+}
+
+function formatMinute(value: string, locale: "zh-CN" | "en-US"): string {
+  return formatDate(value, locale, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
 }

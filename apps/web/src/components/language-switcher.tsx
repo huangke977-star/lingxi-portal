@@ -1,6 +1,5 @@
 "use client";
 
-import { Languages } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useLanguage } from "@/components/language-provider";
 import { LOCALE_COOKIE, localizedPath, type Locale } from "@/lib/i18n";
@@ -18,9 +17,7 @@ export function LanguageSwitcher() {
   }
 
   return <div aria-label={t("language.label")} className="language-switcher" role="group">
-    <Languages aria-hidden="true" size={16} />
-    <button aria-pressed={locale === "zh-CN"} onClick={() => changeLocale("zh-CN")} type="button">中文</button>
-    <span aria-hidden="true">/</span>
-    <button aria-pressed={locale === "en-US"} onClick={() => changeLocale("en-US")} type="button">EN</button>
+    <button aria-label={t("language.chinese")} aria-pressed={locale === "zh-CN"} onClick={() => changeLocale("zh-CN")} type="button">中</button>
+    <button aria-label={t("language.english")} aria-pressed={locale === "en-US"} onClick={() => changeLocale("en-US")} type="button">EN</button>
   </div>;
 }

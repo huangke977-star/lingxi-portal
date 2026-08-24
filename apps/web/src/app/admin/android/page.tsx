@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { useLanguage } from "@/components/language-provider";
 import {
   type AndroidRelease,
   activateAndroidRelease,
@@ -22,11 +23,13 @@ import {
 } from "@/lib/android-release-api";
 import { type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { localizedPath } from "@/lib/i18n";
 
 const MAX_APK_SIZE = 120 * 1024 * 1024;
 
 export default function AndroidReleaseManagementPage() {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [releases, setReleases] = useState<AndroidRelease[]>([]);
@@ -52,7 +55,7 @@ export default function AndroidReleaseManagementPage() {
     const token = readAccessToken();
 
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
 
@@ -78,12 +81,12 @@ export default function AndroidReleaseManagementPage() {
       } catch (loadError) {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
 
         if (isMounted) {
-          setError(loadError instanceof Error ? loadError.message : "无法读取安装包。");
+          setError(loadError instanceof Error ? loadError.message : phrase("无法读取安装包。", "Could not load app packages."));
         }
       } finally {
         if (isMounted) {
@@ -96,7 +99,7 @@ export default function AndroidReleaseManagementPage() {
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, [locale, phrase, router]);
 
   function handleFileChange(file: File | null) {
     setSelectedFile(file);
@@ -119,23 +122,23 @@ export default function AndroidReleaseManagementPage() {
       return;
     }
     if (!selectedFile) {
-      setError("请选择 APK 安装包。");
+      setError(phrase("请选择 APK 安装包。", "Choose an APK package."));
       setNotice("");
       return;
     }
     if (!selectedFile.name.toLowerCase().endsWith(".apk")) {
-      setError("只能上传 .apk 文件。");
+      setError(phrase("只能上传 .apk 文件。", "Only .apk files can be uploaded."));
       setNotice("");
       return;
     }
     if (selectedFile.size > MAX_APK_SIZE) {
-      setError(`${selectedFile.name} 超过 120 MB。`);
+      setError(phrase(`${selectedFile.name} 超过 120 MB。`, `${selectedFile.name} exceeds 120 MB.`));
       setNotice("");
       return;
     }
     const numericVersionCode = Number(versionCode);
     if (!versionName.trim() || !Number.isInteger(numericVersionCode) || numericVersionCode < 1) {
-      setError("请填写版本名称和大于 0 的版本编码。");
+      setError(phrase("请填写版本名称和大于 0 的版本编码。", "Enter a version name and a version code above 0."));
       setNotice("");
       return;
     }
@@ -160,13 +163,13 @@ export default function AndroidReleaseManagementPage() {
       setVersionName("");
       setVersionCode(String(Math.max(numericVersionCode + 1, Number(nextVersionCode))));
       setReleaseNotes("");
-      setNotice(release.isActive ? "安装包已上传并设为最新版。" : "安装包已上传。");
+      setNotice(release.isActive ? phrase("安装包已上传并设为最新版。", "Package uploaded and set as latest.") : phrase("安装包已上传。", "Package uploaded."));
       const input = document.getElementById("android-release-file") as HTMLInputElement | null;
       if (input) {
         input.value = "";
       }
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "安装包上传失败。");
+      setError(uploadError instanceof Error ? uploadError.message : phrase("安装包上传失败。", "Could not upload the package."));
     } finally {
       setIsUploading(false);
     }
@@ -185,9 +188,9 @@ export default function AndroidReleaseManagementPage() {
       setReleases((current) =>
         current.map((item) => ({ ...item, isActive: item.id === activeRelease.id })).sort(sortAndroidReleases),
       );
-      setNotice(`已将 v${activeRelease.versionName} 设为 Android 最新版。`);
+      setNotice(phrase(`已将 v${activeRelease.versionName} 设为 Android 最新版。`, `v${activeRelease.versionName} is now the latest Android release.`));
     } catch (activateError) {
-      setError(activateError instanceof Error ? activateError.message : "安装包切换失败。");
+      setError(activateError instanceof Error ? activateError.message : phrase("安装包切换失败。", "Could not set the latest package."));
     } finally {
       setBusyId(null);
     }
@@ -200,8 +203,8 @@ export default function AndroidReleaseManagementPage() {
 
     const confirmed = window.confirm(
       release.isActive
-        ? "删除当前最新版后，安装页会暂时使用兜底下载包或显示无新版，确定删除吗？"
-        : `确定从磁盘中永久删除 ${release.originalName} 吗？`,
+        ? phrase("删除当前最新版后，安装页会暂时使用兜底下载包或显示无新版，确定删除吗？", "Deleting the current release makes the install page use its fallback package or show no release. Continue?")
+        : phrase(`确定从磁盘中永久删除 ${release.originalName} 吗？`, `Permanently delete ${release.originalName} from disk?`),
     );
     if (!confirmed) {
       return;
@@ -213,9 +216,9 @@ export default function AndroidReleaseManagementPage() {
     try {
       await deleteAndroidRelease(accessToken, release.id);
       setReleases((current) => current.filter((item) => item.id !== release.id));
-      setNotice("安装包及其磁盘文件已删除。");
+      setNotice(phrase("安装包及其磁盘文件已删除。", "The package and its file were deleted."));
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "安装包删除失败。");
+      setError(deleteError instanceof Error ? deleteError.message : phrase("安装包删除失败。", "Could not delete the package."));
     } finally {
       setBusyId(null);
     }
@@ -225,9 +228,9 @@ export default function AndroidReleaseManagementPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>安装包管理</h1>
+        <h1>{phrase("安装包管理", "Package management")}</h1>
         <div className="status-row">
-          <span className="status">正在读取安装包</span>
+          <span className="status">{phrase("正在读取安装包", "Loading packages")}</span>
         </div>
       </section>
     );
@@ -237,10 +240,10 @@ export default function AndroidReleaseManagementPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>无法进入安装包管理</h1>
-        <p>{error || "请重新登录后再访问。"}</p>
-        <Link className="text-action primary" href="/login">
-          返回登录
+        <h1>{phrase("无法进入安装包管理", "Could not open package management")}</h1>
+        <p>{error || phrase("请重新登录后再访问。", "Sign in again to continue.")}</p>
+        <Link className="text-action primary" href={localizedPath("/login", locale)}>
+          {phrase("返回登录", "Back to sign in")}
         </Link>
       </section>
     );
@@ -250,10 +253,10 @@ export default function AndroidReleaseManagementPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>无权访问</h1>
-        <p>该页面仅超级管理员可查看。</p>
-        <Link className="text-action primary" href="/dashboard">
-          返回工作台
+        <h1>{phrase("无权访问", "Access denied")}</h1>
+        <p>{phrase("该页面仅超级管理员可查看。", "Only super administrators can view this page.")}</p>
+        <Link className="text-action primary" href={localizedPath("/dashboard", locale)}>
+          {phrase("返回工作台", "Back to workspace")}
         </Link>
       </section>
     );
@@ -274,13 +277,13 @@ export default function AndroidReleaseManagementPage() {
       <form className="android-release-upload-panel" onSubmit={(event) => void handleUpload(event)}>
         <div className="android-release-upload-copy">
           <span className="section-label">Android APK</span>
-          <h2>上传新版安装包</h2>
-          <p>上传后可设为安装页展示的最新版，单个 APK 不超过 120 MB。</p>
+          <h2>{phrase("上传新版安装包", "Upload a new package")}</h2>
+          <p>{phrase("上传后可设为安装页展示的最新版，单个 APK 不超过 120 MB。", "Set an upload as the release shown on the install page. Each APK must be at most 120 MB.")}</p>
         </div>
 
         <div className="android-release-form-grid">
           <label>
-            <span>安装包</span>
+            <span>{phrase("安装包", "Package")}</span>
             <span className="background-file-picker android-release-file-picker">
               <input
                 accept=".apk,application/vnd.android.package-archive"
@@ -289,43 +292,43 @@ export default function AndroidReleaseManagementPage() {
                 onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
                 type="file"
               />
-              <span>{selectedFile ? selectedFile.name : "选择 APK 文件"}</span>
+              <span>{selectedFile ? selectedFile.name : phrase("选择 APK 文件", "Choose APK file")}</span>
             </span>
           </label>
           <label>
-            <span>版本名称</span>
-            <input disabled={isUploading} onChange={(event) => setVersionName(event.target.value)} placeholder="例如 1.0.2" value={versionName} />
+            <span>{phrase("版本名称", "Version name")}</span>
+            <input disabled={isUploading} onChange={(event) => setVersionName(event.target.value)} placeholder={phrase("例如 1.0.2", "For example, 1.0.2")} value={versionName} />
           </label>
           <label>
-            <span>版本编码</span>
+            <span>{phrase("版本编码", "Version code")}</span>
             <input disabled={isUploading} min={1} onChange={(event) => setVersionCode(event.target.value)} placeholder={nextVersionCode} type="number" value={versionCode} />
           </label>
           <label>
-            <span>发布通道</span>
+            <span>{phrase("发布通道", "Release channel")}</span>
             <input disabled={isUploading} onChange={(event) => setChannel(event.target.value)} placeholder="stable" value={channel} />
           </label>
           <label className="android-release-notes-field">
-            <span>更新说明</span>
-            <textarea disabled={isUploading} onChange={(event) => setReleaseNotes(event.target.value)} placeholder="每行一条，安装页会展示给用户" rows={4} value={releaseNotes} />
+            <span>{phrase("更新说明", "Release notes")}</span>
+            <textarea disabled={isUploading} onChange={(event) => setReleaseNotes(event.target.value)} placeholder={phrase("每行一条，安装页会展示给用户", "One item per line. They are shown on the install page.")} rows={4} value={releaseNotes} />
           </label>
           <label className="android-release-active-check">
             <input checked={activateAfterUpload} disabled={isUploading} onChange={(event) => setActivateAfterUpload(event.target.checked)} type="checkbox" />
-            上传后设为最新版
+            {phrase("上传后设为最新版", "Set as latest after upload")}
           </label>
           <button className="button android-release-submit" disabled={isUploading || !selectedFile} type="submit">
             {isUploading ? <PackagePlus aria-hidden="true" className="spin" size={17} /> : <Upload aria-hidden="true" size={17} />}
-            {isUploading ? "上传中" : "上传安装包"}
+            {isUploading ? phrase("上传中", "Uploading") : phrase("上传安装包", "Upload package")}
           </button>
         </div>
       </form>
 
       <div className="background-list-heading">
         <div>
-          <span className="section-label">安装包仓库</span>
-          <h2>{releases.length} 个已上传版本</h2>
+          <span className="section-label">{phrase("安装包仓库", "PACKAGE REPOSITORY")}</span>
+          <h2>{phrase(`${releases.length} 个已上传版本`, `${releases.length} uploaded releases`)}</h2>
         </div>
         <span className="background-current-state">
-          {releases.some((release) => release.isActive) ? "已设置 Android 最新版" : "使用静态兜底安装包"}
+          {releases.some((release) => release.isActive) ? phrase("已设置 Android 最新版", "Latest Android release is set") : phrase("使用静态兜底安装包", "Using fallback package")}
         </span>
       </div>
 
@@ -343,28 +346,28 @@ export default function AndroidReleaseManagementPage() {
                     <strong title={release.originalName}>v{release.versionName}</strong>
                     <span>Code {release.versionCode}</span>
                     <em>{release.channel}</em>
-                    {release.isActive ? <b>当前最新版</b> : null}
+                    {release.isActive ? <b>{phrase("当前最新版", "Latest")}</b> : null}
                   </div>
                   <span className="android-release-file-line">{release.originalName}</span>
                   {release.releaseNotes.length ? <p>{release.releaseNotes.join(" / ")}</p> : null}
                   <small>
-                    {formatFileSize(release.sizeBytes)} · {formatDate(release.updatedAt)} · SHA256 {release.sha256.slice(0, 12)}...{release.sha256.slice(-8)} · {release.uploadedBy.username}
+                    {formatFileSize(release.sizeBytes)} · {formatDate(release.updatedAt, locale)} · SHA256 {release.sha256.slice(0, 12)}...{release.sha256.slice(-8)} · {release.uploadedBy.username}
                   </small>
                 </div>
                 <div className="android-release-actions">
                   <a className="text-action" href={resolveAndroidReleaseUrl(release)} download={release.fileName}>
                     <Download aria-hidden="true" size={14} />
-                    下载
+                    {phrase("下载", "Download")}
                   </a>
                   {!release.isActive ? (
                     <button className="text-action primary" disabled={isBusy} onClick={() => void handleActivate(release)} type="button">
                       <ShieldCheck aria-hidden="true" size={14} />
-                      {isBusy ? "设置中" : "设为最新版"}
+                      {isBusy ? phrase("设置中", "Setting") : phrase("设为最新版", "Set as latest")}
                     </button>
                   ) : null}
                   <button className="text-action danger-text" disabled={isBusy} onClick={() => void handleDelete(release)} type="button">
                     <Trash2 aria-hidden="true" size={14} />
-                    {isBusy ? "处理中" : "永久删除"}
+                    {isBusy ? phrase("处理中", "Processing") : phrase("永久删除", "Delete permanently")}
                   </button>
                 </div>
               </article>
@@ -373,8 +376,8 @@ export default function AndroidReleaseManagementPage() {
         </div>
       ) : (
         <div className="background-empty-state">
-          <strong>暂无上传版本</strong>
-          <p>安装页会继续使用内置静态 APK 下载入口。</p>
+          <strong>{phrase("暂无上传版本", "No uploaded releases")}</strong>
+          <p>{phrase("安装页会继续使用内置静态 APK 下载入口。", "The install page will keep using its built-in APK download.")}</p>
         </div>
       )}
     </section>
@@ -403,8 +406,8 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
+function formatDate(value: string, locale: "zh-CN" | "en-US"): string {
+  return new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

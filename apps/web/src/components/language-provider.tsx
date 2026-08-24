@@ -3,12 +3,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { updateMyLocale } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
-import { LOCALE_COOKIE, LOCALE_STORAGE_KEY, type Locale, supportedLocales, translate, type TranslationKey } from "@/lib/i18n";
+import { inlineTranslation, LOCALE_COOKIE, LOCALE_STORAGE_KEY, type Locale, supportedLocales, translate, type TranslationKey } from "@/lib/i18n";
 
 interface LanguageContextValue {
   locale: Locale;
   setLocale: (locale: Locale) => void;
   t: (key: TranslationKey, values?: Record<string, string | number>) => string;
+  phrase: (chinese: string, english: string) => string;
 }
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
@@ -32,6 +33,7 @@ export function LanguageProvider({ initialLocale, children }: { initialLocale: L
     locale,
     setLocale: changeLocale,
     t: (key, values) => translate(locale, key, values),
+    phrase: (chinese, english) => inlineTranslation(locale, chinese, english),
   }), [changeLocale, locale]);
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

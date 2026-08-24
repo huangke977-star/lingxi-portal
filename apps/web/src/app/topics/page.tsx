@@ -6,6 +6,7 @@ import { Pencil, Plus, Rss, Search } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { AppToast } from "@/components/app-toast";
+import { useLanguage } from "@/components/language-provider";
 import { TopicEditorDialog, type TopicEditorDraft } from "@/components/topic-editor-dialog";
 import { listAdminArticles, type Article } from "@/lib/article-api";
 import { listRoles } from "@/lib/admin-api";
@@ -26,6 +27,7 @@ import {
   uploadTopicCover,
 } from "@/lib/discovery-api";
 import { isSiteManager } from "@/lib/user-permissions";
+import { localizedPath } from "@/lib/i18n";
 
 const blankTopic: TopicEditorDraft = {
   title: "",
@@ -39,6 +41,7 @@ const blankTopic: TopicEditorDraft = {
 };
 
 export default function TopicsPage() {
+  const { locale, phrase, t } = useLanguage();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [topics, setTopics] = useState<ArticleTopic[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
@@ -98,18 +101,18 @@ export default function TopicsPage() {
             const result = await listTopics(null, { page: 1, pageSize: 50 });
             if (active) setTopics(result.items);
           } catch (publicError) {
-            if (active) setError(publicError instanceof Error ? publicError.message : "专题加载失败。");
+            if (active) setError(publicError instanceof Error ? publicError.message : phrase("专题加载失败。", "Could not load topics."));
           }
           return;
         }
-        if (active) setError(loadError instanceof Error ? loadError.message : "专题加载失败。");
+        if (active) setError(loadError instanceof Error ? loadError.message : phrase("专题加载失败。", "Could not load topics."));
       } finally {
         if (active) setIsLoading(false);
       }
     }
     void load();
     return () => { active = false; };
-  }, []);
+  }, [phrase]);
 
   function openCreate() {
     setSelectedId(null);
@@ -175,9 +178,9 @@ export default function TopicsPage() {
       setSelectedId(null);
       setCoverFile(null);
       setNewSelectedArticles([]);
-      setNotice(selected ? "专题设置已保存。" : "专题已创建。");
+      setNotice(selected ? phrase("专题设置已保存。", "Topic settings saved.") : phrase("专题已创建。", "Topic created."));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : selected ? "专题保存失败。" : "专题创建失败。");
+      setError(actionError instanceof Error ? actionError.message : selected ? phrase("专题保存失败。", "Could not save the topic.") : phrase("专题创建失败。", "Could not create the topic."));
     } finally {
       setIsSaving(false);
     }
@@ -185,7 +188,7 @@ export default function TopicsPage() {
 
   async function removeSelectedTopic() {
     const token = readAccessToken();
-    if (!token || !selected || !window.confirm(`删除专题“${selected.title}”吗？文章本身不会删除。`)) return;
+    if (!token || !selected || !window.confirm(phrase(`删除专题“${selected.title}”吗？文章本身不会删除。`, `Delete topic “${selected.title}”? Its articles will not be deleted.`))) return;
     setIsSaving(true);
     try {
       await deleteTopic(token, selected.id);
@@ -193,9 +196,9 @@ export default function TopicsPage() {
       setEditorOpen(false);
       setSelectedId(null);
       setCoverFile(null);
-      setNotice("专题已删除，文章内容未受影响。");
+      setNotice(phrase("专题已删除，文章内容未受影响。", "Topic deleted. Its articles were not changed."));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "专题删除失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("专题删除失败。", "Could not delete the topic."));
     } finally {
       setIsSaving(false);
     }
@@ -215,9 +218,9 @@ export default function TopicsPage() {
         ? await removeTopicArticle(token, selected.id, articleId)
         : await addTopicArticle(token, selected.id, articleId);
       replaceTopic(updated);
-      setNotice(included ? "文章已移出专题。" : "文章已加入专题。");
+      setNotice(included ? phrase("文章已移出专题。", "Article removed from topic.") : phrase("文章已加入专题。", "Article added to topic."));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "专题文章更新失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("专题文章更新失败。", "Could not update topic articles."));
     }
   }
 
@@ -238,7 +241,7 @@ export default function TopicsPage() {
       replaceTopic(await reorderTopicArticles(token, previous.id, ids));
     } catch (actionError) {
       replaceTopic(previous);
-      setError(actionError instanceof Error ? actionError.message : "专题排序失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("专题排序失败。", "Could not reorder topic articles."));
     }
   }
 
@@ -249,9 +252,9 @@ export default function TopicsPage() {
     try {
       const result = topic.subscribed ? await unsubscribeTopic(token, topic.id) : await subscribeTopic(token, topic.id);
       setTopics((current) => current.map((item) => item.id === topic.id ? { ...item, subscribed: result.subscribed, subscriberCount: result.subscriberCount } : item));
-      setNotice(result.subscribed ? "已订阅专题。" : "已取消专题订阅。");
+      setNotice(result.subscribed ? phrase("已订阅专题。", "Topic subscribed.") : phrase("已取消专题订阅。", "Topic unsubscribed."));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "专题订阅操作失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("专题订阅操作失败。", "Could not update the topic subscription."));
     } finally {
       setActingId(null);
     }
@@ -261,37 +264,37 @@ export default function TopicsPage() {
     <section className="page-shell topics-page">
       <ArticleCenterNav active="topics" isLoggedIn={Boolean(user)} user={user} />
       <div className="topics-toolbar">
-        <span>{filteredTopics.length} 个{canManage ? "" : "可见"}专题</span>
+        <span>{phrase(`${filteredTopics.length} 个${canManage ? "" : "可见"}专题`, `${filteredTopics.length} ${canManage ? "" : "visible "}topics`)}</span>
         <div>
-          <label className="topics-search"><Search aria-hidden="true" size={15} /><input aria-label="搜索专题" onChange={(event) => setQuery(event.target.value)} placeholder="搜索专题" value={query} /></label>
-          {canManage ? <button className="topic-create-action" onClick={openCreate} type="button"><Plus aria-hidden="true" size={16} />创建专题</button> : null}
+          <label className="topics-search"><Search aria-hidden="true" size={15} /><input aria-label={phrase("搜索专题", "Search topics")} onChange={(event) => setQuery(event.target.value)} placeholder={phrase("搜索专题", "Search topics")} value={query} /></label>
+          {canManage ? <button className="topic-create-action" onClick={openCreate} type="button"><Plus aria-hidden="true" size={16} />{phrase("创建专题", "Create topic")}</button> : null}
         </div>
       </div>
-      {isLoading ? <div className="article-empty-state">正在读取专题。</div> : filteredTopics.length ? (
+      {isLoading ? <div className="article-empty-state">{phrase("正在读取专题。", "Loading topics.")}</div> : filteredTopics.length ? (
         <div className="topic-list">
           {filteredTopics.map((topic) => {
             const cardContent = <>
                 <span className="topic-card-cover">
                   {topic.coverPath ? <Image alt="" height={258} src={resolveApiUrl(topic.coverPath)} unoptimized width={344} /> : <strong>{topic.title.slice(0, 2)}</strong>}
-                  <small>{topic.articleCount} 篇</small>
-                  {topic.status === "disabled" ? <em>已停用</em> : null}
+                  <small>{phrase(`${topic.articleCount} 篇`, `${topic.articleCount} articles`)}</small>
+                  {topic.status === "disabled" ? <em>{phrase("已停用", "Disabled")}</em> : null}
                 </span>
-                <span className="topic-card-body"><strong>{topic.title}</strong><small>{topic.description || "暂时没有专题说明。"}</small><em>{topic.articles.slice(0, 2).map((article) => article.title).join(" · ") || "等待内容加入"}</em></span>
+                <span className="topic-card-body"><strong>{topic.title}</strong><small>{topic.description || phrase("暂时没有专题说明。", "No topic description yet.")}</small><em>{topic.articles.slice(0, 2).map((article) => article.title).join(" · ") || phrase("等待内容加入", "Waiting for articles")}</em></span>
               </>;
             return <article className={`topic-card${topic.status === "disabled" ? " disabled" : ""}`} key={topic.id}>
-              {topic.status === "active" ? <Link aria-label={`查看专题 ${topic.title}`} className="topic-card-link" href={`/topics/${topic.slug}`}>{cardContent}</Link> : <div aria-disabled="true" className="topic-card-link" title="专题已停用，请使用编辑按钮管理">{cardContent}</div>}
+              {topic.status === "active" ? <Link aria-label={phrase(`查看专题 ${topic.title}`, `View topic ${topic.title}`)} className="topic-card-link" href={localizedPath(`/topics/${topic.slug}`, locale)}>{cardContent}</Link> : <div aria-disabled="true" className="topic-card-link" title={phrase("专题已停用，请使用编辑按钮管理", "This topic is disabled. Use edit to manage it.")}>{cardContent}</div>}
               <footer>
-                <span>{topic.subscriberCount} 人订阅</span>
+                <span>{phrase(`${topic.subscriberCount} 人订阅`, `${topic.subscriberCount} subscribers`)}</span>
                 <span className="topic-card-actions">
-                  {canManage ? <button aria-label={`编辑 ${topic.title}`} onClick={() => openEdit(topic)} title="编辑专题" type="button"><Pencil aria-hidden="true" size={15} /></button> : null}
-                  {user && topic.status === "active" ? <button aria-label={topic.subscribed ? `取消订阅 ${topic.title}` : `订阅 ${topic.title}`} className={topic.subscribed ? "active" : undefined} disabled={actingId === topic.id} onClick={() => void toggleSubscription(topic)} title={topic.subscribed ? "取消订阅" : "订阅"} type="button"><Rss aria-hidden="true" size={15} /></button> : null}
+                  {canManage ? <button aria-label={phrase(`编辑 ${topic.title}`, `Edit ${topic.title}`)} onClick={() => openEdit(topic)} title={phrase("编辑专题", "Edit topic")} type="button"><Pencil aria-hidden="true" size={15} /></button> : null}
+                  {user && topic.status === "active" ? <button aria-label={topic.subscribed ? `${t("common.unsubscribe")} ${topic.title}` : `${t("common.subscribe")} ${topic.title}`} className={topic.subscribed ? "active" : undefined} disabled={actingId === topic.id} onClick={() => void toggleSubscription(topic)} title={topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={15} /></button> : null}
                 </span>
               </footer>
             </article>;
           })}
         </div>
-      ) : <div className="article-empty-state">没有找到匹配的专题。</div>}
-      {editorOpen && canManage ? <TopicEditorDialog articles={articles} coverFile={coverFile} coverPreview={coverPreview} draft={draft} isEdit={Boolean(selected)} isSaving={isSaving} onChange={setDraft} onClose={closeEditor} onCoverFileChange={(file) => { if (file && file.size > 10 * 1024 * 1024) { setError("专题封面不能超过 10 MB。"); return; } setCoverFile(file); if (file) setDraft((current) => ({ ...current, coverPath: "" })); }} onDelete={selected ? () => void removeSelectedTopic() : undefined} onReorderArticles={reorderArticles} onSubmit={saveTopic} onToggleArticle={toggleArticle} roles={roles} selectedArticles={selected?.articles ?? newSelectedArticles} /> : null}
+      ) : <div className="article-empty-state">{phrase("没有找到匹配的专题。", "No matching topics.")}</div>}
+      {editorOpen && canManage ? <TopicEditorDialog articles={articles} coverFile={coverFile} coverPreview={coverPreview} draft={draft} isEdit={Boolean(selected)} isSaving={isSaving} onChange={setDraft} onClose={closeEditor} onCoverFileChange={(file) => { if (file && file.size > 10 * 1024 * 1024) { setError(phrase("专题封面不能超过 10 MB。", "Topic cover must be at most 10 MB.")); return; } setCoverFile(file); if (file) setDraft((current) => ({ ...current, coverPath: "" })); }} onDelete={selected ? () => void removeSelectedTopic() : undefined} onReorderArticles={reorderArticles} onSubmit={saveTopic} onToggleArticle={toggleArticle} roles={roles} selectedArticles={selected?.articles ?? newSelectedArticles} /> : null}
       <AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );

@@ -21,9 +21,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { GlassSelect } from "@/components/glass-select";
+import { useLanguage } from "@/components/language-provider";
 import { listRoles } from "@/lib/admin-api";
 import { type AuthRole, type AuthUser, getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { localizedPath } from "@/lib/i18n";
 import {
   activateBackground,
   clearActiveBackground,
@@ -58,34 +61,34 @@ import {
 import { portalThemes, type ThemeId } from "@/lib/theme-preferences";
 
 const VISIBILITY_OPTIONS = [
-  { value: "public", label: "公开" },
-  { value: "authenticated", label: "登录可见" },
-  { value: "role_restricted", label: "指定角色" },
-  { value: "private", label: "仅自己" },
+  { value: "public", chinese: "公开", english: "Public" },
+  { value: "authenticated", chinese: "登录可见", english: "Signed-in users" },
+  { value: "role_restricted", chinese: "指定角色", english: "Selected roles" },
+  { value: "private", chinese: "仅自己", english: "Only me" },
 ] as const;
 
 const notificationRows = [
-  ["notifyArticleLiked", "文章点赞"],
-  ["notifyArticleFavorited", "文章收藏"],
-  ["notifyArticleCommented", "文章评论"],
-  ["notifyCommentReplied", "评论回复"],
-  ["notifyAuthorSubscribed", "新增订阅者"],
-  ["notifySubscriptionPublished", "订阅作者发布"],
-  ["notifyFriendRequest", "好友申请"],
-  ["notifyCommentReport", "举报处理"],
-  ["notifySystem", "系统消息"],
+  ["notifyArticleLiked", "文章点赞", "Article likes"],
+  ["notifyArticleFavorited", "文章收藏", "Article favorites"],
+  ["notifyArticleCommented", "文章评论", "Article comments"],
+  ["notifyCommentReplied", "评论回复", "Comment replies"],
+  ["notifyAuthorSubscribed", "新增订阅者", "New subscribers"],
+  ["notifySubscriptionPublished", "订阅作者发布", "Subscribed author publishes"],
+  ["notifyFriendRequest", "好友申请", "Friend requests"],
+  ["notifyCommentReport", "举报处理", "Report handling"],
+  ["notifySystem", "系统消息", "System messages"],
 ] as const;
 
 const templateRows = [
-  ["templateArticleLiked", "点赞模板"],
-  ["templateArticleFavorited", "收藏模板"],
-  ["templateArticleCommented", "评论模板"],
-  ["templateCommentReplied", "回复模板"],
-  ["templateAuthorSubscribed", "订阅者模板"],
-  ["templateSubscriptionPublished", "订阅发布模板"],
-  ["templateFriendRequest", "好友申请模板"],
-  ["templateCommentReportHandled", "举报结果模板"],
-  ["templateCommentAuthorModerated", "评论处理模板"],
+  ["templateArticleLiked", "点赞模板", "Like template"],
+  ["templateArticleFavorited", "收藏模板", "Favorite template"],
+  ["templateArticleCommented", "评论模板", "Comment template"],
+  ["templateCommentReplied", "回复模板", "Reply template"],
+  ["templateAuthorSubscribed", "订阅者模板", "Subscriber template"],
+  ["templateSubscriptionPublished", "订阅发布模板", "Subscription publish template"],
+  ["templateFriendRequest", "好友申请模板", "Friend request template"],
+  ["templateCommentReportHandled", "举报结果模板", "Report result template"],
+  ["templateCommentAuthorModerated", "评论处理模板", "Comment moderation template"],
 ] as const;
 
 const emptyTaxonomyDraft: ArticleTaxonomyInput = {
@@ -99,6 +102,7 @@ const emptyTaxonomyDraft: ArticleTaxonomyInput = {
 const MAX_SITE_ASSET_SIZE = 5 * 1024 * 1024;
 const MAX_BACKGROUND_FILE_SIZE = 30 * 1024 * 1024;
 const MAX_BACKGROUND_FILES = 20;
+type Phrase = (chinese: string, english: string) => string;
 
 const BUILTIN_LOGO_OPTIONS = [
   { label: "默认 SVG", path: "/favicon.svg" },
@@ -120,6 +124,7 @@ const BUILTIN_BACKGROUND_OPTIONS = [
 
 export default function SiteSettingsPage() {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
@@ -149,7 +154,7 @@ export default function SiteSettingsPage() {
     let isMounted = true;
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
 
@@ -176,10 +181,10 @@ export default function SiteSettingsPage() {
       } catch (loadError) {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
-        if (isMounted) setError(loadError instanceof Error ? loadError.message : "无法读取站点设置。");
+        if (isMounted) setError(loadError instanceof Error ? loadError.message : phrase("无法读取站点设置。", "Could not load site settings."));
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -189,7 +194,7 @@ export default function SiteSettingsPage() {
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, [locale, phrase, router]);
 
   useEffect(() => () => {
     if (settingsSaveTimerRef.current !== null) {
@@ -253,7 +258,7 @@ export default function SiteSettingsPage() {
       })
       .catch((saveError) => {
         pendingSettingsPatchRef.current = { ...patch, ...pendingSettingsPatchRef.current };
-        setError(saveError instanceof Error ? saveError.message : "站点设置自动保存失败。");
+        setError(saveError instanceof Error ? saveError.message : phrase("站点设置自动保存失败。", "Site settings could not be saved automatically."));
       })
       .finally(() => {
         settingsSaveCountRef.current = Math.max(0, settingsSaveCountRef.current - 1);
@@ -262,7 +267,7 @@ export default function SiteSettingsPage() {
   }
 
   async function handleResetSettings() {
-    if (!accessToken || !window.confirm("恢复默认站点设置吗？已上传的资源、背景图片、文章分类和标签不会删除。")) return;
+    if (!accessToken || !window.confirm(phrase("恢复默认站点设置吗？已上传的资源、背景图片、文章分类和标签不会删除。", "Restore default site settings? Uploaded assets, backgrounds, article categories, and tags will not be deleted."))) return;
     if (settingsSaveTimerRef.current !== null) {
       window.clearTimeout(settingsSaveTimerRef.current);
       settingsSaveTimerRef.current = null;
@@ -278,9 +283,9 @@ export default function SiteSettingsPage() {
       applySettings(restored);
       setBackgrounds((current) => current.map((background) => ({ ...background, isActive: false })));
       notifyBackgroundChange();
-      setNotice("站点设置已恢复默认。");
+      setNotice(phrase("站点设置已恢复默认。", "Site settings were restored to defaults."));
     } catch (resetError) {
-      setError(resetError instanceof Error ? resetError.message : "恢复默认设置失败。");
+      setError(resetError instanceof Error ? resetError.message : phrase("恢复默认设置失败。", "Could not restore default settings."));
     } finally {
       settingsSaveCountRef.current = 0;
       setIsSaving(false);
@@ -291,7 +296,7 @@ export default function SiteSettingsPage() {
     if (!accessToken) return;
     const payload = { ...newTaxonomy, kind, name: newTaxonomy.name.trim() };
     if (!payload.name) {
-      setError("分类或标签名称不能为空。");
+      setError(phrase("分类或标签名称不能为空。", "A category or tag name is required."));
       return;
     }
     setBusyTaxonomyId(0);
@@ -302,9 +307,9 @@ export default function SiteSettingsPage() {
       const refreshed = await getAdminSiteSettings(accessToken);
       applySettings(refreshed);
       setNewTaxonomy({ ...emptyTaxonomyDraft, kind });
-      setNotice(kind === "category" ? "分类已新增。" : "标签已新增。");
+      setNotice(kind === "category" ? phrase("分类已新增。", "Category created.") : phrase("标签已新增。", "Tag created."));
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "新增失败。");
+      setError(createError instanceof Error ? createError.message : phrase("新增失败。", "Could not create it."));
     } finally {
       setBusyTaxonomyId(null);
     }
@@ -314,7 +319,7 @@ export default function SiteSettingsPage() {
     if (!accessToken) return;
     const payload = taxonomyDrafts[taxonomy.id];
     if (!payload?.name.trim()) {
-      setError("分类或标签名称不能为空。");
+      setError(phrase("分类或标签名称不能为空。", "A category or tag name is required."));
       return;
     }
     setBusyTaxonomyId(taxonomy.id);
@@ -324,16 +329,16 @@ export default function SiteSettingsPage() {
       await updateArticleTaxonomy(accessToken, taxonomy.id, { ...payload, name: payload.name.trim() });
       const refreshed = await getAdminSiteSettings(accessToken);
       applySettings(refreshed);
-      setNotice("分类或标签已更新。");
+      setNotice(phrase("分类或标签已更新。", "Category or tag updated."));
     } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : "更新失败。");
+      setError(updateError instanceof Error ? updateError.message : phrase("更新失败。", "Could not update it."));
     } finally {
       setBusyTaxonomyId(null);
     }
   }
 
   async function handleDeleteTaxonomy(taxonomy: ArticleTaxonomy) {
-    if (!accessToken || !window.confirm(`确定删除“${taxonomy.name}”吗？已有文章中的文字分类或标签不会被删除。`)) return;
+    if (!accessToken || !window.confirm(phrase(`确定删除“${taxonomy.name}”吗？已有文章中的文字分类或标签不会被删除。`, `Delete “${taxonomy.name}”? Existing article category or tag text will not be removed.`))) return;
     setBusyTaxonomyId(taxonomy.id);
     setError("");
     setNotice("");
@@ -341,9 +346,9 @@ export default function SiteSettingsPage() {
       await deleteArticleTaxonomy(accessToken, taxonomy.id);
       const refreshed = await getAdminSiteSettings(accessToken);
       applySettings(refreshed);
-      setNotice("分类或标签已删除。");
+      setNotice(phrase("分类或标签已删除。", "Category or tag deleted."));
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "删除失败。");
+      setError(deleteError instanceof Error ? deleteError.message : phrase("删除失败。", "Could not delete it."));
     } finally {
       setBusyTaxonomyId(null);
     }
@@ -353,7 +358,7 @@ export default function SiteSettingsPage() {
     if (!accessToken || !files?.length) return;
     const file = files[0];
     if (file.size > MAX_SITE_ASSET_SIZE) {
-      setError("单个站点资源不能超过 5 MB。");
+      setError(phrase("单个站点资源不能超过 5 MB。", "Each site asset must be at most 5 MB."));
       return;
     }
     setAssetUploadKind(kind);
@@ -365,9 +370,9 @@ export default function SiteSettingsPage() {
       updateDraft({
         [kind === "logo" ? "logoPath" : "pwaIconPath"]: toConfiguredApiAssetPath(asset.url),
       } as Partial<SiteSettingsInput>, true);
-      setNotice(kind === "logo" ? "Logo 已上传并应用。" : "PWA 图标已上传并应用。");
+      setNotice(kind === "logo" ? phrase("Logo 已上传并应用。", "Logo uploaded and applied.") : phrase("PWA 图标已上传并应用。", "PWA icon uploaded and applied."));
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "站点资源上传失败。");
+      setError(uploadError instanceof Error ? uploadError.message : phrase("站点资源上传失败。", "Could not upload the site asset."));
     } finally {
       setAssetUploadKind(null);
     }
@@ -377,19 +382,19 @@ export default function SiteSettingsPage() {
     const configuredPath = toConfiguredApiAssetPath(asset.url);
     const activePath = asset.kind === "logo" ? draft?.logoPath : draft?.pwaIconPath;
     if (activePath === configuredPath) {
-      setError("该资源正在使用，请先选择其他资源后再删除。");
+      setError(phrase("该资源正在使用，请先选择其他资源后再删除。", "This asset is in use. Choose another one before deleting it."));
       return;
     }
-    if (!accessToken || !window.confirm(`确定永久删除“${asset.originalName}”吗？`)) return;
+    if (!accessToken || !window.confirm(phrase(`确定永久删除“${asset.originalName}”吗？`, `Permanently delete “${asset.originalName}”?`))) return;
     setBusyAssetId(asset.id);
     setError("");
     setNotice("");
     try {
       await deleteSiteAsset(accessToken, asset.id);
       setSiteAssets((current) => current.filter((item) => item.id !== asset.id));
-      setNotice("站点资源已删除。");
+      setNotice(phrase("站点资源已删除。", "Site asset deleted."));
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "站点资源删除失败。");
+      setError(deleteError instanceof Error ? deleteError.message : phrase("站点资源删除失败。", "Could not delete the site asset."));
     } finally {
       setBusyAssetId(null);
     }
@@ -398,16 +403,16 @@ export default function SiteSettingsPage() {
   async function handleBackgroundUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!accessToken || !backgroundUploadFiles.length) {
-      setError("请选择背景图片。");
+      setError(phrase("请选择背景图片。", "Choose background images."));
       return;
     }
     if (backgroundUploadFiles.length > MAX_BACKGROUND_FILES) {
-      setError(`一次最多上传 ${MAX_BACKGROUND_FILES} 张背景图。`);
+      setError(phrase(`一次最多上传 ${MAX_BACKGROUND_FILES} 张背景图。`, `You can upload at most ${MAX_BACKGROUND_FILES} background images at once.`));
       return;
     }
     const oversized = backgroundUploadFiles.find((file) => file.size > MAX_BACKGROUND_FILE_SIZE);
     if (oversized) {
-      setError(`${oversized.name} 超过 30 MB。`);
+      setError(phrase(`${oversized.name} 超过 30 MB。`, `${oversized.name} exceeds 30 MB.`));
       return;
     }
     setIsBackgroundUploading(true);
@@ -417,11 +422,11 @@ export default function SiteSettingsPage() {
       const uploaded = await uploadBackgrounds(accessToken, backgroundUploadFiles);
       setBackgrounds((current) => [...uploaded, ...current]);
       setBackgroundUploadFiles([]);
-      setNotice(`${uploaded.length} 张背景图已上传。`);
+      setNotice(phrase(`${uploaded.length} 张背景图已上传。`, `${uploaded.length} background image(s) uploaded.`));
       const input = document.getElementById("site-background-file") as HTMLInputElement | null;
       if (input) input.value = "";
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "背景图片上传失败。");
+      setError(uploadError instanceof Error ? uploadError.message : phrase("背景图片上传失败。", "Could not upload the background images."));
     } finally {
       setIsBackgroundUploading(false);
     }
@@ -431,8 +436,8 @@ export default function SiteSettingsPage() {
     if (!accessToken) return;
     const confirmed = window.confirm(
       background.isActive
-        ? "删除当前全站背景后将回到设置页选择的内置默认背景，确定删除吗？"
-        : `确定从磁盘中永久删除 ${background.originalName} 吗？`,
+        ? phrase("删除当前全站背景后将回到设置页选择的内置默认背景，确定删除吗？", "Deleting the active background returns the site to its configured built-in background. Continue?")
+        : phrase(`确定从磁盘中永久删除 ${background.originalName} 吗？`, `Permanently delete ${background.originalName} from disk?`),
     );
     if (!confirmed) return;
     setBusyBackgroundId(background.id);
@@ -445,9 +450,9 @@ export default function SiteSettingsPage() {
         updateDraft({ defaultBackgroundUrl: BUILTIN_BACKGROUND_OPTIONS[0].path }, true);
       }
       if (background.isActive) notifyBackgroundChange();
-      setNotice("背景图片及磁盘文件已删除。");
+      setNotice(phrase("背景图片及磁盘文件已删除。", "Background image and its file were deleted."));
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "背景图片删除失败。");
+      setError(deleteError instanceof Error ? deleteError.message : phrase("背景图片删除失败。", "Could not delete the background image."));
     } finally {
       setBusyBackgroundId(null);
     }
@@ -464,9 +469,9 @@ export default function SiteSettingsPage() {
       setBackgrounds((current) => current.map((item) => ({ ...item, isActive: item.id === active.id })));
       updateDraft({ defaultBackgroundUrl: configuredPath }, true);
       notifyBackgroundChange();
-      setNotice("全站背景已切换。");
+      setNotice(phrase("全站背景已切换。", "Site background updated."));
     } catch (useError) {
-      setError(useError instanceof Error ? useError.message : "背景切换失败。");
+      setError(useError instanceof Error ? useError.message : phrase("背景切换失败。", "Could not update the background."));
     } finally {
       setBusyBackgroundId(null);
     }
@@ -483,8 +488,8 @@ export default function SiteSettingsPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>站点设置</h1>
-        <div className="status-row"><span className="status">正在读取设置</span></div>
+        <h1>{phrase("站点设置", "Site settings")}</h1>
+        <div className="status-row"><span className="status">{phrase("正在读取设置", "Loading settings")}</span></div>
       </section>
     );
   }
@@ -493,9 +498,9 @@ export default function SiteSettingsPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>无法进入站点设置</h1>
-        <p>{error || "请重新登录后访问。"}</p>
-        <Link className="text-action primary" href="/login">返回登录</Link>
+        <h1>{phrase("无法进入站点设置", "Could not open site settings")}</h1>
+        <p>{error || phrase("请重新登录后访问。", "Sign in again to continue.")}</p>
+        <Link className="text-action primary" href={localizedPath("/login", locale)}>{phrase("返回登录", "Back to sign in")}</Link>
       </section>
     );
   }
@@ -504,9 +509,9 @@ export default function SiteSettingsPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>无权访问</h1>
-        <p>该页面仅超级管理员可以查看和修改。</p>
-        <Link className="text-action primary" href="/dashboard">返回工作台</Link>
+        <h1>{phrase("无权访问", "Access denied")}</h1>
+        <p>{phrase("该页面仅超级管理员可以查看和修改。", "Only super administrators can view and edit this page.")}</p>
+        <Link className="text-action primary" href={localizedPath("/dashboard", locale)}>{phrase("返回工作台", "Back to workspace")}</Link>
       </section>
     );
   }
@@ -527,25 +532,25 @@ export default function SiteSettingsPage() {
         <div className="site-settings-head">
           <div>
             <span className="section-label">HLOVET Admin</span>
-            <h1>站点设置中心</h1>
+            <h1>{phrase("站点设置中心", "Site settings")}</h1>
           </div>
           <div className="site-settings-head-actions">
-            <span className={isSaving ? "saving" : ""}>{isSaving ? "正在自动保存" : "修改后自动保存"}</span>
+            <span className={isSaving ? "saving" : ""}>{isSaving ? phrase("正在自动保存", "Saving automatically") : phrase("修改后自动保存", "Changes save automatically")}</span>
             <button className="button site-settings-save" disabled={isSaving} onClick={() => void handleResetSettings()} type="button">
               {isSaving ? <Settings2 aria-hidden="true" className="spin" size={16} /> : <RotateCcw aria-hidden="true" size={16} />}
-              恢复默认
+              {phrase("恢复默认", "Restore defaults")}
             </button>
           </div>
         </div>
 
         <div className="site-settings-grid">
           <section className="site-settings-card">
-            <PanelTitle icon={Globe2} label="站点基础" />
+            <PanelTitle icon={Globe2} label={phrase("站点基础", "Site basics")} />
             <div className="site-settings-field-grid">
-              <label><span>网站名称</span><input maxLength={80} onChange={(event) => updateDraft({ siteName: event.target.value })} value={draft.siteName} /></label>
-              <label><span>浏览器标题</span><input maxLength={120} onChange={(event) => updateDraft({ browserTitle: event.target.value })} value={draft.browserTitle} /></label>
-              <label><span>开放注册</span><select onChange={(event) => updateDraft({ registrationOpen: event.target.value === "true" }, true)} value={String(draft.registrationOpen)}><option value="true">开放</option><option value="false">关闭</option></select></label>
-              <label><span>默认角色</span><select onChange={(event) => updateDraft({ defaultRoleCode: event.target.value }, true)} value={draft.defaultRoleCode}>{roleOptions.map((role) => <option key={role.code} value={role.code}>{role.name}</option>)}</select></label>
+              <label><span>{phrase("网站名称", "Site name")}</span><input maxLength={80} onChange={(event) => updateDraft({ siteName: event.target.value })} value={draft.siteName} /></label>
+              <label><span>{phrase("浏览器标题", "Browser title")}</span><input maxLength={120} onChange={(event) => updateDraft({ browserTitle: event.target.value })} value={draft.browserTitle} /></label>
+              <label><span>{phrase("开放注册", "Open registration")}</span><GlassSelect ariaLabel={phrase("开放注册", "Open registration")} onChange={(value) => updateDraft({ registrationOpen: value === "true" }, true)} options={[{ value: "true", label: phrase("开放", "Open") }, { value: "false", label: phrase("关闭", "Closed") }]} value={String(draft.registrationOpen)} /></label>
+              <label><span>{phrase("默认角色", "Default role")}</span><GlassSelect ariaLabel={phrase("默认角色", "Default role")} onChange={(value) => updateDraft({ defaultRoleCode: value }, true)} options={roleOptions.map((role) => ({ value: role.code, label: role.name }))} value={draft.defaultRoleCode} /></label>
             </div>
             <div className="site-resource-stack">
               <SiteResourcePicker
@@ -556,6 +561,7 @@ export default function SiteSettingsPage() {
                 isUploading={assetUploadKind === "logo"}
                 kind="logo"
                 label="Logo"
+                phrase={phrase}
                 onDelete={(asset) => void handleDeleteAsset(asset)}
                 onSelect={(path) => updateDraft({ logoPath: path }, true)}
                 onUpload={(files) => void handleAssetUpload("logo", files)}
@@ -567,7 +573,8 @@ export default function SiteSettingsPage() {
                 currentPath={draft.pwaIconPath}
                 isUploading={assetUploadKind === "pwa_icon"}
                 kind="pwa_icon"
-                label="PWA 图标"
+                label={phrase("PWA 图标", "PWA icon")}
+                phrase={phrase}
                 onDelete={(asset) => void handleDeleteAsset(asset)}
                 onSelect={(path) => updateDraft({ pwaIconPath: path }, true)}
                 onUpload={(files) => void handleAssetUpload("pwa_icon", files)}
@@ -576,50 +583,50 @@ export default function SiteSettingsPage() {
           </section>
 
           <section className="site-settings-card">
-            <PanelTitle icon={Settings2} label="默认主题" />
+            <PanelTitle icon={Settings2} label={phrase("默认主题", "Default theme")} />
             <div className="site-settings-field-grid">
-              <label><span>主题</span><select onChange={(event) => updateDraft({ defaultThemeId: event.target.value as ThemeId }, true)} value={draft.defaultThemeId}>{portalThemes.map((theme) => <option key={theme.id} value={theme.id}>{theme.name}</option>)}<option value="custom">自定义</option></select></label>
-              <ColorField label="强调色" value={draft.defaultAccent} onChange={(value) => updateDraft({ defaultAccent: value })} />
-              <ColorField label="卡片颜色" value={draft.defaultSurface} onChange={(value) => updateDraft({ defaultSurface: value })} />
-              <ColorField label="文字颜色" value={draft.defaultForeground} onChange={(value) => updateDraft({ defaultForeground: value })} />
-              <ColorField label="弱文字色" value={draft.defaultMuted} onChange={(value) => updateDraft({ defaultMuted: value })} />
-              <ColorField label="磨砂颜色" value={draft.defaultGlassTint} onChange={(value) => updateDraft({ defaultGlassTint: value })} />
-              <RangeField label="卡片透明度" max={76} min={38} value={draft.defaultCardAlpha} onChange={(value) => updateDraft({ defaultCardAlpha: value })} />
-              <RangeField label="磨砂程度" max={36} min={0} value={draft.defaultGlassBlur} onChange={(value) => updateDraft({ defaultGlassBlur: value })} />
-              <RangeField label="磨砂遮罩" max={100} min={0} value={draft.defaultGlassTintAlpha} onChange={(value) => updateDraft({ defaultGlassTintAlpha: value })} />
+              <label><span>{phrase("主题", "Theme")}</span><GlassSelect ariaLabel={phrase("主题", "Theme")} onChange={(value) => updateDraft({ defaultThemeId: value as ThemeId }, true)} options={[...portalThemes.map((theme) => ({ value: theme.id, label: theme.name })), { value: "custom", label: phrase("自定义", "Custom") }]} value={draft.defaultThemeId} /></label>
+              <ColorField label={phrase("强调色", "Accent color")} value={draft.defaultAccent} onChange={(value) => updateDraft({ defaultAccent: value })} />
+              <ColorField label={phrase("卡片颜色", "Card color")} value={draft.defaultSurface} onChange={(value) => updateDraft({ defaultSurface: value })} />
+              <ColorField label={phrase("文字颜色", "Text color")} value={draft.defaultForeground} onChange={(value) => updateDraft({ defaultForeground: value })} />
+              <ColorField label={phrase("弱文字色", "Muted text color")} value={draft.defaultMuted} onChange={(value) => updateDraft({ defaultMuted: value })} />
+              <ColorField label={phrase("磨砂颜色", "Glass tint")} value={draft.defaultGlassTint} onChange={(value) => updateDraft({ defaultGlassTint: value })} />
+              <RangeField label={phrase("卡片透明度", "Card opacity")} max={76} min={38} value={draft.defaultCardAlpha} onChange={(value) => updateDraft({ defaultCardAlpha: value })} />
+              <RangeField label={phrase("磨砂程度", "Glass blur")} max={36} min={0} value={draft.defaultGlassBlur} onChange={(value) => updateDraft({ defaultGlassBlur: value })} />
+              <RangeField label={phrase("磨砂遮罩", "Glass overlay")} max={100} min={0} value={draft.defaultGlassTintAlpha} onChange={(value) => updateDraft({ defaultGlassTintAlpha: value })} />
             </div>
           </section>
 
           <section className="site-settings-card">
-            <PanelTitle icon={Package} label="安装包设置" />
+            <PanelTitle icon={Package} label={phrase("安装包设置", "Package settings")} />
             <div className="site-settings-field-grid">
-              <label><span>安装页</span><select onChange={(event) => updateDraft({ installPageEnabled: event.target.value === "true" }, true)} value={String(draft.installPageEnabled)}><option value="true">启用</option><option value="false">关闭</option></select></label>
-              <label><span>保留历史版本</span><select onChange={(event) => updateDraft({ apkHistoryEnabled: event.target.value === "true" }, true)} value={String(draft.apkHistoryEnabled)}><option value="true">保留</option><option value="false">只保留最新版</option></select></label>
-              <label><span>自动清理旧版</span><select onChange={(event) => updateDraft({ apkAutoCleanupEnabled: event.target.value === "true" }, true)} value={String(draft.apkAutoCleanupEnabled)}><option value="false">手动清理</option><option value="true">自动清理</option></select></label>
-              <label><span>最多保留</span><input max={20} min={1} onChange={(event) => updateDraft({ apkRetentionCount: Number(event.target.value) })} type="number" value={draft.apkRetentionCount} /></label>
+              <label><span>{phrase("安装页", "Install page")}</span><GlassSelect ariaLabel={phrase("安装页", "Install page")} onChange={(value) => updateDraft({ installPageEnabled: value === "true" }, true)} options={[{ value: "true", label: phrase("启用", "Enabled") }, { value: "false", label: phrase("关闭", "Disabled") }]} value={String(draft.installPageEnabled)} /></label>
+              <label><span>{phrase("保留历史版本", "Keep version history")}</span><GlassSelect ariaLabel={phrase("保留历史版本", "Keep version history")} onChange={(value) => updateDraft({ apkHistoryEnabled: value === "true" }, true)} options={[{ value: "true", label: phrase("保留", "Keep") }, { value: "false", label: phrase("只保留最新版", "Keep latest only") }]} value={String(draft.apkHistoryEnabled)} /></label>
+              <label><span>{phrase("自动清理旧版", "Clean up older versions")}</span><GlassSelect ariaLabel={phrase("自动清理旧版", "Clean up older versions")} onChange={(value) => updateDraft({ apkAutoCleanupEnabled: value === "true" }, true)} options={[{ value: "false", label: phrase("手动清理", "Manual cleanup") }, { value: "true", label: phrase("自动清理", "Automatic cleanup") }]} value={String(draft.apkAutoCleanupEnabled)} /></label>
+              <label><span>{phrase("最多保留", "Keep at most")}</span><input max={20} min={1} onChange={(event) => updateDraft({ apkRetentionCount: Number(event.target.value) })} type="number" value={draft.apkRetentionCount} /></label>
             </div>
-            <Link className="text-action primary site-settings-inline-link" href="/admin/android">进入安装包管理</Link>
+            <Link className="text-action primary site-settings-inline-link" href={localizedPath("/admin/android", locale)}>{phrase("进入安装包管理", "Open package management")}</Link>
           </section>
 
           <section className="site-settings-card site-settings-summary-card">
-            <PanelTitle icon={Sparkles} label="资源状态" />
+            <PanelTitle icon={Sparkles} label={phrase("资源状态", "Asset status")} />
             <div className="site-settings-summary-grid">
-              <SummaryTile label="Logo" value={resourceDisplayName(draft.logoPath, [...BUILTIN_LOGO_OPTIONS], logoAssets)} />
-              <SummaryTile label="PWA 图标" value={resourceDisplayName(draft.pwaIconPath, [...BUILTIN_PWA_ICON_OPTIONS], pwaIconAssets)} />
-              <SummaryTile label="当前背景" value={backgrounds.find((background) => background.isActive)?.originalName ?? "未设置"} />
-              <SummaryTile label="背景图库" value={`${backgrounds.length} 张`} />
+              <SummaryTile label="Logo" value={resourceDisplayName(draft.logoPath, [...BUILTIN_LOGO_OPTIONS], logoAssets, phrase)} />
+              <SummaryTile label={phrase("PWA 图标", "PWA icon")} value={resourceDisplayName(draft.pwaIconPath, [...BUILTIN_PWA_ICON_OPTIONS], pwaIconAssets, phrase)} />
+              <SummaryTile label={phrase("当前背景", "Active background")} value={backgrounds.find((background) => background.isActive)?.originalName ?? phrase("未设置", "Not set")} />
+              <SummaryTile label={phrase("背景图库", "Background library")} value={phrase(`${backgrounds.length} 张`, `${backgrounds.length} images`)} />
             </div>
             <p className="site-settings-hint">
-              当前背景就是所有用户实际看到的全站背景；点击背景卡片上的“使用”后会立即同步到当前页面，其他页面刷新后生效。
+              {phrase("当前背景就是所有用户实际看到的全站背景；点击背景卡片上的“使用”后会立即同步到当前页面，其他页面刷新后生效。", "The active background is the site-wide background all users see. Choosing Use on a background card updates this page immediately and takes effect elsewhere after refresh.")}
             </p>
           </section>
 
           <section className="site-settings-card wide">
-            <PanelTitle icon={ImageIcon} label="背景管理" />
+            <PanelTitle icon={ImageIcon} label={phrase("背景管理", "Background management")} />
             <div className="site-background-tools">
               <div>
-                <strong>全站背景</strong>
-                <span>上传自己的背景图片，每次最多 5 张；系统会自动压缩为 WebP，仍可预览、启用或永久删除。</span>
+                <strong>{phrase("全站背景", "Site-wide background")}</strong>
+                <span>{phrase("上传自己的背景图片，每次最多 5 张；系统会自动压缩为 WebP，仍可预览、启用或永久删除。", "Upload up to 5 background images at once. They are compressed to WebP and can still be previewed, activated, or permanently deleted.")}</span>
               </div>
               <form className="site-background-upload" onSubmit={(event) => void handleBackgroundUpload(event)}>
                 <label htmlFor="site-background-file">
@@ -632,16 +639,17 @@ export default function SiteSettingsPage() {
                     type="file"
                   />
                   <UploadCloud aria-hidden="true" size={16} />
-                  <span>{formatSelectedBackgroundFiles(backgroundUploadFiles)}</span>
+                  <span>{formatSelectedBackgroundFiles(backgroundUploadFiles, phrase)}</span>
                 </label>
                 <button className="text-action primary" disabled={isBackgroundUploading || !backgroundUploadFiles.length} type="submit">
-                  {isBackgroundUploading ? "上传中" : "上传"}
+                  {isBackgroundUploading ? phrase("上传中", "Uploading") : phrase("上传", "Upload")}
                 </button>
               </form>
             </div>
             <BackgroundPicker
               backgrounds={backgrounds}
               busyBackgroundId={busyBackgroundId}
+              phrase={phrase}
               onDelete={(background) => void handleDeleteBackground(background)}
               onPreview={setPreviewBackground}
               onUse={(background) => void handleUseBackground(background)}
@@ -649,12 +657,12 @@ export default function SiteSettingsPage() {
           </section>
 
           <section className="site-settings-card wide">
-            <PanelTitle icon={FileText} label="内容发布设置" />
+            <PanelTitle icon={FileText} label={phrase("内容发布设置", "Publishing settings")} />
             <div className="site-settings-field-grid compact">
-              <label><span>默认阅读权限</span><select onChange={(event) => updateDraft({ defaultArticleVisibility: event.target.value as SiteSettingsInput["defaultArticleVisibility"] }, true)} value={draft.defaultArticleVisibility}>{VISIBILITY_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-              <label><span>图片上限 MB</span><input max={30} min={1} onChange={(event) => updateDraft({ articleImageMaxSizeMb: Number(event.target.value) })} type="number" value={draft.articleImageMaxSizeMb} /></label>
-              <label><span>评论</span><select onChange={(event) => updateDraft({ commentsEnabled: event.target.value === "true" }, true)} value={String(draft.commentsEnabled)}><option value="true">开启</option><option value="false">关闭</option></select></label>
-              <label><span>举报</span><select onChange={(event) => updateDraft({ reportsEnabled: event.target.value === "true" }, true)} value={String(draft.reportsEnabled)}><option value="true">开启</option><option value="false">关闭</option></select></label>
+              <label><span>{phrase("默认阅读权限", "Default reading permission")}</span><GlassSelect ariaLabel={phrase("默认阅读权限", "Default reading permission")} onChange={(value) => updateDraft({ defaultArticleVisibility: value as SiteSettingsInput["defaultArticleVisibility"] }, true)} options={VISIBILITY_OPTIONS.map((item) => ({ value: item.value, label: phrase(item.chinese, item.english) }))} value={draft.defaultArticleVisibility} /></label>
+              <label><span>{phrase("图片上限 MB", "Image limit (MB)")}</span><input max={30} min={1} onChange={(event) => updateDraft({ articleImageMaxSizeMb: Number(event.target.value) })} type="number" value={draft.articleImageMaxSizeMb} /></label>
+              <label><span>{phrase("评论", "Comments")}</span><GlassSelect ariaLabel={phrase("评论", "Comments")} onChange={(value) => updateDraft({ commentsEnabled: value === "true" }, true)} options={[{ value: "true", label: phrase("开启", "Enabled") }, { value: "false", label: phrase("关闭", "Disabled") }]} value={String(draft.commentsEnabled)} /></label>
+              <label><span>{phrase("举报", "Reports")}</span><GlassSelect ariaLabel={phrase("举报", "Reports")} onChange={(value) => updateDraft({ reportsEnabled: value === "true" }, true)} options={[{ value: "true", label: phrase("开启", "Enabled") }, { value: "false", label: phrase("关闭", "Disabled") }]} value={String(draft.reportsEnabled)} /></label>
             </div>
             <div className="taxonomy-panels">
               <TaxonomyPanel
@@ -668,7 +676,8 @@ export default function SiteSettingsPage() {
                 onDraftChange={updateTaxonomyDraft}
                 onNewDraftChange={(patch) => setNewTaxonomy((current) => ({ ...current, kind: "category", ...patch }))}
                 onUpdate={(taxonomy) => void handleUpdateTaxonomy(taxonomy)}
-                title="文章分类"
+                title={phrase("文章分类", "Article categories")}
+                phrase={phrase}
               />
               <TaxonomyPanel
                 busyId={busyTaxonomyId}
@@ -681,29 +690,30 @@ export default function SiteSettingsPage() {
                 onDraftChange={updateTaxonomyDraft}
                 onNewDraftChange={(patch) => setNewTaxonomy((current) => ({ ...current, kind: "tag", ...patch }))}
                 onUpdate={(taxonomy) => void handleUpdateTaxonomy(taxonomy)}
-                title="文章标签"
+                title={phrase("文章标签", "Article tags")}
+                phrase={phrase}
               />
             </div>
           </section>
 
           <section className="site-settings-card wide">
-            <PanelTitle icon={Bell} label="通知设置" />
+            <PanelTitle icon={Bell} label={phrase("通知设置", "Notification settings")} />
             <div className="notification-toggle-grid">
-              {notificationRows.map(([key, label]) => (
+              {notificationRows.map(([key, chinese, english]) => (
                 <label key={key}>
                   <input
                     checked={Boolean(draft[key])}
                     onChange={(event) => updateDraft({ [key]: event.target.checked } as Partial<SiteSettingsInput>, true)}
                     type="checkbox"
                   />
-                  <span>{label}</span>
+                  <span>{phrase(chinese, english)}</span>
                 </label>
               ))}
             </div>
             <div className="notification-template-grid">
-              {templateRows.map(([key, label]) => (
+              {templateRows.map(([key, chinese, english]) => (
                 <label key={key}>
-                  <span>{label}</span>
+                  <span>{phrase(chinese, english)}</span>
                   <input
                     maxLength={240}
                     onChange={(event) => updateDraft({ [key]: event.target.value } as Partial<SiteSettingsInput>)}
@@ -712,13 +722,13 @@ export default function SiteSettingsPage() {
                 </label>
               ))}
             </div>
-            <p className="site-settings-hint">模板支持变量：{"{actor}"}、{"{author}"}、{"{article}"}、{"{comment}"}、{"{result}"}、{"{count}"}。</p>
+            <p className="site-settings-hint">{phrase("模板支持变量：", "Templates support: ")}{"{actor}"}、{"{author}"}、{"{article}"}、{"{comment}"}、{"{result}"}、{"{count}"}。</p>
           </section>
         </div>
       </div>
       {previewBackground ? <div className="site-background-preview-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setPreviewBackground(null); }} role="presentation">
         <div aria-modal="true" className="site-background-preview-dialog" role="dialog">
-          <button aria-label="关闭背景预览" onClick={() => setPreviewBackground(null)} type="button"><X aria-hidden="true" size={20} /></button>
+          <button aria-label={phrase("关闭背景预览", "Close background preview")} onClick={() => setPreviewBackground(null)} type="button"><X aria-hidden="true" size={20} /></button>
           <img alt={previewBackground.originalName} src={resolveBackgroundUrl(previewBackground)} />
           <strong>{previewBackground.originalName}</strong>
         </div>
@@ -780,6 +790,7 @@ function SiteResourcePicker({
   onDelete,
   onSelect,
   onUpload,
+  phrase,
 }: {
   assets: SiteAsset[];
   builtins: ReadonlyArray<{ label: string; path: string }>;
@@ -791,6 +802,7 @@ function SiteResourcePicker({
   onDelete: (asset: SiteAsset) => void;
   onSelect: (path: string) => void;
   onUpload: (files: FileList | null) => void;
+  phrase: Phrase;
 }) {
   const inputId = `site-asset-${kind}`;
   const currentPreviewUrl = resolveConfiguredPath(currentPath);
@@ -801,7 +813,7 @@ function SiteResourcePicker({
           {currentPreviewUrl ? <img alt="" src={currentPreviewUrl} /> : <ImageIcon aria-hidden="true" size={18} />}
         </span>
         <span>
-          <strong>{label}<em>正在使用</em></strong>
+          <strong>{label}<em>{phrase("正在使用", "In use")}</em></strong>
           <small title={currentPath}>{currentPath}</small>
         </span>
         <label className="site-resource-upload" htmlFor={inputId}>
@@ -815,11 +827,11 @@ function SiteResourcePicker({
             type="file"
           />
           <UploadCloud aria-hidden="true" size={15} />
-          {isUploading ? "上传中" : "上传"}
+          {isUploading ? phrase("上传中", "Uploading") : phrase("上传", "Upload")}
         </label>
       </div>
       <div className="site-resource-group">
-        <span className="site-resource-group-title">内置资源</span>
+        <span className="site-resource-group-title">{phrase("内置资源", "Built-in assets")}</span>
         <div className="site-resource-options">
           {builtins.map((item) => (
             <button
@@ -829,14 +841,14 @@ function SiteResourcePicker({
               type="button"
             >
               <img alt="" src={item.path} />
-              <span>{item.label}</span>
+              <span>{resourceLabel(item.label, phrase)}</span>
               {currentPath === item.path ? <Check aria-hidden="true" size={13} /> : null}
             </button>
           ))}
         </div>
       </div>
       <div className="site-resource-group">
-        <span className="site-resource-group-title">已上传</span>
+        <span className="site-resource-group-title">{phrase("已上传", "Uploaded")}</span>
         <div className="site-resource-options">
           {assets.map((asset) => {
             const configuredPath = toConfiguredApiAssetPath(asset.url);
@@ -849,10 +861,10 @@ function SiteResourcePicker({
                   {isActive ? <Check aria-hidden="true" size={13} /> : null}
                 </button>
                 <button
-                  aria-label={`删除 ${asset.originalName}`}
+                  aria-label={phrase(`删除 ${asset.originalName}`, `Delete ${asset.originalName}`)}
                   disabled={busyAssetId === asset.id || isActive}
                   onClick={() => onDelete(asset)}
-                  title={isActive ? "正在使用，保存其他资源后可删除" : "永久删除资源"}
+                  title={isActive ? phrase("正在使用，保存其他资源后可删除", "In use. Save another asset before deleting it.") : phrase("永久删除资源", "Permanently delete asset")}
                   type="button"
                 >
                   <Trash2 aria-hidden="true" size={13} />
@@ -860,7 +872,7 @@ function SiteResourcePicker({
               </span>
             );
           })}
-          {!assets.length ? <span className="site-resource-empty"><FolderOpen aria-hidden="true" size={14} />暂无上传资源</span> : null}
+          {!assets.length ? <span className="site-resource-empty"><FolderOpen aria-hidden="true" size={14} />{phrase("暂无上传资源", "No uploaded assets")}</span> : null}
         </div>
       </div>
     </section>
@@ -873,12 +885,14 @@ function BackgroundPicker({
   onDelete,
   onPreview,
   onUse,
+  phrase,
 }: {
   backgrounds: ManagedBackground[];
   busyBackgroundId: number | null;
   onDelete: (background: ManagedBackground) => void;
   onPreview: (background: ManagedBackground) => void;
   onUse: (background: ManagedBackground) => void;
+  phrase: Phrase;
 }) {
   return (
     <div className="site-background-picker">
@@ -889,17 +903,17 @@ function BackgroundPicker({
             <span className="site-background-image" style={{ backgroundImage: `url("${resolveBackgroundUrl(background)}")` }} />
             <span className="site-background-copy">
               <strong title={background.originalName}>{background.originalName}</strong>
-              <small>{formatFileSize(background.sizeBytes)} · {isActive ? "当前全站背景" : "已上传"}</small>
+              <small>{formatFileSize(background.sizeBytes)} · {isActive ? phrase("当前全站背景", "Active site background") : phrase("已上传", "Uploaded")}</small>
             </span>
             <span className="site-background-actions">
-              <button aria-label={`预览 ${background.originalName}`} onClick={() => onPreview(background)} title="预览" type="button"><Eye aria-hidden="true" size={15} /></button>
-              <button aria-label={`使用 ${background.originalName}`} className={isActive ? "active" : ""} disabled={busyBackgroundId === background.id || isActive} onClick={() => onUse(background)} title={isActive ? "正在使用" : "使用"} type="button"><Check aria-hidden="true" size={15} /></button>
-              <button aria-label={`删除 ${background.originalName}`} className="danger" disabled={busyBackgroundId === background.id} onClick={() => onDelete(background)} title="删除" type="button"><Trash2 aria-hidden="true" size={15} /></button>
+              <button aria-label={phrase(`预览 ${background.originalName}`, `Preview ${background.originalName}`)} onClick={() => onPreview(background)} title={phrase("预览", "Preview")} type="button"><Eye aria-hidden="true" size={15} /></button>
+              <button aria-label={phrase(`使用 ${background.originalName}`, `Use ${background.originalName}`)} className={isActive ? "active" : ""} disabled={busyBackgroundId === background.id || isActive} onClick={() => onUse(background)} title={isActive ? phrase("正在使用", "In use") : phrase("使用", "Use")} type="button"><Check aria-hidden="true" size={15} /></button>
+              <button aria-label={phrase(`删除 ${background.originalName}`, `Delete ${background.originalName}`)} className="danger" disabled={busyBackgroundId === background.id} onClick={() => onDelete(background)} title={phrase("删除", "Delete")} type="button"><Trash2 aria-hidden="true" size={15} /></button>
             </span>
           </article>
         );
       })}
-      {!backgrounds.length ? <span className="site-background-empty"><FolderOpen aria-hidden="true" size={17} />还没有上传背景图片</span> : null}
+      {!backgrounds.length ? <span className="site-background-empty"><FolderOpen aria-hidden="true" size={17} />{phrase("还没有上传背景图片", "No background images uploaded")}</span> : null}
     </div>
   );
 }
@@ -933,6 +947,7 @@ function TaxonomyPanel({
   onNewDraftChange,
   onUpdate,
   title,
+  phrase,
 }: {
   busyId: number | null;
   drafts: Record<number, ArticleTaxonomyInput>;
@@ -945,17 +960,18 @@ function TaxonomyPanel({
   onNewDraftChange: (patch: Partial<ArticleTaxonomyInput>) => void;
   onUpdate: (taxonomy: ArticleTaxonomy) => void;
   title: string;
+  phrase: Phrase;
 }) {
   return (
     <div className="taxonomy-panel">
       <div className="taxonomy-panel-head">
         <strong>{title}</strong>
-        <span>{items.length} 项</span>
+        <span>{phrase(`${items.length} 项`, `${items.length} items`)}</span>
       </div>
       <div className="taxonomy-create-row">
-        <input maxLength={80} onChange={(event) => onNewDraftChange({ name: event.target.value })} placeholder={`新增${kind === "category" ? "分类" : "标签"}`} value={newDraft.name} />
-        <input aria-label="颜色" onChange={(event) => onNewDraftChange({ color: event.target.value })} type="color" value={newDraft.color} />
-        <button className="text-action primary" disabled={busyId === 0} onClick={onCreate} type="button"><Plus aria-hidden="true" size={15} />新增</button>
+        <input maxLength={80} onChange={(event) => onNewDraftChange({ name: event.target.value })} placeholder={kind === "category" ? phrase("新增分类", "New category") : phrase("新增标签", "New tag")} value={newDraft.name} />
+        <input aria-label={phrase("颜色", "Color")} onChange={(event) => onNewDraftChange({ color: event.target.value })} type="color" value={newDraft.color} />
+        <button className="text-action primary" disabled={busyId === 0} onClick={onCreate} type="button"><Plus aria-hidden="true" size={15} />{phrase("新增", "Add")}</button>
       </div>
       <div className="taxonomy-list">
         {items.map((taxonomy) => {
@@ -965,17 +981,17 @@ function TaxonomyPanel({
             <article className="taxonomy-row" key={taxonomy.id}>
               <span className="taxonomy-color-dot" style={{ background: draft.color }} />
               <input maxLength={80} onChange={(event) => onDraftChange(taxonomy.id, { name: event.target.value })} value={draft.name} />
-              <input aria-label={`${taxonomy.name} 颜色`} onChange={(event) => onDraftChange(taxonomy.id, { color: event.target.value })} type="color" value={draft.color} />
-              <input aria-label={`${taxonomy.name} 排序`} min={0} onChange={(event) => onDraftChange(taxonomy.id, { sortOrder: Number(event.target.value) })} type="number" value={draft.sortOrder} />
-              <label className="taxonomy-enabled" title={draft.enabled ? "已启用" : "未启用"}><input aria-label={`${taxonomy.name} 是否启用`} checked={draft.enabled} onChange={(event) => onDraftChange(taxonomy.id, { enabled: event.target.checked })} type="checkbox" /></label>
+              <input aria-label={phrase(`${taxonomy.name} 颜色`, `${taxonomy.name} color`)} onChange={(event) => onDraftChange(taxonomy.id, { color: event.target.value })} type="color" value={draft.color} />
+              <input aria-label={phrase(`${taxonomy.name} 排序`, `${taxonomy.name} order`)} min={0} onChange={(event) => onDraftChange(taxonomy.id, { sortOrder: Number(event.target.value) })} type="number" value={draft.sortOrder} />
+              <label className="taxonomy-enabled" title={draft.enabled ? phrase("已启用", "Enabled") : phrase("未启用", "Disabled")}><input aria-label={phrase(`${taxonomy.name} 是否启用`, `${taxonomy.name} enabled`)} checked={draft.enabled} onChange={(event) => onDraftChange(taxonomy.id, { enabled: event.target.checked })} type="checkbox" /></label>
               <div className="taxonomy-actions">
-                <button aria-label={`保存 ${taxonomy.name}`} disabled={isBusy} onClick={() => onUpdate(taxonomy)} title="保存" type="button"><Check aria-hidden="true" size={15} /></button>
-                <button aria-label={`删除 ${taxonomy.name}`} disabled={isBusy} onClick={() => onDelete(taxonomy)} title="删除" type="button"><Trash2 aria-hidden="true" size={15} /></button>
+                <button aria-label={phrase(`保存 ${taxonomy.name}`, `Save ${taxonomy.name}`)} disabled={isBusy} onClick={() => onUpdate(taxonomy)} title={phrase("保存", "Save")} type="button"><Check aria-hidden="true" size={15} /></button>
+                <button aria-label={phrase(`删除 ${taxonomy.name}`, `Delete ${taxonomy.name}`)} disabled={isBusy} onClick={() => onDelete(taxonomy)} title={phrase("删除", "Delete")} type="button"><Trash2 aria-hidden="true" size={15} /></button>
               </div>
             </article>
           );
         })}
-        {!items.length ? <p className="taxonomy-empty">还没有配置内容。</p> : null}
+        {!items.length ? <p className="taxonomy-empty">{phrase("还没有配置内容。", "Nothing is configured yet.")}</p> : null}
       </div>
     </div>
   );
@@ -1002,17 +1018,33 @@ function resourceDisplayName(
   path: string,
   builtins: Array<{ label: string; path: string }>,
   assets: SiteAsset[],
+  phrase: Phrase,
 ): string {
   const builtin = builtins.find((item) => item.path === path);
-  if (builtin) return builtin.label;
+  if (builtin) return resourceLabel(builtin.label, phrase);
   const uploaded = assets.find((asset) => toConfiguredApiAssetPath(asset.url) === path);
   return uploaded?.originalName ?? path;
 }
 
-function formatSelectedBackgroundFiles(files: File[]): string {
-  if (!files.length) return "选择背景图片";
+function formatSelectedBackgroundFiles(files: File[], phrase: Phrase): string {
+  if (!files.length) return phrase("选择背景图片", "Choose background images");
   if (files.length === 1) return files[0].name;
-  return `已选择 ${files.length} 张`;
+  return phrase(`已选择 ${files.length} 张`, `${files.length} selected`);
+}
+
+function resourceLabel(label: string, phrase: Phrase): string {
+  const labels: Record<string, [string, string]> = {
+    "默认 SVG": ["默认 SVG", "Default SVG"],
+    "HLOVET Logo": ["HLOVET Logo", "HLOVET Logo"],
+    "页签图标": ["页签图标", "Tab icon"],
+    "PNG Logo": ["PNG Logo", "PNG Logo"],
+    "Logo 图标": ["Logo 图标", "Logo icon"],
+    "192 图标": ["192 图标", "192 icon"],
+    "512 图标": ["512 图标", "512 icon"],
+    "Apple 图标": ["Apple 图标", "Apple icon"],
+  };
+  const translation = labels[label];
+  return translation ? phrase(...translation) : label;
 }
 
 function formatFileSize(bytes: number): string {

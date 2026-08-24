@@ -28,8 +28,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { useLanguage } from "@/components/language-provider";
 import { type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { localizedPath } from "@/lib/i18n";
 import {
   createDatabaseBackup,
   deleteDatabaseBackup,
@@ -61,8 +63,11 @@ interface BackupConfigurationForm extends BackupConfigurationUpdate {
   r2SecretAccessKey: string;
 }
 
+type Phrase = (chinese: string, english: string) => string;
+
 export default function SystemStatusPage() {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [status, setStatus] = useState<SystemStatus | null>(null);
@@ -92,14 +97,14 @@ export default function SystemStatusPage() {
     } catch (loadError) {
       if (isAuthExpiredError(loadError)) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
-      setError(loadError instanceof Error ? loadError.message : "系统状态读取失败。");
+      setError(loadError instanceof Error ? loadError.message : phrase("系统状态读取失败。", "Could not load system status."));
     } finally {
       if (refresh) setIsRefreshing(false);
     }
-  }, [router]);
+  }, [locale, phrase, router]);
 
   const loadBackupConfiguration = useCallback(async (token: string) => {
     const configuration = await getBackupConfiguration(token);
@@ -121,7 +126,7 @@ export default function SystemStatusPage() {
     let active = true;
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
     void getMe(token)
@@ -134,16 +139,16 @@ export default function SystemStatusPage() {
       .catch((loadError: unknown) => {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
-        if (active) setError(loadError instanceof Error ? loadError.message : "无法验证访问权限。");
+        if (active) setError(loadError instanceof Error ? loadError.message : phrase("无法验证访问权限。", "Could not verify access."));
       })
       .finally(() => {
         if (active) setIsLoading(false);
       });
     return () => { active = false; };
-  }, [loadBackupConfiguration, loadMediaJobs, loadStatus, loadStorageOverview, router]);
+  }, [loadBackupConfiguration, loadMediaJobs, loadStatus, loadStorageOverview, locale, phrase, router]);
 
   useEffect(() => {
     if (!accessToken || !currentUser?.isSuperAdmin) return;
@@ -176,9 +181,9 @@ export default function SystemStatusPage() {
     setError("");
     try {
       const backup = await createDatabaseBackup(accessToken);
-      await refreshAfterBackup(backup.warning || `备份已创建：${backup.name}`);
+      await refreshAfterBackup(backup.warning || phrase(`备份已创建：${backup.name}`, `Backup created: ${backup.name}`));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "数据库备份创建失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("数据库备份创建失败。", "Could not create the database backup."));
     } finally {
       setBackupBusy("");
     }
@@ -191,9 +196,9 @@ export default function SystemStatusPage() {
     try {
       const job = await startMediaBackup(accessToken);
       await loadMediaJobs(accessToken);
-      setNotice(`媒体备份任务 #${job.id} 已开始。`);
+      setNotice(phrase(`媒体备份任务 #${job.id} 已开始。`, `Media backup job #${job.id} started.`));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "媒体备份启动失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("媒体备份启动失败。", "Could not start the media backup."));
     } finally {
       setMediaBusy("");
     }
@@ -206,7 +211,7 @@ export default function SystemStatusPage() {
     try {
       setSelectedMediaJob(await getMediaBackupJob(accessToken, id));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "媒体备份任务读取失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("媒体备份任务读取失败。", "Could not load the media backup job."));
     } finally {
       setMediaBusy("");
     }
@@ -220,9 +225,9 @@ export default function SystemStatusPage() {
       const configuration = await updateBackupConfiguration(accessToken, backupForm);
       setBackupConfiguration(configuration);
       setBackupForm(toBackupConfigurationForm(configuration));
-      setNotice("备份策略已保存。");
+      setNotice(phrase("备份策略已保存。", "Backup policy saved."));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "备份策略保存失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("备份策略保存失败。", "Could not save the backup policy."));
     } finally {
       setConfigurationBusy(false);
     }
@@ -234,9 +239,9 @@ export default function SystemStatusPage() {
     setError("");
     try {
       await testBackupProvider(accessToken, provider);
-      setNotice(`${provider === "oss" ? "阿里云 OSS" : "Cloudflare R2"} 连接正常。`);
+      setNotice(phrase(`${provider === "oss" ? "阿里云 OSS" : "Cloudflare R2"} 连接正常。`, `${provider === "oss" ? "Alibaba Cloud OSS" : "Cloudflare R2"} connection is ready.`));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "异地备份连接测试失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("异地备份连接测试失败。", "Remote backup connection test failed."));
     } finally {
       setProviderTesting("");
     }
@@ -254,23 +259,23 @@ export default function SystemStatusPage() {
       link.download = name;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setNotice("备份下载已开始。");
+      setNotice(phrase("备份下载已开始。", "Backup download started."));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "备份下载失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("备份下载失败。", "Could not download the backup."));
     } finally {
       setBackupBusy("");
     }
   }
 
   async function handleDeleteBackup(name: string) {
-    if (!accessToken || backupBusy || !window.confirm(`永久删除备份 ${name} 吗？`)) return;
+    if (!accessToken || backupBusy || !window.confirm(phrase(`永久删除备份 ${name} 吗？`, `Permanently delete backup ${name}?`))) return;
     setBackupBusy(`delete:${name}`);
     setError("");
     try {
       await deleteDatabaseBackup(accessToken, name);
-      await refreshAfterBackup("备份文件已删除。");
+      await refreshAfterBackup(phrase("备份文件已删除。", "Backup file deleted."));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "备份删除失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("备份删除失败。", "Could not delete the backup."));
     } finally {
       setBackupBusy("");
     }
@@ -283,9 +288,9 @@ export default function SystemStatusPage() {
     try {
       const backup = await verifyDatabaseBackup(accessToken, name);
       await loadStatus(accessToken);
-      setNotice(backup.verification.status === "failed" ? "备份校验失败，请勿用于恢复。" : `备份校验完成：${backup.name}`);
+      setNotice(backup.verification.status === "failed" ? phrase("备份校验失败，请勿用于恢复。", "Backup verification failed. Do not use it for recovery.") : phrase(`备份校验完成：${backup.name}`, `Backup verification completed: ${backup.name}`));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "备份校验失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("备份校验失败。", "Backup verification failed."));
     } finally {
       setBackupBusy("");
     }
@@ -303,7 +308,7 @@ export default function SystemStatusPage() {
       setRestorePreflight(preflight);
       await loadStatus(accessToken);
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "恢复前校验失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("恢复前校验失败。", "Pre-restore verification failed."));
     } finally {
       setBackupBusy("");
     }
@@ -319,33 +324,33 @@ export default function SystemStatusPage() {
       setRestoreConfirmation("");
       setRestorePreflight(null);
       setPostRestoreStorageScanId(restored.storageScanId);
-      await refreshAfterBackup(restored.warning || `数据库与媒体文件已恢复，恢复前备份：${restored.safetyBackup.name}`);
+      await refreshAfterBackup(restored.warning || phrase(`数据库与媒体文件已恢复，恢复前备份：${restored.safetyBackup.name}`, `Database and media restored. Pre-restore backup: ${restored.safetyBackup.name}`));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "数据库恢复失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("数据库恢复失败。", "Database restore failed."));
     } finally {
       setBackupBusy("");
     }
   }
 
   if (isLoading) {
-    return <section className="page-shell admin-shell system-status-shell"><span className="status">正在读取系统状态</span></section>;
+    return <section className="page-shell admin-shell system-status-shell"><span className="status">{phrase("正在读取系统状态", "Loading system status")}</span></section>;
   }
 
   if (!currentUser?.isSuperAdmin) {
     return <section className="page-shell admin-shell system-status-shell">
-      <h1>无权访问</h1>
-      <p>系统运行概览仅超级管理员可以查看。</p>
-      <Link className="text-action primary" href="/">返回首页</Link>
+      <h1>{phrase("无权访问", "Access denied")}</h1>
+      <p>{phrase("系统运行概览仅超级管理员可以查看。", "Only super administrators can view the system overview.")}</p>
+      <Link className="text-action primary" href={localizedPath("/", locale)}>{phrase("返回首页", "Back to home")}</Link>
     </section>;
   }
 
   return <section className="page-shell admin-shell system-status-shell">
     <AppToast duration={error ? 4200 : 3200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     <header className="system-status-head">
-      <div><span className="section-label">HLOVET Operations</span><h1>系统运行概览</h1></div>
+      <div><span className="section-label">HLOVET OPERATIONS</span><h1>{phrase("系统运行概览", "System overview")}</h1></div>
       <div className="system-status-head-actions">
-        {status ? <small>更新于 {formatDateTime(status.generatedAt)}</small> : null}
-        <button aria-label="刷新系统状态" disabled={isRefreshing || !accessToken} onClick={() => accessToken && void Promise.all([loadStatus(accessToken, true), loadStorageOverview(accessToken), loadMediaJobs(accessToken)])} title="刷新" type="button">
+        {status ? <small>{phrase("更新于 ", "Updated ")}{formatDateTime(status.generatedAt, locale)}</small> : null}
+        <button aria-label={phrase("刷新系统状态", "Refresh system status")} disabled={isRefreshing || !accessToken} onClick={() => accessToken && void Promise.all([loadStatus(accessToken, true), loadStorageOverview(accessToken), loadMediaJobs(accessToken)])} title={phrase("刷新", "Refresh")} type="button">
           <RefreshCcw aria-hidden="true" className={isRefreshing ? "spin" : ""} size={17} />
         </button>
       </div>
@@ -353,103 +358,107 @@ export default function SystemStatusPage() {
 
     {status ? <>
       <div className="system-overview-strip">
-        <OverviewItem icon={Activity} label="API 运行" value={formatDuration(status.application.uptimeSeconds)} detail={`RSS ${formatBytes(status.application.memory.rssBytes)}`} tone="ok" />
-        <OverviewItem icon={Database} label="MySQL" value={status.database.connected ? "连接正常" : "连接异常"} detail={status.database.connected ? `${status.database.latencyMs ?? 0} ms` : status.database.error ?? "读取失败"} tone={status.database.connected ? "ok" : "error"} />
-        <OverviewItem icon={Server} label="Redis" value={status.redis.connected ? "连接正常" : "连接异常"} detail={status.redis.connected ? `${status.redis.keyCount ?? 0} 个键` : status.redis.error ?? "读取失败"} tone={status.redis.connected ? "ok" : "error"} />
-        <OverviewItem icon={Files} label="文件存储" value={formatBytes(status.storage.totalBytes)} detail={`${status.storage.totalFiles} 个文件`} tone="neutral" />
-        <OverviewItem icon={Archive} label="媒体备份覆盖" value={formatCoverage(status.reliability.backupCoverage.percentage)} detail={`${status.reliability.backupCoverage.backedUpFiles} / ${status.reliability.backupCoverage.totalFiles} 个文件`} tone={status.reliability.backupCoverage.uncoveredFiles ? "warning" : "ok"} />
-        <OverviewItem icon={Clock3} label="最近备份成功" value={status.reliability.lastSuccessfulBackupAt ? formatDateTime(status.reliability.lastSuccessfulBackupAt) : "暂无成功记录"} valueClassName="datetime" detail={formatBackupSource(status.reliability.lastSuccessfulBackupSource)} tone={status.reliability.lastSuccessfulBackupAt ? "ok" : "neutral"} />
-        <OverviewItem icon={CircleAlert} label={`近 ${status.reliability.anomalyWindowHours} 小时异常`} value={`${status.reliability.anomalies.total} 项`} detail={formatAnomalySummary(status.reliability.anomalies)} tone={status.reliability.anomalies.total ? "error" : "ok"} />
+        <OverviewItem icon={Activity} label={phrase("API 运行", "API runtime")} value={formatDuration(status.application.uptimeSeconds, phrase)} detail={`RSS ${formatBytes(status.application.memory.rssBytes)}`} tone="ok" />
+        <OverviewItem icon={Database} label="MySQL" value={status.database.connected ? phrase("连接正常", "Connected") : phrase("连接异常", "Connection issue")} detail={status.database.connected ? `${status.database.latencyMs ?? 0} ms` : status.database.error ?? phrase("读取失败", "Unavailable")} tone={status.database.connected ? "ok" : "error"} />
+        <OverviewItem icon={Server} label="Redis" value={status.redis.connected ? phrase("连接正常", "Connected") : phrase("连接异常", "Connection issue")} detail={status.redis.connected ? phrase(`${status.redis.keyCount ?? 0} 个键`, `${status.redis.keyCount ?? 0} keys`) : status.redis.error ?? phrase("读取失败", "Unavailable")} tone={status.redis.connected ? "ok" : "error"} />
+        <OverviewItem icon={Files} label={phrase("文件存储", "File storage")} value={formatBytes(status.storage.totalBytes)} detail={phrase(`${status.storage.totalFiles} 个文件`, `${status.storage.totalFiles} files`)} tone="neutral" />
+        <OverviewItem icon={Archive} label={phrase("媒体备份覆盖", "Media backup coverage")} value={formatCoverage(status.reliability.backupCoverage.percentage, phrase)} detail={phrase(`${status.reliability.backupCoverage.backedUpFiles} / ${status.reliability.backupCoverage.totalFiles} 个文件`, `${status.reliability.backupCoverage.backedUpFiles} / ${status.reliability.backupCoverage.totalFiles} files`)} tone={status.reliability.backupCoverage.uncoveredFiles ? "warning" : "ok"} />
+        <OverviewItem icon={Clock3} label={phrase("最近备份成功", "Latest backup success")} value={status.reliability.lastSuccessfulBackupAt ? formatDateTime(status.reliability.lastSuccessfulBackupAt, locale) : phrase("暂无成功记录", "No successful backup yet")} valueClassName="datetime" detail={formatBackupSource(status.reliability.lastSuccessfulBackupSource, phrase)} tone={status.reliability.lastSuccessfulBackupAt ? "ok" : "neutral"} />
+        <OverviewItem icon={CircleAlert} label={phrase(`近 ${status.reliability.anomalyWindowHours} 小时异常`, `Issues in the last ${status.reliability.anomalyWindowHours} hours`)} value={phrase(`${status.reliability.anomalies.total} 项`, `${status.reliability.anomalies.total} issues`)} detail={formatAnomalySummary(status.reliability.anomalies, phrase)} tone={status.reliability.anomalies.total ? "error" : "ok"} />
       </div>
 
       <div className="system-status-grid">
         <section className="system-status-panel services">
-          <PanelHeading icon={Box} title="服务状态" />
-          <StatusLine label="API 运行环境" value={`${status.application.environment} / ${status.application.nodeVersion}`} ok />
-          <StatusLine label="MySQL 版本" value={status.database.version ?? "无法读取"} ok={status.database.connected} />
-          <StatusLine label="数据库容量" value={formatNullableBytes(status.database.sizeBytes)} ok={status.database.connected} />
-          <StatusLine label="Prisma 迁移" value={status.database.latestMigration ? `${status.database.migrationCount ?? 0} 项 · ${status.database.latestMigration.name}` : "暂无迁移记录"} ok={status.database.connected} />
-          <StatusLine label="Redis 版本" value={status.redis.version ?? "无法读取"} ok={status.redis.connected} />
-          <StatusLine label="Redis 内存" value={formatMemoryUsage(status.redis.usedMemoryBytes, status.redis.maxMemoryBytes)} ok={status.redis.connected} />
+          <PanelHeading icon={Box} title={phrase("服务状态", "Service status")} />
+          <StatusLine label={phrase("API 运行环境", "API runtime")} value={`${status.application.environment} / ${status.application.nodeVersion}`} ok />
+          <StatusLine label={phrase("MySQL 版本", "MySQL version")} value={status.database.version ?? phrase("无法读取", "Unavailable")} ok={status.database.connected} />
+          <StatusLine label={phrase("数据库容量", "Database size")} value={formatNullableBytes(status.database.sizeBytes, phrase)} ok={status.database.connected} />
+          <StatusLine label={phrase("Prisma 迁移", "Prisma migrations")} value={status.database.latestMigration ? phrase(`${status.database.migrationCount ?? 0} 项 · ${status.database.latestMigration.name}`, `${status.database.migrationCount ?? 0} migrations · ${status.database.latestMigration.name}`) : phrase("暂无迁移记录", "No migration records")} ok={status.database.connected} />
+          <StatusLine label={phrase("Redis 版本", "Redis version")} value={status.redis.version ?? phrase("无法读取", "Unavailable")} ok={status.redis.connected} />
+          <StatusLine label={phrase("Redis 内存", "Redis memory")} value={formatMemoryUsage(status.redis.usedMemoryBytes, status.redis.maxMemoryBytes, phrase)} ok={status.redis.connected} />
         </section>
 
         <section className="system-status-panel storage">
-          <PanelHeading icon={HardDrive} title="文件存储分布" />
+          <PanelHeading icon={HardDrive} title={phrase("文件存储分布", "File storage distribution")} />
           <div className="system-storage-list">
             {status.storage.items.map((item) => <div className="system-storage-row" key={item.key}>
-              <div><strong>{item.label}</strong><span>{item.available ? `${item.fileCount} 个文件` : "目录暂不可用"}</span></div>
+              <div><strong>{item.label}</strong><span>{item.available ? phrase(`${item.fileCount} 个文件`, `${item.fileCount} files`) : phrase("目录暂不可用", "Directory unavailable")}</span></div>
               <b>{formatBytes(item.sizeBytes)}</b>
               <i><span style={{ width: `${Math.max(item.sizeBytes ? 4 : 0, item.sizeBytes / largestStorageBytes * 100)}%` }} /></i>
             </div>)}
           </div>
           <div className={`system-storage-health-link ${(storageOverview?.openIssues.total ?? 0) ? "warning" : "ok"}`}>
-            <span><ShieldCheck aria-hidden="true" size={16} /><small>{storageOverview?.latestScan ? `${storageOverview.openIssues.total} 项待处理 · ${formatDateTime(storageOverview.latestScan.completedAt || storageOverview.latestScan.startedAt)}` : "尚未执行完整性扫描"}</small></span>
-            <Link href="/admin/storage">存储管理</Link>
+            <span><ShieldCheck aria-hidden="true" size={16} /><small>{storageOverview?.latestScan ? phrase(`${storageOverview.openIssues.total} 项待处理 · ${formatDateTime(storageOverview.latestScan.completedAt || storageOverview.latestScan.startedAt, locale)}`, `${storageOverview.openIssues.total} pending · ${formatDateTime(storageOverview.latestScan.completedAt || storageOverview.latestScan.startedAt, locale)}`) : phrase("尚未执行完整性扫描", "Integrity scan has not run")}</small></span>
+            <Link href={localizedPath("/admin/storage", locale)}>{phrase("存储管理", "Storage management")}</Link>
           </div>
         </section>
 
         <section className="system-status-panel backups">
-          <header className="system-panel-heading system-backup-heading"><span><Archive aria-hidden="true" size={17} /><strong>数据库备份</strong></span><button disabled={Boolean(backupBusy)} onClick={() => void handleCreateBackup()} type="button">{backupBusy === "create" ? "备份中" : "立即备份"}</button></header>
+          <header className="system-panel-heading system-backup-heading"><span><Archive aria-hidden="true" size={17} /><strong>{phrase("数据库备份", "Database backups")}</strong></span><button disabled={Boolean(backupBusy)} onClick={() => void handleCreateBackup()} type="button">{backupBusy === "create" ? phrase("备份中", "Backing up") : phrase("立即备份", "Back up now")}</button></header>
           <div className="system-backup-summary">
-            <span><Clock3 aria-hidden="true" size={16} /><small>最近备份</small><strong>{status.backups.latest ? formatDateTime(status.backups.latest.updatedAt) : "暂无可见备份"}</strong></span>
-            <span><HardDrive aria-hidden="true" size={16} /><small>备份占用</small><strong>{formatBytes(status.backups.totalBytes)}</strong></span>
+            <span><Clock3 aria-hidden="true" size={16} /><small>{phrase("最近备份", "Latest backup")}</small><strong>{status.backups.latest ? formatDateTime(status.backups.latest.updatedAt, locale) : phrase("暂无可见备份", "No visible backups")}</strong></span>
+            <span><HardDrive aria-hidden="true" size={16} /><small>{phrase("备份占用", "Backup usage")}</small><strong>{formatBytes(status.backups.totalBytes)}</strong></span>
           </div>
           <div className="system-backup-list">
-            {status.backups.items.map((backup) => <div className="system-backup-row" key={backup.name}><span><strong title={backup.name}>{backup.name}</strong><small>{formatDateTime(backup.updatedAt)} · SQL {formatBytes(backup.sizeBytes)} · {backup.mediaSnapshotAvailable ? `媒体 ${formatBytes(backup.mediaSnapshotSizeBytes ?? 0)}` : "仅数据库"}</small><i className={`backup-verification ${backup.verification.status}`}>{backupVerificationLabel(backup.verification.status)}</i></span><b>{formatBytes(backup.sizeBytes + (backup.mediaSnapshotSizeBytes ?? 0))}</b><span className="system-backup-actions"><button aria-label={`下载 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => void handleDownloadBackup(backup.name)} title="下载" type="button"><Download aria-hidden="true" size={15} /></button><button aria-label={`校验 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => void handleVerifyBackup(backup.name)} title="校验备份" type="button"><ShieldCheck aria-hidden="true" size={15} /></button><button aria-label={`恢复 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => void handleOpenRestoreBackup(backup.name)} title="恢复" type="button"><ArchiveRestore aria-hidden="true" size={15} /></button><button aria-label={`删除 ${backup.name}`} disabled={Boolean(backupBusy)} onClick={() => void handleDeleteBackup(backup.name)} title="删除" type="button"><Trash2 aria-hidden="true" size={15} /></button></span></div>)}
-            {!status.backups.items.length ? <p>{status.backups.available ? "备份目录中暂无 SQL 备份文件。" : "备份目录尚未挂载或不可读取。"}</p> : null}
+            {status.backups.items.map((backup) => <div className="system-backup-row" key={backup.name}><span><strong title={backup.name}>{backup.name}</strong><small>{formatDateTime(backup.updatedAt, locale)} · SQL {formatBytes(backup.sizeBytes)} · {backup.mediaSnapshotAvailable ? phrase(`媒体 ${formatBytes(backup.mediaSnapshotSizeBytes ?? 0)}`, `Media ${formatBytes(backup.mediaSnapshotSizeBytes ?? 0)}`) : phrase("仅数据库", "Database only")}</small><i className={`backup-verification ${backup.verification.status}`}>{backupVerificationLabel(backup.verification.status, phrase)}</i></span><b>{formatBytes(backup.sizeBytes + (backup.mediaSnapshotSizeBytes ?? 0))}</b><span className="system-backup-actions"><button aria-label={phrase(`下载 ${backup.name}`, `Download ${backup.name}`)} disabled={Boolean(backupBusy)} onClick={() => void handleDownloadBackup(backup.name)} title={phrase("下载", "Download")} type="button"><Download aria-hidden="true" size={15} /></button><button aria-label={phrase(`校验 ${backup.name}`, `Verify ${backup.name}`)} disabled={Boolean(backupBusy)} onClick={() => void handleVerifyBackup(backup.name)} title={phrase("校验备份", "Verify backup")} type="button"><ShieldCheck aria-hidden="true" size={15} /></button><button aria-label={phrase(`恢复 ${backup.name}`, `Restore ${backup.name}`)} disabled={Boolean(backupBusy)} onClick={() => void handleOpenRestoreBackup(backup.name)} title={phrase("恢复", "Restore")} type="button"><ArchiveRestore aria-hidden="true" size={15} /></button><button aria-label={phrase(`删除 ${backup.name}`, `Delete ${backup.name}`)} disabled={Boolean(backupBusy)} onClick={() => void handleDeleteBackup(backup.name)} title={phrase("删除", "Delete")} type="button"><Trash2 aria-hidden="true" size={15} /></button></span></div>)}
+            {!status.backups.items.length ? <p>{status.backups.available ? phrase("备份目录中暂无 SQL 备份文件。", "No SQL backups in the backup directory.") : phrase("备份目录尚未挂载或不可读取。", "Backup directory is not mounted or cannot be read.")}</p> : null}
           </div>
-          {postRestoreStorageScanId ? <p className="backup-post-restore-scan"><ShieldCheck aria-hidden="true" size={15} />恢复后的附件扫描已启动。<Link href={`/admin/storage?scan=${postRestoreStorageScanId}`}>查看扫描与修复</Link></p> : null}
+          {postRestoreStorageScanId ? <p className="backup-post-restore-scan"><ShieldCheck aria-hidden="true" size={15} />{phrase("恢复后的附件扫描已启动。", "Post-restore attachment scan started.")}<Link href={localizedPath(`/admin/storage?scan=${postRestoreStorageScanId}`, locale)}>{phrase("查看扫描与修复", "View scan and repairs")}</Link></p> : null}
         </section>
 
         <section className="system-status-panel media-backups">
           <header className="system-panel-heading system-backup-heading">
-            <span><CloudUpload aria-hidden="true" size={17} /><strong>媒体文件备份</strong></span>
+            <span><CloudUpload aria-hidden="true" size={17} /><strong>{phrase("媒体文件备份", "Media backups")}</strong></span>
             <button disabled={Boolean(mediaBusy) || mediaJobs.some((job) => job.status === "pending" || job.status === "running")} onClick={() => void handleStartMediaBackup()} type="button">
-              {mediaBusy === "start" ? "启动中" : mediaJobs.some((job) => job.status === "pending" || job.status === "running") ? "备份中" : "立即备份"}
+              {mediaBusy === "start" ? phrase("启动中", "Starting") : mediaJobs.some((job) => job.status === "pending" || job.status === "running") ? phrase("备份中", "Backing up") : phrase("立即备份", "Back up now")}
             </button>
           </header>
           <div className="media-backup-summary">
-            <span><small>覆盖率</small><strong>{formatCoverage(status.reliability.backupCoverage.percentage)}</strong></span>
-            <span><small>未备份</small><strong>{status.reliability.backupCoverage.uncoveredFiles} 个文件</strong></span>
-            <span><small>远端</small><strong>{backupConfiguration ? enabledProviderLabel(backupConfiguration) : "读取中"}</strong></span>
+            <span><small>{phrase("覆盖率", "Coverage")}</small><strong>{formatCoverage(status.reliability.backupCoverage.percentage, phrase)}</strong></span>
+            <span><small>{phrase("未备份", "Unbacked")}</small><strong>{phrase(`${status.reliability.backupCoverage.uncoveredFiles} 个文件`, `${status.reliability.backupCoverage.uncoveredFiles} files`)}</strong></span>
+            <span><small>{phrase("远端", "Remote")}</small><strong>{backupConfiguration ? enabledProviderLabel(backupConfiguration, phrase) : phrase("读取中", "Loading")}</strong></span>
           </div>
           <div className="media-backup-job-list">
             {mediaJobs.map((job) => <button disabled={Boolean(mediaBusy)} key={job.id} onClick={() => void handleOpenMediaJob(job.id)} type="button">
-              <span><i className={mediaJobTone(job.status)}>{mediaJobStatusLabel(job.status)}</i><strong>任务 #{job.id}</strong><small>{formatDateTime(job.completedAt || job.startedAt || job.createdAt)}</small></span>
-              <span><b>{job.processedFiles} / {job.totalFiles}</b><small>上传 {job.uploadedFiles} · 复用 {job.reusedFiles} · 失败 {job.failedFiles}</small></span>
+              <span><i className={mediaJobTone(job.status)}>{mediaJobStatusLabel(job.status, phrase)}</i><strong>{phrase(`任务 #${job.id}`, `Job #${job.id}`)}</strong><small>{formatDateTime(job.completedAt || job.startedAt || job.createdAt, locale)}</small></span>
+              <span><b>{job.processedFiles} / {job.totalFiles}</b><small>{phrase(`上传 ${job.uploadedFiles} · 复用 ${job.reusedFiles} · 失败 ${job.failedFiles}`, `Uploaded ${job.uploadedFiles} · Reused ${job.reusedFiles} · Failed ${job.failedFiles}`)}</small></span>
               <ListChecks aria-hidden="true" size={15} />
             </button>)}
-            {!mediaJobs.length ? <p>还没有媒体备份任务。配置并启用 OSS 或 R2 后可开始首轮备份。</p> : null}
+            {!mediaJobs.length ? <p>{phrase("还没有媒体备份任务。配置并启用 OSS 或 R2 后可开始首轮备份。", "No media backup jobs yet. Configure and enable OSS or R2 to start the first backup.")}</p> : null}
           </div>
         </section>
 
         <div className="system-monitoring-left">
           <section className="system-status-panel runtime">
-            <PanelHeading icon={Server} title="容器与宿主机" />
+            <PanelHeading icon={Server} title={phrase("容器与宿主机", "Containers and host")} />
             <div className="system-runtime-note"><CircleAlert aria-hidden="true" size={20} /><p>{status.containerRuntime.message}</p></div>
-            <div className="system-runtime-links"><span>容器启停、CPU、整机内存和磁盘清理由 1Panel 或 SSH 负责。</span><Link href="/admin/cache">查看 Redis 缓存</Link><Link href="/admin/settings">查看站点资源</Link></div>
+            <div className="system-runtime-links"><span>{phrase("容器启停、CPU、整机内存和磁盘清理由 1Panel 或 SSH 负责。", "Container lifecycle, CPU, host memory, and disk cleanup are managed through 1Panel or SSH.")}</span><Link href={localizedPath("/admin/cache", locale)}>{phrase("查看 Redis 缓存", "View Redis cache")}</Link><Link href={localizedPath("/admin/settings", locale)}>{phrase("查看站点资源", "View site assets")}</Link></div>
           </section>
 
           <section className="system-status-panel monitoring-events">
-            <header className="system-panel-heading system-monitoring-heading"><span><CircleAlert aria-hidden="true" size={17} /><strong>接口观察</strong></span><small>慢接口阈值 {status.monitoring.slowRequestThresholdMs} ms</small></header>
-            <MonitoringEventList empty="最近没有慢接口" events={status.monitoring.slowRequests.slice(0, 5)} title="慢接口" />
-            <MonitoringEventList empty="最近没有 API 5xx 错误" events={status.monitoring.recentErrors.slice(0, 5)} title="最近错误" />
+            <header className="system-panel-heading system-monitoring-heading"><span><CircleAlert aria-hidden="true" size={17} /><strong>{phrase("接口观察", "API monitoring")}</strong></span><small>{phrase(`慢接口阈值 ${status.monitoring.slowRequestThresholdMs} ms`, `Slow request threshold ${status.monitoring.slowRequestThresholdMs} ms`)}</small></header>
+            <MonitoringEventList empty={phrase("最近没有慢接口", "No recent slow requests")} events={status.monitoring.slowRequests.slice(0, 5)} title={phrase("慢接口", "Slow requests")} locale={locale} phrase={phrase} />
+            <MonitoringEventList empty={phrase("最近没有 API 5xx 错误", "No recent API 5xx errors")} events={status.monitoring.recentErrors.slice(0, 5)} title={phrase("最近错误", "Recent errors")} locale={locale} phrase={phrase} />
           </section>
         </div>
 
         <section className="system-status-panel monitoring-trends">
-          <header className="system-panel-heading system-monitoring-heading"><span><Activity aria-hidden="true" size={17} /><strong>资源趋势</strong></span><small>每分钟采样 · 最近 24 小时</small></header>
+          <header className="system-panel-heading system-monitoring-heading"><span><Activity aria-hidden="true" size={17} /><strong>{phrase("资源趋势", "Resource trends")}</strong></span><small>{phrase("每分钟采样 · 最近 24 小时", "Sampled every minute · Last 24 hours")}</small></header>
           <div className="system-trend-list">
             <TrendChart
-              detail={status.monitoring.memoryTrend.length ? `当前 ${formatBytes(status.monitoring.memoryTrend.at(-1)?.rssBytes ?? 0)}` : "等待首次采样"}
+              detail={status.monitoring.memoryTrend.length ? phrase(`当前 ${formatBytes(status.monitoring.memoryTrend.at(-1)?.rssBytes ?? 0)}`, `Current ${formatBytes(status.monitoring.memoryTrend.at(-1)?.rssBytes ?? 0)}`) : phrase("等待首次采样", "Waiting for first sample")}
               formatter={formatBytes}
-              label="API RSS 内存"
+              label={phrase("API RSS 内存", "API RSS memory")}
+              locale={locale}
+              phrase={phrase}
               points={status.monitoring.memoryTrend.map((point) => ({ recordedAt: point.recordedAt, value: point.rssBytes }))}
             />
             <TrendChart
-              detail={status.monitoring.diskTrend.length ? `预警线 ${status.reliability.storage.warningThresholdPercent}%` : "等待首次采样"}
+              detail={status.monitoring.diskTrend.length ? phrase(`预警线 ${status.reliability.storage.warningThresholdPercent}%`, `Warning threshold ${status.reliability.storage.warningThresholdPercent}%`) : phrase("等待首次采样", "Waiting for first sample")}
               formatter={(value) => `${value.toFixed(1)}%`}
-              label="磁盘使用率"
+              label={phrase("磁盘使用率", "Disk usage")}
+              locale={locale}
+              phrase={phrase}
               points={status.monitoring.diskTrend.map((point) => ({ recordedAt: point.recordedAt, value: point.usedPercent }))}
               warningValue={status.reliability.storage.warningThresholdPercent}
             />
@@ -458,62 +467,62 @@ export default function SystemStatusPage() {
 
         {backupConfiguration && backupForm ? <section className="system-status-panel backup-policy">
           <header className="system-panel-heading backup-policy-heading">
-            <span><CloudCog aria-hidden="true" size={17} /><strong>自动与异地备份</strong></span>
-            <button aria-label="保存备份策略" disabled={configurationBusy} onClick={() => void handleSaveBackupConfiguration()} title="保存备份策略" type="button">
+            <span><CloudCog aria-hidden="true" size={17} /><strong>{phrase("自动与异地备份", "Automatic and remote backups")}</strong></span>
+            <button aria-label={phrase("保存备份策略", "Save backup policy")} disabled={configurationBusy} onClick={() => void handleSaveBackupConfiguration()} title={phrase("保存备份策略", "Save backup policy")} type="button">
               <Save aria-hidden="true" size={16} />
-              <span>{configurationBusy ? "保存中" : "保存策略"}</span>
+              <span>{configurationBusy ? phrase("保存中", "Saving") : phrase("保存策略", "Save policy")}</span>
             </button>
           </header>
 
           <div className="backup-policy-overview">
-            <label className="backup-toggle-row"><input checked={backupForm.automaticEnabled} onChange={(event) => setBackupForm({ ...backupForm, automaticEnabled: event.target.checked })} type="checkbox" /><span><strong>每日自动备份</strong><small>API 会在设定时间执行，服务重启后也会补跑当天尚未完成的任务。</small></span></label>
-            <label><span>执行时间</span><input onChange={(event) => setBackupForm({ ...backupForm, scheduleTime: event.target.value })} type="time" value={backupForm.scheduleTime} /></label>
-            <label><span>本地保留</span><span className="backup-number-field"><input max={365} min={1} onChange={(event) => setBackupForm({ ...backupForm, localRetentionDays: Number(event.target.value) })} type="number" value={backupForm.localRetentionDays} /><em>天</em></span></label>
-            <label><span>远端保留</span><span className="backup-number-field"><input max={3650} min={1} onChange={(event) => setBackupForm({ ...backupForm, remoteRetentionDays: Number(event.target.value) })} type="number" value={backupForm.remoteRetentionDays} /><em>天</em></span></label>
+            <label className="backup-toggle-row"><input checked={backupForm.automaticEnabled} onChange={(event) => setBackupForm({ ...backupForm, automaticEnabled: event.target.checked })} type="checkbox" /><span><strong>{phrase("每日自动备份", "Daily automatic backup")}</strong><small>{phrase("API 会在设定时间执行，服务重启后也会补跑当天尚未完成的任务。", "The API runs at the scheduled time and catches up incomplete daily jobs after restart.")}</small></span></label>
+            <label><span>{phrase("执行时间", "Run time")}</span><input onChange={(event) => setBackupForm({ ...backupForm, scheduleTime: event.target.value })} type="time" value={backupForm.scheduleTime} /></label>
+            <label><span>{phrase("本地保留", "Local retention")}</span><span className="backup-number-field"><input max={365} min={1} onChange={(event) => setBackupForm({ ...backupForm, localRetentionDays: Number(event.target.value) })} type="number" value={backupForm.localRetentionDays} /><em>{phrase("天", "days")}</em></span></label>
+            <label><span>{phrase("远端保留", "Remote retention")}</span><span className="backup-number-field"><input max={3650} min={1} onChange={(event) => setBackupForm({ ...backupForm, remoteRetentionDays: Number(event.target.value) })} type="number" value={backupForm.remoteRetentionDays} /><em>{phrase("天", "days")}</em></span></label>
           </div>
 
           <div className="backup-policy-status">
-            <span><small>下次执行</small><strong>{backupConfiguration.nextRunAt ? formatDateTime(backupConfiguration.nextRunAt) : "自动备份未启用"}</strong></span>
-            <span><small>最近成功</small><strong>{backupConfiguration.lastSuccessAt ? formatDateTime(backupConfiguration.lastSuccessAt) : "尚无记录"}</strong></span>
-            <span className={backupConfiguration.lastFailureMessage ? "error" : ""}><small>最近异常</small><strong title={backupConfiguration.lastFailureMessage ?? ""}>{backupConfiguration.lastFailureMessage || "无"}</strong></span>
+            <span><small>{phrase("下次执行", "Next run")}</small><strong>{backupConfiguration.nextRunAt ? formatDateTime(backupConfiguration.nextRunAt, locale) : phrase("自动备份未启用", "Automatic backup disabled")}</strong></span>
+            <span><small>{phrase("最近成功", "Latest success")}</small><strong>{backupConfiguration.lastSuccessAt ? formatDateTime(backupConfiguration.lastSuccessAt, locale) : phrase("尚无记录", "No records")}</strong></span>
+            <span className={backupConfiguration.lastFailureMessage ? "error" : ""}><small>{phrase("最近异常", "Latest issue")}</small><strong title={backupConfiguration.lastFailureMessage ?? ""}>{backupConfiguration.lastFailureMessage || phrase("无", "None")}</strong></span>
           </div>
 
-          {!backupConfiguration.encryptionConfigured ? <div className="backup-encryption-warning"><KeyRound aria-hidden="true" size={17} /><span>服务器未配置备份加密密钥，异地备份暂时不能启用。</span></div> : null}
+          {!backupConfiguration.encryptionConfigured ? <div className="backup-encryption-warning"><KeyRound aria-hidden="true" size={17} /><span>{phrase("服务器未配置备份加密密钥，异地备份暂时不能启用。", "The server has no backup encryption key, so remote backup cannot be enabled yet.")}</span></div> : null}
 
           <div className="backup-provider-section">
-            <header><span><Cloud aria-hidden="true" size={17} /><strong>阿里云 OSS</strong><small>{backupConfiguration.oss.hasAccessKeyId && backupConfiguration.oss.hasSecretAccessKey ? "凭证已保存" : "凭证未保存"}</small></span><label><input checked={backupForm.ossEnabled} onChange={(event) => setBackupForm({ ...backupForm, ossEnabled: event.target.checked })} type="checkbox" /><span>启用</span></label></header>
+            <header><span><Cloud aria-hidden="true" size={17} /><strong>{phrase("阿里云 OSS", "Alibaba Cloud OSS")}</strong><small>{backupConfiguration.oss.hasAccessKeyId && backupConfiguration.oss.hasSecretAccessKey ? phrase("凭证已保存", "Credentials saved") : phrase("凭证未保存", "Credentials not saved")}</small></span><label><input checked={backupForm.ossEnabled} onChange={(event) => setBackupForm({ ...backupForm, ossEnabled: event.target.checked })} type="checkbox" /><span>{phrase("启用", "Enable")}</span></label></header>
             <div className="backup-provider-grid">
               <label><span>Region</span><input onChange={(event) => setBackupForm({ ...backupForm, ossRegion: event.target.value })} placeholder="oss-cn-hangzhou" value={backupForm.ossRegion} /></label>
-              <label><span>Endpoint（可选）</span><input onChange={(event) => setBackupForm({ ...backupForm, ossEndpoint: event.target.value })} placeholder="https://oss-cn-hangzhou.aliyuncs.com" value={backupForm.ossEndpoint} /></label>
+              <label><span>{phrase("Endpoint（可选）", "Endpoint (optional)")}</span><input onChange={(event) => setBackupForm({ ...backupForm, ossEndpoint: event.target.value })} placeholder="https://oss-cn-hangzhou.aliyuncs.com" value={backupForm.ossEndpoint} /></label>
               <label><span>Bucket</span><input onChange={(event) => setBackupForm({ ...backupForm, ossBucket: event.target.value })} placeholder="hlovet-backups" value={backupForm.ossBucket} /></label>
-              <label><span>目录前缀</span><input onChange={(event) => setBackupForm({ ...backupForm, ossPrefix: event.target.value })} placeholder="database" value={backupForm.ossPrefix} /></label>
-              <label><span>AccessKey ID</span><input autoComplete="off" onChange={(event) => setBackupForm({ ...backupForm, ossAccessKeyId: event.target.value, clearOssCredentials: false })} placeholder={backupConfiguration.oss.hasAccessKeyId ? "已保存，留空保持不变" : "请输入 AccessKey ID"} type="password" value={backupForm.ossAccessKeyId} /></label>
-              <label><span>AccessKey Secret</span><input autoComplete="new-password" onChange={(event) => setBackupForm({ ...backupForm, ossAccessKeySecret: event.target.value, clearOssCredentials: false })} placeholder={backupConfiguration.oss.hasSecretAccessKey ? "已保存，留空保持不变" : "请输入 AccessKey Secret"} type="password" value={backupForm.ossAccessKeySecret} /></label>
+              <label><span>{phrase("目录前缀", "Directory prefix")}</span><input onChange={(event) => setBackupForm({ ...backupForm, ossPrefix: event.target.value })} placeholder="database" value={backupForm.ossPrefix} /></label>
+              <label><span>AccessKey ID</span><input autoComplete="off" onChange={(event) => setBackupForm({ ...backupForm, ossAccessKeyId: event.target.value, clearOssCredentials: false })} placeholder={backupConfiguration.oss.hasAccessKeyId ? phrase("已保存，留空保持不变", "Saved. Leave empty to keep it.") : phrase("请输入 AccessKey ID", "Enter AccessKey ID")} type="password" value={backupForm.ossAccessKeyId} /></label>
+              <label><span>AccessKey Secret</span><input autoComplete="new-password" onChange={(event) => setBackupForm({ ...backupForm, ossAccessKeySecret: event.target.value, clearOssCredentials: false })} placeholder={backupConfiguration.oss.hasSecretAccessKey ? phrase("已保存，留空保持不变", "Saved. Leave empty to keep it.") : phrase("请输入 AccessKey Secret", "Enter AccessKey Secret")} type="password" value={backupForm.ossAccessKeySecret} /></label>
             </div>
-            <div className="backup-provider-actions"><button disabled={providerTesting === "oss" || !backupConfiguration.oss.hasAccessKeyId || !backupConfiguration.oss.hasSecretAccessKey} onClick={() => void handleTestBackupProvider("oss")} type="button">{providerTesting === "oss" ? "测试中" : "测试已保存配置"}</button>{backupConfiguration.oss.hasAccessKeyId || backupConfiguration.oss.hasSecretAccessKey ? <button className="danger" onClick={() => setBackupForm({ ...backupForm, clearOssCredentials: true, ossAccessKeyId: "", ossAccessKeySecret: "", ossEnabled: false })} type="button">清除凭证</button> : null}</div>
+            <div className="backup-provider-actions"><button disabled={providerTesting === "oss" || !backupConfiguration.oss.hasAccessKeyId || !backupConfiguration.oss.hasSecretAccessKey} onClick={() => void handleTestBackupProvider("oss")} type="button">{providerTesting === "oss" ? phrase("测试中", "Testing") : phrase("测试已保存配置", "Test saved configuration")}</button>{backupConfiguration.oss.hasAccessKeyId || backupConfiguration.oss.hasSecretAccessKey ? <button className="danger" onClick={() => setBackupForm({ ...backupForm, clearOssCredentials: true, ossAccessKeyId: "", ossAccessKeySecret: "", ossEnabled: false })} type="button">{phrase("清除凭证", "Clear credentials")}</button> : null}</div>
           </div>
 
           <div className="backup-provider-section">
-            <header><span><Cloud aria-hidden="true" size={17} /><strong>Cloudflare R2</strong><small>{backupConfiguration.r2.hasAccessKeyId && backupConfiguration.r2.hasSecretAccessKey ? "凭证已保存" : "凭证未保存"}</small></span><label><input checked={backupForm.r2Enabled} onChange={(event) => setBackupForm({ ...backupForm, r2Enabled: event.target.checked })} type="checkbox" /><span>启用</span></label></header>
+            <header><span><Cloud aria-hidden="true" size={17} /><strong>Cloudflare R2</strong><small>{backupConfiguration.r2.hasAccessKeyId && backupConfiguration.r2.hasSecretAccessKey ? phrase("凭证已保存", "Credentials saved") : phrase("凭证未保存", "Credentials not saved")}</small></span><label><input checked={backupForm.r2Enabled} onChange={(event) => setBackupForm({ ...backupForm, r2Enabled: event.target.checked })} type="checkbox" /><span>{phrase("启用", "Enable")}</span></label></header>
             <div className="backup-provider-grid r2">
               <label><span>Account ID</span><input onChange={(event) => setBackupForm({ ...backupForm, r2AccountId: event.target.value })} placeholder="Cloudflare Account ID" value={backupForm.r2AccountId} /></label>
               <label><span>Bucket</span><input onChange={(event) => setBackupForm({ ...backupForm, r2Bucket: event.target.value })} placeholder="hlovet-backups" value={backupForm.r2Bucket} /></label>
-              <label><span>目录前缀</span><input onChange={(event) => setBackupForm({ ...backupForm, r2Prefix: event.target.value })} placeholder="database" value={backupForm.r2Prefix} /></label>
-              <label><span>Access Key ID</span><input autoComplete="off" onChange={(event) => setBackupForm({ ...backupForm, r2AccessKeyId: event.target.value, clearR2Credentials: false })} placeholder={backupConfiguration.r2.hasAccessKeyId ? "已保存，留空保持不变" : "请输入 Access Key ID"} type="password" value={backupForm.r2AccessKeyId} /></label>
-              <label><span>Secret Access Key</span><input autoComplete="new-password" onChange={(event) => setBackupForm({ ...backupForm, r2SecretAccessKey: event.target.value, clearR2Credentials: false })} placeholder={backupConfiguration.r2.hasSecretAccessKey ? "已保存，留空保持不变" : "请输入 Secret Access Key"} type="password" value={backupForm.r2SecretAccessKey} /></label>
+              <label><span>{phrase("目录前缀", "Directory prefix")}</span><input onChange={(event) => setBackupForm({ ...backupForm, r2Prefix: event.target.value })} placeholder="database" value={backupForm.r2Prefix} /></label>
+              <label><span>Access Key ID</span><input autoComplete="off" onChange={(event) => setBackupForm({ ...backupForm, r2AccessKeyId: event.target.value, clearR2Credentials: false })} placeholder={backupConfiguration.r2.hasAccessKeyId ? phrase("已保存，留空保持不变", "Saved. Leave empty to keep it.") : phrase("请输入 Access Key ID", "Enter Access Key ID")} type="password" value={backupForm.r2AccessKeyId} /></label>
+              <label><span>Secret Access Key</span><input autoComplete="new-password" onChange={(event) => setBackupForm({ ...backupForm, r2SecretAccessKey: event.target.value, clearR2Credentials: false })} placeholder={backupConfiguration.r2.hasSecretAccessKey ? phrase("已保存，留空保持不变", "Saved. Leave empty to keep it.") : phrase("请输入 Secret Access Key", "Enter Secret Access Key")} type="password" value={backupForm.r2SecretAccessKey} /></label>
             </div>
-            <div className="backup-provider-actions"><button disabled={providerTesting === "r2" || !backupConfiguration.r2.hasAccessKeyId || !backupConfiguration.r2.hasSecretAccessKey} onClick={() => void handleTestBackupProvider("r2")} type="button">{providerTesting === "r2" ? "测试中" : "测试已保存配置"}</button>{backupConfiguration.r2.hasAccessKeyId || backupConfiguration.r2.hasSecretAccessKey ? <button className="danger" onClick={() => setBackupForm({ ...backupForm, clearR2Credentials: true, r2AccessKeyId: "", r2SecretAccessKey: "", r2Enabled: false })} type="button">清除凭证</button> : null}</div>
+            <div className="backup-provider-actions"><button disabled={providerTesting === "r2" || !backupConfiguration.r2.hasAccessKeyId || !backupConfiguration.r2.hasSecretAccessKey} onClick={() => void handleTestBackupProvider("r2")} type="button">{providerTesting === "r2" ? phrase("测试中", "Testing") : phrase("测试已保存配置", "Test saved configuration")}</button>{backupConfiguration.r2.hasAccessKeyId || backupConfiguration.r2.hasSecretAccessKey ? <button className="danger" onClick={() => setBackupForm({ ...backupForm, clearR2Credentials: true, r2AccessKeyId: "", r2SecretAccessKey: "", r2Enabled: false })} type="button">{phrase("清除凭证", "Clear credentials")}</button> : null}</div>
           </div>
         </section> : null}
 
       </div>
-    </> : <div className="system-status-empty"><CircleAlert aria-hidden="true" size={22} /><span>暂时无法读取系统状态，请稍后刷新。</span></div>}
-    {restoreTarget ? <div className="modal-backdrop modal-backdrop--light" onMouseDown={(event) => { if (event.target === event.currentTarget && !backupBusy) { setRestoreTarget(""); setRestorePreflight(null); } }} role="presentation"><div aria-modal="true" className="modal-panel backup-restore-modal" role="dialog"><div className="modal-heading"><span className="section-label">Database restore</span><h2>恢复数据库</h2><p>系统先校验数据库与媒体归档，再创建恢复前安全备份。媒体恢复采用追加方式，不会删除现有上传文件。</p></div>{backupBusy.startsWith("preflight:") ? <p className="backup-preflight-loading">正在完整校验备份归档...</p> : restorePreflight ? <div className="backup-preflight"><span className={restorePreflight.backup.verification.databaseValid ? "ok" : "error"}>数据库归档：{restorePreflight.backup.verification.databaseValid ? "可读取" : "校验失败"}</span><span className={restorePreflight.backup.mediaSnapshotAvailable && !restorePreflight.backup.verification.mediaValid ? "error" : "ok"}>媒体快照：{restorePreflight.backup.mediaSnapshotAvailable ? restorePreflight.backup.verification.mediaValid ? `${restorePreflight.backup.verification.mediaFileCount ?? 0} 个文件，六目录完整` : "校验失败" : "旧备份，仅数据库"}</span>{restorePreflight.warnings.map((warning) => <small key={warning}>{warning}</small>)}</div> : <p className="backup-preflight-loading">无法读取校验结果。</p>}<label className="backup-confirm-field"><span>{restoreTarget}</span><input autoFocus disabled={!restorePreflight?.canRestore || Boolean(backupBusy)} onChange={(event) => setRestoreConfirmation(event.target.value)} placeholder="输入上方完整文件名" value={restoreConfirmation} /></label><div className="actions"><button className="button" disabled={!restorePreflight?.canRestore || restoreConfirmation !== restoreTarget || Boolean(backupBusy)} onClick={() => void handleRestoreBackup()} type="button">{backupBusy ? "恢复中" : "确认恢复"}</button><button className="button secondary" disabled={Boolean(backupBusy)} onClick={() => { setRestoreTarget(""); setRestorePreflight(null); }} type="button">取消</button></div></div></div> : null}
+    </> : <div className="system-status-empty"><CircleAlert aria-hidden="true" size={22} /><span>{phrase("暂时无法读取系统状态，请稍后刷新。", "System status is unavailable. Refresh and try again.")}</span></div>}
+    {restoreTarget ? <div className="modal-backdrop modal-backdrop--light" onMouseDown={(event) => { if (event.target === event.currentTarget && !backupBusy) { setRestoreTarget(""); setRestorePreflight(null); } }} role="presentation"><div aria-modal="true" className="modal-panel backup-restore-modal" role="dialog"><div className="modal-heading"><span className="section-label">Database restore</span><h2>{phrase("恢复数据库", "Restore database")}</h2><p>{phrase("系统先校验数据库与媒体归档，再创建恢复前安全备份。媒体恢复采用追加方式，不会删除现有上传文件。", "The system verifies the database and media archive, then creates a safety backup before restoration. Media restoration only adds files and does not delete existing uploads.")}</p></div>{backupBusy.startsWith("preflight:") ? <p className="backup-preflight-loading">{phrase("正在完整校验备份归档...", "Verifying backup archive...")}</p> : restorePreflight ? <div className="backup-preflight"><span className={restorePreflight.backup.verification.databaseValid ? "ok" : "error"}>{phrase("数据库归档：", "Database archive: ")}{restorePreflight.backup.verification.databaseValid ? phrase("可读取", "Readable") : phrase("校验失败", "Verification failed")}</span><span className={restorePreflight.backup.mediaSnapshotAvailable && !restorePreflight.backup.verification.mediaValid ? "error" : "ok"}>{phrase("媒体快照：", "Media snapshot: ")}{restorePreflight.backup.mediaSnapshotAvailable ? restorePreflight.backup.verification.mediaValid ? phrase(`${restorePreflight.backup.verification.mediaFileCount ?? 0} 个文件，六目录完整`, `${restorePreflight.backup.verification.mediaFileCount ?? 0} files across all six directories`) : phrase("校验失败", "Verification failed") : phrase("旧备份，仅数据库", "Legacy backup, database only")}</span>{restorePreflight.warnings.map((warning) => <small key={warning}>{warning}</small>)}</div> : <p className="backup-preflight-loading">{phrase("无法读取校验结果。", "Could not read verification result.")}</p>}<label className="backup-confirm-field"><span>{restoreTarget}</span><input autoFocus disabled={!restorePreflight?.canRestore || Boolean(backupBusy)} onChange={(event) => setRestoreConfirmation(event.target.value)} placeholder={phrase("输入上方完整文件名", "Enter the full file name above")} value={restoreConfirmation} /></label><div className="actions"><button className="button" disabled={!restorePreflight?.canRestore || restoreConfirmation !== restoreTarget || Boolean(backupBusy)} onClick={() => void handleRestoreBackup()} type="button">{backupBusy ? phrase("恢复中", "Restoring") : phrase("确认恢复", "Confirm restore")}</button><button className="button secondary" disabled={Boolean(backupBusy)} onClick={() => { setRestoreTarget(""); setRestorePreflight(null); }} type="button">{phrase("取消", "Cancel")}</button></div></div></div> : null}
     {selectedMediaJob ? <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedMediaJob(null); }} role="presentation"><div aria-modal="true" className="modal-panel media-backup-detail-modal" role="dialog">
-      <header><span><small>Media backup</small><h2>媒体备份任务 #{selectedMediaJob.id}</h2></span><button aria-label="关闭任务详情" onClick={() => setSelectedMediaJob(null)} title="关闭" type="button"><X aria-hidden="true" size={18} /></button></header>
-      <div className="media-backup-detail-summary"><span><small>状态</small><strong className={mediaJobTone(selectedMediaJob.status)}>{mediaJobStatusLabel(selectedMediaJob.status)}</strong></span><span><small>文件</small><strong>{selectedMediaJob.processedFiles} / {selectedMediaJob.totalFiles}</strong></span><span><small>上传流量</small><strong>{formatBytes(selectedMediaJob.uploadedBytes)}</strong></span><span><small>提供商</small><strong>{selectedMediaJob.providers.map(providerLabel).join("、") || "未配置"}</strong></span></div>
-      <section><h3>任务日志</h3><div className="media-backup-log-list">{selectedMediaJob.logs.map((log) => <article className={log.level} key={log.id}><time>{formatDateTime(log.createdAt)}</time><span>{log.message}</span></article>)}{!selectedMediaJob.logs.length ? <p>暂无任务日志。</p> : null}</div></section>
-      <section><h3>文件清单</h3><div className="media-backup-manifest-list">{selectedMediaJob.manifests.map((manifest) => <article key={manifest.id}><span><strong title={manifest.storedName}>{manifest.storedName}</strong><small>{providerLabel(manifest.provider)} · {formatBytes(manifest.sizeBytes)}</small></span><i className={mediaManifestTone(manifest.status)}>{mediaManifestStatusLabel(manifest.status)}</i></article>)}{!selectedMediaJob.manifests.length ? <p>任务尚未生成文件清单。</p> : null}</div></section>
+      <header><span><small>Media backup</small><h2>{phrase(`媒体备份任务 #${selectedMediaJob.id}`, `Media backup job #${selectedMediaJob.id}`)}</h2></span><button aria-label={phrase("关闭任务详情", "Close job details")} onClick={() => setSelectedMediaJob(null)} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={18} /></button></header>
+      <div className="media-backup-detail-summary"><span><small>{phrase("状态", "Status")}</small><strong className={mediaJobTone(selectedMediaJob.status)}>{mediaJobStatusLabel(selectedMediaJob.status, phrase)}</strong></span><span><small>{phrase("文件", "Files")}</small><strong>{selectedMediaJob.processedFiles} / {selectedMediaJob.totalFiles}</strong></span><span><small>{phrase("上传流量", "Upload traffic")}</small><strong>{formatBytes(selectedMediaJob.uploadedBytes)}</strong></span><span><small>{phrase("提供商", "Providers")}</small><strong>{selectedMediaJob.providers.map((provider) => providerLabel(provider, phrase)).join(" · ") || phrase("未配置", "Not configured")}</strong></span></div>
+      <section><h3>{phrase("任务日志", "Job logs")}</h3><div className="media-backup-log-list">{selectedMediaJob.logs.map((log) => <article className={log.level} key={log.id}><time>{formatDateTime(log.createdAt, locale)}</time><span>{log.message}</span></article>)}{!selectedMediaJob.logs.length ? <p>{phrase("暂无任务日志。", "No job logs.")}</p> : null}</div></section>
+      <section><h3>{phrase("文件清单", "File manifest")}</h3><div className="media-backup-manifest-list">{selectedMediaJob.manifests.map((manifest) => <article key={manifest.id}><span><strong title={manifest.storedName}>{manifest.storedName}</strong><small>{providerLabel(manifest.provider, phrase)} · {formatBytes(manifest.sizeBytes)}</small></span><i className={mediaManifestTone(manifest.status)}>{mediaManifestStatusLabel(manifest.status, phrase)}</i></article>)}{!selectedMediaJob.manifests.length ? <p>{phrase("任务尚未生成文件清单。", "This job has not created a file manifest yet.")}</p> : null}</div></section>
     </div></div> : null}
   </section>;
 }
@@ -530,10 +539,12 @@ function StatusLine({ label, value, ok }: { label: string; value: string; ok: bo
   return <div className="system-status-line"><span>{ok ? <CircleCheck aria-hidden="true" size={15} /> : <CircleAlert aria-hidden="true" size={15} />}<small>{label}</small></span><strong title={value}>{value}</strong></div>;
 }
 
-function TrendChart({ detail, formatter, label, points, warningValue }: {
+function TrendChart({ detail, formatter, label, locale, phrase, points, warningValue }: {
   detail: string;
   formatter: (value: number) => string;
   label: string;
+  locale: "zh-CN" | "en-US";
+  phrase: Phrase;
   points: Array<{ recordedAt: string; value: number }>;
   warningValue?: number;
 }) {
@@ -551,24 +562,26 @@ function TrendChart({ detail, formatter, label, points, warningValue }: {
   const warning = latestValue !== null && warningValue !== undefined && latestValue >= warningValue;
   return <div className={`system-trend-row ${warning ? "warning" : ""}`}>
     <div><span><strong>{label}</strong><small>{detail}</small></span><b>{latestValue === null ? "-" : formatter(latestValue)}</b></div>
-    <svg aria-label={`${label}趋势`} preserveAspectRatio="none" role="img" viewBox="0 0 240 64">
+    <svg aria-label={phrase(`${label}趋势`, `${label} trend`)} preserveAspectRatio="none" role="img" viewBox="0 0 240 64">
       <line x1="0" x2="240" y1="58" y2="58" />
       {line ? <polyline fill="none" points={line} vectorEffect="non-scaling-stroke" /> : null}
     </svg>
-    <footer><span>{values.length ? formatter(minimum) : "暂无数据"}</span><span>{visiblePoints.length > 1 ? formatShortTime(visiblePoints[0].recordedAt) : ""}</span><span>{visiblePoints.length > 1 ? formatShortTime(visiblePoints.at(-1)?.recordedAt ?? "") : ""}</span><span>{values.length ? formatter(maximum) : ""}</span></footer>
+    <footer><span>{values.length ? formatter(minimum) : phrase("暂无数据", "No data")}</span><span>{visiblePoints.length > 1 ? formatShortTime(visiblePoints[0].recordedAt, locale) : ""}</span><span>{visiblePoints.length > 1 ? formatShortTime(visiblePoints.at(-1)?.recordedAt ?? "", locale) : ""}</span><span>{values.length ? formatter(maximum) : ""}</span></footer>
   </div>;
 }
 
-function MonitoringEventList({ empty, events, title }: {
+function MonitoringEventList({ empty, events, locale, phrase, title }: {
   empty: string;
   events: SystemStatus["monitoring"]["slowRequests"];
+  locale: "zh-CN" | "en-US";
+  phrase: Phrase;
   title: string;
 }) {
   return <div className="system-monitoring-events">
-    <header><strong>{title}</strong><span>{events.length} 条</span></header>
+    <header><strong>{title}</strong><span>{phrase(`${events.length} 条`, `${events.length} events`)}</span></header>
     {events.length ? <div>{events.map((event, index) => <article key={`${event.occurredAt}-${event.method}-${event.path}-${index}`}>
       <span><b>{event.method}</b><strong title={event.path}>{event.path}</strong></span>
-      <span><em>{event.statusCode}</em><em>{event.durationMs.toFixed(1)} ms</em><time>{formatDateTime(event.occurredAt)}</time></span>
+      <span><em>{event.statusCode}</em><em>{event.durationMs.toFixed(1)} ms</em><time>{formatDateTime(event.occurredAt, locale)}</time></span>
       {event.message ? <p title={event.message}>{event.message}</p> : null}
     </article>)}</div> : <p>{empty}</p>}
   </div>;
@@ -606,87 +619,87 @@ function formatBytes(value: number): string {
   return `${amount >= 10 || unitIndex === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[unitIndex]}`;
 }
 
-function formatNullableBytes(value: number | null): string {
-  return value === null ? "无法读取" : formatBytes(value);
+function formatNullableBytes(value: number | null, phrase: Phrase): string {
+  return value === null ? phrase("无法读取", "Unavailable") : formatBytes(value);
 }
 
-function formatMemoryUsage(used: number | null, max: number | null): string {
-  if (used === null) return "无法读取";
+function formatMemoryUsage(used: number | null, max: number | null, phrase: Phrase): string {
+  if (used === null) return phrase("无法读取", "Unavailable");
   return max && max > 0 ? `${formatBytes(used)} / ${formatBytes(max)}` : formatBytes(used);
 }
 
-function formatDuration(seconds: number): string {
+function formatDuration(seconds: number, phrase: Phrase): string {
   const days = Math.floor(seconds / 86_400);
   const hours = Math.floor((seconds % 86_400) / 3_600);
   const minutes = Math.floor((seconds % 3_600) / 60);
-  if (days) return `${days} 天 ${hours} 小时`;
-  if (hours) return `${hours} 小时 ${minutes} 分`;
-  return `${minutes} 分钟`;
+  if (days) return phrase(`${days} 天 ${hours} 小时`, `${days}d ${hours}h`);
+  if (hours) return phrase(`${hours} 小时 ${minutes} 分`, `${hours}h ${minutes}m`);
+  return phrase(`${minutes} 分钟`, `${minutes} min`);
 }
 
-function formatDateTime(value: string): string {
+function formatDateTime(value: string, locale: "zh-CN" | "en-US"): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(locale, {
     year: "numeric", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
   }).format(date);
 }
 
-function formatShortTime(value: string): string {
+function formatShortTime(value: string, locale: "zh-CN" | "en-US"): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(locale, {
     hour: "2-digit", minute: "2-digit", hour12: false,
   }).format(date);
 }
 
-function formatCoverage(value: number | null): string {
-  return value === null ? "待生成目录" : `${value.toFixed(value % 1 ? 1 : 0)}%`;
+function formatCoverage(value: number | null, phrase: Phrase): string {
+  return value === null ? phrase("待生成目录", "Awaiting directory") : `${value.toFixed(value % 1 ? 1 : 0)}%`;
 }
 
-function formatAnomalySummary(anomalies: SystemStatus["reliability"]["anomalies"]): string {
+function formatAnomalySummary(anomalies: SystemStatus["reliability"]["anomalies"], phrase: Phrase): string {
   const details = [
-    ["备份失败", anomalies.backupFailures],
-    ["磁盘预警", anomalies.diskPressure],
-    ["缺失文件", anomalies.missingFiles],
-    ["孤立文件", anomalies.orphanFiles],
-    ["大小不一致", anomalies.metadataMismatches],
-    ["接口错误", anomalies.recentApiErrors],
+    [phrase("备份失败", "Backup failures"), anomalies.backupFailures],
+    [phrase("磁盘预警", "Disk warnings"), anomalies.diskPressure],
+    [phrase("缺失文件", "Missing files"), anomalies.missingFiles],
+    [phrase("孤立文件", "Orphan files"), anomalies.orphanFiles],
+    [phrase("大小不一致", "Size mismatch"), anomalies.metadataMismatches],
+    [phrase("接口错误", "API errors"), anomalies.recentApiErrors],
   ].filter((item): item is [string, number] => Number(item[1]) > 0);
 
-  return details.length ? details.map(([label, count]) => `${label} ${count}`).join(" · ") : "当前未发现异常";
+  return details.length ? details.map(([label, count]) => `${label} ${count}`).join(" · ") : phrase("当前未发现异常", "No issues detected");
 }
 
-function formatBackupSource(value: "media" | "database" | null): string {
-  if (value === "media") return "媒体文件备份";
-  if (value === "database") return "数据库备份";
-  return "等待首次成功任务";
+function formatBackupSource(value: "media" | "database" | null, phrase: Phrase): string {
+  if (value === "media") return phrase("媒体文件备份", "Media backup");
+  if (value === "database") return phrase("数据库备份", "Database backup");
+  return phrase("等待首次成功任务", "Waiting for first successful job");
 }
 
-function backupVerificationLabel(status: BackupRestorePreflight["backup"]["verification"]["status"]): string {
+function backupVerificationLabel(status: BackupRestorePreflight["backup"]["verification"]["status"], phrase: Phrase): string {
   return ({
-    verified: "已校验",
-    database_only: "仅数据库已校验",
-    failed: "校验失败",
-    not_verified: "未校验",
+    verified: phrase("已校验", "Verified"),
+    database_only: phrase("仅数据库已校验", "Database verified"),
+    failed: phrase("校验失败", "Verification failed"),
+    not_verified: phrase("未校验", "Not verified"),
   })[status];
 }
 
-function enabledProviderLabel(configuration: BackupConfiguration): string {
+function enabledProviderLabel(configuration: BackupConfiguration, phrase: Phrase): string {
   const providers = [
     configuration.oss.enabled ? "OSS" : null,
     configuration.r2.enabled ? "R2" : null,
   ].filter(Boolean);
-  return providers.length ? providers.join(" + ") : "未启用";
+  return providers.length ? providers.join(" + ") : phrase("未启用", "Not enabled");
 }
 
-function providerLabel(provider: "oss" | "r2"): string {
-  return provider === "oss" ? "阿里云 OSS" : "Cloudflare R2";
+function providerLabel(provider: "oss" | "r2", phrase: Phrase): string {
+  return provider === "oss" ? phrase("阿里云 OSS", "Alibaba Cloud OSS") : "Cloudflare R2";
 }
 
-function mediaJobStatusLabel(status: MediaBackupJob["status"]): string {
-  return ({ pending: "等待中", running: "执行中", completed: "已完成", partial: "部分失败", failed: "失败" })[status];
+function mediaJobStatusLabel(status: MediaBackupJob["status"], phrase: Phrase): string {
+  return ({ pending: phrase("等待中", "Pending"), running: phrase("执行中", "Running"), completed: phrase("已完成", "Completed"), partial: phrase("部分失败", "Partially failed"), failed: phrase("失败", "Failed") })[status];
 }
 
 function mediaJobTone(status: MediaBackupJob["status"]): string {
@@ -696,8 +709,8 @@ function mediaJobTone(status: MediaBackupJob["status"]): string {
   return "running";
 }
 
-function mediaManifestStatusLabel(status: MediaBackupJobDetail["manifests"][number]["status"]): string {
-  return ({ pending: "等待中", uploaded: "已上传", reused: "已复用", skipped: "已跳过", failed: "失败" })[status];
+function mediaManifestStatusLabel(status: MediaBackupJobDetail["manifests"][number]["status"], phrase: Phrase): string {
+  return ({ pending: phrase("等待中", "Pending"), uploaded: phrase("已上传", "Uploaded"), reused: phrase("已复用", "Reused"), skipped: phrase("已跳过", "Skipped"), failed: phrase("失败", "Failed") })[status];
 }
 
 function mediaManifestTone(status: MediaBackupJobDetail["manifests"][number]["status"]): string {

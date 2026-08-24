@@ -16,10 +16,11 @@ import {
   type SecurityPolicy,
 } from "@/lib/security-api";
 import { getPublicSiteSettings } from "@/lib/site-settings-api";
+import { localizedPath } from "@/lib/i18n";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { locale, phrase, t } = useLanguage();
   const [username, setUsername] = useState("");
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
@@ -89,7 +90,7 @@ export default function RegisterPage() {
     }
     if (requiresCodeTurnstile && !turnstileToken) {
       setIsCodeChallengeVisible(true);
-      setError("请先完成人机验证。");
+      setError(phrase("请先完成人机验证。", "Complete the human verification first."));
       return;
     }
 
@@ -105,7 +106,7 @@ export default function RegisterPage() {
       setNotice(t("auth.codeSent"));
     } catch (sendError) {
       setError(
-        sendError instanceof Error ? sendError.message : "验证码发送失败。",
+        sendError instanceof Error ? sendError.message : phrase("验证码发送失败。", "Could not send verification code."),
       );
     } finally {
       setIsSendingCode(false);
@@ -140,7 +141,7 @@ export default function RegisterPage() {
       return;
     }
     if (requiresRegistrationTurnstile && !turnstileToken) {
-      setError("请先完成人机验证。");
+      setError(phrase("请先完成人机验证。", "Complete the human verification first."));
       return;
     }
     if (password !== confirmation) {
@@ -161,7 +162,7 @@ export default function RegisterPage() {
           : undefined,
       });
       saveAuthTokens(response);
-      router.push("/dashboard");
+      router.push(localizedPath("/dashboard", locale));
     } catch (registerError) {
       setError(
         registerError instanceof Error
@@ -262,7 +263,7 @@ export default function RegisterPage() {
                     {isSendingCode
                       ? t("auth.sending")
                       : retryAfter > 0
-                        ? `${retryAfter} 秒后重发`
+                        ? phrase(`${retryAfter} 秒后重发`, `Resend in ${retryAfter}s`)
                         : codeMatchesCurrentEmail
                           ? t("auth.resend")
                           : t("auth.sendCode")}
@@ -310,7 +311,7 @@ export default function RegisterPage() {
             >
               {isSubmitting ? t("auth.registering") : t("auth.register")}
             </button>
-            <Link className="button secondary" href="/login">
+            <Link className="button secondary" href={localizedPath("/login", locale)}>
               {t("auth.backToLogin")}
             </Link>
           </div>

@@ -18,7 +18,7 @@ import {
 import { getPublicSiteSettings } from "@/lib/site-settings-api";
 
 export function PwaInstallButton() {
-  const { t } = useLanguage();
+  const { phrase, t } = useLanguage();
   const [hasInstallPrompt, setHasInstallPrompt] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIos, setIsIos] = useState(false);
@@ -59,7 +59,7 @@ export function PwaInstallButton() {
     function handleAppInstalled() {
       clearInstallPrompt();
       setIsStandalone(true);
-      setNotice("HLOVET 已添加到设备。");
+      setNotice(phrase("HLOVET 已添加到设备。", "HLOVET was added to this device."));
     }
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
@@ -71,7 +71,7 @@ export function PwaInstallButton() {
       window.removeEventListener(PWA_INSTALL_PROMPT_CHANGE_EVENT, handleInstallPromptChange);
       window.removeEventListener("appinstalled", handleAppInstalled);
     };
-  }, []);
+  }, [phrase]);
 
   if (!installPageEnabled) {
     return null;
@@ -86,20 +86,20 @@ export function PwaInstallButton() {
     if (hasInstallPrompt) {
       const choice = await promptPwaInstall();
       if (!choice) {
-        setNotice("安装窗口暂时不可用，正在打开安装诊断。");
+        setNotice(phrase("安装窗口暂时不可用，正在打开安装诊断。", "The install prompt is unavailable. Opening installation diagnostics."));
         if (window.location.pathname !== "/install") window.setTimeout(() => { window.location.href = "/install"; }, 420);
         return;
       }
       if (choice.outcome === "accepted") {
         setIsStandalone(true);
-        setNotice("HLOVET 已开始安装。");
+        setNotice(phrase("HLOVET 已开始安装。", "HLOVET installation has started."));
       } else {
-        setNotice("安装已取消。");
+        setNotice(phrase("安装已取消。", "Installation was cancelled."));
       }
       return;
     }
 
-    setNotice(`${getFallbackInstallMessage(isIos, isAndroid)} 正在打开安装诊断。`);
+    setNotice(phrase(`${getFallbackInstallMessage(isIos, isAndroid)} 正在打开安装诊断。`, "Opening installation diagnostics."));
     if (window.location.pathname !== "/install") {
       window.setTimeout(() => {
         window.location.href = "/install";

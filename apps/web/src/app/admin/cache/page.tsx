@@ -5,8 +5,11 @@ import { RefreshCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { GlassSelect } from "@/components/glass-select";
+import { useLanguage } from "@/components/language-provider";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { localizedPath } from "@/lib/i18n";
 import {
   CacheKeyCategory,
   CacheKeyDetail,
@@ -39,8 +42,22 @@ const CATEGORY_LABEL: Record<CacheKeyCategory, string> = {
   "business-cache": "业务缓存",
 };
 
+type InlinePhrase = (chinese: string, english: string) => string;
+
+function categoryLabel(category: CacheKeyCategory, phrase: InlinePhrase) {
+  const labels: Record<CacheKeyCategory, [string, string]> = {
+    "refresh-session": ["登录会话", "Sign-in sessions"],
+    "user-sessions": ["用户会话索引", "User session index"],
+    "login-failure": ["登录失败计数", "Failed sign-in counter"],
+    "business-cache": ["业务缓存", "Business cache"],
+  };
+  const [chinese, english] = labels[category];
+  return phrase(chinese, english);
+}
+
 export default function CacheManagementPage() {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [overview, setOverview] = useState<CacheOverview | null>(null);
@@ -71,7 +88,7 @@ export default function CacheManagementPage() {
     let isMounted = true;
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
 
@@ -95,14 +112,14 @@ export default function CacheManagementPage() {
       } catch (loadError) {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
         if (isMounted) {
           setError(
             loadError instanceof Error
               ? loadError.message
-              : "无法读取 Redis 状态。",
+              : phrase("无法读取 Redis 状态。", "Could not load Redis status."),
           );
         }
       } finally {
@@ -116,7 +133,7 @@ export default function CacheManagementPage() {
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, [locale, phrase, router]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -152,12 +169,12 @@ export default function CacheManagementPage() {
       } catch (loadError) {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
         if (isMounted) {
           setError(
-            loadError instanceof Error ? loadError.message : "无法读取缓存键。",
+            loadError instanceof Error ? loadError.message : phrase("无法读取缓存键。", "Could not load cache keys."),
           );
         }
       } finally {
@@ -178,6 +195,8 @@ export default function CacheManagementPage() {
     currentUser,
     cursor,
     reloadVersion,
+    locale,
+    phrase,
     router,
     searchQuery,
     typeFilter,
@@ -195,12 +214,12 @@ export default function CacheManagementPage() {
         .catch((pollError: unknown) => {
           if (isAuthExpiredError(pollError)) {
             clearAuthTokens();
-            router.replace("/");
+            router.replace(localizedPath("/", locale));
           }
         });
     }, 30_000);
     return () => window.clearInterval(intervalId);
-  }, [accessToken, currentUser, router]);
+  }, [accessToken, currentUser, locale, router]);
 
   const allCurrentKeysSelected = useMemo(() => {
     const keys = keyPage?.keys ?? [];
@@ -237,13 +256,13 @@ export default function CacheManagementPage() {
     } catch (refreshError) {
       if (isAuthExpiredError(refreshError)) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
       setError(
         refreshError instanceof Error
           ? refreshError.message
-          : "刷新 Redis 状态失败。",
+          : phrase("刷新 Redis 状态失败。", "Could not refresh Redis status."),
       );
     } finally {
       setIsOverviewRefreshing(false);
@@ -265,11 +284,11 @@ export default function CacheManagementPage() {
     } catch (detailError) {
       if (isAuthExpiredError(detailError)) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
       setError(
-        detailError instanceof Error ? detailError.message : "读取键值失败。",
+        detailError instanceof Error ? detailError.message : phrase("读取键值失败。", "Could not load the cache value."),
       );
     } finally {
       setBusyKey(null);
@@ -300,7 +319,7 @@ export default function CacheManagementPage() {
       return;
     }
     const confirmed = window.confirm(
-      buildDeleteConfirmation(keys, keyPage?.keys ?? [], detail),
+      phrase(buildDeleteConfirmation(keys, keyPage?.keys ?? [], detail), buildDeleteConfirmationEnglish(keys, keyPage?.keys ?? [], detail)),
     );
     if (!confirmed) {
       return;
@@ -315,15 +334,15 @@ export default function CacheManagementPage() {
       setSelectedKeys([]);
       setReloadVersion((version) => version + 1);
       setOverview(await getCacheOverview(accessToken));
-      setNotice(formatDeleteResult(result));
+      setNotice(phrase(formatDeleteResult(result), formatDeleteResultEnglish(result)));
     } catch (deleteError) {
       if (isAuthExpiredError(deleteError)) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
       setError(
-        deleteError instanceof Error ? deleteError.message : "缓存键操作失败。",
+        deleteError instanceof Error ? deleteError.message : phrase("缓存键操作失败。", "Could not update cache keys."),
       );
     } finally {
       setIsDeleting(false);
@@ -341,7 +360,7 @@ export default function CacheManagementPage() {
       ttlSeconds < 60 ||
       ttlSeconds > 31_536_000
     ) {
-      setError("TTL 必须是 60 到 31536000 之间的整数秒。");
+      setError(phrase("TTL 必须是 60 到 31536000 之间的整数秒。", "TTL must be an integer between 60 and 31,536,000 seconds."));
       return;
     }
 
@@ -367,14 +386,14 @@ export default function CacheManagementPage() {
             }
           : current,
       );
-      setNotice("缓存键 TTL 已更新。");
+      setNotice(phrase("缓存键 TTL 已更新。", "Cache key TTL updated."));
     } catch (ttlError) {
       if (isAuthExpiredError(ttlError)) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
-      setError(ttlError instanceof Error ? ttlError.message : "TTL 更新失败。");
+      setError(ttlError instanceof Error ? ttlError.message : phrase("TTL 更新失败。", "Could not update TTL."));
     } finally {
       setBusyKey(null);
     }
@@ -404,7 +423,7 @@ export default function CacheManagementPage() {
       ttlSeconds < 60 ||
       ttlSeconds > 31_536_000
     ) {
-      setError("TTL 必须是 60 到 31536000 之间的整数秒。");
+      setError(phrase("TTL 必须是 60 到 31536000 之间的整数秒。", "TTL must be an integer between 60 and 31,536,000 seconds."));
       return;
     }
 
@@ -438,15 +457,15 @@ export default function CacheManagementPage() {
           : current,
       );
       setIsBulkTtlOpen(false);
-      setNotice(`已更新 ${updated.length} 个缓存键的 TTL。`);
+      setNotice(phrase(`已更新 ${updated.length} 个缓存键的 TTL。`, `Updated the TTL for ${updated.length} cache keys.`));
     } catch (ttlError) {
       if (isAuthExpiredError(ttlError)) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
       setError(
-        ttlError instanceof Error ? ttlError.message : "批量修改 TTL 失败。",
+        ttlError instanceof Error ? ttlError.message : phrase("批量修改 TTL 失败。", "Could not update TTL in bulk."),
       );
     } finally {
       setIsBulkTtlUpdating(false);
@@ -459,7 +478,7 @@ export default function CacheManagementPage() {
     }
     const value = formatDetailValue(detail.value);
     await navigator.clipboard.writeText(value);
-    setNotice("已复制当前显示的脱敏内容。");
+    setNotice(phrase("已复制当前显示的脱敏内容。", "The masked value was copied."));
   }
 
   function goNext() {
@@ -484,9 +503,9 @@ export default function CacheManagementPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>缓存管理</h1>
+        <h1>{phrase("缓存管理", "Cache management")}</h1>
         <div className="status-row">
-          <span className="status">正在连接 Redis</span>
+          <span className="status">{phrase("正在连接 Redis", "Connecting to Redis")}</span>
         </div>
       </section>
     );
@@ -496,10 +515,10 @@ export default function CacheManagementPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>无法进入缓存管理</h1>
-        <p>{error || "请重新登录后再访问。"}</p>
-        <Link className="text-action primary" href="/login">
-          返回登录
+        <h1>{phrase("无法进入缓存管理", "Could not open cache management")}</h1>
+        <p>{error || phrase("请重新登录后再访问。", "Sign in again to continue.")}</p>
+        <Link className="text-action primary" href={localizedPath("/login", locale)}>
+          {phrase("返回登录", "Back to sign in")}
         </Link>
       </section>
     );
@@ -509,10 +528,10 @@ export default function CacheManagementPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>无权访问</h1>
-        <p>缓存数据仅超级管理员可查看和操作。</p>
-        <Link className="text-action primary" href="/dashboard">
-          返回工作台
+        <h1>{phrase("无权访问", "Access denied")}</h1>
+        <p>{phrase("缓存数据仅超级管理员可查看和操作。", "Only super administrators can view and manage cache data.")}</p>
+        <Link className="text-action primary" href={localizedPath("/dashboard", locale)}>
+          {phrase("返回工作台", "Back to workspace")}
         </Link>
       </section>
     );
@@ -532,84 +551,69 @@ export default function CacheManagementPage() {
 
       <div className="cache-overview-toolbar">
         <span>Redis</span>
-        <button aria-label="刷新缓存数据" disabled={isOverviewRefreshing} onClick={() => void refreshOverview()} title="刷新缓存数据" type="button">
+        <button aria-label={phrase("刷新缓存数据", "Refresh cache data")} disabled={isOverviewRefreshing} onClick={() => void refreshOverview()} title={phrase("刷新缓存数据", "Refresh cache data")} type="button">
           <RefreshCcw aria-hidden="true" className={isOverviewRefreshing ? "spinning" : undefined} size={17} />
         </button>
       </div>
 
-      {overview ? <CacheOverviewGrid overview={overview} /> : null}
+      {overview ? <CacheOverviewGrid overview={overview} phrase={phrase} /> : null}
 
       <div className="cache-table-heading">
         <div>
-          <span className="section-label">Cache keys</span>
-          <h2>缓存键</h2>
+          <span className="section-label">CACHE KEYS</span>
+          <h2>{phrase("缓存键", "Cache keys")}</h2>
         </div>
       </div>
 
       <div className="cache-toolbar">
         <label className="cache-search-field">
-          <span>搜索键名</span>
+          <span>{phrase("搜索键名", "Search keys")}</span>
           <input
             maxLength={128}
             onChange={(event) => setSearchDraft(event.target.value)}
-            placeholder="输入完整键名或部分内容"
+            placeholder={phrase("输入完整键名或部分内容", "Enter a full key or partial value")}
             type="search"
             value={searchDraft}
           />
         </label>
         <label>
-          <span>缓存分类</span>
-          <select
-            onChange={(event) => {
+          <span>{phrase("缓存分类", "Cache category")}</span>
+          <GlassSelect
+            ariaLabel={phrase("缓存分类", "Cache category")}
+            onChange={(value) => {
               setCursor("0");
               setCursorHistory([]);
-              setCategoryFilter(event.target.value);
+              setCategoryFilter(value);
             }}
+            options={[{ value: "", label: phrase("全部分类", "All categories") }, ...Object.keys(CATEGORY_LABEL).map((category) => ({ value: category, label: categoryLabel(category as CacheKeyCategory, phrase) }))]}
             value={categoryFilter}
-          >
-            <option value="">全部分类</option>
-            {Object.entries(CATEGORY_LABEL).map(([category, label]) => (
-              <option key={category} value={category}>
-                {label}
-              </option>
-            ))}
-          </select>
+          />
         </label>
         <label>
-          <span>数据类型</span>
-          <select
-            onChange={(event) => {
+          <span>{phrase("数据类型", "Data type")}</span>
+          <GlassSelect
+            ariaLabel={phrase("数据类型", "Data type")}
+            onChange={(value) => {
               setCursor("0");
               setCursorHistory([]);
-              setTypeFilter(event.target.value);
+              setTypeFilter(value);
             }}
+            options={[{ value: "", label: phrase("全部类型", "All types") }, ...Object.keys(KEY_TYPE_LABEL).filter((type) => type !== "none").map((type) => ({ value: type, label: KEY_TYPE_LABEL[type as CacheKeyType] }))]}
             value={typeFilter}
-          >
-            <option value="">全部类型</option>
-            {Object.entries(KEY_TYPE_LABEL)
-              .filter(([type]) => type !== "none")
-              .map(([type, label]) => (
-                <option key={type} value={type}>
-                  {label}
-                </option>
-              ))}
-          </select>
+          />
         </label>
         <label>
-          <span>每页数量</span>
-          <select
-            onChange={(event) => {
+          <span>{phrase("每页数量", "Items per page")}</span>
+          <GlassSelect
+            ariaLabel={phrase("每页数量", "Items per page")}
+            onChange={(value) => {
               setCursor("0");
               setCursorHistory([]);
-              setBatchSize(Number(event.target.value));
+              setBatchSize(Number(value));
             }}
-            value={batchSize}
-          >
-            <option value={10}>10 条</option>
-            <option value={20}>20 条</option>
-            <option value={50}>50 条</option>
-            <option value={100}>100 条</option>
-          </select>
+            options={[10, 20, 50, 100].map((value) => ({ value: String(value), label: phrase(`${value} 条`, `${value} items`) }))}
+            value={String(batchSize)}
+          />
         </label>
       </div>
 
@@ -617,11 +621,11 @@ export default function CacheManagementPage() {
         <div className="cache-selection-bar">
           <span className="cache-selection-summary">
             <span>
-              已选择 <strong>{selectedKeys.length}</strong> 项，其中{" "}
-              <strong>{ttlEditableSelectedKeys.length}</strong> 项可修改 TTL
+              {phrase("已选择", "Selected")} <strong>{selectedKeys.length}</strong> {phrase("项，其中", "items, with")} {" "}
+              <strong>{ttlEditableSelectedKeys.length}</strong> {phrase("项可修改 TTL", "eligible for TTL updates")}
             </span>
             {ttlEditableSelectedKeys.length === 0 ? (
-              <small>当前选择的是认证缓存，TTL 由登录策略统一管理。</small>
+              <small>{phrase("当前选择的是认证缓存，TTL 由登录策略统一管理。", "The selected authentication cache has a TTL controlled by sign-in policy.")}</small>
             ) : null}
           </span>
           <div className="cache-selection-actions">
@@ -631,12 +635,12 @@ export default function CacheManagementPage() {
               onClick={openBulkTtl}
               title={
                 ttlEditableSelectedKeys.length
-                  ? "批量修改已选业务缓存的 TTL"
-                  : "登录相关缓存不允许修改 TTL"
+                  ? phrase("批量修改已选业务缓存的 TTL", "Update TTL for selected business cache")
+                  : phrase("登录相关缓存不允许修改 TTL", "Sign-in cache TTL cannot be changed")
               }
               type="button"
             >
-              修改 TTL（{ttlEditableSelectedKeys.length} 项）
+              {phrase("修改 TTL", "Update TTL")} ({ttlEditableSelectedKeys.length})
             </button>
            <button
              className="cache-danger-action"
@@ -644,7 +648,7 @@ export default function CacheManagementPage() {
              onClick={() => void handleDelete(selectedKeys)}
              type="button"
            >
-              删除/清理选中项
+              {phrase("删除/清理选中项", "Delete selected")}
            </button>
           </div>
         </div>
@@ -656,25 +660,25 @@ export default function CacheManagementPage() {
             <tr>
               <th className="cache-select-cell">
                 <input
-                  aria-label="选择当前批次全部缓存键"
+                  aria-label={phrase("选择当前批次全部缓存键", "Select all cache keys in this batch")}
                   checked={allCurrentKeysSelected}
                   onChange={toggleCurrentPage}
                   type="checkbox"
                 />
               </th>
-              <th>键名</th>
-              <th>分类</th>
-              <th>类型</th>
+              <th>{phrase("键名", "Key")}</th>
+              <th>{phrase("分类", "Category")}</th>
+              <th>{phrase("类型", "Type")}</th>
               <th>TTL</th>
-              <th>内存</th>
-              <th>操作</th>
+              <th>{phrase("内存", "Memory")}</th>
+              <th>{phrase("操作", "Actions")}</th>
             </tr>
           </thead>
           <tbody>
             {isKeysLoading ? (
               <tr>
                 <td className="admin-table-state" colSpan={7}>
-                  正在扫描缓存键
+                  {phrase("正在扫描缓存键", "Scanning cache keys")}
                 </td>
               </tr>
             ) : keyPage?.keys.length ? (
@@ -682,7 +686,7 @@ export default function CacheManagementPage() {
                 <tr key={item.key}>
                   <td className="cache-select-cell">
                     <input
-                      aria-label={`选择缓存键 ${item.key}`}
+                      aria-label={phrase(`选择缓存键 ${item.key}`, `Select cache key ${item.key}`)}
                       checked={selectedKeys.includes(item.key)}
                       onChange={() => toggleKey(item.key)}
                       type="checkbox"
@@ -697,7 +701,7 @@ export default function CacheManagementPage() {
                       {item.key}
                     </button>
                   </td>
-                  <td>{CATEGORY_LABEL[item.category]}</td>
+                  <td>{categoryLabel(item.category, phrase)}</td>
                   <td>
                     <span className={`cache-type-badge ${item.type}`}>
                       {KEY_TYPE_LABEL[item.type]}
@@ -705,10 +709,10 @@ export default function CacheManagementPage() {
                   </td>
                   <td>
                     <span className="cache-ttl-display">
-                      <span>{formatTtl(item.ttlSeconds)}</span>
+                      <span>{formatTtl(item.ttlSeconds, phrase)}</span>
                       {!item.canUpdateTtl ? (
-                        <small title="认证缓存 TTL 由登录策略统一管理">
-                          系统管理
+                        <small title={phrase("认证缓存 TTL 由登录策略统一管理", "Authentication cache TTL is controlled by sign-in policy")}>
+                          {phrase("系统管理", "System managed")}
                         </small>
                       ) : null}
                     </span>
@@ -721,7 +725,7 @@ export default function CacheManagementPage() {
                       onClick={() => void openDetail(item.key)}
                       type="button"
                     >
-                      {busyKey === item.key ? "读取中" : "查看"}
+                      {busyKey === item.key ? phrase("读取中", "Loading") : phrase("查看", "View")}
                     </button>
                   </td>
                 </tr>
@@ -729,7 +733,7 @@ export default function CacheManagementPage() {
             ) : (
               <tr>
                 <td className="admin-table-state" colSpan={7}>
-                  没有找到匹配的缓存键
+                  {phrase("没有找到匹配的缓存键", "No matching cache keys found")}
                 </td>
               </tr>
             )}
@@ -737,22 +741,22 @@ export default function CacheManagementPage() {
         </table>
       </div>
 
-      <nav aria-label="缓存键游标分页" className="admin-pagination">
-        <span>{keyPage?.done ? "已到当前扫描末尾" : "Redis 游标分批加载"}</span>
+      <nav aria-label={phrase("缓存键游标分页", "Cache key cursor pagination")} className="admin-pagination">
+        <span>{keyPage?.done ? phrase("已到当前扫描末尾", "End of current scan") : phrase("Redis 游标分批加载", "Loaded in Redis cursor batches")}</span>
         <div>
           <button
             disabled={isKeysLoading || cursorHistory.length === 0}
             onClick={goPrevious}
             type="button"
           >
-            上一批
+            {phrase("上一批", "Previous batch")}
           </button>
           <button
             disabled={isKeysLoading || !keyPage || keyPage.done}
             onClick={goNext}
             type="button"
           >
-            下一批
+            {phrase("下一批", "Next batch")}
           </button>
         </div>
       </nav>
@@ -778,10 +782,9 @@ export default function CacheManagementPage() {
           >
             <div className="modal-heading">
               <span className="section-label">Batch TTL</span>
-              <h2 id="bulk-ttl-title">批量修改 TTL</h2>
+              <h2 id="bulk-ttl-title">{phrase("批量修改 TTL", "Update TTL in bulk")}</h2>
               <p>
-                将同时修改 {ttlEditableSelectedKeys.length}
-                个已选业务缓存，登录相关缓存不会包含在内。
+                {phrase(`将同时修改 ${ttlEditableSelectedKeys.length} 个已选业务缓存，登录相关缓存不会包含在内。`, `This updates ${ttlEditableSelectedKeys.length} selected business cache keys. Sign-in cache is excluded.`)}
               </p>
             </div>
             <form
@@ -789,7 +792,7 @@ export default function CacheManagementPage() {
               onSubmit={(event) => void handleBulkTtlSubmit(event)}
             >
               <label>
-                <span>TTL（秒）</span>
+                <span>{phrase("TTL（秒）", "TTL (seconds)")}</span>
                 <input
                   inputMode="numeric"
                   max={31_536_000}
@@ -806,7 +809,7 @@ export default function CacheManagementPage() {
                   disabled={isBulkTtlUpdating}
                   type="submit"
                 >
-                  {isBulkTtlUpdating ? "保存中" : "保存 TTL"}
+                  {isBulkTtlUpdating ? phrase("保存中", "Saving") : phrase("保存 TTL", "Save TTL")}
                 </button>
                 <button
                   className="button secondary"
@@ -814,7 +817,7 @@ export default function CacheManagementPage() {
                   onClick={() => setIsBulkTtlOpen(false)}
                   type="button"
                 >
-                  取消
+                  {phrase("取消", "Cancel")}
                 </button>
               </div>
             </form>
@@ -841,12 +844,12 @@ export default function CacheManagementPage() {
             <div className="cache-detail-heading">
               <div>
                 <span className="section-label">
-                  {CATEGORY_LABEL[detail.category]}
+                  {categoryLabel(detail.category, phrase)}
                 </span>
-                <h2 id="cache-detail-title">缓存键详情</h2>
+                <h2 id="cache-detail-title">{phrase("缓存键详情", "Cache key details")}</h2>
               </div>
               <button
-                aria-label="关闭缓存键详情"
+                aria-label={phrase("关闭缓存键详情", "Close cache key details")}
                 className="cache-detail-close"
                 onClick={closeDetail}
                 type="button"
@@ -857,46 +860,46 @@ export default function CacheManagementPage() {
 
             <dl className="cache-detail-meta">
               <div>
-                <dt>键名</dt>
+                <dt>{phrase("键名", "Key")}</dt>
                 <dd>{detail.key}</dd>
               </div>
               <div>
-                <dt>类型</dt>
+                <dt>{phrase("类型", "Type")}</dt>
                 <dd>{KEY_TYPE_LABEL[detail.type]}</dd>
               </div>
               <div>
                 <dt>TTL</dt>
                 <dd>
-                  {formatTtl(detail.ttlSeconds)}
+                  {formatTtl(detail.ttlSeconds, phrase)}
                   {!detail.canUpdateTtl ? (
                     <small className="cache-ttl-detail-note">
-                      由登录策略统一管理
+                      {phrase("由登录策略统一管理", "Controlled by sign-in policy")}
                     </small>
                   ) : null}
                 </dd>
               </div>
               <div>
-                <dt>内存</dt>
+                <dt>{phrase("内存", "Memory")}</dt>
                 <dd>{formatBytes(detail.memoryBytes)}</dd>
               </div>
               <div>
-                <dt>元素数量</dt>
+                <dt>{phrase("元素数量", "Element count")}</dt>
                 <dd>{detail.length ?? "—"}</dd>
               </div>
               <div>
-                <dt>显示状态</dt>
-                <dd>{detail.truncated ? "内容已截断" : "完整显示"}</dd>
+                <dt>{phrase("显示状态", "Display state")}</dt>
+                <dd>{detail.truncated ? phrase("内容已截断", "Content truncated") : phrase("完整显示", "Full content")}</dd>
               </div>
             </dl>
 
             <div className="cache-value-heading">
-              <strong>键值内容</strong>
+              <strong>{phrase("键值内容", "Cache value")}</strong>
               <button
                 className="text-action"
                 onClick={() => void copyDetailValue()}
                 type="button"
               >
-                复制脱敏内容
+                {phrase("复制脱敏内容", "Copy masked value")}
               </button>
             </div>
             <pre className="cache-value-viewer">
@@ -909,7 +912,7 @@ export default function CacheManagementPage() {
                 onSubmit={(event) => void handleTtlSubmit(event)}
               >
                 <label>
-                  <span>设置 TTL（秒）</span>
+                  <span>{phrase("设置 TTL（秒）", "Set TTL (seconds)")}</span>
                   <input
                     inputMode="numeric"
                     max={31_536_000}
@@ -925,20 +928,20 @@ export default function CacheManagementPage() {
                   disabled={busyKey === detail.key}
                   type="submit"
                 >
-                  保存 TTL
+                  {phrase("保存 TTL", "Save TTL")}
                 </button>
               </form>
             ) : null}
 
             <div className="cache-detail-actions">
-              <span>{deleteActionHint(detail.category)}</span>
+              <span>{phrase(deleteActionHint(detail.category), deleteActionHintEnglish(detail.category))}</span>
               <button
                 className="cache-danger-action"
                 disabled={isDeleting}
                 onClick={() => void handleDelete([detail.key])}
                 type="button"
               >
-                {deleteActionLabel(detail.category)}
+                {phrase(deleteActionLabel(detail.category), deleteActionLabelEnglish(detail.category))}
               </button>
             </div>
           </section>
@@ -948,33 +951,33 @@ export default function CacheManagementPage() {
   );
 }
 
-function CacheOverviewGrid({ overview }: { overview: CacheOverview }) {
+function CacheOverviewGrid({ overview, phrase }: { overview: CacheOverview; phrase: InlinePhrase }) {
   const memoryPercent =
     overview.maxMemoryBytes > 0
       ? overview.usedMemoryBytes / overview.maxMemoryBytes
       : null;
   const metrics = [
     { label: "Redis", value: `v${overview.redisVersion}` },
-    { label: "缓存键", value: String(overview.keyCount) },
-    { label: "已用内存", value: formatBytes(overview.usedMemoryBytes) },
+    { label: phrase("缓存键", "Cache keys"), value: String(overview.keyCount) },
+    { label: phrase("已用内存", "Memory used"), value: formatBytes(overview.usedMemoryBytes) },
     {
-      label: "内存占比",
-      value: memoryPercent === null ? "未限制" : formatPercent(memoryPercent),
+      label: phrase("内存占比", "Memory usage"),
+      value: memoryPercent === null ? phrase("未限制", "Unlimited") : formatPercent(memoryPercent),
     },
-    { label: "连接数", value: String(overview.connectedClients) },
+    { label: phrase("连接数", "Connections"), value: String(overview.connectedClients) },
     {
-      label: "命中率",
+      label: phrase("命中率", "Hit rate"),
       value:
         overview.hitRate === null
-          ? "暂无数据"
+          ? phrase("暂无数据", "No data")
           : formatPercent(overview.hitRate),
     },
-    { label: "已过期", value: String(overview.expiredKeys) },
-    { label: "已淘汰", value: String(overview.evictedKeys) },
+    { label: phrase("已过期", "Expired"), value: String(overview.expiredKeys) },
+    { label: phrase("已淘汰", "Evicted"), value: String(overview.evictedKeys) },
   ];
 
   return (
-    <section aria-label="Redis 运行概览" className="cache-overview-grid">
+    <section aria-label={phrase("Redis 运行概览", "Redis overview")} className="cache-overview-grid">
       {metrics.map((metric) => (
         <div className="cache-metric" key={metric.label}>
           <span>{metric.label}</span>
@@ -1002,26 +1005,26 @@ function formatBytes(value: number | null): string {
   return `${amount.toFixed(amount >= 100 ? 0 : amount >= 10 ? 1 : 2)} ${units[unitIndex]}`;
 }
 
-function formatTtl(seconds: number): string {
+function formatTtl(seconds: number, phrase: InlinePhrase): string {
   if (seconds === -1) {
-    return "永久";
+    return phrase("永久", "Permanent");
   }
   if (seconds < 0) {
-    return "已失效";
+    return phrase("已失效", "Expired");
   }
   if (seconds < 60) {
-    return `${seconds} 秒`;
+    return phrase(`${seconds} 秒`, `${seconds} seconds`);
   }
   const days = Math.floor(seconds / 86_400);
   const hours = Math.floor((seconds % 86_400) / 3_600);
   const minutes = Math.floor((seconds % 3_600) / 60);
   if (days > 0) {
-    return `${days} 天 ${hours} 小时`;
+    return phrase(`${days} 天 ${hours} 小时`, `${days}d ${hours}h`);
   }
   if (hours > 0) {
-    return `${hours} 小时 ${minutes} 分`;
+    return phrase(`${hours} 小时 ${minutes} 分`, `${hours}h ${minutes}m`);
   }
-  return `${minutes} 分钟`;
+  return phrase(`${minutes} 分钟`, `${minutes} min`);
 }
 
 function formatPercent(value: number): string {
@@ -1058,6 +1061,24 @@ function deleteActionHint(category: CacheKeyCategory): string {
   }
 }
 
+function deleteActionLabelEnglish(category: CacheKeyCategory): string {
+  switch (category) {
+    case "refresh-session": return "Revoke this session";
+    case "user-sessions": return "Revoke all sessions";
+    case "login-failure": return "Clear failure counter";
+    default: return "Delete cache key";
+  }
+}
+
+function deleteActionHintEnglish(category: CacheKeyCategory): string {
+  switch (category) {
+    case "refresh-session": return "This device must sign in again.";
+    case "user-sessions": return "All devices for this user must sign in again.";
+    case "login-failure": return "Failed sign-in counters for the account and IP will be cleared.";
+    default: return "This cache key will be deleted from Redis immediately.";
+  }
+}
+
 function buildDeleteConfirmation(
   keys: string[],
   summaries: CacheKeySummary[],
@@ -1074,6 +1095,18 @@ function buildDeleteConfirmation(
   return `确定处理选中的 ${keys.length} 个缓存键吗？其中的登录会话可能会立即失效。`;
 }
 
+function buildDeleteConfirmationEnglish(
+  keys: string[],
+  summaries: CacheKeySummary[],
+  detail: CacheKeyDetail | null,
+): string {
+  if (keys.length === 1) {
+    const item = summaries.find((summary) => summary.key === keys[0]) ?? (detail?.key === keys[0] ? detail : null);
+    if (item) return `${deleteActionLabelEnglish(item.category)}? ${deleteActionHintEnglish(item.category)}`;
+  }
+  return `Process ${keys.length} selected cache keys? Active sign-in sessions may expire immediately.`;
+}
+
 function formatDeleteResult(result: {
   deletedKeys: number;
   revokedSessions: number;
@@ -1087,4 +1120,11 @@ function formatDeleteResult(result: {
     details.push(`清除 ${result.clearedLoginFailures} 项登录失败计数`);
   }
   return `${details.join("，")}。`;
+}
+
+function formatDeleteResultEnglish(result: { deletedKeys: number; revokedSessions: number; clearedLoginFailures: number }): string {
+  const details = [`Deleted ${result.deletedKeys} keys`];
+  if (result.revokedSessions) details.push(`revoked ${result.revokedSessions} sign-in sessions`);
+  if (result.clearedLoginFailures) details.push(`cleared ${result.clearedLoginFailures} failed sign-in counters`);
+  return `${details.join(", ")}.`;
 }

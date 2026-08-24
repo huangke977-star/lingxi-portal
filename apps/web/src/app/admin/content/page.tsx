@@ -6,9 +6,12 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Pencil, Plus, Star, Trash2 } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
+import { GlassSelect } from "@/components/glass-select";
+import { useLanguage } from "@/components/language-provider";
 import { listRoles } from "@/lib/admin-api";
 import { AuthRole, AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { localizedPath } from "@/lib/i18n";
 import { isSiteManager } from "@/lib/user-permissions";
 import {
   createPortalCategory,
@@ -41,6 +44,29 @@ const VISIBILITY_LABEL: Record<PortalVisibility, string> = {
   role_restricted: "指定角色",
 };
 
+type InlinePhrase = (chinese: string, english: string) => string;
+
+function categoryKindLabel(kind: PortalCategoryKind, phrase: InlinePhrase) {
+  const labels: Record<PortalCategoryKind, [string, string]> = {
+    navigation: ["导航", "Navigation"],
+    tool: ["工具", "Tool"],
+    server: ["服务器入口", "Server access"],
+    custom_page: ["自定义页面（预留）", "Custom page (reserved)"],
+  };
+  const [chinese, english] = labels[kind];
+  return phrase(chinese, english);
+}
+
+function visibilityLabel(visibility: PortalVisibility, phrase: InlinePhrase) {
+  const labels: Record<PortalVisibility, [string, string]> = {
+    public: ["公开", "Public"],
+    authenticated: ["登录可见", "Signed-in users"],
+    role_restricted: ["指定角色", "Selected roles"],
+  };
+  const [chinese, english] = labels[visibility];
+  return phrase(chinese, english);
+}
+
 type KindFilter = "all" | PortalCategoryKind;
 
 interface CategoryDialogState {
@@ -63,6 +89,7 @@ const emptyCategoryDraft: PortalCategoryInput = {
 
 export default function ContentManagementPage() {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [categories, setCategories] = useState<PortalCategory[]>([]);
@@ -84,7 +111,7 @@ export default function ContentManagementPage() {
     let isMounted = true;
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
     const verifiedToken = token;
@@ -109,14 +136,14 @@ export default function ContentManagementPage() {
       } catch (loadError) {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
         if (isMounted) {
           setError(
             loadError instanceof Error
               ? loadError.message
-              : "无法读取门户内容。",
+              : phrase("无法读取门户内容。", "Could not load portal content."),
           );
         }
       } finally {
@@ -128,7 +155,7 @@ export default function ContentManagementPage() {
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, [locale, phrase, router]);
 
   const manageableCategories = useMemo(
     () =>
@@ -194,7 +221,7 @@ export default function ContentManagementPage() {
     const category =
       selectedCategory ?? filteredCategories[0] ?? manageableCategories[0];
     if (!category) {
-      setError("请先创建一个分类。");
+      setError(phrase("请先创建一个分类。", "Create a category first."));
       return;
     }
     setEntryDialog({
@@ -227,7 +254,7 @@ export default function ContentManagementPage() {
     event.preventDefault();
     if (!accessToken || !categoryDialog) return;
     if (!categoryDialog.draft.name.trim()) {
-      setError("分类名称不能为空。");
+      setError(phrase("分类名称不能为空。", "Category name cannot be empty."));
       return;
     }
 
@@ -244,10 +271,10 @@ export default function ContentManagementPage() {
       await refreshContent(accessToken);
       setSelectedCategoryId(saved.id);
       setCategoryDialog(null);
-      setNotice(categoryDialog.id ? "分类已更新。" : "分类已创建。");
+      setNotice(categoryDialog.id ? phrase("分类已更新。", "Category updated.") : phrase("分类已创建。", "Category created."));
     } catch (saveError) {
       setError(
-        saveError instanceof Error ? saveError.message : "分类保存失败。",
+        saveError instanceof Error ? saveError.message : phrase("分类保存失败。", "Could not save category."),
       );
     } finally {
       setIsSaving(false);
@@ -261,11 +288,11 @@ export default function ContentManagementPage() {
       (item) => item.id === entryDialog.draft.categoryId,
     );
     if (!category) {
-      setError("请选择有效分类。");
+      setError(phrase("请选择有效分类。", "Choose a valid category."));
       return;
     }
     if (!entryDialog.draft.title.trim()) {
-      setError("条目标题不能为空。");
+      setError(phrase("条目标题不能为空。", "Entry title cannot be empty."));
       return;
     }
     if (
@@ -273,7 +300,7 @@ export default function ContentManagementPage() {
       entryDialog.draft.visibility === "role_restricted" &&
       entryDialog.draft.roleCodes.length === 0
     ) {
-      setError("指定角色可见时至少选择一个角色。");
+      setError(phrase("指定角色可见时至少选择一个角色。", "Choose at least one role for restricted visibility."));
       return;
     }
 
@@ -297,10 +324,10 @@ export default function ContentManagementPage() {
       await refreshContent(accessToken);
       setSelectedCategoryId(normalizedDraft.categoryId);
       setEntryDialog(null);
-      setNotice(entryDialog.id ? "条目已更新。" : "条目已创建。");
+      setNotice(entryDialog.id ? phrase("条目已更新。", "Entry updated.") : phrase("条目已创建。", "Entry created."));
     } catch (saveError) {
       setError(
-        saveError instanceof Error ? saveError.message : "条目保存失败。",
+        saveError instanceof Error ? saveError.message : phrase("条目保存失败。", "Could not save entry."),
       );
     } finally {
       setIsSaving(false);
@@ -310,20 +337,20 @@ export default function ContentManagementPage() {
   async function handleDeleteCategory(category: PortalCategory) {
     if (!accessToken) return;
     if (category.entries.length > 0) {
-      setError("请先删除该分类下的全部条目。");
+      setError(phrase("请先删除该分类下的全部条目。", "Delete every entry in this category first."));
       return;
     }
-    if (!window.confirm(`确定删除分类“${category.name}”吗？`)) return;
+    if (!window.confirm(phrase(`确定删除分类“${category.name}”吗？`, `Delete category “${category.name}”?`))) return;
 
     setBusyKey(`category-${category.id}`);
     setError("");
     try {
       await deletePortalCategory(accessToken, category.id);
       await refreshContent(accessToken);
-      setNotice("分类已删除。");
+      setNotice(phrase("分类已删除。", "Category deleted."));
     } catch (deleteError) {
       setError(
-        deleteError instanceof Error ? deleteError.message : "分类删除失败。",
+        deleteError instanceof Error ? deleteError.message : phrase("分类删除失败。", "Could not delete category."),
       );
     } finally {
       setBusyKey("");
@@ -332,17 +359,17 @@ export default function ContentManagementPage() {
 
   async function handleDeleteEntry(entry: PortalEntry) {
     if (!accessToken) return;
-    if (!window.confirm(`确定删除条目“${entry.title}”吗？`)) return;
+    if (!window.confirm(phrase(`确定删除条目“${entry.title}”吗？`, `Delete entry “${entry.title}”?`))) return;
 
     setBusyKey(`entry-${entry.id}`);
     setError("");
     try {
       await deletePortalEntry(accessToken, entry.id);
       await refreshContent(accessToken);
-      setNotice("条目已删除。");
+      setNotice(phrase("条目已删除。", "Entry deleted."));
     } catch (deleteError) {
       setError(
-        deleteError instanceof Error ? deleteError.message : "条目删除失败。",
+        deleteError instanceof Error ? deleteError.message : phrase("条目删除失败。", "Could not delete entry."),
       );
     } finally {
       setBusyKey("");
@@ -353,9 +380,9 @@ export default function ContentManagementPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>内容管理</h1>
+        <h1>{phrase("内容管理", "Content management")}</h1>
         <div className="status-row compact-status-row">
-          <span className="status">正在读取门户内容</span>
+          <span className="status">{phrase("正在读取门户内容", "Loading portal content")}</span>
         </div>
       </section>
     );
@@ -365,10 +392,10 @@ export default function ContentManagementPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>无法进入内容管理</h1>
-        <p>{error || "请重新登录后访问。"}</p>
-        <Link className="text-action primary" href="/login">
-          返回登录
+        <h1>{phrase("无法进入内容管理", "Could not open content management")}</h1>
+        <p>{error || phrase("请重新登录后访问。", "Sign in again to continue.")}</p>
+        <Link className="text-action primary" href={localizedPath("/login", locale)}>
+          {phrase("返回登录", "Back to sign in")}
         </Link>
       </section>
     );
@@ -378,8 +405,8 @@ export default function ContentManagementPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>无权访问</h1>
-        <p>该页面仅管理员和超级管理员可以访问。</p>
+        <h1>{phrase("无权访问", "Access denied")}</h1>
+        <p>{phrase("该页面仅管理员和超级管理员可以访问。", "Only administrators and super administrators can access this page.")}</p>
       </section>
     );
   }
@@ -387,7 +414,7 @@ export default function ContentManagementPage() {
   return (
     <section className="page-shell admin-shell portal-admin-shell">
       <div className="portal-admin-toolbar">
-        <div aria-label="内容类型" className="portal-kind-tabs" role="tablist">
+        <div aria-label={phrase("内容类型", "Content type")} className="portal-kind-tabs" role="tablist">
           {(["all", ...availableKinds.map(([kind]) => kind)] as KindFilter[]).map(
             (kind) => (
               <button
@@ -398,17 +425,17 @@ export default function ContentManagementPage() {
                 role="tab"
                 type="button"
               >
-                {kind === "all" ? "全部" : KIND_LABEL[kind]}
+                {kind === "all" ? phrase("全部", "All") : categoryKindLabel(kind, phrase)}
               </button>
             ),
           )}
         </div>
         <div className="portal-admin-header-actions">
           <button className="text-action primary" onClick={openCreateCategory} type="button">
-            <Plus aria-hidden="true" size={17} />新建分类
+            <Plus aria-hidden="true" size={17} />{phrase("新建分类", "New category")}
           </button>
           <button className="text-action primary" onClick={openCreateEntry} type="button">
-            <Plus aria-hidden="true" size={17} />新建条目
+            <Plus aria-hidden="true" size={17} />{phrase("新建条目", "New entry")}
           </button>
         </div>
       </div>
@@ -417,8 +444,8 @@ export default function ContentManagementPage() {
         <aside className="portal-category-admin-panel">
           <div className="portal-admin-panel-heading">
             <div>
-              <span className="section-label">分类</span>
-              <h2>{filteredCategories.length} 个分类</h2>
+              <span className="section-label">{phrase("分类", "CATEGORIES")}</span>
+              <h2>{phrase(`${filteredCategories.length} 个分类`, `${filteredCategories.length} categories`)}</h2>
             </div>
           </div>
           <div className="portal-category-admin-list">
@@ -432,27 +459,27 @@ export default function ContentManagementPage() {
                   onClick={() => setSelectedCategoryId(category.id)}
                   type="button"
                 >
-                  <span>{KIND_LABEL[category.kind]}</span>
+                  <span>{categoryKindLabel(category.kind, phrase)}</span>
                   <strong>{category.name}</strong>
                   <small>
-                    {category.entries.length} 项 ·{" "}
-                    {category.status === "active" ? "启用" : "停用"}
+                    {phrase(`${category.entries.length} 项`, `${category.entries.length} entries`)} · {" "}
+                    {category.status === "active" ? phrase("启用", "Active") : phrase("停用", "Disabled")}
                   </small>
                 </button>
                 <div className="portal-row-actions">
                   <button
-                    aria-label={`编辑分类 ${category.name}`}
+                    aria-label={phrase(`编辑分类 ${category.name}`, `Edit category ${category.name}`)}
                     onClick={() => openEditCategory(category)}
-                    title="编辑分类"
+                    title={phrase("编辑分类", "Edit category")}
                     type="button"
                   >
                     <Pencil aria-hidden="true" size={16} />
                   </button>
                   <button
-                    aria-label={`删除分类 ${category.name}`}
+                    aria-label={phrase(`删除分类 ${category.name}`, `Delete category ${category.name}`)}
                     disabled={busyKey === `category-${category.id}`}
                     onClick={() => void handleDeleteCategory(category)}
-                    title="删除分类"
+                    title={phrase("删除分类", "Delete category")}
                     type="button"
                   >
                     <Trash2 aria-hidden="true" size={16} />
@@ -461,7 +488,7 @@ export default function ContentManagementPage() {
               </div>
             ))}
             {!filteredCategories.length ? (
-              <p className="portal-admin-empty">当前类型还没有分类。</p>
+              <p className="portal-admin-empty">{phrase("当前类型还没有分类。", "There are no categories of this type.")}</p>
             ) : null}
           </div>
         </aside>
@@ -469,11 +496,11 @@ export default function ContentManagementPage() {
         <section className="portal-entry-admin-panel">
           <div className="portal-admin-panel-heading">
             <div>
-              <span className="section-label">条目</span>
-              <h2>{selectedCategory?.name ?? "请选择分类"}</h2>
+              <span className="section-label">{phrase("条目", "ENTRIES")}</span>
+              <h2>{selectedCategory?.name ?? phrase("请选择分类", "Choose a category")}</h2>
             </div>
             {selectedCategory?.kind === "server" ? (
-              <span className="portal-server-rule">仅超级管理员可见</span>
+              <span className="portal-server-rule">{phrase("仅超级管理员可见", "Super administrators only")}</span>
             ) : null}
           </div>
 
@@ -484,28 +511,28 @@ export default function ContentManagementPage() {
                   <AdminEntryIcon entry={entry} />
                   <div className="portal-entry-admin-copy">
                     <strong>{entry.title}</strong>
-                    <p>{entry.description || "暂无说明"}</p>
+                    <p>{entry.description || phrase("暂无说明", "No description")}</p>
                     <div>
-                      <span>{VISIBILITY_LABEL[entry.visibility]}</span>
-                      <span>{entry.status === "active" ? "启用" : "停用"}</span>
-                      <span>排序 {entry.sortOrder}</span>
-                      {entry.isFeatured ? <span>首页推荐 {entry.featuredSortOrder}</span> : null}
+                      <span>{visibilityLabel(entry.visibility, phrase)}</span>
+                      <span>{entry.status === "active" ? phrase("启用", "Active") : phrase("停用", "Disabled")}</span>
+                      <span>{phrase(`排序 ${entry.sortOrder}`, `Order ${entry.sortOrder}`)}</span>
+                      {entry.isFeatured ? <span>{phrase(`首页推荐 ${entry.featuredSortOrder}`, `Homepage feature ${entry.featuredSortOrder}`)}</span> : null}
                     </div>
                   </div>
                   <div className="portal-row-actions">
                     <button
-                      aria-label={`编辑条目 ${entry.title}`}
+                      aria-label={phrase(`编辑条目 ${entry.title}`, `Edit entry ${entry.title}`)}
                       onClick={() => openEditEntry(entry)}
-                      title="编辑条目"
+                      title={phrase("编辑条目", "Edit entry")}
                       type="button"
                     >
                       <Pencil aria-hidden="true" size={16} />
                     </button>
                     <button
-                      aria-label={`删除条目 ${entry.title}`}
+                      aria-label={phrase(`删除条目 ${entry.title}`, `Delete entry ${entry.title}`)}
                       disabled={busyKey === `entry-${entry.id}`}
                       onClick={() => void handleDeleteEntry(entry)}
-                      title="删除条目"
+                      title={phrase("删除条目", "Delete entry")}
                       type="button"
                     >
                       <Trash2 aria-hidden="true" size={16} />
@@ -516,8 +543,8 @@ export default function ContentManagementPage() {
             </div>
           ) : (
             <div className="portal-admin-empty large">
-              <strong>当前分类还没有条目</strong>
-              <p>使用右上角的新建条目添加内容。</p>
+              <strong>{phrase("当前分类还没有条目", "This category has no entries")}</strong>
+              <p>{phrase("使用右上角的新建条目添加内容。", "Use New entry in the top right to add content.")}</p>
             </div>
           )}
         </section>
@@ -599,6 +626,7 @@ function CategoryDialog({
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const { phrase } = useLanguage();
   return (
     <div
       className="modal-backdrop"
@@ -611,30 +639,26 @@ function CategoryDialog({
       >
         <div className="modal-heading">
           <span className="eyebrow">Category</span>
-          <h2>{dialog.id ? "编辑分类" : "新建分类"}</h2>
+          <h2>{dialog.id ? phrase("编辑分类", "Edit category") : phrase("新建分类", "New category")}</h2>
         </div>
         <form className="form-stack modal-form" onSubmit={onSubmit}>
           <label>
-            类型
-            <select
+            {phrase("类型", "Type")}
+            <GlassSelect
+              ariaLabel={phrase("类型", "Type")}
               disabled={isSaving}
-              onChange={(event) =>
+              onChange={(value) =>
                 onChange({
                   ...dialog.draft,
-                  kind: event.target.value as PortalCategoryKind,
+                  kind: value as PortalCategoryKind,
                 })
               }
+              options={kinds.map(([kind]) => ({ value: kind, label: categoryKindLabel(kind, phrase) }))}
               value={dialog.draft.kind}
-            >
-              {kinds.map(([kind, label]) => (
-                <option key={kind} value={kind}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            />
           </label>
           <label>
-            分类名称
+            {phrase("分类名称", "Category name")}
             <input
               disabled={isSaving}
               maxLength={80}
@@ -646,7 +670,7 @@ function CategoryDialog({
             />
           </label>
           <label>
-            分类说明
+            {phrase("分类说明", "Category description")}
             <textarea
               disabled={isSaving}
               maxLength={255}
@@ -659,7 +683,7 @@ function CategoryDialog({
           </label>
           <div className="portal-form-columns">
             <label>
-              排序
+              {phrase("排序", "Order")}
               <input
                 disabled={isSaving}
                 onChange={(event) =>
@@ -673,25 +697,24 @@ function CategoryDialog({
               />
             </label>
             <label>
-              状态
-              <select
+              {phrase("状态", "Status")}
+              <GlassSelect
+                ariaLabel={phrase("状态", "Status")}
                 disabled={isSaving}
-                onChange={(event) =>
+                onChange={(value) =>
                   onChange({
                     ...dialog.draft,
-                    status: event.target.value as PortalRecordStatus,
+                    status: value as PortalRecordStatus,
                   })
                 }
+                options={[{ value: "active", label: phrase("启用", "Active") }, { value: "disabled", label: phrase("停用", "Disabled") }]}
                 value={dialog.draft.status}
-              >
-                <option value="active">启用</option>
-                <option value="disabled">停用</option>
-              </select>
+              />
             </label>
           </div>
           <div className="actions">
             <button className="button" disabled={isSaving} type="submit">
-              {isSaving ? "保存中" : "保存"}
+              {isSaving ? phrase("保存中", "Saving") : phrase("保存", "Save")}
             </button>
             <button
               className="button secondary"
@@ -699,7 +722,7 @@ function CategoryDialog({
               onClick={onClose}
               type="button"
             >
-              取消
+              {phrase("取消", "Cancel")}
             </button>
           </div>
         </form>
@@ -725,6 +748,7 @@ function EntryDialog({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   roles: AuthRole[];
 }) {
+  const { phrase } = useLanguage();
   const category = categories.find(
     (item) => item.id === dialog.draft.categoryId,
   );
@@ -742,15 +766,16 @@ function EntryDialog({
       >
         <div className="modal-heading">
           <span className="eyebrow">Entry</span>
-          <h2>{dialog.id ? "编辑条目" : "新建条目"}</h2>
+          <h2>{dialog.id ? phrase("编辑条目", "Edit entry") : phrase("新建条目", "New entry")}</h2>
         </div>
         <form className="form-stack modal-form" onSubmit={onSubmit}>
           <label>
-            所属分类
-            <select
+            {phrase("所属分类", "Category")}
+            <GlassSelect
+              ariaLabel={phrase("所属分类", "Category")}
               disabled={isSaving}
-              onChange={(event) => {
-                const categoryId = Number(event.target.value);
+              onChange={(value) => {
+                const categoryId = Number(value);
                 const nextCategory = categories.find(
                   (item) => item.id === categoryId,
                 );
@@ -767,18 +792,13 @@ function EntryDialog({
                       : dialog.draft.roleCodes,
                 });
               }}
-              value={dialog.draft.categoryId}
-            >
-              {categories.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {KIND_LABEL[item.kind]} · {item.name}
-                </option>
-              ))}
-            </select>
+              options={categories.map((item) => ({ value: String(item.id), label: `${categoryKindLabel(item.kind, phrase)} · ${item.name}` }))}
+              value={String(dialog.draft.categoryId)}
+            />
           </label>
           <div className="portal-form-columns">
             <label>
-              标题
+              {phrase("标题", "Title")}
               <input
                 disabled={isSaving}
                 maxLength={100}
@@ -790,7 +810,7 @@ function EntryDialog({
               />
             </label>
             <label>
-              排序
+              {phrase("排序", "Order")}
               <input
                 disabled={isSaving}
                 onChange={(event) =>
@@ -805,7 +825,7 @@ function EntryDialog({
             </label>
           </div>
           <label>
-            说明
+            {phrase("说明", "Description")}
             <textarea
               disabled={isSaving}
               maxLength={300}
@@ -817,72 +837,67 @@ function EntryDialog({
             />
           </label>
           <label>
-            链接地址
+            {phrase("链接地址", "Link")}
             <input
               disabled={isSaving}
               onChange={(event) =>
                 onChange({ ...dialog.draft, url: event.target.value })
               }
-              placeholder="https://example.com 或 /站内路径"
+              placeholder={phrase("https://example.com 或 /站内路径", "https://example.com or an internal path")}
               value={dialog.draft.url ?? ""}
             />
           </label>
           <label>
-            图标地址
+            {phrase("图标地址", "Icon URL")}
             <input
               disabled={isSaving}
               onChange={(event) =>
                 onChange({ ...dialog.draft, iconPath: event.target.value })
               }
-              placeholder="/logo.png 或 https://example.com/icon.png"
+              placeholder={phrase("/logo.png 或 https://example.com/icon.png", "/logo.png or https://example.com/icon.png")}
               value={dialog.draft.iconPath ?? ""}
             />
           </label>
           <div className="portal-form-columns">
             <label>
-              可见范围
+              {phrase("可见范围", "Visibility")}
               {isServer ? (
-                <input disabled value="仅超级管理员可见" />
+                <input disabled value={phrase("仅超级管理员可见", "Super administrators only")} />
               ) : (
-                <select
+                <GlassSelect
+                  ariaLabel={phrase("可见范围", "Visibility")}
                   disabled={isSaving}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     onChange({
                       ...dialog.draft,
-                      visibility: event.target.value as PortalVisibility,
+                      visibility: value as PortalVisibility,
                     })
                   }
+                  options={Object.keys(VISIBILITY_LABEL).map((value) => ({ value, label: visibilityLabel(value as PortalVisibility, phrase) }))}
                   value={dialog.draft.visibility}
-                >
-                  {Object.entries(VISIBILITY_LABEL).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
+                />
               )}
             </label>
             <label>
-              状态
-              <select
+              {phrase("状态", "Status")}
+              <GlassSelect
+                ariaLabel={phrase("状态", "Status")}
                 disabled={isSaving}
-                onChange={(event) =>
+                onChange={(value) =>
                   onChange({
                     ...dialog.draft,
-                    status: event.target.value as PortalRecordStatus,
+                    status: value as PortalRecordStatus,
                   })
                 }
+                options={[{ value: "active", label: phrase("启用", "Active") }, { value: "disabled", label: phrase("停用", "Disabled") }]}
                 value={dialog.draft.status}
-              >
-                <option value="active">启用</option>
-                <option value="disabled">停用</option>
-              </select>
+              />
             </label>
           </div>
 
           {!isServer && dialog.draft.visibility === "role_restricted" ? (
             <fieldset className="portal-role-fieldset">
-              <legend>允许查看的角色</legend>
+              <legend>{phrase("允许查看的角色", "Roles allowed to view")}</legend>
               <div className="portal-role-grid">
                 {roles.map((role) => (
                   <label key={role.code}>
@@ -921,7 +936,7 @@ function EntryDialog({
                 }
                 type="checkbox"
               />
-              <span>在新标签页打开</span>
+              <span>{phrase("在新标签页打开", "Open in new tab")}</span>
             </label>
             {!isServer ? (
               <>
@@ -934,10 +949,10 @@ function EntryDialog({
                     }
                     type="checkbox"
                   />
-                  <span><Star aria-hidden="true" size={14} />首页推荐</span>
+                  <span><Star aria-hidden="true" size={14} />{phrase("首页推荐", "Feature on homepage")}</span>
                 </label>
                 <label className="portal-featured-sort">
-                  推荐排序
+                  {phrase("推荐排序", "Feature order")}
                   <input
                     disabled={isSaving || !dialog.draft.isFeatured}
                     onChange={(event) =>
@@ -955,7 +970,7 @@ function EntryDialog({
           </div>
           <div className="actions">
             <button className="button" disabled={isSaving} type="submit">
-              {isSaving ? "保存中" : "保存"}
+              {isSaving ? phrase("保存中", "Saving") : phrase("保存", "Save")}
             </button>
             <button
               className="button secondary"
@@ -963,7 +978,7 @@ function EntryDialog({
               onClick={onClose}
               type="button"
             >
-              取消
+              {phrase("取消", "Cancel")}
             </button>
           </div>
         </form>

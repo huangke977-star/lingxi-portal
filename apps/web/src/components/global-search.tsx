@@ -16,7 +16,7 @@ import { getAvatarFallbackText } from "@/lib/user-display";
 
 export function GlobalSearch() {
   const router = useRouter();
-  const { locale, t } = useLanguage();
+  const { locale, phrase, t } = useLanguage();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -118,10 +118,10 @@ export function GlobalSearch() {
             {isLoading ? <div className="global-search-hint"><span>{t("search.searching")}</span></div> : null}
             {!isLoading && result ? <>
               <SearchSection count={result.articles.total} icon={FileText} title={t("search.articles")}>
-                {result.articles.items.map((article) => <Link href={`/articles/${article.slug}`} key={article.id} onClick={close}><span className="global-result-icon"><FileText aria-hidden="true" size={17} /></span><span><strong>{article.title}</strong><small>{article.author.nickname} · {article.category || "随笔"}</small></span></Link>)}
+                {result.articles.items.map((article) => <Link href={localizedPath(`/articles/${article.slug}`, locale)} key={article.id} onClick={close}><span className="global-result-icon"><FileText aria-hidden="true" size={17} /></span><span><strong>{article.title}</strong><small>{article.author.nickname} · {article.category || phrase("随笔", "Notes")}</small></span></Link>)}
               </SearchSection>
               <SearchSection count={result.users.total} icon={UserRound} title={t("search.users")}>
-                {result.users.items.map((user) => <Link href={`/users/${encodeURIComponent(user.username)}`} key={user.id} onClick={close}><span className="global-result-avatar">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : getAvatarFallbackText(user)}</span><span><strong>{user.nickname}</strong><small>@{user.username} · {user.role.name}</small></span></Link>)}
+                {result.users.items.map((user) => <Link href={localizedPath(`/users/${encodeURIComponent(user.username)}`, locale)} key={user.id} onClick={close}><span className="global-result-avatar">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : getAvatarFallbackText(user)}</span><span><strong>{user.nickname}</strong><small>@{user.username} · {user.role.name}</small></span></Link>)}
               </SearchSection>
               <SearchSection count={result.navigation.total} icon={Compass} title={t("search.navigation")}>
                 {result.navigation.items.map((entry) => entry.url ? <a href={entry.url} key={entry.id} onClick={close} rel="noreferrer" target={entry.openInNewTab ? "_blank" : undefined}><span className="global-result-icon">{entry.iconPath ? <img alt="" src={entry.iconPath} /> : <Compass aria-hidden="true" size={17} />}</span><span><strong>{entry.title}</strong><small>{entry.category.name}</small></span><ExternalLink aria-hidden="true" size={14} /></a> : null)}

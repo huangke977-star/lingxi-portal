@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
 import { AppToast } from '@/components/app-toast';
+import { useLanguage } from '@/components/language-provider';
 import {
   activateBackground,
   deleteBackground,
@@ -15,12 +16,14 @@ import {
 } from '@/lib/background-api';
 import { AuthUser, getMe, isAuthExpiredError } from '@/lib/auth-api';
 import { clearAuthTokens, readAccessToken } from '@/lib/auth-storage';
+import { localizedPath } from '@/lib/i18n';
 
 const MAX_FILE_SIZE = 30 * 1024 * 1024;
 const MAX_FILES_PER_UPLOAD = 20;
 
 export default function BackgroundManagementPage() {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [backgrounds, setBackgrounds] = useState<ManagedBackground[]>([]);
@@ -36,7 +39,7 @@ export default function BackgroundManagementPage() {
     const token = readAccessToken();
 
     if (!token) {
-      router.replace('/login');
+      router.replace(localizedPath('/login', locale));
       return;
     }
 
@@ -61,12 +64,12 @@ export default function BackgroundManagementPage() {
       } catch (loadError) {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace('/');
+          router.replace(localizedPath('/', locale));
           return;
         }
 
         if (isMounted) {
-          setError(loadError instanceof Error ? loadError.message : '无法读取背景图片。');
+          setError(loadError instanceof Error ? loadError.message : phrase('无法读取背景图片。', 'Could not load background images.'));
         }
       } finally {
         if (isMounted) {
@@ -79,25 +82,25 @@ export default function BackgroundManagementPage() {
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, [locale, phrase, router]);
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!accessToken || selectedFiles.length === 0) {
-      setError('请选择背景图片。');
+      setError(phrase('请选择背景图片。', 'Choose background images first.'));
       setNotice('');
       return;
     }
 
     if (selectedFiles.length > MAX_FILES_PER_UPLOAD) {
-      setError(`一次最多上传 ${MAX_FILES_PER_UPLOAD} 张图片。`);
+      setError(phrase(`一次最多上传 ${MAX_FILES_PER_UPLOAD} 张图片。`, `Upload at most ${MAX_FILES_PER_UPLOAD} images at once.`));
       setNotice('');
       return;
     }
 
     const oversizedFile = selectedFiles.find((file) => file.size > MAX_FILE_SIZE);
     if (oversizedFile) {
-      setError(`${oversizedFile.name} 超过 30 MB。`);
+      setError(phrase(`${oversizedFile.name} 超过 30 MB。`, `${oversizedFile.name} exceeds 30 MB.`));
       setNotice('');
       return;
     }
@@ -109,13 +112,13 @@ export default function BackgroundManagementPage() {
       const uploadedBackgrounds = await uploadBackgrounds(accessToken, selectedFiles);
       setBackgrounds((current) => [...uploadedBackgrounds, ...current]);
       setSelectedFiles([]);
-      setNotice(`${uploadedBackgrounds.length} 张图片已上传，可设为全站背景。`);
+      setNotice(phrase(`${uploadedBackgrounds.length} 张图片已上传，可设为全站背景。`, `${uploadedBackgrounds.length} image(s) uploaded and ready to use as the site background.`));
       const input = document.getElementById('background-file') as HTMLInputElement | null;
       if (input) {
         input.value = '';
       }
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : '背景图片上传失败。');
+      setError(uploadError instanceof Error ? uploadError.message : phrase('背景图片上传失败。', 'Could not upload background images.'));
     } finally {
       setIsUploading(false);
     }
@@ -135,9 +138,9 @@ export default function BackgroundManagementPage() {
         current.map((item) => ({ ...item, isActive: item.id === activeBackground.id })),
       );
       notifyBackgroundChange();
-      setNotice(`已将 ${activeBackground.originalName} 设为全站背景。`);
+      setNotice(phrase(`已将 ${activeBackground.originalName} 设为全站背景。`, `${activeBackground.originalName} is now the site background.`));
     } catch (activateError) {
-      setError(activateError instanceof Error ? activateError.message : '背景切换失败。');
+      setError(activateError instanceof Error ? activateError.message : phrase('背景切换失败。', 'Could not change site background.'));
     } finally {
       setBusyId(null);
     }
@@ -150,8 +153,8 @@ export default function BackgroundManagementPage() {
 
     const confirmed = window.confirm(
       background.isActive
-        ? '删除当前全站背景后将恢复内置默认背景，确定删除吗？'
-        : `确定从磁盘中永久删除 ${background.originalName} 吗？`,
+        ? phrase('删除当前全站背景后将恢复内置默认背景，确定删除吗？', 'Deleting the active background restores the built-in default. Continue?')
+        : phrase(`确定从磁盘中永久删除 ${background.originalName} 吗？`, `Permanently delete ${background.originalName} from disk?`),
     );
     if (!confirmed) {
       return;
@@ -166,9 +169,9 @@ export default function BackgroundManagementPage() {
       if (background.isActive) {
         notifyBackgroundChange();
       }
-      setNotice('图片及其磁盘文件已删除。');
+      setNotice(phrase('图片及其磁盘文件已删除。', 'Image and source file deleted.'));
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : '背景图片删除失败。');
+      setError(deleteError instanceof Error ? deleteError.message : phrase('背景图片删除失败。', 'Could not delete background image.'));
     } finally {
       setBusyId(null);
     }
@@ -178,9 +181,9 @@ export default function BackgroundManagementPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>背景管理</h1>
+        <h1>{phrase('背景管理', 'Background management')}</h1>
         <div className="status-row">
-          <span className="status">正在读取图片</span>
+          <span className="status">{phrase('正在读取图片', 'Loading images')}</span>
         </div>
       </section>
     );
@@ -190,10 +193,10 @@ export default function BackgroundManagementPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>无法进入背景管理</h1>
-        <p>{error || '请重新登录后再访问。'}</p>
-        <Link className="text-action primary" href="/login">
-          返回登录
+        <h1>{phrase('无法进入背景管理', 'Cannot open background management')}</h1>
+        <p>{error || phrase('请重新登录后再访问。', 'Sign in again to continue.')}</p>
+        <Link className="text-action primary" href={localizedPath('/login', locale)}>
+          {phrase('返回登录', 'Back to sign in')}
         </Link>
       </section>
     );
@@ -203,10 +206,10 @@ export default function BackgroundManagementPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>无权访问</h1>
-        <p>该页面仅超级管理员可查看。</p>
-        <Link className="text-action primary" href="/dashboard">
-          返回工作台
+        <h1>{phrase('无权访问', 'Access denied')}</h1>
+        <p>{phrase('该页面仅超级管理员可查看。', 'This page is available only to the super administrator.')}</p>
+        <Link className="text-action primary" href={localizedPath('/dashboard', locale)}>
+          {phrase('返回工作台', 'Back to workspace')}
         </Link>
       </section>
     );
@@ -226,9 +229,9 @@ export default function BackgroundManagementPage() {
 
       <form className="background-upload-panel" onSubmit={(event) => void handleUpload(event)}>
         <div>
-          <span className="section-label">上传图片</span>
-          <h2>添加全站背景</h2>
-          <p>支持 JPEG、PNG、WebP、AVIF，每次最多 5 张、单张原图不超过 30 MB，上传后自动压缩为 WebP。</p>
+          <span className="section-label">{phrase('上传图片', 'UPLOAD IMAGES')}</span>
+          <h2>{phrase('添加全站背景', 'Add site backgrounds')}</h2>
+          <p>{phrase('支持 JPEG、PNG、WebP、AVIF，每次最多 5 张、单张原图不超过 30 MB，上传后自动压缩为 WebP。', 'Supports JPEG, PNG, WebP, and AVIF. Upload up to 5 images at once, 30 MB each, then they are compressed to WebP.')}</p>
         </div>
         <div className="background-upload-controls">
           <label className="background-file-picker" htmlFor="background-file">
@@ -240,21 +243,21 @@ export default function BackgroundManagementPage() {
               onChange={(event) => setSelectedFiles(Array.from(event.target.files ?? []))}
               type="file"
             />
-            <span>{formatSelectedFiles(selectedFiles)}</span>
+            <span>{formatSelectedFiles(selectedFiles, phrase)}</span>
           </label>
           <button className="button" disabled={isUploading || selectedFiles.length === 0} type="submit">
-            {isUploading ? '上传中' : '上传'}
+            {isUploading ? phrase('上传中', 'Uploading') : phrase('上传', 'Upload')}
           </button>
         </div>
       </form>
 
       <div className="background-list-heading">
         <div>
-          <span className="section-label">图片库</span>
-          <h2>{backgrounds.length} 张已上传图片</h2>
+          <span className="section-label">{phrase('图片库', 'IMAGE LIBRARY')}</span>
+          <h2>{phrase(`${backgrounds.length} 张已上传图片`, `${backgrounds.length} uploaded images`)}</h2>
         </div>
         <span className="background-current-state">
-          {backgrounds.some((background) => background.isActive) ? '已设置全站背景' : '使用内置默认背景'}
+          {backgrounds.some((background) => background.isActive) ? phrase('已设置全站背景', 'Custom site background active') : phrase('使用内置默认背景', 'Using built-in default background')}
         </span>
       </div>
 
@@ -265,18 +268,18 @@ export default function BackgroundManagementPage() {
             return (
               <article className={`background-card${background.isActive ? ' active' : ''}`} key={background.id}>
                 <div
-                  aria-label={`背景预览：${background.originalName}`}
+                  aria-label={phrase(`背景预览：${background.originalName}`, `Background preview: ${background.originalName}`)}
                   className="background-preview"
                   role="img"
                   style={{ backgroundImage: `url("${resolveBackgroundUrl(background)}")` }}
                 >
-                  {background.isActive ? <span className="background-active-badge">当前使用</span> : null}
+                  {background.isActive ? <span className="background-active-badge">{phrase('当前使用', 'Active')}</span> : null}
                 </div>
                 <div className="background-card-body">
                   <div className="background-card-copy">
                     <strong title={background.originalName}>{background.originalName}</strong>
                     <span>
-                      {formatFileSize(background.sizeBytes)} · {formatDate(background.createdAt)} · {background.uploadedBy.username}
+                      {formatFileSize(background.sizeBytes)} · {formatDate(background.createdAt, locale)} · {background.uploadedBy.username}
                     </span>
                   </div>
                   <div className="background-card-actions">
@@ -287,7 +290,7 @@ export default function BackgroundManagementPage() {
                         onClick={() => void handleActivate(background)}
                         type="button"
                       >
-                        {isBusy ? '设置中' : '设为全站背景'}
+                        {isBusy ? phrase('设置中', 'Applying') : phrase('设为全站背景', 'Set as site background')}
                       </button>
                     ) : null}
                     <button
@@ -296,7 +299,7 @@ export default function BackgroundManagementPage() {
                       onClick={() => void handleDelete(background)}
                       type="button"
                     >
-                      {isBusy ? '处理中' : '永久删除'}
+                      {isBusy ? phrase('处理中', 'Processing') : phrase('永久删除', 'Delete permanently')}
                     </button>
                   </div>
                 </div>
@@ -306,8 +309,8 @@ export default function BackgroundManagementPage() {
         </div>
       ) : (
         <div className="background-empty-state">
-          <strong>暂无上传图片</strong>
-          <p>当前使用 HLOVET 内置默认背景。</p>
+          <strong>{phrase('暂无上传图片', 'No uploaded images')}</strong>
+          <p>{phrase('当前使用 HLOVET 内置默认背景。', 'The HLOVET built-in default background is active.')}</p>
         </div>
       )}
     </section>
@@ -321,18 +324,18 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function formatSelectedFiles(files: File[]): string {
+function formatSelectedFiles(files: File[], phrase: (chinese: string, english: string) => string): string {
   if (files.length === 0) {
-    return '选择图片';
+    return phrase('选择图片', 'Choose images');
   }
 
   if (files.length === 1) {
     return files[0].name;
   }
 
-  return `已选择 ${files.length} 张图片`;
+  return phrase(`已选择 ${files.length} 张图片`, `${files.length} images selected`);
 }
 
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(value));
+function formatDate(value: string, locale: 'zh-CN' | 'en-US'): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(value));
 }

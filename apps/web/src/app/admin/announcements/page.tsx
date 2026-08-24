@@ -4,6 +4,7 @@ import { Archive, BellRing, Check, ChevronDown, Eye, LoaderCircle, Pencil, Plus,
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { useLanguage } from "@/components/language-provider";
 import { listRoles } from "@/lib/admin-api";
 import {
   AnnouncementAudience,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/announcements-api";
 import { AuthRole, AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { localizedPath } from "@/lib/i18n";
 import { isSiteManager } from "@/lib/user-permissions";
 
 type StatusFilter = "all" | AnnouncementStatus;
@@ -32,12 +34,6 @@ const statusLabels: Record<AnnouncementStatus, string> = {
   published: "已发布",
   expired: "已下线",
   archived: "已归档",
-};
-
-const audienceLabels: Record<AnnouncementAudience, string> = {
-  public: "所有访客",
-  authenticated: "登录用户",
-  role_restricted: "指定角色",
 };
 
 const emptyInput: AnnouncementInput = {
@@ -56,6 +52,7 @@ const emptyInput: AnnouncementInput = {
 
 export default function AnnouncementAdminPage() {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [token, setToken] = useState("");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [roles, setRoles] = useState<AuthRole[]>([]);
@@ -78,25 +75,25 @@ export default function AnnouncementAdminPage() {
     } catch (loadError) {
       if (isAuthExpiredError(loadError)) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
-      setError(loadError instanceof Error ? loadError.message : "公告列表读取失败。");
+      setError(loadError instanceof Error ? loadError.message : phrase("公告列表读取失败。", "Could not load announcements."));
     } finally {
       setIsLoading(false);
     }
-  }, [router]);
+  }, [locale, phrase, router]);
 
   useEffect(() => {
     const accessToken = readAccessToken();
     if (!accessToken) {
-      router.replace("/login?from=%2Fadmin%2Fannouncements");
+      router.replace(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath("/admin/announcements", locale))}`);
       return;
     }
     Promise.all([getMe(accessToken), listRoles()])
       .then(([currentUser, nextRoles]) => {
         if (!isSiteManager(currentUser)) {
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
         setToken(accessToken);
@@ -106,12 +103,12 @@ export default function AnnouncementAdminPage() {
       .catch((loadError) => {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
-        setError(loadError instanceof Error ? loadError.message : "公告管理初始化失败。");
+        setError(loadError instanceof Error ? loadError.message : phrase("公告管理初始化失败。", "Could not initialize announcement management."));
       });
-  }, [router]);
+  }, [locale, phrase, router]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { setPage(1); setSearch(searchDraft.trim()); }, 300);
@@ -131,7 +128,7 @@ export default function AnnouncementAdminPage() {
       const item = await getAdminAnnouncement(token, id);
       setEditor({ id, status: item.status, input: toInput(item) });
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "公告详情读取失败。");
+      setError(loadError instanceof Error ? loadError.message : phrase("公告详情读取失败。", "Could not load announcement details."));
     } finally {
       setBusyId(0);
     }
@@ -146,9 +143,9 @@ export default function AnnouncementAdminPage() {
       const saved = editor.id ? await updateAnnouncement(token, editor.id, input) : await createAnnouncement(token, input);
       setEditor({ id: saved.id, status: saved.status, input: toInput(saved) });
       await load(token, page, search, status);
-      setNotice(editor.status === "scheduled" ? "定时公告已保存为草稿，请重新发布。" : "公告草稿已保存。");
+      setNotice(editor.status === "scheduled" ? phrase("定时公告已保存为草稿，请重新发布。", "Scheduled announcement saved as a draft. Publish it again when ready.") : phrase("公告草稿已保存。", "Announcement draft saved."));
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "公告保存失败。");
+      setError(saveError instanceof Error ? saveError.message : phrase("公告保存失败。", "Could not save announcement."));
     } finally {
       setIsSaving(false);
     }
@@ -163,9 +160,9 @@ export default function AnnouncementAdminPage() {
       const published = await publishAnnouncement(token, saved.id);
       setEditor(null);
       await load(token, page, search, status);
-      setNotice(published.status === "scheduled" ? "公告已安排定时发布。" : "公告已发布。");
+      setNotice(published.status === "scheduled" ? phrase("公告已安排定时发布。", "Announcement scheduled.") : phrase("公告已发布。", "Announcement published."));
     } catch (publishError) {
-      setError(publishError instanceof Error ? publishError.message : "公告发布失败。");
+      setError(publishError instanceof Error ? publishError.message : phrase("公告发布失败。", "Could not publish announcement."));
     } finally {
       setIsSaving(false);
     }
@@ -179,7 +176,7 @@ export default function AnnouncementAdminPage() {
       await load(token, page, search, status);
       setNotice(success);
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "公告操作失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("公告操作失败。", "Announcement action failed."));
     } finally {
       setBusyId(0);
     }
@@ -188,28 +185,28 @@ export default function AnnouncementAdminPage() {
   const filterOptions = useMemo(() => ["all", ...Object.keys(statusLabels)] as StatusFilter[], []);
   return <section className="page-shell announcement-admin-page">
     <div className="announcement-admin-toolbar">
-      <nav aria-label="公告状态">{filterOptions.map((value) => <button className={status === value ? "active" : undefined} key={value} onClick={() => { setPage(1); setStatus(value); }} type="button">{value === "all" ? "全部" : statusLabels[value]}</button>)}</nav>
-      <label><Search aria-hidden="true" size={15} /><input aria-label="搜索公告" onChange={(event) => setSearchDraft(event.target.value)} placeholder="搜索标题或内容" value={searchDraft} />{searchDraft ? <button aria-label="清空搜索" onClick={() => setSearchDraft("")} type="button"><X aria-hidden="true" size={13} /></button> : null}</label>
-      <button className="announcement-create" onClick={() => setEditor({ id: null, status: "draft", input: { ...emptyInput } })} type="button"><Plus aria-hidden="true" size={14} />新建公告</button>
+      <nav aria-label={phrase("公告状态", "Announcement status")}>{filterOptions.map((value) => <button className={status === value ? "active" : undefined} key={value} onClick={() => { setPage(1); setStatus(value); }} type="button">{value === "all" ? phrase("全部", "All") : statusLabel(value, phrase)}</button>)}</nav>
+      <label><Search aria-hidden="true" size={15} /><input aria-label={phrase("搜索公告", "Search announcements")} onChange={(event) => setSearchDraft(event.target.value)} placeholder={phrase("搜索标题或内容", "Search title or content")} value={searchDraft} />{searchDraft ? <button aria-label={phrase("清空搜索", "Clear search")} onClick={() => setSearchDraft("")} type="button"><X aria-hidden="true" size={13} /></button> : null}</label>
+      <button className="announcement-create" onClick={() => setEditor({ id: null, status: "draft", input: { ...emptyInput } })} type="button"><Plus aria-hidden="true" size={14} />{phrase("新建公告", "New announcement")}</button>
     </div>
-    {isLoading ? <div className="article-empty-state"><LoaderCircle aria-hidden="true" className="spin" size={22} />正在读取公告。</div> : <div className="announcement-admin-list">{data?.items.map((item) => {
+    {isLoading ? <div className="article-empty-state"><LoaderCircle aria-hidden="true" className="spin" size={22} />{phrase("正在读取公告。", "Loading announcements.")}</div> : <div className="announcement-admin-list">{data?.items.map((item) => {
       const canEdit = item.status !== "published";
       const canDelete = user?.isSuperAdmin || item.status === "draft";
       const publishBlocked = !isPublishable(item);
       return <article key={item.id}>
-        <span className={`announcement-status ${item.status}`}>{statusLabels[item.status]}</span>
-        <div><header><strong>{item.title}</strong>{item.isPinned ? <b>置顶 {item.pinOrder}</b> : null}</header><p>{item.summary || item.title}</p><small>{audienceLabels[item.audience]}{item.roleCodes.length ? ` · ${item.roleCodes.join("、")}` : ""} · {publishModeLabel(item.publishMode)} · {publishTimeLabel(item)} · {expiryTimeLabel(item.expiresAt)}</small></div>
+        <span className={`announcement-status ${item.status}`}>{statusLabel(item.status, phrase)}</span>
+        <div><header><strong>{item.title}</strong>{item.isPinned ? <b>{phrase(`置顶 ${item.pinOrder}`, `Pinned ${item.pinOrder}`)}</b> : null}</header><p>{item.summary || item.title}</p><small>{audienceLabel(item.audience, phrase)}{item.roleCodes.length ? ` · ${item.roleCodes.join(", ")}` : ""} · {publishModeLabel(item.publishMode, phrase)} · {publishTimeLabel(item, locale, phrase)} · {expiryTimeLabel(item.expiresAt, locale, phrase)}</small></div>
         <span className="announcement-admin-stats"><span><Eye aria-hidden="true" size={13} />{item.viewCount}</span><span><Check aria-hidden="true" size={13} />{item.confirmedCount}/{item.recipientCount}</span></span>
         <footer>
-          {canEdit ? <button aria-label="编辑公告" disabled={busyId === item.id} onClick={() => void edit(item.id)} title="编辑" type="button"><Pencil aria-hidden="true" size={15} /></button> : null}
-          {item.status !== "published" && item.status !== "scheduled" ? <button aria-label="发布公告" disabled={busyId === item.id || publishBlocked} onClick={() => void run(item.id, () => publishAnnouncement(token, item.id), item.publishMode === "scheduled" ? "公告已安排定时发布。" : "公告已发布。")} title={publishBlocked ? publishBlockReason(item) : "发布"} type="button"><Send aria-hidden="true" size={15} /></button> : null}
-          {item.status === "published" ? <button aria-label="归档公告" disabled={busyId === item.id} onClick={() => void run(item.id, () => archiveAnnouncement(token, item.id), "公告已归档。") } title="归档" type="button"><Archive aria-hidden="true" size={15} /></button> : null}
-          {canDelete ? <button aria-label="删除公告" className="danger" disabled={busyId === item.id} onClick={() => void run(item.id, () => deleteAnnouncement(token, item.id), "公告已删除。") } title="删除" type="button"><Trash2 aria-hidden="true" size={15} /></button> : null}
+          {canEdit ? <button aria-label={phrase("编辑公告", "Edit announcement")} disabled={busyId === item.id} onClick={() => void edit(item.id)} title={phrase("编辑", "Edit")} type="button"><Pencil aria-hidden="true" size={15} /></button> : null}
+          {item.status !== "published" && item.status !== "scheduled" ? <button aria-label={phrase("发布公告", "Publish announcement")} disabled={busyId === item.id || publishBlocked} onClick={() => void run(item.id, () => publishAnnouncement(token, item.id), item.publishMode === "scheduled" ? phrase("公告已安排定时发布。", "Announcement scheduled.") : phrase("公告已发布。", "Announcement published."))} title={publishBlocked ? publishBlockReason(item, phrase) : phrase("发布", "Publish")} type="button"><Send aria-hidden="true" size={15} /></button> : null}
+          {item.status === "published" ? <button aria-label={phrase("归档公告", "Archive announcement")} disabled={busyId === item.id} onClick={() => void run(item.id, () => archiveAnnouncement(token, item.id), phrase("公告已归档。", "Announcement archived."))} title={phrase("归档", "Archive")} type="button"><Archive aria-hidden="true" size={15} /></button> : null}
+          {canDelete ? <button aria-label={phrase("删除公告", "Delete announcement")} className="danger" disabled={busyId === item.id} onClick={() => void run(item.id, () => deleteAnnouncement(token, item.id), phrase("公告已删除。", "Announcement deleted."))} title={phrase("删除", "Delete")} type="button"><Trash2 aria-hidden="true" size={15} /></button> : null}
         </footer>
       </article>;
     })}</div>}
-    {!isLoading && data && !data.items.length ? <div className="article-empty-state">当前没有匹配的公告。</div> : null}
-    {data && data.totalPages > 1 ? <nav className="admin-pagination" aria-label="公告管理分页"><span>第 {data.page} / {data.totalPages} 页</span><div><button disabled={data.page <= 1} onClick={() => setPage((current) => current - 1)} type="button">上一页</button><button disabled={data.page >= data.totalPages} onClick={() => setPage((current) => current + 1)} type="button">下一页</button></div></nav> : null}
+    {!isLoading && data && !data.items.length ? <div className="article-empty-state">{phrase("当前没有匹配的公告。", "No matching announcements.")}</div> : null}
+    {data && data.totalPages > 1 ? <nav className="admin-pagination" aria-label={phrase("公告管理分页", "Announcement management pagination")}><span>{phrase(`第 ${data.page} / ${data.totalPages} 页`, `Page ${data.page} of ${data.totalPages}`)}</span><div><button disabled={data.page <= 1} onClick={() => setPage((current) => current - 1)} type="button">{phrase("上一页", "Previous")}</button><button disabled={data.page >= data.totalPages} onClick={() => setPage((current) => current + 1)} type="button">{phrase("下一页", "Next")}</button></div></nav> : null}
     {editor ? <AnnouncementEditor editor={editor} roles={roles} isSaving={isSaving} setEditor={setEditor} onPublish={publishFromEditor} onSubmit={saveDraft} /> : null}
     <AppToast duration={error ? 4200 : 2600} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
   </section>;
@@ -235,24 +232,25 @@ function AnnouncementSelect({ label, onChange, options, value }: { label: string
 }
 
 function AnnouncementEditor({ editor, roles, isSaving, setEditor, onPublish, onSubmit }: { editor: EditorState; roles: AuthRole[]; isSaving: boolean; setEditor: (value: EditorState | null) => void; onPublish: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  const { phrase } = useLanguage();
   const input = editor.input;
   const setInput = (next: Partial<AnnouncementInput>) => setEditor({ ...editor, input: { ...input, ...next } });
   const publishBlocked = !isPublishable(input);
   return <div className="announcement-editor-backdrop" role="presentation"><form aria-modal="true" className="announcement-editor" onSubmit={onSubmit} role="dialog">
-    <header><span><BellRing aria-hidden="true" size={18} /><strong>{editor.id ? "编辑公告" : "新建公告"}</strong></span><button aria-label="关闭公告编辑" disabled={isSaving} onClick={() => setEditor(null)} type="button"><X aria-hidden="true" size={17} /></button></header>
+    <header><span><BellRing aria-hidden="true" size={18} /><strong>{editor.id ? phrase("编辑公告", "Edit announcement") : phrase("新建公告", "New announcement")}</strong></span><button aria-label={phrase("关闭公告编辑", "Close announcement editor")} disabled={isSaving} onClick={() => setEditor(null)} type="button"><X aria-hidden="true" size={17} /></button></header>
     <div className="announcement-editor-body">
-      <label><span>标题</span><input maxLength={120} onChange={(event) => setInput({ title: event.target.value })} required value={input.title} /></label>
-      <label><span>摘要</span><input maxLength={300} onChange={(event) => setInput({ summary: event.target.value })} value={input.summary} /></label>
-      <label className="wide"><span>内容</span><textarea maxLength={20000} onChange={(event) => setInput({ content: event.target.value })} required rows={10} value={input.content} /></label>
-      <div className="announcement-editor-select-field"><span>投放范围</span><AnnouncementSelect label="投放范围" onChange={(value) => setInput({ audience: value as AnnouncementAudience })} options={[{ label: "所有访客", value: "public" }, { label: "登录用户", value: "authenticated" }, { label: "指定角色", value: "role_restricted" }]} value={input.audience} /></div>
-      <div className="announcement-editor-select-field"><span>发布方式</span><AnnouncementSelect label="发布方式" onChange={(value) => setInput({ publishMode: value as AnnouncementInput["publishMode"] })} options={[{ label: "立即发布", value: "immediate" }, { label: "定时发布", value: "scheduled" }]} value={input.publishMode} /></div>
-      {input.publishMode === "scheduled" ? <label><span>发布时间</span><input onChange={(event) => setInput({ scheduledAt: event.target.value || null })} required step={60} type="datetime-local" value={input.scheduledAt ?? ""} /></label> : null}
-      <label><span>自动下线</span><input onChange={(event) => setInput({ expiresAt: event.target.value || null })} step={60} type="datetime-local" value={input.expiresAt ?? ""} /></label>
-      <label><span>置顶顺序</span><input disabled={!input.isPinned} min={0} onChange={(event) => setInput({ pinOrder: Number(event.target.value) })} type="number" value={input.pinOrder} /></label>
-      <div className="announcement-editor-options"><button aria-pressed={input.isPinned} onClick={() => setInput({ isPinned: !input.isPinned })} type="button"><i>{input.isPinned ? <Check aria-hidden="true" size={11} /> : null}</i>置顶公告</button><button aria-pressed={input.pushEnabled} onClick={() => setInput({ pushEnabled: !input.pushEnabled })} type="button"><i>{input.pushEnabled ? <Check aria-hidden="true" size={11} /> : null}</i>浏览器推送</button></div>
-      {input.audience === "role_restricted" ? <fieldset className="wide"><legend>可见角色</legend><div>{roles.map((role) => <button aria-pressed={input.roleCodes.includes(role.code)} key={role.code} onClick={() => setInput({ roleCodes: input.roleCodes.includes(role.code) ? input.roleCodes.filter((code) => code !== role.code) : [...input.roleCodes, role.code] })} type="button"><i>{input.roleCodes.includes(role.code) ? <Check aria-hidden="true" size={11} /> : null}</i>{role.name}</button>)}</div></fieldset> : null}
+      <label><span>{phrase("标题", "Title")}</span><input maxLength={120} onChange={(event) => setInput({ title: event.target.value })} required value={input.title} /></label>
+      <label><span>{phrase("摘要", "Summary")}</span><input maxLength={300} onChange={(event) => setInput({ summary: event.target.value })} value={input.summary} /></label>
+      <label className="wide"><span>{phrase("内容", "Content")}</span><textarea maxLength={20000} onChange={(event) => setInput({ content: event.target.value })} required rows={10} value={input.content} /></label>
+      <div className="announcement-editor-select-field"><span>{phrase("投放范围", "Audience")}</span><AnnouncementSelect label={phrase("投放范围", "Audience")} onChange={(value) => setInput({ audience: value as AnnouncementAudience })} options={[{ label: phrase("所有访客", "All visitors"), value: "public" }, { label: phrase("登录用户", "Signed-in users"), value: "authenticated" }, { label: phrase("指定角色", "Selected roles"), value: "role_restricted" }]} value={input.audience} /></div>
+      <div className="announcement-editor-select-field"><span>{phrase("发布方式", "Publishing")}</span><AnnouncementSelect label={phrase("发布方式", "Publishing")} onChange={(value) => setInput({ publishMode: value as AnnouncementInput["publishMode"] })} options={[{ label: phrase("立即发布", "Publish now"), value: "immediate" }, { label: phrase("定时发布", "Schedule publishing"), value: "scheduled" }]} value={input.publishMode} /></div>
+      {input.publishMode === "scheduled" ? <label><span>{phrase("发布时间", "Publish time")}</span><input onChange={(event) => setInput({ scheduledAt: event.target.value || null })} required step={60} type="datetime-local" value={input.scheduledAt ?? ""} /></label> : null}
+      <label><span>{phrase("自动下线", "Auto-expire")}</span><input onChange={(event) => setInput({ expiresAt: event.target.value || null })} step={60} type="datetime-local" value={input.expiresAt ?? ""} /></label>
+      <label><span>{phrase("置顶顺序", "Pin order")}</span><input disabled={!input.isPinned} min={0} onChange={(event) => setInput({ pinOrder: Number(event.target.value) })} type="number" value={input.pinOrder} /></label>
+      <div className="announcement-editor-options"><button aria-pressed={input.isPinned} onClick={() => setInput({ isPinned: !input.isPinned })} type="button"><i>{input.isPinned ? <Check aria-hidden="true" size={11} /> : null}</i>{phrase("置顶公告", "Pin announcement")}</button><button aria-pressed={input.pushEnabled} onClick={() => setInput({ pushEnabled: !input.pushEnabled })} type="button"><i>{input.pushEnabled ? <Check aria-hidden="true" size={11} /> : null}</i>{phrase("浏览器推送", "Browser push")}</button></div>
+      {input.audience === "role_restricted" ? <fieldset className="wide"><legend>{phrase("可见角色", "Visible roles")}</legend><div>{roles.map((role) => <button aria-pressed={input.roleCodes.includes(role.code)} key={role.code} onClick={() => setInput({ roleCodes: input.roleCodes.includes(role.code) ? input.roleCodes.filter((code) => code !== role.code) : [...input.roleCodes, role.code] })} type="button"><i>{input.roleCodes.includes(role.code) ? <Check aria-hidden="true" size={11} /> : null}</i>{role.name}</button>)}</div></fieldset> : null}
     </div>
-    <footer><button aria-label="保存草稿" disabled={isSaving} title={isSaving ? "保存中" : "保存草稿"} type="submit">{isSaving ? <LoaderCircle aria-hidden="true" className="spin" size={16} /> : <Save aria-hidden="true" size={16} />}</button><button aria-label={input.publishMode === "scheduled" ? "定时发布" : "发布公告"} disabled={isSaving || publishBlocked} onClick={onPublish} title={publishBlocked ? publishBlockReason(input) : input.publishMode === "scheduled" ? "定时发布" : "发布公告"} type="button"><Send aria-hidden="true" size={16} /></button></footer>
+    <footer><button aria-label={phrase("保存草稿", "Save draft")} disabled={isSaving} title={isSaving ? phrase("保存中", "Saving") : phrase("保存草稿", "Save draft")} type="submit">{isSaving ? <LoaderCircle aria-hidden="true" className="spin" size={16} /> : <Save aria-hidden="true" size={16} />}</button><button aria-label={input.publishMode === "scheduled" ? phrase("定时发布", "Schedule publishing") : phrase("发布公告", "Publish announcement")} disabled={isSaving || publishBlocked} onClick={onPublish} title={publishBlocked ? publishBlockReason(input, phrase) : input.publishMode === "scheduled" ? phrase("定时发布", "Schedule publishing") : phrase("发布公告", "Publish announcement")} type="button"><Send aria-hidden="true" size={16} /></button></footer>
   </form></div>;
 }
 
@@ -271,25 +269,33 @@ function isPublishable(input: Pick<AnnouncementInput, "publishMode" | "scheduled
   return Boolean(publishAt && publishAt > (input.publishMode === "scheduled" ? now : new Date(0)) && (!expiresAt || expiresAt > publishAt));
 }
 
-function publishBlockReason(input: Pick<AnnouncementInput, "publishMode" | "scheduledAt" | "expiresAt">): string {
+function statusLabel(status: AnnouncementStatus, phrase: (chinese: string, english: string) => string): string {
+  return status === "draft" ? phrase("草稿", "Draft") : status === "scheduled" ? phrase("待发布", "Scheduled") : status === "published" ? phrase("已发布", "Published") : status === "expired" ? phrase("已下线", "Expired") : phrase("已归档", "Archived");
+}
+
+function audienceLabel(audience: AnnouncementAudience, phrase: (chinese: string, english: string) => string): string {
+  return audience === "public" ? phrase("所有访客", "All visitors") : audience === "authenticated" ? phrase("登录用户", "Signed-in users") : phrase("指定角色", "Selected roles");
+}
+
+function publishBlockReason(input: Pick<AnnouncementInput, "publishMode" | "scheduledAt" | "expiresAt">, phrase: (chinese: string, english: string) => string): string {
   const scheduledAt = parseTime(input.scheduledAt);
   const expiresAt = parseTime(input.expiresAt);
-  if (input.publishMode === "scheduled" && (!scheduledAt || scheduledAt <= new Date())) return "定时发布时间必须晚于当前时间";
+  if (input.publishMode === "scheduled" && (!scheduledAt || scheduledAt <= new Date())) return phrase("定时发布时间必须晚于当前时间", "Scheduled publish time must be in the future");
   const publishAt = input.publishMode === "scheduled" ? scheduledAt : new Date();
-  return expiresAt && publishAt && expiresAt <= publishAt ? "自动下线时间必须晚于发布时间" : "当前公告无法发布";
+  return expiresAt && publishAt && expiresAt <= publishAt ? phrase("自动下线时间必须晚于发布时间", "Auto-expiry must be after publish time") : phrase("当前公告无法发布", "This announcement cannot be published");
 }
 
-function publishModeLabel(mode: AnnouncementInput["publishMode"]): string {
-  return mode === "scheduled" ? "定时发布" : "立即发布";
+function publishModeLabel(mode: AnnouncementInput["publishMode"], phrase: (chinese: string, english: string) => string): string {
+  return mode === "scheduled" ? phrase("定时发布", "Scheduled") : phrase("立即发布", "Immediate");
 }
 
-function publishTimeLabel(item: Pick<AnnouncementDetail, "status" | "scheduledAt" | "publishedAt">): string {
-  if (item.status === "scheduled") return `发布时间 ${formatTime(item.scheduledAt)}`;
-  return `发布时间 ${formatTime(item.publishedAt)}`;
+function publishTimeLabel(item: Pick<AnnouncementDetail, "status" | "scheduledAt" | "publishedAt">, locale: "zh-CN" | "en-US", phrase: (chinese: string, english: string) => string): string {
+  if (item.status === "scheduled") return phrase(`发布时间 ${formatTime(item.scheduledAt, locale, phrase)}`, `Publishes ${formatTime(item.scheduledAt, locale, phrase)}`);
+  return phrase(`发布时间 ${formatTime(item.publishedAt, locale, phrase)}`, `Published ${formatTime(item.publishedAt, locale, phrase)}`);
 }
 
-function expiryTimeLabel(value: string | null): string {
-  return value ? `下线时间 ${formatTime(value)}` : "不自动下线";
+function expiryTimeLabel(value: string | null, locale: "zh-CN" | "en-US", phrase: (chinese: string, english: string) => string): string {
+  return value ? phrase(`下线时间 ${formatTime(value, locale, phrase)}`, `Expires ${formatTime(value, locale, phrase)}`) : phrase("不自动下线", "No auto-expiry");
 }
 
 function parseTime(value: string | null): Date | null {
@@ -305,7 +311,7 @@ function toLocalDateTime(value: string | null): string | null {
   return local.toISOString().slice(0, 16);
 }
 
-function formatTime(value: string | null): string {
-  if (!value) return "未设置";
-  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
+function formatTime(value: string | null, locale: "zh-CN" | "en-US", phrase: (chinese: string, english: string) => string): string {
+  if (!value) return phrase("未设置", "Not set");
+  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
 }

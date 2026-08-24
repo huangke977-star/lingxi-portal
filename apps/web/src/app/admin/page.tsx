@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { GlassSelect } from "@/components/glass-select";
+import { useLanguage } from "@/components/language-provider";
 import { PasswordInput } from "@/components/password-input";
 import { RoleSymbol } from "@/components/role-symbol";
 import { ManagementIdentitySymbol } from "@/components/user-identity-badges";
@@ -29,15 +31,12 @@ import {
   isAuthExpiredError,
 } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { localizedPath } from "@/lib/i18n";
 import { getManagementIdentity, isSiteManager } from "@/lib/user-permissions";
-
-const STATUS_LABEL: Record<AuthUser["status"], string> = {
-  active: "启用",
-  disabled: "停用",
-};
 
 export default function AdminPage() {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [users, setUsers] = useState<AuthUser[]>([]);
@@ -64,7 +63,7 @@ export default function AdminPage() {
     const token = readAccessToken();
 
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
 
@@ -81,7 +80,7 @@ export default function AdminPage() {
       } catch (loadError) {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
 
@@ -89,7 +88,7 @@ export default function AdminPage() {
           setError(
             loadError instanceof Error
               ? loadError.message
-              : "无法读取管理数据。",
+              : phrase("无法读取管理数据。", "Could not load management data."),
           );
         }
       } finally {
@@ -104,7 +103,7 @@ export default function AdminPage() {
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, [locale, phrase, router]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -147,7 +146,7 @@ export default function AdminPage() {
       } catch (listError) {
         if (listError instanceof ApiRequestError && listError.status === 401) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
 
@@ -155,7 +154,7 @@ export default function AdminPage() {
           setError(
             listError instanceof Error
               ? listError.message
-              : "无法读取用户列表。",
+              : phrase("无法读取用户列表。", "Could not load user list."),
           );
         }
       } finally {
@@ -176,6 +175,8 @@ export default function AdminPage() {
     page,
     pageSize,
     reloadVersion,
+    locale,
+    phrase,
     router,
     searchQuery,
   ]);
@@ -198,14 +199,14 @@ export default function AdminPage() {
       replaceUser(updatedUser);
       setNotice(
         updatedUser.isAdministrator
-          ? `已授予 ${updatedUser.username} 站点管理员身份。`
-          : `已取消 ${updatedUser.username} 的站点管理员身份。`,
+          ? phrase(`已授予 ${updatedUser.username} 站点管理员身份。`, `${updatedUser.username} is now a site administrator.`)
+          : phrase(`已取消 ${updatedUser.username} 的站点管理员身份。`, `${updatedUser.username} is no longer a site administrator.`),
       );
     } catch (administratorError) {
       setError(
         administratorError instanceof Error
           ? administratorError.message
-          : "管理员身份更新失败。",
+          : phrase("管理员身份更新失败。", "Could not update administrator access."),
       );
     } finally {
       setBusyUserId(null);
@@ -235,10 +236,10 @@ export default function AdminPage() {
           Math.max(0, count + (updatedUser.status === "active" ? 1 : -1)),
         );
       }
-      setNotice(`已${STATUS_LABEL[nextStatus]} ${updatedUser.username}。`);
+      setNotice(nextStatus === "active" ? phrase(`已启用 ${updatedUser.username}。`, `${updatedUser.username} enabled.`) : phrase(`已停用 ${updatedUser.username}。`, `${updatedUser.username} disabled.`));
     } catch (statusError) {
       setError(
-        statusError instanceof Error ? statusError.message : "状态更新失败。",
+        statusError instanceof Error ? statusError.message : phrase("状态更新失败。", "Could not update account status."),
       );
     } finally {
       setBusyUserId(null);
@@ -258,12 +259,12 @@ export default function AdminPage() {
       const updatedUser = await resetUserNickname(accessToken, user.id);
       replaceUser(updatedUser);
       setReloadVersion((version) => version + 1);
-      setNotice(`已将 ${updatedUser.username} 的昵称重置为用户名。`);
+      setNotice(phrase(`已将 ${updatedUser.username} 的昵称重置为用户名。`, `${updatedUser.username}'s nickname was reset to the username.`));
     } catch (nicknameError) {
       setError(
         nicknameError instanceof Error
           ? nicknameError.message
-          : "昵称重置失败。",
+          : phrase("昵称重置失败。", "Could not reset nickname."),
       );
     } finally {
       setBusyUserId(null);
@@ -296,13 +297,13 @@ export default function AdminPage() {
     }
 
     if (newPassword.length < 8) {
-      setError("新密码至少需要 8 位。");
+      setError(phrase("新密码至少需要 8 位。", "New password must be at least 8 characters."));
       setNotice("");
       return;
     }
 
     if (newPassword !== passwordConfirmation) {
-      setError("两次输入的密码不一致。");
+      setError(phrase("两次输入的密码不一致。", "Passwords do not match."));
       setNotice("");
       return;
     }
@@ -322,12 +323,12 @@ export default function AdminPage() {
       setPasswordTarget(null);
       setNewPassword("");
       setPasswordConfirmation("");
-      setNotice(`已更新 ${updatedUser.username} 的密码。`);
+      setNotice(phrase(`已更新 ${updatedUser.username} 的密码。`, `${updatedUser.username}'s password was updated.`));
     } catch (passwordError) {
       setError(
         passwordError instanceof Error
           ? passwordError.message
-          : "密码更新失败。",
+          : phrase("密码更新失败。", "Could not update password."),
       );
     } finally {
       setIsPasswordSaving(false);
@@ -347,9 +348,9 @@ export default function AdminPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>用户管理</h1>
+        <h1>{phrase("用户管理", "User management")}</h1>
         <div className="status-row">
-          <span className="status">正在读取权限</span>
+          <span className="status">{phrase("正在读取权限", "Checking access")}</span>
         </div>
       </section>
     );
@@ -359,11 +360,11 @@ export default function AdminPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>无法进入管理后台</h1>
-        <p>{error || "请重新登录后再访问。"}</p>
+        <h1>{phrase("无法进入管理后台", "Cannot open management")}</h1>
+        <p>{error || phrase("请重新登录后再访问。", "Sign in again to continue.")}</p>
         <div className="actions">
-          <Link className="button secondary" href="/login">
-            返回登录
+          <Link className="button secondary" href={localizedPath("/login", locale)}>
+            {phrase("返回登录", "Back to sign in")}
           </Link>
         </div>
       </section>
@@ -374,11 +375,11 @@ export default function AdminPage() {
     return (
       <section className="page-shell admin-shell">
         <span className="eyebrow">HLOVET Admin</span>
-        <h1>无权访问</h1>
-        <p>该页面仅超级管理员和管理员可查看。</p>
+        <h1>{phrase("无权访问", "Access denied")}</h1>
+        <p>{phrase("该页面仅超级管理员和管理员可查看。", "This page is available only to site administrators.")}</p>
         <div className="actions">
-          <Link className="button secondary" href="/dashboard">
-            返回工作台
+          <Link className="button secondary" href={localizedPath("/dashboard", locale)}>
+            {phrase("返回工作台", "Back to workspace")}
           </Link>
         </div>
       </section>
@@ -388,33 +389,23 @@ export default function AdminPage() {
   return (
     <section className="page-shell admin-shell">
       <div className="admin-list-toolbar">
-        <div className="admin-summary" aria-label="用户概览">
-          <span>{total} 个账号</span>
-          <span>{activeCount} 个启用</span>
+        <div className="admin-summary" aria-label={phrase("用户概览", "User summary")}>
+          <span>{phrase(`${total} 个账号`, `${total} accounts`)}</span>
+          <span>{phrase(`${activeCount} 个启用`, `${activeCount} active`)}</span>
         </div>
         <label className="admin-search-field">
-          <span>搜索用户</span>
+          <span>{phrase("搜索用户", "Search users")}</span>
           <input
             maxLength={64}
             onChange={(event) => setSearchDraft(event.target.value)}
-            placeholder="输入昵称或用户名"
+            placeholder={phrase("输入昵称或用户名", "Enter nickname or username")}
             type="search"
             value={searchDraft}
           />
         </label>
         <label className="admin-page-size">
-          <span>每页显示</span>
-          <select
-            onChange={(event) => {
-              setPage(1);
-              setPageSize(Number(event.target.value));
-            }}
-            value={pageSize}
-          >
-            <option value={10}>10 条</option>
-            <option value={20}>20 条</option>
-            <option value={50}>50 条</option>
-          </select>
+          <span>{phrase("每页显示", "Per page")}</span>
+          <GlassSelect ariaLabel={phrase("每页显示", "Per page")} onChange={(value) => { setPage(1); setPageSize(Number(value)); }} options={[10, 20, 50].map((value) => ({ value: String(value), label: phrase(`${value} 条`, `${value} items`) }))} value={String(pageSize)} />
         </label>
       </div>
       <AppToast
@@ -430,24 +421,24 @@ export default function AdminPage() {
         <table className="admin-table">
           <thead>
             <tr>
-              <th>账号</th>
-              <th>邮箱</th>
-              <th>成长等级 / 管理身份</th>
-              <th>状态</th>
-              <th>操作</th>
+              <th>{phrase("账号", "Account")}</th>
+              <th>{phrase("邮箱", "Email")}</th>
+              <th>{phrase("成长等级 / 管理身份", "Level / site access")}</th>
+              <th>{phrase("状态", "Status")}</th>
+              <th>{phrase("操作", "Actions")}</th>
             </tr>
           </thead>
           <tbody>
             {isListLoading ? (
               <tr>
                 <td className="admin-table-state" colSpan={5}>
-                  正在读取用户
+                  {phrase("正在读取用户", "Loading users")}
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
                 <td className="admin-table-state" colSpan={5}>
-                  {searchQuery ? "没有找到匹配的用户" : "暂无用户"}
+                  {searchQuery ? phrase("没有找到匹配的用户", "No matching users") : phrase("暂无用户", "No users yet")}
                 </td>
               </tr>
             ) : (
@@ -477,7 +468,7 @@ export default function AdminPage() {
                     <td>{user.email}</td>
                     <td>
                       <div className="admin-user-identity">
-                        <span className="table-role-label" title="成长等级">
+                        <span className="table-role-label" title={phrase("成长等级", "Account level")}>
                           <RoleSymbol code={user.role.code} />
                           {user.role.name} · Lv.{user.role.level}
                         </span>
@@ -487,24 +478,24 @@ export default function AdminPage() {
                             {getManagementIdentity(user)?.label}
                           </span>
                         ) : (
-                          <span className="table-management-label muted">普通用户</span>
+                          <span className="table-management-label muted">{phrase("普通用户", "Member")}</span>
                         )}
                       </div>
                     </td>
                     <td>
                       <span className={`status-badge ${user.status}`}>
-                        {STATUS_LABEL[user.status]}
+                        {user.status === "active" ? phrase("启用", "Active") : phrase("停用", "Disabled")}
                       </span>
                     </td>
                     <td>
                       <div className="table-actions">
                         {canChangeAdministrator ? (
                           <button
-                            aria-label={user.isAdministrator ? "取消站点管理员" : "授予站点管理员"}
+                            aria-label={user.isAdministrator ? phrase("取消站点管理员", "Remove site administrator") : phrase("授予站点管理员", "Grant site administrator")}
                             className="table-icon-action"
                             disabled={isBusy}
                             onClick={() => void handleAdministratorToggle(user)}
-                            title={user.isAdministrator ? "取消站点管理员" : "授予站点管理员"}
+                            title={user.isAdministrator ? phrase("取消站点管理员", "Remove site administrator") : phrase("授予站点管理员", "Grant site administrator")}
                             type="button"
                           >
                             {user.isAdministrator ? <ShieldOff aria-hidden="true" size={16} /> : <ShieldCheck aria-hidden="true" size={16} />}
@@ -512,11 +503,11 @@ export default function AdminPage() {
                         ) : null}
                         {canChangeStatus ? (
                           <button
-                            aria-label={user.status === "active" ? "停用账号" : "启用账号"}
+                            aria-label={user.status === "active" ? phrase("停用账号", "Disable account") : phrase("启用账号", "Enable account")}
                             className="table-icon-action"
                             disabled={isBusy}
                             onClick={() => void handleStatusToggle(user)}
-                            title={user.status === "active" ? "停用账号" : "启用账号"}
+                            title={user.status === "active" ? phrase("停用账号", "Disable account") : phrase("启用账号", "Enable account")}
                             type="button"
                           >
                             {user.status === "active" ? <UserRoundX aria-hidden="true" size={16} /> : <UserRoundCheck aria-hidden="true" size={16} />}
@@ -524,11 +515,11 @@ export default function AdminPage() {
                         ) : null}
                         {canChangePassword ? (
                           <button
-                            aria-label="修改密码"
+                            aria-label={phrase("修改密码", "Change password")}
                             className="table-icon-action"
                             disabled={isBusy}
                             onClick={() => openPasswordDialog(user)}
-                            title="修改密码"
+                            title={phrase("修改密码", "Change password")}
                             type="button"
                           >
                             <KeyRound aria-hidden="true" size={16} />
@@ -536,11 +527,11 @@ export default function AdminPage() {
                         ) : null}
                         {canResetNickname ? (
                           <button
-                            aria-label="重置昵称"
+                            aria-label={phrase("重置昵称", "Reset nickname")}
                             className="table-icon-action"
                             disabled={isBusy}
                             onClick={() => void handleNicknameReset(user)}
-                            title="重置昵称"
+                            title={phrase("重置昵称", "Reset nickname")}
                             type="button"
                           >
                             <UserRoundPen aria-hidden="true" size={16} />
@@ -561,9 +552,9 @@ export default function AdminPage() {
           </tbody>
         </table>
       </div>
-      <nav aria-label="用户列表分页" className="admin-pagination">
+      <nav aria-label={phrase("用户列表分页", "User list pagination")} className="admin-pagination">
         <span>
-          第 {page} / {totalPages} 页
+          {phrase(`第 ${page} / ${totalPages} 页`, `Page ${page} of ${totalPages}`)}
         </span>
         <div>
           <button
@@ -571,14 +562,14 @@ export default function AdminPage() {
             onClick={() => setPage((value) => value - 1)}
             type="button"
           >
-            上一页
+            {phrase("上一页", "Previous")}
           </button>
           <button
             disabled={isListLoading || page >= totalPages}
             onClick={() => setPage((value) => value + 1)}
             type="button"
           >
-            下一页
+            {phrase("下一页", "Next")}
           </button>
         </div>
       </nav>
@@ -599,16 +590,16 @@ export default function AdminPage() {
             role="dialog"
           >
             <div className="modal-heading">
-              <span className="eyebrow">Password</span>
-              <h2 id="password-modal-title">修改密码</h2>
-              <p>目标账号：{passwordTarget.username}</p>
+              <span className="eyebrow">{phrase("密码", "Password")}</span>
+              <h2 id="password-modal-title">{phrase("修改密码", "Change password")}</h2>
+              <p>{phrase(`目标账号：${passwordTarget.username}`, `Target account: ${passwordTarget.username}`)}</p>
             </div>
             <form
               className="form-stack modal-form"
               onSubmit={(event) => void handlePasswordSubmit(event)}
             >
               <label>
-                新密码
+                {phrase("新密码", "New password")}
                 <PasswordInput
                   autoComplete="new-password"
                   disabled={isPasswordSaving}
@@ -618,7 +609,7 @@ export default function AdminPage() {
                 />
               </label>
               <label>
-                确认密码
+                {phrase("确认密码", "Confirm password")}
                 <PasswordInput
                   autoComplete="new-password"
                   disabled={isPasswordSaving}
@@ -635,7 +626,7 @@ export default function AdminPage() {
                   disabled={isPasswordSaving}
                   type="submit"
                 >
-                  {isPasswordSaving ? "保存中" : "保存"}
+                  {isPasswordSaving ? phrase("保存中", "Saving") : phrase("保存", "Save")}
                 </button>
                 <button
                   className="button secondary"
@@ -643,7 +634,7 @@ export default function AdminPage() {
                   onClick={closePasswordDialog}
                   type="button"
                 >
-                  取消
+                  {phrase("取消", "Cancel")}
                 </button>
               </div>
             </form>

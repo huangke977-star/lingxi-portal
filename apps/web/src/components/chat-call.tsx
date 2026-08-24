@@ -25,6 +25,7 @@ import {
   type Conversation,
 } from "@/lib/social-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
+import { useLanguage } from "@/components/language-provider";
 
 type CallPhase = "incoming" | "outgoing" | "connecting" | "active" | "ending";
 
@@ -59,6 +60,7 @@ interface UseChatCallsOptions {
 }
 
 export function useChatCalls({ socket, userId, selected, onIncoming, onError, onNotice }: UseChatCallsOptions) {
+  const { locale, phrase } = useLanguage();
   const [state, setState] = useState<CallState | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -124,14 +126,14 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
     const cached = iceConfigRef.current;
     if (cached && cached.expiresAt > Date.now() + 60_000) return cached.iceServers;
     const token = readAccessToken();
-    if (!token) throw new Error("登录状态已失效。");
+    if (!token) throw new Error(phrase("登录状态已失效。", "Sign-in has expired."));
     const config = await getCallIceServers(token);
     iceConfigRef.current = {
       iceServers: config.iceServers,
       expiresAt: config.expiresAt ? new Date(config.expiresAt).getTime() : Date.now() + 5 * 60_000,
     };
     return config.iceServers;
-  }, []);
+  }, [phrase]);
 
   const emitSignal = useCallback((callId: number, signal: CallSignal) => {
     socket?.emit("call:signal", { callId, signal });
@@ -140,7 +142,7 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
   const ensurePeerConnection = useCallback(async (call: CallSession): Promise<RTCPeerConnection> => {
     if (peerConnectionRef.current) return peerConnectionRef.current;
     const stream = localStreamRef.current;
-    if (!stream) throw new Error("本地媒体设备尚未就绪。");
+    if (!stream) throw new Error(phrase("本地媒体设备尚未就绪。", "Local media devices are not ready."));
     const peer = new RTCPeerConnection({ iceServers: await getIceConfig() });
     stream.getTracks().forEach((track) => peer.addTrack(track, stream));
     peer.onicecandidate = (event) => {
@@ -163,7 +165,7 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
     };
     peerConnectionRef.current = peer;
     return peer;
-  }, [emitSignal, getIceConfig, socket]);
+  }, [emitSignal, getIceConfig, phrase, socket]);
 
   const flushCandidates = useCallback(async (peer: RTCPeerConnection) => {
     const candidates = pendingCandidatesRef.current;
@@ -195,10 +197,10 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
         else pendingCandidatesRef.current.push(payload.signal.candidate);
       }
     } catch (error) {
-      onError(error instanceof Error ? error.message : "媒体连接失败。");
+      onError(error instanceof Error ? error.message : phrase("媒体连接失败。", "Media connection failed."));
       socket?.emit("call:end", { callId: current.call.id, reason: "failed" });
     }
-  }, [emitSignal, ensurePeerConnection, flushCandidates, onError, socket]);
+  }, [emitSignal, ensurePeerConnection, flushCandidates, onError, phrase, socket]);
 
   useEffect(() => {
     if (!socket || !userId) return;
@@ -229,7 +231,7 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
           await peer.setLocalDescription(offer);
           emitSignal(call.id, { type: "offer", sdp: offer.sdp });
         } catch (error) {
-          onError(error instanceof Error ? error.message : "无法建立通话连接。");
+          onError(error instanceof Error ? error.message : phrase("无法建立通话连接。", "Could not establish the call connection."));
           socket.emit("call:end", { callId: call.id, reason: "failed" });
         }
       })();
@@ -255,12 +257,12 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
     const ended = (call: CallSession) => {
       if (stateRef.current?.call.id !== call.id) return;
       clearCall();
-      onNotice(callEndNotice(call));
+      onNotice(callEndNotice(call, locale));
     };
     const disconnected = () => {
       if (!stateRef.current) return;
       clearCall();
-      onError("聊天连接已断开，当前通话已结束。");
+      onError(phrase("聊天连接已断开，当前通话已结束。", "Chat connection was lost and the current call ended."));
     };
     socket.on("call:incoming", incoming);
     socket.on("call:accepted", accepted);
@@ -278,12 +280,12 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
       socket.off("call:ended", ended);
       socket.off("disconnect", disconnected);
     };
-  }, [clearCall, emitSignal, ensurePeerConnection, handleSignal, onError, onIncoming, onNotice, socket, userId]);
+  }, [clearCall, emitSignal, ensurePeerConnection, handleSignal, locale, onError, onIncoming, onNotice, phrase, socket, userId]);
 
   useEffect(() => () => disposeMedia(), [disposeMedia]);
 
   const acquireMedia = useCallback(async (type: CallType, facingMode: "user" | "environment") => {
-    if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前浏览器不支持音视频通话。");
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error(phrase("当前浏览器不支持音视频通话。", "This browser does not support audio or video calls."));
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
@@ -299,7 +301,7 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
     localStreamRef.current = stream;
     setLocalStream(stream);
     return stream;
-  }, []);
+  }, [phrase]);
 
   const startCall = useCallback(async (type: CallType) => {
     if (!socket?.connected || !selected || stateRef.current || isPreparing) return;
@@ -311,7 +313,7 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
         conversationId: selected.id,
         type,
       }) as CallAck;
-      if (!response.ok || !response.call) throw new Error(response.error || "通话发起失败。");
+      if (!response.ok || !response.call) throw new Error(response.error || phrase("通话发起失败。", "Could not start the call."));
       const next: CallState = {
         call: response.call,
         phase: "outgoing",
@@ -325,11 +327,11 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
     } catch (error) {
       disposeMedia();
       if (type === "video") exitVideoFullscreen();
-      onError(error instanceof Error ? error.message : "通话发起失败。");
+      onError(error instanceof Error ? error.message : phrase("通话发起失败。", "Could not start the call."));
     } finally {
       setIsPreparing(false);
     }
-  }, [acquireMedia, disposeMedia, exitVideoFullscreen, isPreparing, onError, requestVideoFullscreen, selected, socket]);
+  }, [acquireMedia, disposeMedia, exitVideoFullscreen, isPreparing, onError, phrase, requestVideoFullscreen, selected, socket]);
 
   const acceptCall = useCallback(async () => {
     const current = stateRef.current;
@@ -342,7 +344,7 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
         callId: current.call.id,
         accepted: true,
       }) as CallAck;
-      if (!response.ok || !response.call) throw new Error(response.error || "接听失败。");
+      if (!response.ok || !response.call) throw new Error(response.error || phrase("接听失败。", "Could not accept the call."));
       const next = { ...current, call: response.call, phase: "connecting" as const };
       stateRef.current = next;
       setState(next);
@@ -350,11 +352,11 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
       disposeMedia();
       if (current.call.type === "video") exitVideoFullscreen();
       socket.emit("call:respond", { callId: current.call.id, accepted: false });
-      onError(error instanceof Error ? error.message : "无法使用麦克风或摄像头。");
+      onError(error instanceof Error ? error.message : phrase("无法使用麦克风或摄像头。", "Could not access the microphone or camera."));
     } finally {
       setIsPreparing(false);
     }
-  }, [acquireMedia, disposeMedia, exitVideoFullscreen, isPreparing, onError, requestVideoFullscreen, socket]);
+  }, [acquireMedia, disposeMedia, exitVideoFullscreen, isPreparing, onError, phrase, requestVideoFullscreen, socket]);
 
   const declineCall = useCallback(() => {
     const current = stateRef.current;
@@ -399,7 +401,7 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
         video: { facingMode: { ideal: nextFacingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
       });
       const nextTrack = replacement.getVideoTracks()[0];
-      if (!nextTrack) throw new Error("没有找到可切换的摄像头。");
+      if (!nextTrack) throw new Error(phrase("没有找到可切换的摄像头。", "No camera is available to switch to."));
       const oldTrack = stream.getVideoTracks()[0];
       const sender = peer?.getSenders().find((item) => item.track?.kind === "video");
       if (sender) await sender.replaceTrack(nextTrack);
@@ -413,9 +415,9 @@ export function useChatCalls({ socket, userId, selected, onIncoming, onError, on
       setLocalStream(nextStream);
       setState((value) => value ? { ...value, facingMode: nextFacingMode, cameraEnabled: true } : value);
     } catch (error) {
-      onError(error instanceof Error ? error.message : "摄像头切换失败。");
+      onError(error instanceof Error ? error.message : phrase("摄像头切换失败。", "Could not switch camera."));
     }
-  }, [onError]);
+  }, [onError, phrase]);
 
   const setMinimized = useCallback((minimized: boolean) => {
     setState((current) => current ? { ...current, minimized } : current);
@@ -463,6 +465,7 @@ export function ChatCallPanel({
   onSwitchCamera: () => void;
   onMinimize: (minimized: boolean) => void;
 }) {
+  const { locale, phrase } = useLanguage();
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteMediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
   const [now, setNow] = useState(0);
@@ -486,53 +489,55 @@ export function ChatCallPanel({
   const duration = state.call.acceptedAt
     ? formatDuration(Math.max(0, Math.floor((now - new Date(state.call.acceptedAt).getTime()) / 1000)))
     : "";
-  const label = state.call.type === "video" ? "视频通话" : "语音通话";
+  const label = state.call.type === "video" ? phrase("视频通话", "Video call") : phrase("语音通话", "Voice call");
 
   if (state.minimized) {
-    return <button className="chat-call-mini" onClick={() => onMinimize(false)} title="返回通话" type="button"><PhoneCall aria-hidden="true" size={18} /><span><strong>{state.call.user.nickname}</strong><small>{state.phase === "active" ? duration : phaseText(state.phase)}</small></span></button>;
+    return <button className="chat-call-mini" onClick={() => onMinimize(false)} title={phrase("返回通话", "Return to call")} type="button"><PhoneCall aria-hidden="true" size={18} /><span><strong>{state.call.user.nickname}</strong><small>{state.phase === "active" ? duration : phaseText(state.phase, locale)}</small></span></button>;
   }
 
-  return <section className={`chat-call-panel ${state.call.type}`} aria-label={`${label}窗口`}>
+  return <section className={`chat-call-panel ${state.call.type}`} aria-label={phrase(`${label}窗口`, `${label} panel`)}>
     <div className="chat-call-media">
       {state.call.type === "video" ? <video autoPlay className="chat-call-remote-video" playsInline ref={remoteMediaRef as RefObject<HTMLVideoElement>} /> : <audio autoPlay ref={remoteMediaRef as RefObject<HTMLAudioElement>} />}
       {state.call.type === "voice" || !remoteStream ? <div className="chat-call-identity">
         <span className="chat-call-avatar">{avatar ? <img alt="" src={avatar} /> : getAvatarFallbackText(state.call.user)}</span>
         <strong>{state.call.user.nickname}</strong>
-        <span>{state.phase === "active" ? duration : phaseText(state.phase)}</span>
+        <span>{state.phase === "active" ? duration : phaseText(state.phase, locale)}</span>
       </div> : null}
       {state.call.type === "video" && localStream ? <video autoPlay className="chat-call-local-video" muted playsInline ref={localVideoRef} /> : null}
     </div>
     <header><span>{label}</span>{state.phase === "active" ? <time>{duration}</time> : null}</header>
     {state.phase === "incoming" ? <div className="chat-call-incoming-actions">
-      <button aria-label="拒绝通话" className="danger" onClick={onDecline} title="拒绝" type="button"><PhoneOff aria-hidden="true" size={22} /></button>
-      <button aria-label="接听通话" className="accept" disabled={isPreparing} onClick={onAccept} title={isPreparing ? "正在准备媒体设备" : "接听"} type="button">{isPreparing ? <LoaderCircle aria-hidden="true" className="spin" size={22} /> : <Phone aria-hidden="true" size={22} />}</button>
+      <button aria-label={phrase("拒绝通话", "Decline call")} className="danger" onClick={onDecline} title={phrase("拒绝", "Decline")} type="button"><PhoneOff aria-hidden="true" size={22} /></button>
+      <button aria-label={phrase("接听通话", "Accept call")} className="accept" disabled={isPreparing} onClick={onAccept} title={isPreparing ? phrase("正在准备媒体设备", "Preparing media devices") : phrase("接听", "Accept")} type="button">{isPreparing ? <LoaderCircle aria-hidden="true" className="spin" size={22} /> : <Phone aria-hidden="true" size={22} />}</button>
     </div> : <div className="chat-call-controls">
-      <button className={state.muted ? "active" : ""} onClick={onToggleMute} title={state.muted ? "打开麦克风" : "静音"} type="button">{state.muted ? <MicOff aria-hidden="true" size={20} /> : <Mic aria-hidden="true" size={20} />}</button>
+      <button className={state.muted ? "active" : ""} onClick={onToggleMute} title={state.muted ? phrase("打开麦克风", "Turn on microphone") : phrase("静音", "Mute")} type="button">{state.muted ? <MicOff aria-hidden="true" size={20} /> : <Mic aria-hidden="true" size={20} />}</button>
       {state.call.type === "video" ? <>
-        <button className={!state.cameraEnabled ? "active" : ""} onClick={onToggleCamera} title={state.cameraEnabled ? "关闭摄像头" : "打开摄像头"} type="button">{state.cameraEnabled ? <Camera aria-hidden="true" size={20} /> : <CameraOff aria-hidden="true" size={20} />}</button>
-        <button onClick={onSwitchCamera} title="切换摄像头" type="button"><RefreshCw aria-hidden="true" size={20} /></button>
+        <button className={!state.cameraEnabled ? "active" : ""} onClick={onToggleCamera} title={state.cameraEnabled ? phrase("关闭摄像头", "Turn off camera") : phrase("打开摄像头", "Turn on camera")} type="button">{state.cameraEnabled ? <Camera aria-hidden="true" size={20} /> : <CameraOff aria-hidden="true" size={20} />}</button>
+        <button onClick={onSwitchCamera} title={phrase("切换摄像头", "Switch camera")} type="button"><RefreshCw aria-hidden="true" size={20} /></button>
       </> : null}
-      <button onClick={() => onMinimize(true)} title="最小化通话" type="button"><Minimize2 aria-hidden="true" size={20} /></button>
-      <button className="hangup" disabled={state.phase === "ending"} onClick={onEnd} title="挂断" type="button"><PhoneOff aria-hidden="true" size={21} /></button>
+      <button onClick={() => onMinimize(true)} title={phrase("最小化通话", "Minimize call")} type="button"><Minimize2 aria-hidden="true" size={20} /></button>
+      <button className="hangup" disabled={state.phase === "ending"} onClick={onEnd} title={phrase("挂断", "End call")} type="button"><PhoneOff aria-hidden="true" size={21} /></button>
     </div>}
   </section>;
 }
 
-function phaseText(phase: CallPhase): string {
-  if (phase === "incoming") return "邀请你通话";
-  if (phase === "outgoing") return "正在呼叫";
-  if (phase === "connecting") return "正在连接";
-  if (phase === "ending") return "正在结束";
-  return "通话中";
+function phaseText(phase: CallPhase, locale: "zh-CN" | "en-US"): string {
+  const text = (chinese: string, english: string) => locale === "en-US" ? english : chinese;
+  if (phase === "incoming") return text("邀请你通话", "Incoming call");
+  if (phase === "outgoing") return text("正在呼叫", "Calling");
+  if (phase === "connecting") return text("正在连接", "Connecting");
+  if (phase === "ending") return text("正在结束", "Ending");
+  return text("通话中", "In call");
 }
 
-function callEndNotice(call: CallSession): string {
-  if (call.status === "declined") return "对方已拒绝通话。";
-  if (call.status === "busy") return "对方正在通话中。";
-  if (call.status === "cancelled") return "通话已取消。";
-  if (call.status === "missed") return "通话无人接听。";
-  if (call.status === "failed") return "通话连接已中断。";
-  return "通话已结束。";
+function callEndNotice(call: CallSession, locale: "zh-CN" | "en-US"): string {
+  const text = (chinese: string, english: string) => locale === "en-US" ? english : chinese;
+  if (call.status === "declined") return text("对方已拒绝通话。", "The call was declined.");
+  if (call.status === "busy") return text("对方正在通话中。", "The other person is already in a call.");
+  if (call.status === "cancelled") return text("通话已取消。", "The call was cancelled.");
+  if (call.status === "missed") return text("通话无人接听。", "The call was not answered.");
+  if (call.status === "failed") return text("通话连接已中断。", "The call connection was interrupted.");
+  return text("通话已结束。", "The call ended.");
 }
 
 function formatDuration(seconds: number): string {

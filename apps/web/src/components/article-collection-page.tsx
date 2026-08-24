@@ -7,6 +7,7 @@ import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleCard, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
+import { useLanguage } from "@/components/language-provider";
 import {
   Article,
   ArticleCenterSummary,
@@ -22,6 +23,7 @@ import {
 } from "@/lib/article-api";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { localizedPath } from "@/lib/i18n";
 
 export type ReadingMode = "read-later" | "history" | "favorites" | "liked";
 
@@ -30,6 +32,7 @@ const emptySummary: ArticleCenterSummary = { discover: 0, subscriptions: 0, mine
 
 export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const searchParams = useSearchParams();
   const querySearch = searchParams.get("q") ?? "";
   const [searchInput, setSearchInput] = useState(querySearch);
@@ -50,7 +53,7 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
     else params.delete("q");
     if (nextTab === "read-later") params.delete("tab");
     else params.set("tab", nextTab);
-    router.replace(`/articles/reading${params.size ? `?${params}` : ""}`);
+    router.replace(`${localizedPath("/articles/reading", locale)}${params.size ? `?${params}` : ""}`);
   }
 
   useEffect(() => {
@@ -64,7 +67,7 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
   useEffect(() => {
     const token = readAccessToken();
     if (!token) {
-      router.replace(`/login?from=${encodeURIComponent("/articles/reading")}`);
+      router.replace(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath("/articles/reading", locale))}`);
       return;
     }
     const timer = window.setTimeout(() => {
@@ -83,29 +86,29 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
       .catch((loadError) => {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
-        setError(loadError instanceof Error ? loadError.message : "阅读记录加载失败。");
+        setError(loadError instanceof Error ? loadError.message : phrase("阅读记录加载失败。", "Could not load reading activity."));
       })
       .finally(() => setIsLoading(false));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [mode, querySearch, router]);
+  }, [locale, mode, phrase, querySearch, router]);
 
   const loadMore = useCallback(() => {
     if (isLoading || isLoadingMore || list.page >= list.totalPages) return;
     const token = readAccessToken();
     if (!token) {
-      router.replace("/");
+      router.replace(localizedPath("/", locale));
       return;
     }
     setIsLoadingMore(true);
     collectionRequest(mode)(token, { page: list.page + 1, pageSize: 12, search: querySearch })
       .then((result) => setList((current) => appendArticlePage(current, result)))
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "更多内容加载失败。"))
+      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : phrase("更多内容加载失败。", "Could not load more content.")))
       .finally(() => setIsLoadingMore(false));
-  }, [isLoading, isLoadingMore, list.page, list.totalPages, mode, querySearch, router]);
+  }, [isLoading, isLoadingMore, list.page, list.totalPages, locale, mode, phrase, querySearch, router]);
 
   async function removeItem(article: Article) {
     const token = readAccessToken();
@@ -115,22 +118,22 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
       else if (mode === "read-later") await setArticleReadLater(token, article.id, false);
       setList((current) => ({ ...current, total: Math.max(0, current.total - 1), items: current.items.filter((item) => item.id !== article.id) }));
       setSummary((current) => ({ ...current, [mode === "history" ? "history" : "readLater"]: Math.max(0, current[mode === "history" ? "history" : "readLater"] - 1) }));
-      setNotice(mode === "history" ? "已移除这条阅读记录。" : "已从稍后读移除。");
+      setNotice(mode === "history" ? phrase("已移除这条阅读记录。", "Reading record removed.") : phrase("已从稍后读移除。", "Removed from Read later."));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "操作失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("操作失败。", "Action failed."));
     }
   }
 
   async function clearHistory() {
     const token = readAccessToken();
-    if (!token || !window.confirm("清空全部阅读历史吗？稍后读、收藏和赞过不会受到影响。")) return;
+    if (!token || !window.confirm(phrase("清空全部阅读历史吗？稍后读、收藏和赞过不会受到影响。", "Clear all reading history? Read later, favorites, and likes will not be affected."))) return;
     try {
       await clearArticleReadingHistory(token);
       setList(emptyList);
       setSummary((current) => ({ ...current, history: 0 }));
-      setNotice("阅读历史已清空。");
+      setNotice(phrase("阅读历史已清空。", "Reading history cleared."));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "清空失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("清空失败。", "Could not clear history."));
     }
   }
 
@@ -140,9 +143,9 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
       return (
         <span className="article-reading-inline">
           <b>{progress}%</b>
-          <i aria-label={`阅读进度 ${progress}%`}><span style={{ width: `${progress}%` }} /></i>
-          <small>上次阅读 {formatArticleDate(article.lastReadAt)}</small>
-          <button aria-label="移除阅读记录" onClick={() => void removeItem(article)} title="移除阅读记录" type="button">
+          <i aria-label={phrase(`阅读进度 ${progress}%`, `Reading progress ${progress}%`)}><span style={{ width: `${progress}%` }} /></i>
+          <small>{phrase(`上次阅读 ${formatArticleDate(article.lastReadAt)}`, `Last read ${formatArticleDate(article.lastReadAt)}`)}</small>
+          <button aria-label={phrase("移除阅读记录", "Remove reading record")} onClick={() => void removeItem(article)} title={phrase("移除阅读记录", "Remove reading record")} type="button">
             <Trash2 aria-hidden="true" size={14} />
           </button>
         </span>
@@ -151,8 +154,8 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
     if (mode === "read-later") {
       return (
         <span className="article-reading-inline compact">
-          <small>已加入稍后读</small>
-          <button aria-label="移出稍后读" onClick={() => void removeItem(article)} title="移出稍后读" type="button">
+          <small>{phrase("已加入稍后读", "Saved to Read later")}</small>
+          <button aria-label={phrase("移出稍后读", "Remove from Read later")} onClick={() => void removeItem(article)} title={phrase("移出稍后读", "Remove from Read later")} type="button">
             <X aria-hidden="true" size={14} />
           </button>
         </span>
@@ -161,25 +164,25 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
     return null;
   }
 
-  const config = readingConfig(mode);
+  const config = readingConfig(mode, phrase);
   return (
     <section className="page-shell articles-page article-collection-page">
       <ArticleCenterNav active="reading" isLoggedIn user={user} />
       <div className="article-reading-tabs article-center-secondary-tabs" role="tablist">
         {([
-          ["read-later", "稍后读", Clock3, summary.readLater],
-          ["history", "阅读历史", History, summary.history],
-          ["favorites", "收藏", Bookmark, summary.favorites],
-          ["liked", "赞过", Heart, summary.liked],
+          ["read-later", phrase("稍后读", "Read later"), Clock3, summary.readLater],
+          ["history", phrase("阅读历史", "Reading history"), History, summary.history],
+          ["favorites", phrase("收藏", "Favorites"), Bookmark, summary.favorites],
+          ["liked", phrase("赞过", "Liked"), Heart, summary.liked],
         ] as const).map(([value, label, Icon, count]) => <button aria-selected={mode === value} className={mode === value ? "active" : undefined} key={value} onClick={() => replaceQuery({ tab: value })} role="tab" type="button"><Icon aria-hidden="true" size={15} />{label}<span>{count}</span></button>)}
       </div>
       <div className="article-feed-toolbar article-collection-toolbar">
-        <label className="article-search"><Search aria-hidden="true" size={17} /><input aria-label="搜索文章" name="search" onChange={(event) => setSearchInput(event.target.value)} onCompositionEnd={(event) => { setSearchInput(event.currentTarget.value); setIsComposing(false); }} onCompositionStart={() => setIsComposing(true)} placeholder="搜索标题、正文、标签或作者" value={searchInput} />{searchInput ? <button aria-label="清除搜索" onClick={() => setSearchInput("")} title="清除搜索" type="button"><X aria-hidden="true" size={16} /></button> : null}</label>
-        {mode === "history" && list.total ? <button className="article-clear-history" onClick={() => void clearHistory()} type="button"><Trash2 aria-hidden="true" size={15} />清空历史</button> : null}
+        <label className="article-search"><Search aria-hidden="true" size={17} /><input aria-label={phrase("搜索文章", "Search articles")} name="search" onChange={(event) => setSearchInput(event.target.value)} onCompositionEnd={(event) => { setSearchInput(event.currentTarget.value); setIsComposing(false); }} onCompositionStart={() => setIsComposing(true)} placeholder={phrase("搜索标题、正文、标签或作者", "Search titles, content, tags, or authors")} value={searchInput} />{searchInput ? <button aria-label={phrase("清除搜索", "Clear search")} onClick={() => setSearchInput("")} title={phrase("清除搜索", "Clear search")} type="button"><X aria-hidden="true" size={16} /></button> : null}</label>
+        {mode === "history" && list.total ? <button className="article-clear-history" onClick={() => void clearHistory()} type="button"><Trash2 aria-hidden="true" size={15} />{phrase("清空历史", "Clear history")}</button> : null}
       </div>
-      {isLoading ? <div className="article-empty-state">正在读取内容。</div>
-        : list.items.length ? <div className="article-reading-list">{list.items.map((article) => <ArticleCard article={article} href={mode === "history" ? `/articles/${article.slug}?resume=1` : undefined} key={article.id} metaAccessory={renderReadingAccessory(article)} taxonomyPlacement="after-stats" />)}</div>
-          : <div className="article-empty-state"><config.Icon aria-hidden="true" size={24} /><strong>{querySearch ? "没有匹配的文章" : config.emptyTitle}</strong><span>{querySearch ? "试试其他关键词。" : config.emptyText}</span></div>}
+      {isLoading ? <div className="article-empty-state">{phrase("正在读取内容。", "Loading content.")}</div>
+        : list.items.length ? <div className="article-reading-list">{list.items.map((article) => <ArticleCard article={article} href={mode === "history" ? `${localizedPath(`/articles/${article.slug}`, locale)}?resume=1` : undefined} key={article.id} metaAccessory={renderReadingAccessory(article)} taxonomyPlacement="after-stats" />)}</div>
+          : <div className="article-empty-state"><config.Icon aria-hidden="true" size={24} /><strong>{querySearch ? phrase("没有匹配的文章", "No matching articles") : config.emptyTitle}</strong><span>{querySearch ? phrase("试试其他关键词。", "Try another keyword.") : config.emptyText}</span></div>}
       {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
       <AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
@@ -193,11 +196,11 @@ function collectionRequest(mode: ReadingMode) {
   return listLikedArticles;
 }
 
-function readingConfig(mode: ReadingMode) {
-  if (mode === "history") return { Icon: History, emptyTitle: "还没有阅读历史", emptyText: "登录后阅读文章，最近阅读位置会保存在这里。" };
-  if (mode === "read-later") return { Icon: Clock3, emptyTitle: "还没有稍后读内容", emptyText: "遇到想稍后查看的文章，可以先加入这里。" };
-  if (mode === "favorites") return { Icon: Bookmark, emptyTitle: "还没有收藏文章", emptyText: "收藏的文章会长期保存在这里。" };
-  return { Icon: Heart, emptyTitle: "还没有点赞文章", emptyText: "点赞过的文章会显示在这里。" };
+function readingConfig(mode: ReadingMode, phrase: (chinese: string, english: string) => string) {
+  if (mode === "history") return { Icon: History, emptyTitle: phrase("还没有阅读历史", "No reading history"), emptyText: phrase("登录后阅读文章，最近阅读位置会保存在这里。", "Your latest reading position is saved here after you sign in.") };
+  if (mode === "read-later") return { Icon: Clock3, emptyTitle: phrase("还没有稍后读内容", "Nothing saved for later"), emptyText: phrase("遇到想稍后查看的文章，可以先加入这里。", "Save articles here to read them later.") };
+  if (mode === "favorites") return { Icon: Bookmark, emptyTitle: phrase("还没有收藏文章", "No favorite articles"), emptyText: phrase("收藏的文章会长期保存在这里。", "Articles you favorite are kept here.") };
+  return { Icon: Heart, emptyTitle: phrase("还没有点赞文章", "No liked articles"), emptyText: phrase("点赞过的文章会显示在这里。", "Articles you like appear here.") };
 }
 
 function appendArticlePage(current: ArticleList, next: ArticleList): ArticleList {

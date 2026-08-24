@@ -4,8 +4,10 @@ import { Download, FileText, Image as ImageIcon, LoaderCircle, X } from "lucide-
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AppToast } from "@/components/app-toast";
+import { useLanguage } from "@/components/language-provider";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
+import { formatDate } from "@/lib/i18n";
 import {
   downloadChatAttachment,
   downloadChatAttachmentThumbnail,
@@ -31,6 +33,7 @@ interface ReportPreviewMessage {
 }
 
 export function GroupReportMessagePreview({ group, message, onClose }: { group: ReportPreviewGroup; message: ReportPreviewMessage; onClose: () => void }) {
+  const { locale, phrase } = useLanguage();
   const [previewAttachment, setPreviewAttachment] = useState<ChatAttachment | null>(null);
   const images = message.attachments.filter((attachment) => attachment.kind === "image");
   const otherAttachments = message.attachments.filter((attachment) => attachment.kind !== "image");
@@ -39,8 +42,8 @@ export function GroupReportMessagePreview({ group, message, onClose }: { group: 
   return createPortal(<>
     <div className="group-management-preview-backdrop" onClick={onClose} role="presentation">
       <section aria-modal="true" className="group-management-preview" onClick={(event) => event.stopPropagation()} role="dialog">
-        <header><span className="report-admin-group"><GroupAvatar group={group} /><strong>{group.name} · 被举报内容</strong></span><button aria-label="关闭内容预览" onClick={onClose} type="button"><X aria-hidden="true" size={18} /></button></header>
-        <div className="group-management-preview-content"><div className="chat-message theirs group-report-preview-message"><span className="chat-message-sender"><UserAvatar user={message.sender} /><small>{message.senderDisplayName || message.sender.nickname}</small></span><div>{images.length ? <div className={`chat-message-attachments chat-message-images count-${images.length}`}>{images.map((attachment) => <ReportMessageImage attachment={attachment} key={attachment.id} onPreview={() => setPreviewAttachment(attachment)} />)}</div> : null}{otherAttachments.length ? <div className={`chat-message-attachments chat-message-files${otherAttachments.length === 1 && otherAttachments[0].kind === "audio" ? " audio-only" : ""}`}>{otherAttachments.map((attachment) => attachment.kind === "audio" || attachment.kind === "video" ? <ReportMessageMedia attachment={attachment} key={attachment.id} /> : <ReportMessageFile attachment={attachment} key={attachment.id} />)}</div> : null}{message.body ? <p>{message.body}</p> : null}<span>{formatMinute(message.createdAt)}</span></div></div></div>
+        <header><span className="report-admin-group"><GroupAvatar group={group} /><strong>{group.name} · {phrase("被举报内容", "Reported content")}</strong></span><button aria-label={phrase("关闭内容预览", "Close content preview")} onClick={onClose} type="button"><X aria-hidden="true" size={18} /></button></header>
+        <div className="group-management-preview-content"><div className="chat-message theirs group-report-preview-message"><span className="chat-message-sender"><UserAvatar user={message.sender} /><small>{message.senderDisplayName || message.sender.nickname}</small></span><div>{images.length ? <div className={`chat-message-attachments chat-message-images count-${images.length}`}>{images.map((attachment) => <ReportMessageImage attachment={attachment} key={attachment.id} onPreview={() => setPreviewAttachment(attachment)} />)}</div> : null}{otherAttachments.length ? <div className={`chat-message-attachments chat-message-files${otherAttachments.length === 1 && otherAttachments[0].kind === "audio" ? " audio-only" : ""}`}>{otherAttachments.map((attachment) => attachment.kind === "audio" || attachment.kind === "video" ? <ReportMessageMedia attachment={attachment} key={attachment.id} phrase={phrase} /> : <ReportMessageFile attachment={attachment} key={attachment.id} phrase={phrase} />)}</div> : null}{message.body ? <p>{message.body}</p> : null}<span>{formatMinute(message.createdAt, locale)}</span></div></div></div>
       </section>
     </div>
     {previewAttachment ? <ReportAttachmentPreview attachment={previewAttachment} onClose={() => setPreviewAttachment(null)} /> : null}
@@ -64,7 +67,7 @@ function ReportMessageImage({ attachment, onPreview }: { attachment: ChatAttachm
   return <button className="chat-image-attachment" disabled={!url} onClick={onPreview} type="button">{url ? <img alt={attachment.originalName} src={url} /> : <ImageIcon aria-hidden="true" size={22} />}</button>;
 }
 
-function ReportMessageMedia({ attachment }: { attachment: ChatAttachment }) {
+function ReportMessageMedia({ attachment, phrase }: { attachment: ChatAttachment; phrase: (chinese: string, english: string) => string }) {
   const [previewUrl, setPreviewUrl] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
@@ -77,18 +80,18 @@ function ReportMessageMedia({ attachment }: { attachment: ChatAttachment }) {
       objectUrl = URL.createObjectURL(blob);
       setPreviewUrl(objectUrl);
     }).catch((mediaError) => {
-      if (active) setError(mediaError instanceof Error ? mediaError.message : "媒体读取失败。");
+      if (active) setError(mediaError instanceof Error ? mediaError.message : phrase("媒体读取失败。", "Could not load media."));
     });
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [attachment]);
-  if (!previewUrl) return <><span className="chat-media-loading">{error ? "媒体暂时无法读取" : <LoaderCircle aria-hidden="true" className="spin" size={18} />}</span><AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" /></>;
+  }, [attachment, phrase]);
+  if (!previewUrl) return <><span className="chat-media-loading">{error ? phrase("媒体暂时无法读取", "Media is unavailable") : <LoaderCircle aria-hidden="true" className="spin" size={18} />}</span><AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" /></>;
   return <>{attachment.kind === "audio" ? <audio className="chat-audio-attachment" controls onEnded={(event) => { event.currentTarget.pause(); event.currentTarget.currentTime = 0; }} preload="metadata" src={previewUrl} /> : <video className="chat-video-attachment" controls playsInline preload="metadata" src={previewUrl} />}<AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" /></>;
 }
 
-function ReportMessageFile({ attachment }: { attachment: ChatAttachment }) {
+function ReportMessageFile({ attachment, phrase }: { attachment: ChatAttachment; phrase: (chinese: string, english: string) => string }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState("");
   async function download() {
@@ -104,7 +107,7 @@ function ReportMessageFile({ attachment }: { attachment: ChatAttachment }) {
       anchor.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (downloadError) {
-      setError(downloadError instanceof Error ? downloadError.message : "附件下载失败。");
+      setError(downloadError instanceof Error ? downloadError.message : phrase("附件下载失败。", "Could not download the attachment."));
     } finally {
       setIsDownloading(false);
     }
@@ -113,6 +116,7 @@ function ReportMessageFile({ attachment }: { attachment: ChatAttachment }) {
 }
 
 function ReportAttachmentPreview({ attachment, onClose }: { attachment: ChatAttachment; onClose: () => void }) {
+  const { phrase } = useLanguage();
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
@@ -122,10 +126,10 @@ function ReportAttachmentPreview({ attachment, onClose }: { attachment: ChatAtta
     downloadChatAttachment(token, attachment).then((blob) => {
       objectUrl = URL.createObjectURL(blob);
       setUrl(objectUrl);
-    }).catch((previewError) => setError(previewError instanceof Error ? previewError.message : "附件预览失败。"));
+    }).catch((previewError) => setError(previewError instanceof Error ? previewError.message : phrase("附件预览失败。", "Could not preview the attachment.")));
     return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [attachment]);
-  return <><div className="chat-attachment-preview" onClick={onClose} role="presentation"><button aria-label="关闭图片预览" onClick={onClose} type="button"><X aria-hidden="true" size={22} /></button>{url ? <img alt={attachment.originalName} onClick={(event) => event.stopPropagation()} src={url} /> : error ? <span>{error}</span> : <LoaderCircle aria-hidden="true" className="spin" size={26} />}</div><AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" /></>;
+  }, [attachment, phrase]);
+  return <><div className="chat-attachment-preview" onClick={onClose} role="presentation"><button aria-label={phrase("关闭图片预览", "Close image preview")} onClick={onClose} type="button"><X aria-hidden="true" size={22} /></button>{url ? <img alt={attachment.originalName} onClick={(event) => event.stopPropagation()} src={url} /> : error ? <span>{error}</span> : <LoaderCircle aria-hidden="true" className="spin" size={26} />}</div><AppToast duration={4200} message={error} onDismiss={() => setError("")} tone="error" /></>;
 }
 
 function UserAvatar({ user }: { user: ReportPreviewUser }) {
@@ -140,8 +144,8 @@ function fallbackText(value: string): string {
   return Array.from(value.trim()).slice(0, 2).join("").toUpperCase() || "群";
 }
 
-function formatMinute(value: string): string {
-  return new Date(value).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+function formatMinute(value: string, locale: "zh-CN" | "en-US"): string {
+  return formatDate(value, locale, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 function formatBytes(value: number): string {

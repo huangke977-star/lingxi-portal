@@ -8,6 +8,8 @@ import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleAuthorLine, ArticleBody, ArticleStats, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
+import { GlassSelect } from "@/components/glass-select";
+import { useLanguage } from "@/components/language-provider";
 import { LikeBurst } from "@/components/like-burst";
 import { CommentAuthorIdentity } from "@/components/public-profile-popover";
 import {
@@ -32,16 +34,29 @@ import {
 import { buildArticleCommentThreads } from "@/lib/article-comments";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { localizedPath } from "@/lib/i18n";
 import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-api";
 import { getPublicProfile, PublicProfile, subscribeToAuthor, unsubscribeFromAuthor } from "@/lib/social-api";
 import { notifySocialStateChange } from "@/lib/social-events";
 
 const COMMENT_PAGE_SIZE = 10;
 
+function reportReasonOptions(phrase: (chinese: string, english: string) => string) {
+  return [
+    { value: "spam", label: phrase("垃圾广告", "Spam or advertising") },
+    { value: "harassment", label: phrase("辱骂骚扰", "Harassment") },
+    { value: "illegal", label: phrase("违法违规", "Illegal content") },
+    { value: "privacy", label: phrase("隐私泄露", "Privacy violation") },
+    { value: "misinformation", label: phrase("不实内容", "Misinformation") },
+    { value: "other", label: phrase("其他", "Other") },
+  ] as const;
+}
+
 export default function ArticleDetailPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { locale, phrase } = useLanguage();
   const [article, setArticle] = useState<Article | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -117,14 +132,14 @@ export default function ArticleDetailPage() {
             setHasMoreComments(loadedComments.hasMore);
             return;
           } catch (fallbackError) {
-            setError(fallbackError instanceof Error ? fallbackError.message : "文章加载失败。");
+            setError(fallbackError instanceof Error ? fallbackError.message : phrase("文章加载失败。", "Could not load this article."));
             return;
           }
         }
-        setError(loadError instanceof Error ? loadError.message : "文章加载失败。");
+        setError(loadError instanceof Error ? loadError.message : phrase("文章加载失败。", "Could not load this article."));
       })
       .finally(() => setIsLoading(false));
-  }, [params.slug, requestedCommentId]);
+  }, [params.slug, phrase, requestedCommentId]);
 
   useEffect(() => {
     if (!readingArticleId || !isLoggedIn || !readingContentRef.current) return;
@@ -210,11 +225,11 @@ export default function ArticleDetailPage() {
       setCommentNextCursor(page.nextCursor);
       setHasMoreComments(page.hasMore);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "更多评论加载失败。");
+      setError(loadError instanceof Error ? loadError.message : phrase("更多评论加载失败。", "Could not load more comments."));
     } finally {
       setIsLoadingMoreComments(false);
     }
-  }, [article, commentNextCursor, hasMoreComments, isLoadingMoreComments]);
+  }, [article, commentNextCursor, hasMoreComments, isLoadingMoreComments, phrase]);
 
   useEffect(() => {
     if (requestedCommentId <= 0 || !comments.some((comment) => comment.id === requestedCommentId)) return;
@@ -235,7 +250,7 @@ export default function ArticleDetailPage() {
     if (!article) return;
     const token = readAccessToken();
     if (!token) {
-      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      router.push(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath(`/articles/${article.slug}`, locale))}`);
       return;
     }
     try {
@@ -256,7 +271,7 @@ export default function ArticleDetailPage() {
         favoriteCount: result.favoriteCount,
       });
     } catch (interactionError) {
-      setError(interactionError instanceof Error ? interactionError.message : "操作失败。");
+      setError(interactionError instanceof Error ? interactionError.message : phrase("操作失败。", "Action failed."));
     }
   }
 
@@ -264,7 +279,7 @@ export default function ArticleDetailPage() {
     if (!article || user?.id === article.author.id) return;
     const token = readAccessToken();
     if (!token) {
-      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      router.push(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath(`/articles/${article.slug}`, locale))}`);
       return;
     }
     try {
@@ -275,10 +290,10 @@ export default function ArticleDetailPage() {
         setSubscriptionBurst((current) => current + 1);
       }
       setAuthorProfile((current) => current ? { ...current, ...result } : current);
-      setNotice(result.subscribed ? "已订阅该作者。" : "已取消订阅。");
+      setNotice(result.subscribed ? phrase("已订阅该作者。", "Subscribed to this author.") : phrase("已取消订阅。", "Subscription canceled."));
       notifySocialStateChange();
     } catch (subscriptionError) {
-      setError(subscriptionError instanceof Error ? subscriptionError.message : "订阅操作失败。");
+      setError(subscriptionError instanceof Error ? subscriptionError.message : phrase("订阅操作失败。", "Could not update subscription."));
     }
   }
 
@@ -286,15 +301,15 @@ export default function ArticleDetailPage() {
     if (!article) return;
     const token = readAccessToken();
     if (!token) {
-      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      router.push(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath(`/articles/${article.slug}`, locale))}`);
       return;
     }
     try {
       const result = await setArticleReadLater(token, article.id, !article.readLater);
       setArticle((current) => current ? { ...current, readLater: result.readLater } : current);
-      setNotice(result.readLater ? "已加入稍后读。" : "已从稍后读移除。");
+      setNotice(result.readLater ? phrase("已加入稍后读。", "Added to read later.") : phrase("已从稍后读移除。", "Removed from read later."));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "稍后读操作失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("稍后读操作失败。", "Could not update read later."));
     }
   }
 
@@ -303,20 +318,20 @@ export default function ArticleDetailPage() {
     if (isRedeemingResource) return;
     const token = readAccessToken();
     if (!token) {
-      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      router.push(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath(`/articles/${article.slug}`, locale))}`);
       return;
     }
     const block = article.resource.blocks.find((item) => item.key === blockKey);
     if (!block || block.unlocked) return;
-    if (!window.confirm(`确定使用 ${block.pointCost} 积分永久解锁这段内容吗？`)) return;
+    if (!window.confirm(phrase(`确定使用 ${block.pointCost} 积分永久解锁这段内容吗？`, `Use ${block.pointCost} points to permanently unlock this section?`))) return;
     setIsRedeemingResource(true);
     setError("");
     try {
       const unlocked = await redeemArticleResource(token, article.id, blockKey);
       setArticle(unlocked);
-      setNotice(`已使用 ${block.pointCost} 积分兑换，内容已永久解锁。`);
+      setNotice(phrase(`已使用 ${block.pointCost} 积分兑换，内容已永久解锁。`, `Used ${block.pointCost} points. This section is permanently unlocked.`));
     } catch (redeemError) {
-      setError(redeemError instanceof Error ? redeemError.message : "资源兑换失败。");
+      setError(redeemError instanceof Error ? redeemError.message : phrase("资源兑换失败。", "Could not redeem this resource."));
     } finally {
       setIsRedeemingResource(false);
     }
@@ -327,11 +342,11 @@ export default function ArticleDetailPage() {
     if (!article || !reportingArticle) return;
     const token = readAccessToken();
     if (!token) {
-      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      router.push(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath(`/articles/${article.slug}`, locale))}`);
       return;
     }
     if (siteSettings && !siteSettings.reportsEnabled) {
-      setError("举报功能暂未开放。");
+      setError(phrase("举报功能暂未开放。", "Reports are not available."));
       return;
     }
     setIsSubmittingReport(true);
@@ -339,9 +354,9 @@ export default function ArticleDetailPage() {
       await reportArticle(token, article.id, { reason: articleReportReason, detail: articleReportDetail.trim() || undefined });
       setReportingArticle(false);
       setArticleReportDetail("");
-      setNotice("文章举报已提交，管理员会尽快处理。");
+      setNotice(phrase("文章举报已提交，管理员会尽快处理。", "Article report submitted. Administrators will review it soon."));
     } catch (reportError) {
-      setError(reportError instanceof Error ? reportError.message : "文章举报提交失败。");
+      setError(reportError instanceof Error ? reportError.message : phrase("文章举报提交失败。", "Could not submit article report."));
     } finally {
       setIsSubmittingReport(false);
     }
@@ -351,12 +366,12 @@ export default function ArticleDetailPage() {
     event.preventDefault();
     if (!article || !commentDraft.trim()) return;
     if (siteSettings && !siteSettings.commentsEnabled) {
-      setError("评论功能暂未开放。");
+      setError(phrase("评论功能暂未开放。", "Comments are not available."));
       return;
     }
     const token = readAccessToken();
     if (!token) {
-      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      router.push(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath(`/articles/${article.slug}`, locale))}`);
       return;
     }
     setIsSubmittingComment(true);
@@ -366,9 +381,9 @@ export default function ArticleDetailPage() {
       setArticle((current) => current ? { ...current, commentCount: current.commentCount + 1 } : current);
       setCommentDraft("");
       setReplyingTo(null);
-      setNotice(replyingTo ? "回复已发布。" : "评论已发布。");
+      setNotice(replyingTo ? phrase("回复已发布。", "Reply posted.") : phrase("评论已发布。", "Comment posted."));
     } catch (commentError) {
-      setError(commentError instanceof Error ? commentError.message : "评论发布失败。");
+      setError(commentError instanceof Error ? commentError.message : phrase("评论发布失败。", "Could not post comment."));
     } finally {
       setIsSubmittingComment(false);
     }
@@ -377,11 +392,11 @@ export default function ArticleDetailPage() {
   function beginReply(comment: ArticleComment) {
     if (!article) return;
     if (siteSettings && !siteSettings.commentsEnabled) {
-      setError("评论功能暂未开放。");
+      setError(phrase("评论功能暂未开放。", "Comments are not available."));
       return;
     }
     if (!readAccessToken()) {
-      router.push(`/login?from=${encodeURIComponent(`/articles/${article.slug}`)}`);
+      router.push(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath(`/articles/${article.slug}`, locale))}`);
       return;
     }
     setReplyingTo(comment);
@@ -395,7 +410,7 @@ export default function ArticleDetailPage() {
 
   async function handleCommentDelete(comment: ArticleComment) {
     const token = readAccessToken();
-    if (!token || !article || !window.confirm("确定删除这条评论吗？")) return;
+    if (!token || !article || !window.confirm(phrase("确定删除这条评论吗？", "Delete this comment?"))) return;
     try {
       await deleteArticleComment(token, comment.id);
       const refreshed = await listArticleComments(article.slug, token, { pageSize: COMMENT_PAGE_SIZE });
@@ -404,16 +419,16 @@ export default function ArticleDetailPage() {
       setHasMoreComments(refreshed.hasMore);
       setArticle((current) => current ? { ...current, commentCount: Math.max(0, current.commentCount - 1) } : current);
       if (replyingTo?.id === comment.id) setReplyingTo(null);
-      setNotice("评论已删除。");
+      setNotice(phrase("评论已删除。", "Comment deleted."));
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "评论删除失败。");
+      setError(deleteError instanceof Error ? deleteError.message : phrase("评论删除失败。", "Could not delete comment."));
     }
   }
 
   async function handleCommentLike(comment: ArticleComment) {
     const token = readAccessToken();
     if (!token) {
-      router.push(`/login?from=${encodeURIComponent(`/articles/${article?.slug ?? ""}`)}`);
+      router.push(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath(`/articles/${article?.slug ?? ""}`, locale))}`);
       return;
     }
     try {
@@ -426,7 +441,7 @@ export default function ArticleDetailPage() {
         }));
       }
     } catch (likeError) {
-      setError(likeError instanceof Error ? likeError.message : "点赞失败。");
+      setError(likeError instanceof Error ? likeError.message : phrase("点赞失败。", "Could not update like."));
     }
   }
 
@@ -435,7 +450,7 @@ export default function ArticleDetailPage() {
     const token = readAccessToken();
     if (!token || !reportingComment) return;
     if (siteSettings && !siteSettings.reportsEnabled) {
-      setError("举报功能暂未开放。");
+      setError(phrase("举报功能暂未开放。", "Reports are not available."));
       return;
     }
     setIsSubmittingReport(true);
@@ -444,9 +459,9 @@ export default function ArticleDetailPage() {
       setComments((current) => current.map((item) => item.id === reportingComment.id ? { ...item, reported: true } : item));
       setReportingComment(null);
       setReportDetail("");
-      setNotice("举报已提交，管理员会尽快处理。");
+      setNotice(phrase("举报已提交，管理员会尽快处理。", "Report submitted. Administrators will review it soon."));
     } catch (reportError) {
-      setError(reportError instanceof Error ? reportError.message : "举报提交失败。");
+      setError(reportError instanceof Error ? reportError.message : phrase("举报提交失败。", "Could not submit report."));
     } finally {
       setIsSubmittingReport(false);
     }
@@ -458,23 +473,23 @@ export default function ArticleDetailPage() {
         <article className={`${parent ? "article-comment reply" : "article-comment"}${comment.status !== "active" ? " unavailable" : ""}`}>
           <div className="article-comment-heading">
             <CommentAuthorIdentity author={comment.author} />
-            {parent ? <span className="article-reply-target"><CornerDownRight aria-hidden="true" size={13} />回复 @{parent.author.nickname}</span> : null}
-            <time>{formatArticleDate(comment.createdAt)}</time>
+            {parent ? <span className="article-reply-target"><CornerDownRight aria-hidden="true" size={13} />{phrase(`回复 @${parent.author.nickname}`, `Reply to @${parent.author.nickname}`)}</span> : null}
+            <time>{formatArticleDate(comment.createdAt, locale)}</time>
           </div>
           <p>{comment.body}</p>
           {comment.status === "active" ? <div className="article-comment-actions">
-            <span className="like-action-wrap compact"><button className={comment.liked ? "active" : undefined} onClick={() => void handleCommentLike(comment)} type="button"><ThumbsUp aria-hidden="true" fill={comment.liked ? "currentColor" : "none"} size={14} />{comment.likeCount || "点赞"}</button><LikeBurst burst={commentLikeBursts[comment.id] ?? 0} variant="thumb" /></span>
-            {siteSettings?.commentsEnabled !== false ? <button onClick={() => beginReply(comment)} type="button"><Reply aria-hidden="true" size={14} />回复</button> : null}
-            {siteSettings?.reportsEnabled !== false && user?.id !== comment.author.id ? <button className={comment.reported ? "active" : undefined} disabled={comment.reported} onClick={() => setReportingComment(comment)} type="button"><Flag aria-hidden="true" size={14} />{comment.reported ? "已举报" : "举报"}</button> : null}
-            {user?.id === comment.author.id ? <button className="text-danger-action" onClick={() => void handleCommentDelete(comment)} type="button"><Trash2 aria-hidden="true" size={14} />删除</button> : null}
+            <span className="like-action-wrap compact"><button className={comment.liked ? "active" : undefined} onClick={() => void handleCommentLike(comment)} type="button"><ThumbsUp aria-hidden="true" fill={comment.liked ? "currentColor" : "none"} size={14} />{comment.likeCount || phrase("点赞", "Like")}</button><LikeBurst burst={commentLikeBursts[comment.id] ?? 0} variant="thumb" /></span>
+            {siteSettings?.commentsEnabled !== false ? <button onClick={() => beginReply(comment)} type="button"><Reply aria-hidden="true" size={14} />{phrase("回复", "Reply")}</button> : null}
+            {siteSettings?.reportsEnabled !== false && user?.id !== comment.author.id ? <button className={comment.reported ? "active" : undefined} disabled={comment.reported} onClick={() => setReportingComment(comment)} type="button"><Flag aria-hidden="true" size={14} />{comment.reported ? phrase("已举报", "Reported") : phrase("举报", "Report")}</button> : null}
+            {user?.id === comment.author.id ? <button className="text-danger-action" onClick={() => void handleCommentDelete(comment)} type="button"><Trash2 aria-hidden="true" size={14} />{phrase("删除", "Delete")}</button> : null}
           </div> : null}
         </article>
       </div>
     );
   }
 
-  if (isLoading) return <section className="page-shell article-detail-page"><div className="article-empty-state">正在读取文章。</div></section>;
-  if (!article) return <section className="page-shell article-detail-page"><div className="article-empty-state"><strong>文章暂时无法打开</strong><span>{error || "文章不存在或没有阅读权限。"}</span><Link className="text-action" href="/articles">返回文章列表</Link></div></section>;
+  if (isLoading) return <section className="page-shell article-detail-page"><div className="article-empty-state">{phrase("正在读取文章。", "Loading article.")}</div></section>;
+  if (!article) return <section className="page-shell article-detail-page"><div className="article-empty-state"><strong>{phrase("文章暂时无法打开", "Article unavailable")}</strong><span>{error || phrase("文章不存在或没有阅读权限。", "This article does not exist or you do not have permission to read it.")}</span><Link className="text-action" href={localizedPath("/articles", locale)}>{phrase("返回文章列表", "Back to articles")}</Link></div></section>;
 
   return (
     <section className="page-shell article-detail-page">
@@ -482,39 +497,39 @@ export default function ArticleDetailPage() {
       <article className="article-reading-layout">
         <header className="article-reading-header">
           <div className="article-reading-title-row"><h1 style={article.titleColor ? { color: article.titleColor } : undefined}>{article.title}</h1></div>
-          <div className="article-reading-author"><span className="article-reading-author-main"><ArticleAuthorLine author={article.author} interactive /><span className="article-reading-divider" /><span>发布于 {formatArticleDate(article.publishedAt)}</span></span><span className="article-reading-header-actions"><button className={article.readLater ? "active" : undefined} onClick={() => void handleReadLater()} type="button"><Clock3 aria-hidden="true" fill={article.readLater ? "currentColor" : "none"} size={16} />{article.readLater ? "已加入稍后读" : "稍后读"}</button>{user?.id !== article.author.id ? <button onClick={() => setReportingArticle(true)} type="button"><Flag aria-hidden="true" size={16} />举报</button> : null}</span></div>
+          <div className="article-reading-author"><span className="article-reading-author-main"><ArticleAuthorLine author={article.author} interactive /><span className="article-reading-divider" /><span>{phrase("发布于", "Published")} {formatArticleDate(article.publishedAt, locale)}</span></span><span className="article-reading-header-actions"><button className={article.readLater ? "active" : undefined} onClick={() => void handleReadLater()} type="button"><Clock3 aria-hidden="true" fill={article.readLater ? "currentColor" : "none"} size={16} />{article.readLater ? phrase("已加入稍后读", "In read later") : phrase("稍后读", "Read later")}</button>{user?.id !== article.author.id ? <button onClick={() => setReportingArticle(true)} type="button"><Flag aria-hidden="true" size={16} />{phrase("举报", "Report")}</button> : null}</span></div>
         </header>
         <div className="article-reading-grid">
           <aside className="article-reading-aside">
             <div className="article-aside-author">
               <div className="article-aside-author-profile"><ArticleAuthorLine author={article.author} interactive /><span>@{article.author.username}</span></div>
-              {user?.id !== article.author.id ? <span className="like-action-wrap article-subscribe-action"><button className={authorProfile?.subscribed ? "active" : undefined} onClick={() => void handleSubscription()} type="button"><Rss aria-hidden="true" size={16} />{authorProfile?.subscribed ? "已订阅" : "订阅"}{authorProfile?.subscriberCount ? ` ${authorProfile.subscriberCount}` : ""}</button><LikeBurst burst={subscriptionBurst} variant="rss" /></span> : null}
+              {user?.id !== article.author.id ? <span className="like-action-wrap article-subscribe-action"><button className={authorProfile?.subscribed ? "active" : undefined} onClick={() => void handleSubscription()} type="button"><Rss aria-hidden="true" size={16} />{authorProfile?.subscribed ? phrase("已订阅", "Subscribed") : phrase("订阅", "Subscribe")}{authorProfile?.subscriberCount ? ` ${authorProfile.subscriberCount}` : ""}</button><LikeBurst burst={subscriptionBurst} variant="rss" /></span> : null}
             </div>
             <div className="article-reading-actions">
-              <span className="like-action-wrap"><button className={article.liked ? "active" : undefined} onClick={() => void handleInteraction("like")} type="button"><Heart aria-hidden="true" fill={article.liked ? "currentColor" : "none"} size={17} />{article.liked ? "已赞" : "点赞"}</button><LikeBurst burst={articleLikeBurst} variant="heart" /></span>
-              <span className="like-action-wrap"><button className={article.favorited ? "active" : undefined} onClick={() => void handleInteraction("favorite")} type="button"><Bookmark aria-hidden="true" fill={article.favorited ? "currentColor" : "none"} size={17} />{article.favorited ? "已收藏" : "收藏"}</button><LikeBurst burst={articleFavoriteBurst} variant="bookmark" /></span>
+              <span className="like-action-wrap"><button className={article.liked ? "active" : undefined} onClick={() => void handleInteraction("like")} type="button"><Heart aria-hidden="true" fill={article.liked ? "currentColor" : "none"} size={17} />{article.liked ? phrase("已赞", "Liked") : phrase("点赞", "Like")}</button><LikeBurst burst={articleLikeBurst} variant="heart" /></span>
+              <span className="like-action-wrap"><button className={article.favorited ? "active" : undefined} onClick={() => void handleInteraction("favorite")} type="button"><Bookmark aria-hidden="true" fill={article.favorited ? "currentColor" : "none"} size={17} />{article.favorited ? phrase("已收藏", "Saved") : phrase("收藏", "Save")}</button><LikeBurst burst={articleFavoriteBurst} variant="bookmark" /></span>
             </div>
             <ArticleStats article={article} />
             <dl className="article-aside-meta">
-              <div><dt><Tag aria-hidden="true" size={15} />分类</dt><dd>{article.category || "随笔"}</dd></div>
-              <div><dt><CalendarDays aria-hidden="true" size={15} />发布时间</dt><dd>{formatArticleDate(article.publishedAt)}</dd></div>
-              <div><dt>更新时间</dt><dd>{formatArticleDate(article.updatedAt)}</dd></div>
-              {article.resource.enabled ? <div><dt><Coins aria-hidden="true" size={15} />积分资源</dt><dd>{article.resource.blocks.length} 个区域</dd></div> : null}
+              <div><dt><Tag aria-hidden="true" size={15} />{phrase("分类", "Category")}</dt><dd>{article.category || phrase("随笔", "Notes")}</dd></div>
+              <div><dt><CalendarDays aria-hidden="true" size={15} />{phrase("发布时间", "Published")}</dt><dd>{formatArticleDate(article.publishedAt, locale)}</dd></div>
+              <div><dt>{phrase("更新时间", "Updated")}</dt><dd>{formatArticleDate(article.updatedAt, locale)}</dd></div>
+              {article.resource.enabled ? <div><dt><Coins aria-hidden="true" size={15} />{phrase("积分资源", "Points resource")}</dt><dd>{phrase(`${article.resource.blocks.length} 个区域`, `${article.resource.blocks.length} sections`)}</dd></div> : null}
             </dl>
             {article.tags.length ? <div className="article-tag-list">{article.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div> : null}
-            {article.collections.length || article.topics.length ? <div className="article-group-list">{article.collections.map((collection) => <Link className="article-group-chip collection" href={collection.href} key={`collection-${collection.id}`}>{collection.label}</Link>)}{article.topics.map((topic) => <Link className="article-group-chip topic" href={topic.href} key={`topic-${topic.id}`}>{topic.label}</Link>)}</div> : null}
+            {article.collections.length || article.topics.length ? <div className="article-group-list">{article.collections.map((collection) => <Link className="article-group-chip collection" href={localizedPath(collection.href, locale)} key={`collection-${collection.id}`}>{collection.label}</Link>)}{article.topics.map((topic) => <Link className="article-group-chip topic" href={localizedPath(topic.href, locale)} key={`topic-${topic.id}`}>{topic.label}</Link>)}</div> : null}
           </aside>
           <main className="article-reading-main" ref={readingContentRef}><ArticleBody content={article.content} contentSegments={article.contentSegments} onRedeemResource={(blockKey) => void handleResourceRedeem(blockKey)} /></main>
         </div>
       </article>
 
       <section className="article-comments-section">
-        <div className="article-section-heading"><div><span className="section-label">Conversation</span><h2>评论与回复</h2></div><span>{article.commentCount} 条</span></div>
-        {siteSettings?.commentsEnabled === false ? <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />评论功能暂未开放。</div> : <form className="article-comment-form" onSubmit={handleCommentSubmit}>
+        <div className="article-section-heading"><div><span className="section-label">CONVERSATION</span><h2>{phrase("评论与回复", "Comments and replies")}</h2></div><span>{phrase(`${article.commentCount} 条`, `${article.commentCount} comments`)}</span></div>
+        {siteSettings?.commentsEnabled === false ? <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />{phrase("评论功能暂未开放。", "Comments are not available.")}</div> : <form className="article-comment-form" onSubmit={handleCommentSubmit}>
           <div aria-hidden={!replyingTo} className={`article-composer-context${replyingTo ? " active" : ""}`}>
-            {replyingTo ? <><span title={`回复 @${replyingTo.author.nickname}`}>回复 <strong>@{replyingTo.author.nickname}</strong></span><button aria-label="取消回复" onClick={() => setReplyingTo(null)} title="取消回复" type="button"><X aria-hidden="true" size={14} /></button></> : null}
+            {replyingTo ? <><span title={phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`)}>{phrase("回复", "Reply")} <strong>@{replyingTo.author.nickname}</strong></span><button aria-label={phrase("取消回复", "Cancel reply")} onClick={() => setReplyingTo(null)} title={phrase("取消回复", "Cancel reply")} type="button"><X aria-hidden="true" size={14} /></button></> : null}
           </div>
-          <div className="article-comment-input-wrap"><textarea aria-label={replyingTo ? `回复 ${replyingTo.author.nickname}` : "评论文章"} maxLength={2000} onChange={(event) => setCommentDraft(event.target.value)} placeholder={replyingTo ? `回复 @${replyingTo.author.nickname}` : "写下你的想法"} ref={composerRef} rows={3} value={commentDraft} /><button aria-label={replyingTo ? "发送回复" : "发送评论"} disabled={isSubmittingComment || !commentDraft.trim()} title={replyingTo ? "发送回复" : "发送评论"} type="submit"><Send aria-hidden="true" size={17} /></button></div>
+          <div className="article-comment-input-wrap"><textarea aria-label={replyingTo ? phrase(`回复 ${replyingTo.author.nickname}`, `Reply to ${replyingTo.author.nickname}`) : phrase("评论文章", "Comment on article")} maxLength={2000} onChange={(event) => setCommentDraft(event.target.value)} placeholder={replyingTo ? phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`) : phrase("写下你的想法", "Write your thoughts")} ref={composerRef} rows={3} value={commentDraft} /><button aria-label={replyingTo ? phrase("发送回复", "Send reply") : phrase("发送评论", "Send comment")} disabled={isSubmittingComment || !commentDraft.trim()} title={replyingTo ? phrase("发送回复", "Send reply") : phrase("发送评论", "Send comment")} type="submit"><Send aria-hidden="true" size={17} /></button></div>
           <div className="article-composer-footer">
             <span className="article-composer-count">{commentDraft.length} / 2000</span>
           </div>
@@ -522,10 +537,10 @@ export default function ArticleDetailPage() {
         {commentThreads.length ? <>
           <div className="article-comments-list">{commentThreads.map((thread) => <section className="article-comment-thread" key={thread.root.id}>{renderComment(thread.root)}{thread.replies.length ? <div className="article-comment-replies">{thread.replies.map(({ comment, parent }) => renderComment(comment, parent ?? thread.root))}</div> : null}</section>)}</div>
           <ArticleInfiniteFooter hasMore={hasMoreComments} isLoading={isLoadingMoreComments} onLoadMore={() => void loadMoreComments()} />
-        </> : <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />还没有评论。</div>}
+        </> : <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />{phrase("还没有评论。", "No comments yet.")}</div>}
       </section>
-      {reportingArticle ? <div className="comment-report-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setReportingArticle(false); }}><form className="comment-report-dialog" onSubmit={handleArticleReportSubmit}><div><strong>举报文章</strong><button aria-label="关闭举报窗口" onClick={() => setReportingArticle(false)} type="button"><X aria-hidden="true" size={17} /></button></div><label>举报原因<select onChange={(event) => setArticleReportReason(event.target.value as ArticleReportReason)} value={articleReportReason}><option value="spam">垃圾广告</option><option value="harassment">辱骂骚扰</option><option value="illegal">违法违规</option><option value="privacy">隐私泄露</option><option value="misinformation">不实内容</option><option value="other">其他</option></select></label><label>补充说明<textarea maxLength={500} onChange={(event) => setArticleReportDetail(event.target.value)} placeholder="可选，帮助管理员判断具体问题" rows={3} value={articleReportDetail} /></label><button className="button" disabled={isSubmittingReport} type="submit">{isSubmittingReport ? "提交中" : "提交举报"}</button></form></div> : null}
-      {reportingComment ? <div className="comment-report-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setReportingComment(null); }}><form className="comment-report-dialog" onSubmit={handleReportSubmit}><div><strong>举报评论</strong><button aria-label="关闭举报窗口" onClick={() => setReportingComment(null)} type="button"><X aria-hidden="true" size={17} /></button></div><label>举报原因<select onChange={(event) => setReportReason(event.target.value as ArticleCommentReportReason)} value={reportReason}><option value="spam">垃圾广告</option><option value="harassment">辱骂骚扰</option><option value="illegal">违法违规</option><option value="privacy">隐私泄露</option><option value="misinformation">不实内容</option><option value="other">其他</option></select></label><label>补充说明<textarea maxLength={500} onChange={(event) => setReportDetail(event.target.value)} placeholder="可选，帮助管理员判断具体问题" rows={3} value={reportDetail} /></label><button className="button" disabled={isSubmittingReport} type="submit">{isSubmittingReport ? "提交中" : "提交举报"}</button></form></div> : null}
+      {reportingArticle ? <div className="comment-report-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setReportingArticle(false); }}><form className="comment-report-dialog" onSubmit={handleArticleReportSubmit}><div><strong>{phrase("举报文章", "Report article")}</strong><button aria-label={phrase("关闭举报窗口", "Close report dialog")} onClick={() => setReportingArticle(false)} type="button"><X aria-hidden="true" size={17} /></button></div><label>{phrase("举报原因", "Report reason")}<GlassSelect ariaLabel={phrase("举报原因", "Report reason")} onChange={(value) => setArticleReportReason(value as ArticleReportReason)} options={reportReasonOptions(phrase)} value={articleReportReason} /></label><label>{phrase("补充说明", "Additional details")}<textarea maxLength={500} onChange={(event) => setArticleReportDetail(event.target.value)} placeholder={phrase("可选，帮助管理员判断具体问题", "Optional. Help administrators understand the issue.")} rows={3} value={articleReportDetail} /></label><button className="button" disabled={isSubmittingReport} type="submit">{isSubmittingReport ? phrase("提交中", "Submitting") : phrase("提交举报", "Submit report")}</button></form></div> : null}
+      {reportingComment ? <div className="comment-report-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setReportingComment(null); }}><form className="comment-report-dialog" onSubmit={handleReportSubmit}><div><strong>{phrase("举报评论", "Report comment")}</strong><button aria-label={phrase("关闭举报窗口", "Close report dialog")} onClick={() => setReportingComment(null)} type="button"><X aria-hidden="true" size={17} /></button></div><label>{phrase("举报原因", "Report reason")}<GlassSelect ariaLabel={phrase("举报原因", "Report reason")} onChange={(value) => setReportReason(value as ArticleCommentReportReason)} options={reportReasonOptions(phrase)} value={reportReason} /></label><label>{phrase("补充说明", "Additional details")}<textarea maxLength={500} onChange={(event) => setReportDetail(event.target.value)} placeholder={phrase("可选，帮助管理员判断具体问题", "Optional. Help administrators understand the issue.")} rows={3} value={reportDetail} /></label><button className="button" disabled={isSubmittingReport} type="submit">{isSubmittingReport ? phrase("提交中", "Submitting") : phrase("提交举报", "Submit report")}</button></form></div> : null}
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );

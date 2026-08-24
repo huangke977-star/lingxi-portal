@@ -3,10 +3,12 @@
 import { Eye, EyeOff } from "lucide-react";
 import type { InputHTMLAttributes, KeyboardEvent, PointerEvent } from "react";
 import { useState } from "react";
+import { useLanguage } from "@/components/language-provider";
 
 type PasswordInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type">;
 
 export function PasswordInput({ className, ...inputProps }: PasswordInputProps) {
+  const { phrase } = useLanguage();
   const [isRevealed, setIsRevealed] = useState(false);
 
   function showOnPointer(event: PointerEvent<HTMLButtonElement>) {
@@ -35,7 +37,7 @@ export function PasswordInput({ className, ...inputProps }: PasswordInputProps) 
         type={isRevealed ? "text" : "password"}
       />
       <button
-        aria-label="按住显示密码"
+        aria-label={phrase("按住显示密码", "Hold to reveal password")}
         className="password-reveal-control"
         onBlur={() => setIsRevealed(false)}
         onContextMenu={(event) => event.preventDefault()}
@@ -45,7 +47,7 @@ export function PasswordInput({ className, ...inputProps }: PasswordInputProps) 
         onPointerDown={showOnPointer}
         onPointerLeave={() => setIsRevealed(false)}
         onPointerUp={() => setIsRevealed(false)}
-        title="按住显示密码"
+        title={phrase("按住显示密码", "Hold to reveal password")}
         type="button"
       >
         {isRevealed ? (

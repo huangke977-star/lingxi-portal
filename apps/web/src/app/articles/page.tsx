@@ -32,7 +32,7 @@ export default function ArticlesPage() {
 
 function ArticlesContent() {
   const router = useRouter();
-  const { locale, t } = useLanguage();
+  const { locale, phrase, t } = useLanguage();
   const searchParams = useSearchParams();
   const querySearch = searchParams.get("q") ?? "";
   const feed = normalizeFeed(searchParams.get("feed"));
@@ -118,12 +118,12 @@ function ArticlesContent() {
           if (active) setList(result);
           return;
         }
-        setError(loadError instanceof Error ? loadError.message : "文章加载失败。");
+        setError(loadError instanceof Error ? loadError.message : phrase("文章加载失败。", "Could not load articles."));
       })
       .finally(() => { if (active) setIsLoading(false); });
     }, 0);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [feed, order, querySearch]);
+  }, [feed, order, phrase, querySearch]);
 
   async function toggleTopic(id: number, subscribed: boolean) {
     const token = readAccessToken();
@@ -131,7 +131,7 @@ function ArticlesContent() {
     try {
       const result = subscribed ? await unsubscribeTopic(token, id) : await subscribeTopic(token, id);
       setRecommendations((current) => current ? { ...current, topics: current.topics.map((item) => item.id === id ? { ...item, subscribed: result.subscribed, subscriberCount: result.subscriberCount } : item) } : current);
-    } catch (actionError) { setError(actionError instanceof Error ? actionError.message : "专题订阅失败。"); }
+    } catch (actionError) { setError(actionError instanceof Error ? actionError.message : phrase("专题订阅失败。", "Could not update the topic subscription.")); }
   }
 
   async function toggleCollection(id: number, subscribed: boolean) {
@@ -140,7 +140,7 @@ function ArticlesContent() {
     try {
       const result = subscribed ? await unsubscribeCollection(token, id) : await subscribeCollection(token, id);
       setRecommendations((current) => current ? { ...current, collections: current.collections.map((item) => item.id === id ? { ...item, subscribed: result.subscribed, subscriberCount: result.subscriberCount } : item) } : current);
-    } catch (actionError) { setError(actionError instanceof Error ? actionError.message : "合集订阅失败。"); }
+    } catch (actionError) { setError(actionError instanceof Error ? actionError.message : phrase("合集订阅失败。", "Could not update the collection subscription.")); }
   }
 
   async function joinRecommendedGroup() {
@@ -151,11 +151,11 @@ function ArticlesContent() {
     try {
       const result = await requestChatGroupJoin(token, joinRequestTarget.id, joinRequestNote.trim());
       setRecommendations((current) => current ? { ...current, groups: current.groups.filter((group) => group.id !== joinRequestTarget.id) } : current);
-      setNotice(result.status === "joined" ? "已加入群聊。" : "入群申请已提交。");
+      setNotice(result.status === "joined" ? phrase("已加入群聊。", "You joined the group.") : phrase("入群申请已提交。", "Your join request was sent."));
       setJoinRequestTarget(null);
       setJoinRequestNote("");
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "申请加入群聊失败。");
+      setError(actionError instanceof Error ? actionError.message : phrase("申请加入群聊失败。", "Could not send the group join request."));
     } finally {
       setIsJoinRequestSubmitting(false);
     }
@@ -205,18 +205,18 @@ function ArticlesContent() {
         </div>
         {recommendations ? <DiscoveryRecommendationsPanel recommendations={recommendations} onJoinGroup={(group) => { setError(""); setJoinRequestTarget(group); setJoinRequestNote(""); }} onToggleCollection={toggleCollection} onToggleTopic={toggleTopic} /> : null}
       </div>
-      {joinRequestTarget ? <RequestComposerDialog icon={<UsersRound aria-hidden="true" size={18} />} isSubmitting={isJoinRequestSubmitting} label="申请说明" maxLength={200} onChange={setJoinRequestNote} onClose={() => { setJoinRequestTarget(null); setJoinRequestNote(""); }} onSubmit={() => void joinRecommendedGroup()} placeholder="向群管理员说明来意，可不填" submitLabel="提交入群申请" title="申请加入群聊" value={joinRequestNote}><div className="request-composer-group-target"><span className="discovery-recommendation-icon group">{joinRequestTarget.avatarUrl ? <img alt="" src={resolveApiUrl(joinRequestTarget.avatarUrl)} /> : <UsersRound aria-hidden="true" size={20} />}</span><span><strong>{joinRequestTarget.name}</strong><small>{joinRequestTarget.memberCount} 位成员</small></span></div></RequestComposerDialog> : null}
+      {joinRequestTarget ? <RequestComposerDialog icon={<UsersRound aria-hidden="true" size={18} />} isSubmitting={isJoinRequestSubmitting} label={phrase("申请说明", "Request note")} maxLength={200} onChange={setJoinRequestNote} onClose={() => { setJoinRequestTarget(null); setJoinRequestNote(""); }} onSubmit={() => void joinRecommendedGroup()} placeholder={phrase("向群管理员说明来意，可不填", "Introduce yourself to the group managers. Optional.")} submitLabel={phrase("提交入群申请", "Send join request")} title={phrase("申请加入群聊", "Request to join group")} value={joinRequestNote}><div className="request-composer-group-target"><span className="discovery-recommendation-icon group">{joinRequestTarget.avatarUrl ? <img alt="" src={resolveApiUrl(joinRequestTarget.avatarUrl)} /> : <UsersRound aria-hidden="true" size={20} />}</span><span><strong>{joinRequestTarget.name}</strong><small>{phrase(`${joinRequestTarget.memberCount} 位成员`, `${joinRequestTarget.memberCount} members`)}</small></span></div></RequestComposerDialog> : null}
       <AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );
 }
 
 function DiscoveryRecommendationsPanel({ recommendations, onJoinGroup, onToggleCollection, onToggleTopic }: { recommendations: DiscoveryRecommendations; onJoinGroup: (group: DiscoveryRecommendations["groups"][number]) => void; onToggleCollection: (id: number, subscribed: boolean) => void; onToggleTopic: (id: number, subscribed: boolean) => void }) {
-  const { t } = useLanguage();
+  const { locale, phrase, t } = useLanguage();
   return <aside className="discovery-recommendations"><header><span><ArrowRight aria-hidden="true" size={17} /><strong>{t("discover.forYou")}</strong></span></header><div className="discovery-recommendation-columns">
-    <div><h2><BookOpen aria-hidden="true" size={15} />{t("discover.topics")}</h2>{recommendations.topics.slice(0, 3).map((topic) => <article key={topic.id}><Link href={`/topics/${topic.slug}`}><span className="discovery-recommendation-icon">{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <BookOpen aria-hidden="true" size={17} />}</span><span><strong>{topic.title}</strong><small>{t("home.articleCount", { count: topic.articleCount })} · {topic.subscriberCount} {t("discover.subscriptions")}</small></span></Link><button aria-label={`${topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} ${topic.title}`} aria-pressed={topic.subscribed} className="discovery-recommendation-action" onClick={() => onToggleTopic(topic.id, topic.subscribed)} title={topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={15} /></button></article>)}{!recommendations.topics.length ? <p>{t("discover.noTopics")}</p> : null}</div>
-    <div><h2><FolderOpen aria-hidden="true" size={15} />{t("discover.collections")}</h2>{recommendations.collections.slice(0, 3).map((collection) => <article key={collection.id}><Link href={`/collections/${collection.id}`}><span className="discovery-recommendation-icon"><FolderOpen aria-hidden="true" size={17} /></span><span><strong>{collection.name}</strong><small>{t("home.articleCount", { count: collection.articleCount })} · {collection.owner.nickname}</small></span></Link><button aria-label={`${collection.subscribed ? t("common.unsubscribe") : t("common.subscribe")} ${collection.name}`} aria-pressed={collection.subscribed} className="discovery-recommendation-action" onClick={() => onToggleCollection(collection.id, collection.subscribed)} title={collection.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={15} /></button></article>)}{!recommendations.collections.length ? <p>{t("discover.noCollections")}</p> : null}</div>
-    <div><h2><UsersRound aria-hidden="true" size={15} />{t("discover.activeGroups")}</h2>{recommendations.groups.slice(0, 3).map((group) => <article key={group.id}><span className="discovery-recommendation-copy"><span className="discovery-recommendation-icon group">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <UsersRound aria-hidden="true" size={17} />}</span><span><strong>{group.name}</strong><small>{group.memberCount} · {group.announcement || "-"}</small></span></span>{group.isMember ? <em>{t("discover.joined")}</em> : <button aria-label={`${t("discover.applyToJoin")} ${group.name}`} className="discovery-recommendation-action" onClick={() => onJoinGroup(group)} title={t("discover.applyToJoin")} type="button"><UserPlus aria-hidden="true" size={15} /></button>}</article>)}{!recommendations.groups.length ? <p>{t("discover.noGroups")}</p> : null}</div>
+    <div><h2><BookOpen aria-hidden="true" size={15} />{t("discover.topics")}</h2>{recommendations.topics.slice(0, 3).map((topic) => <article key={topic.id}><Link href={localizedPath(`/topics/${topic.slug}`, locale)}><span className="discovery-recommendation-icon">{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <BookOpen aria-hidden="true" size={17} />}</span><span><strong>{topic.title}</strong><small>{t("home.articleCount", { count: topic.articleCount })} · {phrase(`${topic.subscriberCount} 人订阅`, `${topic.subscriberCount} subscribers`)}</small></span></Link><button aria-label={`${topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} ${topic.title}`} aria-pressed={topic.subscribed} className="discovery-recommendation-action" onClick={() => onToggleTopic(topic.id, topic.subscribed)} title={topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={15} /></button></article>)}{!recommendations.topics.length ? <p>{t("discover.noTopics")}</p> : null}</div>
+    <div><h2><FolderOpen aria-hidden="true" size={15} />{t("discover.collections")}</h2>{recommendations.collections.slice(0, 3).map((collection) => <article key={collection.id}><Link href={localizedPath(`/collections/${collection.id}`, locale)}><span className="discovery-recommendation-icon"><FolderOpen aria-hidden="true" size={17} /></span><span><strong>{collection.name}</strong><small>{t("home.articleCount", { count: collection.articleCount })} · {collection.owner.nickname}</small></span></Link><button aria-label={`${collection.subscribed ? t("common.unsubscribe") : t("common.subscribe")} ${collection.name}`} aria-pressed={collection.subscribed} className="discovery-recommendation-action" onClick={() => onToggleCollection(collection.id, collection.subscribed)} title={collection.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={15} /></button></article>)}{!recommendations.collections.length ? <p>{t("discover.noCollections")}</p> : null}</div>
+    <div><h2><UsersRound aria-hidden="true" size={15} />{t("discover.activeGroups")}</h2>{recommendations.groups.slice(0, 3).map((group) => <article key={group.id}><span className="discovery-recommendation-copy"><span className="discovery-recommendation-icon group">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <UsersRound aria-hidden="true" size={17} />}</span><span><strong>{group.name}</strong><small>{phrase(`${group.memberCount} 位成员`, `${group.memberCount} members`)} · {group.announcement || "-"}</small></span></span>{group.isMember ? <em>{t("discover.joined")}</em> : <button aria-label={`${t("discover.applyToJoin")} ${group.name}`} className="discovery-recommendation-action" onClick={() => onJoinGroup(group)} title={t("discover.applyToJoin")} type="button"><UserPlus aria-hidden="true" size={15} /></button>}</article>)}{!recommendations.groups.length ? <p>{t("discover.noGroups")}</p> : null}</div>
   </div></aside>;
 }
 

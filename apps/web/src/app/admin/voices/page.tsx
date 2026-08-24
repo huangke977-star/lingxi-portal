@@ -4,42 +4,45 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AnonymousTopicsPanel } from "@/components/anonymous-topics-panel";
 import { AppToast } from "@/components/app-toast";
+import { useLanguage } from "@/components/language-provider";
 import { getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { localizedPath } from "@/lib/i18n";
 import { isSiteManager } from "@/lib/user-permissions";
 
 export default function AnonymousTopicManagementPage() {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [error, setError] = useState("");
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login?from=%2Fadmin%2Fvoices");
+      router.replace(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath("/admin/voices", locale))}`);
       return;
     }
     getMe(token)
       .then((user) => {
-        if (!isSiteManager(user)) throw new Error("需要管理员权限。");
+        if (!isSiteManager(user)) throw new Error(phrase("需要管理员权限。", "Administrator access is required."));
         setIsReady(true);
       })
       .catch((loadError) => {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/login?from=%2Fadmin%2Fvoices");
+          router.replace(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath("/admin/voices", locale))}`);
           return;
         }
-        setError(loadError instanceof Error ? loadError.message : "匿名话题管理加载失败。");
+        setError(loadError instanceof Error ? loadError.message : phrase("匿名话题管理加载失败。", "Could not load anonymous topic management."));
       });
-  }, [router]);
+  }, [locale, phrase, router]);
 
   return (
     <section className="p8-page p8-directory-page anonymous-topic-management-page">
       <header className="p8-page-heading">
-        <div><span className="section-label">MODERATION</span><h1>匿名话题管理</h1></div>
+        <div><span className="section-label">MODERATION</span><h1>{phrase("匿名话题管理", "Anonymous topic management")}</h1></div>
       </header>
-      {isReady ? <AnonymousTopicsPanel management pageSize={20} showLoadMore showSearch showSort title="全部匿名话题" /> : !error ? <div className="article-empty-state">正在读取匿名话题。</div> : null}
+      {isReady ? <AnonymousTopicsPanel management pageSize={20} showLoadMore showSearch showSort title={phrase("全部匿名话题", "All anonymous topics")} /> : !error ? <div className="article-empty-state">{phrase("正在读取匿名话题。", "Loading anonymous topics.")}</div> : null}
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>
   );

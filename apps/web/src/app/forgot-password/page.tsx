@@ -112,7 +112,7 @@ export default function ForgotPasswordPage() {
       setNotice(t("auth.passwordResetDone"));
     } catch (resetError) {
       setError(
-        resetError instanceof Error ? resetError.message : "密码重置失败。",
+        resetError instanceof Error ? resetError.message : t("auth.passwordResetFailed"),
       );
       resetChallenge();
     } finally {

@@ -12,8 +12,10 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { useLanguage } from "@/components/language-provider";
 import { isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { localizedPath } from "@/lib/i18n";
 import {
   cancelTrustedDevice,
   confirmMyEmailVerification,
@@ -30,30 +32,9 @@ interface AccountSecurityPanelProps {
   email: string;
 }
 
-const preferenceOptions: Array<{
-  key: keyof SecurityPreferences;
-  label: string;
-  description: string;
-}> = [
-  {
-    key: "loginAlertsEnabled",
-    label: "登录提醒",
-    description: "记录并提醒账号登录动态",
-  },
-  {
-    key: "emailAlertsEnabled",
-    label: "邮件提醒",
-    description: "将重要风险同步到邮箱",
-  },
-  {
-    key: "newDeviceAlertsEnabled",
-    label: "新设备提醒",
-    description: "首次出现的设备单独提醒",
-  },
-];
-
 export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [overview, setOverview] = useState<MySecurityOverview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [savingPreference, setSavingPreference] = useState<
@@ -70,6 +51,11 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
   >(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const preferenceOptions: Array<{ key: keyof SecurityPreferences; label: string; description: string }> = [
+    { key: "loginAlertsEnabled", label: phrase("登录提醒", "Login alerts"), description: phrase("记录并提醒账号登录动态", "Record and notify you of account sign-in activity") },
+    { key: "emailAlertsEnabled", label: phrase("邮件提醒", "Email alerts"), description: phrase("将重要风险同步到邮箱", "Send important risk alerts to your email") },
+    { key: "newDeviceAlertsEnabled", label: phrase("新设备提醒", "New device alerts"), description: phrase("首次出现的设备单独提醒", "Send a separate alert for first-seen devices") },
+  ];
 
   const loadSecurity = useCallback(async () => {
     const token = readAccessToken();
@@ -81,18 +67,18 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
     } catch (loadError) {
       if (isAuthExpiredError(loadError)) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
       setError(
         loadError instanceof Error
           ? loadError.message
-          : "账号安全信息读取失败。",
+          : phrase("账号安全信息读取失败。", "Could not load account security information."),
       );
     } finally {
       setIsLoading(false);
     }
-  }, [router]);
+  }, [locale, phrase, router]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadSecurity(), 0);
@@ -129,13 +115,13 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
       setOverview((current) =>
         current ? { ...current, preferences: savedPreferences } : current,
       );
-      setNotice("安全提醒设置已更新。");
+      setNotice(phrase("安全提醒设置已更新。", "Security alert settings updated."));
     } catch (saveError) {
       setOverview((current) =>
         current ? { ...current, preferences: previousPreferences } : current,
       );
       setError(
-        saveError instanceof Error ? saveError.message : "设置更新失败。",
+        saveError instanceof Error ? saveError.message : phrase("设置更新失败。", "Could not update settings."),
       );
     } finally {
       setSavingPreference(null);
@@ -153,10 +139,10 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
       const result = await sendMyEmailVerification(token);
       setIsVerificationOpen(true);
       setRetryAfter(Math.max(1, result.retryAfterSeconds || 60));
-      setNotice("验证码已发送，请检查邮箱。");
+      setNotice(phrase("验证码已发送，请检查邮箱。", "Verification code sent. Check your email."));
     } catch (sendError) {
       setError(
-        sendError instanceof Error ? sendError.message : "验证码发送失败。",
+        sendError instanceof Error ? sendError.message : phrase("验证码发送失败。", "Could not send verification code."),
       );
     } finally {
       setIsSendingVerification(false);
@@ -166,7 +152,7 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
   async function handleConfirmVerification() {
     const token = readAccessToken();
     if (!token || !verificationCode.trim()) {
-      setError("请输入邮箱验证码。");
+      setError(phrase("请输入邮箱验证码。", "Enter the email verification code."));
       return;
     }
 
@@ -189,10 +175,10 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
       );
       setVerificationCode("");
       setIsVerificationOpen(false);
-      setNotice("邮箱验证完成。");
+      setNotice(phrase("邮箱验证完成。", "Email verification complete."));
     } catch (confirmError) {
       setError(
-        confirmError instanceof Error ? confirmError.message : "邮箱验证失败。",
+        confirmError instanceof Error ? confirmError.message : phrase("邮箱验证失败。", "Email verification failed."),
       );
     } finally {
       setIsConfirmingVerification(false);
@@ -202,10 +188,10 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
   async function handleCancelTrust(device: TrustedDevice) {
     const token = readAccessToken();
     if (!token || removingDeviceId !== null) return;
-    const label = device.deviceLabel || device.label || "这台设备";
+    const label = device.deviceLabel || device.label || phrase("这台设备", "this device");
     if (
       !window.confirm(
-        `确定取消信任 ${label} 吗？当前会话不会退出，下次登录需要邮箱验证。`,
+        phrase(`确定取消信任 ${label} 吗？当前会话不会退出，下次登录需要邮箱验证。`, `Remove trust for ${label}? The current session remains signed in, and the next sign-in will require email verification.`),
       )
     ) {
       return;
@@ -226,15 +212,15 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
             }
           : current,
       );
-      setNotice("已取消信任，下次登录将验证邮箱。");
+      setNotice(phrase("已取消信任，下次登录将验证邮箱。", "Trust removed. Email verification will be required at the next sign-in."));
     } catch (removeError) {
       if (isAuthExpiredError(removeError)) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
       setError(
-        removeError instanceof Error ? removeError.message : "取消信任失败。",
+        removeError instanceof Error ? removeError.message : phrase("取消信任失败。", "Could not remove trusted status."),
       );
     } finally {
       setRemovingDeviceId(null);
@@ -249,8 +235,8 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
             <ShieldCheck aria-hidden="true" size={20} />
           </span>
           <div className="panel-heading">
-            <span className="section-label">Account security</span>
-            <strong>账号安全</strong>
+            <span className="section-label">{phrase("账号安全", "Account security")}</span>
+            <strong>{phrase("账号安全", "Account security")}</strong>
           </div>
         </div>
         {overview ? (
@@ -263,16 +249,16 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
               <MailWarning aria-hidden="true" size={15} />
             )}
             {overview.emailVerifiedAt
-              ? "邮箱已验证"
+              ? phrase("邮箱已验证", "Email verified")
               : overview.mailServiceEnabled
-                ? "邮箱待验证"
-                : "邮件服务已停用"}
+                ? phrase("邮箱待验证", "Email verification pending")
+                : phrase("邮件服务已停用", "Email service disabled")}
           </span>
         ) : null}
       </div>
 
       {isLoading ? (
-        <p className="account-security-empty">正在读取账号安全信息</p>
+        <p className="account-security-empty">{phrase("正在读取账号安全信息", "Loading account security information")}</p>
       ) : overview ? (
         <div className="account-security-content">
           <div className="security-preference-column">
@@ -281,10 +267,10 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
                 <strong>{email}</strong>
                 <span>
                   {!overview.mailServiceEnabled
-                    ? "邮件服务已停用，邮箱验证和邮件提醒暂不可用"
+                    ? phrase("邮件服务已停用，邮箱验证和邮件提醒暂不可用", "Email service is disabled, so email verification and alerts are unavailable")
                     : overview.emailVerifiedAt
-                    ? `验证于 ${formatDateTime(overview.emailVerifiedAt)}`
-                    : "验证后可接收找回与风险邮件"}
+                    ? phrase(`验证于 ${formatDateTime(overview.emailVerifiedAt, locale)}`, `Verified ${formatDateTime(overview.emailVerifiedAt, locale)}`)
+                    : phrase("验证后可接收找回与风险邮件", "Verify your email to receive recovery and risk alerts")}
                 </span>
               </div>
               {overview.mailServiceEnabled && !overview.emailVerifiedAt ? (
@@ -295,10 +281,10 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
                   type="button"
                 >
                   {isSendingVerification
-                    ? "发送中"
+                    ? phrase("发送中", "Sending")
                     : retryAfter > 0
-                      ? `${retryAfter} 秒`
-                      : "验证邮箱"}
+                      ? phrase(`${retryAfter} 秒`, `${retryAfter} sec`)
+                      : phrase("验证邮箱", "Verify email")}
                 </button>
               ) : null}
             </div>
@@ -306,12 +292,12 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
             {overview.mailServiceEnabled && isVerificationOpen && !overview.emailVerifiedAt ? (
               <div className="security-verification-row">
                 <input
-                  aria-label="邮箱验证码"
+                  aria-label={phrase("邮箱验证码", "Email verification code")}
                   autoComplete="one-time-code"
                   inputMode="numeric"
                   maxLength={8}
                   onChange={(event) => setVerificationCode(event.target.value)}
-                  placeholder="输入验证码"
+                  placeholder={phrase("输入验证码", "Enter verification code")}
                   value={verificationCode}
                 />
                 <button
@@ -320,7 +306,7 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
                   onClick={() => void handleConfirmVerification()}
                   type="button"
                 >
-                  {isConfirmingVerification ? "验证中" : "确认"}
+                  {isConfirmingVerification ? phrase("验证中", "Verifying") : phrase("确认", "Confirm")}
                 </button>
               </div>
             ) : null}
@@ -332,7 +318,7 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
                     <strong>{option.label}</strong>
                     <small>
                       {option.key === "emailAlertsEnabled" && !overview.mailServiceEnabled
-                        ? "邮件服务已停用"
+                        ? phrase("邮件服务已停用", "Email service disabled")
                         : option.description}
                     </small>
                   </span>
@@ -363,7 +349,7 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
           />
         </div>
       ) : (
-        <p className="account-security-empty">暂时无法显示账号安全信息</p>
+        <p className="account-security-empty">{phrase("暂时无法显示账号安全信息", "Account security information is unavailable")}</p>
       )}
 
       <AppToast
@@ -379,29 +365,30 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
 }
 
 function SecurityEvents({ events }: { events: SecurityEvent[] }) {
+  const { locale, phrase } = useLanguage();
   return (
     <div className="security-compact-list">
       <div className="security-list-heading">
         <ShieldAlert aria-hidden="true" size={16} />
-        <strong>最近安全事件</strong>
+        <strong>{phrase("最近安全事件", "Recent security events")}</strong>
       </div>
       {events.length ? (
         events.slice(0, 5).map((event) => (
           <div className="security-event-row" key={event.id}>
             <span className={`security-risk-dot ${event.riskLevel}`} />
             <div>
-              <strong>{event.summary || securityEventLabel(event.type)}</strong>
+              <strong>{event.summary || securityEventLabel(event.type, locale)}</strong>
               <small>
-                {event.deviceLabel || "未知设备"} · {event.ip || "IP 未记录"}
+                {event.deviceLabel || phrase("未知设备", "Unknown device")} · {event.ip || phrase("IP 未记录", "IP not recorded")}
               </small>
             </div>
             <time dateTime={event.createdAt}>
-              {formatDateTime(event.createdAt)}
+              {formatDateTime(event.createdAt, locale)}
             </time>
           </div>
         ))
       ) : (
-        <p className="account-security-empty compact">暂无安全事件</p>
+        <p className="account-security-empty compact">{phrase("暂无安全事件", "No security events")}</p>
       )}
     </div>
   );
@@ -416,11 +403,12 @@ function TrustedDevices({
   onCancelTrust: (device: TrustedDevice) => void;
   removingDeviceId: string | number | null;
 }) {
+  const { locale, phrase } = useLanguage();
   return (
     <div className="security-compact-list">
       <div className="security-list-heading">
         <Laptop aria-hidden="true" size={16} />
-        <strong>信任设备</strong>
+        <strong>{phrase("信任设备", "Trusted devices")}</strong>
       </div>
       {devices.length ? (
         devices.slice(0, 5).map((device) => (
@@ -428,20 +416,19 @@ function TrustedDevices({
             <BadgeCheck aria-hidden="true" size={16} />
             <div>
               <strong>
-                {device.deviceLabel || device.label || "已识别设备"}
+                {device.deviceLabel || device.label || phrase("已识别设备", "Recognized device")}
               </strong>
               <small>
-                {device.lastIp || device.ip || "IP 未记录"} · 信任于{" "}
-                {formatDateTime(device.trustedAt || device.firstSeenAt || "")}
+                {device.lastIp || device.ip || phrase("IP 未记录", "IP not recorded")} · {phrase("信任于", "Trusted")} {formatDateTime(device.trustedAt || device.firstSeenAt || "", locale)}
               </small>
             </div>
-            {device.current ? <em>当前设备</em> : null}
+            {device.current ? <em>{phrase("当前设备", "Current device")}</em> : null}
             <button
-              aria-label={`取消信任 ${device.deviceLabel || device.label || "设备"}`}
+              aria-label={phrase(`取消信任 ${device.deviceLabel || device.label || "设备"}`, `Remove trust for ${device.deviceLabel || device.label || "device"}`)}
               className="trusted-device-remove"
               disabled={removingDeviceId !== null}
               onClick={() => onCancelTrust(device)}
-              title="取消信任"
+              title={phrase("取消信任", "Remove trust")}
               type="button"
             >
               <ShieldOff aria-hidden="true" size={16} />
@@ -449,29 +436,30 @@ function TrustedDevices({
           </div>
         ))
       ) : (
-        <p className="account-security-empty compact">暂无可信设备</p>
+        <p className="account-security-empty compact">{phrase("暂无可信设备", "No trusted devices")}</p>
       )}
     </div>
   );
 }
 
-function securityEventLabel(type: string): string {
-  const labels: Record<string, string> = {
-    login: "账号登录",
-    login_success: "登录成功",
-    login_failed: "登录失败",
-    new_device: "新设备登录",
-    unfamiliar_ip: "陌生 IP 登录",
-    password_changed: "密码已修改",
-    password_reset: "密码已重置",
+function securityEventLabel(type: string, locale: "zh-CN" | "en-US"): string {
+  const labels: Record<string, readonly [string, string]> = {
+    login: ["账号登录", "Account sign-in"],
+    login_success: ["登录成功", "Sign-in successful"],
+    login_failed: ["登录失败", "Sign-in failed"],
+    new_device: ["新设备登录", "New device sign-in"],
+    unfamiliar_ip: ["陌生 IP 登录", "Unfamiliar IP sign-in"],
+    password_changed: ["密码已修改", "Password changed"],
+    password_reset: ["密码已重置", "Password reset"],
   };
-  return (labels[type] ?? type) || "安全事件";
+  const label = labels[type]?.[locale === "en-US" ? 1 : 0];
+  return label || type || (locale === "en-US" ? "Security event" : "安全事件");
 }
 
-function formatDateTime(value: string): string {
+function formatDateTime(value: string, locale: "zh-CN" | "en-US"): string {
   const date = new Date(value);
-  if (!value || Number.isNaN(date.getTime())) return "时间未记录";
-  return new Intl.DateTimeFormat("zh-CN", {
+  if (!value || Number.isNaN(date.getTime())) return locale === "en-US" ? "Time not recorded" : "时间未记录";
+  return new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

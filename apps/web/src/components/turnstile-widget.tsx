@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useLanguage } from "@/components/language-provider";
 
 interface TurnstileWidgetProps {
   siteKey: string;
@@ -40,6 +41,7 @@ export function TurnstileWidget({
   resetKey = 0,
   onTokenChange,
 }: TurnstileWidgetProps) {
+  const { t } = useLanguage();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const onTokenChangeRef = useRef(onTokenChange);
 
@@ -83,7 +85,7 @@ export function TurnstileWidget({
   }, [action, resetKey, siteKey]);
 
   if (!siteKey) {
-    return <p className="turnstile-unavailable">人机验证暂不可用，请联系管理员。</p>;
+    return <p className="turnstile-unavailable">{t("auth.turnstileUnavailable")}</p>;
   }
 
   return <div className="turnstile-widget" ref={containerRef} />;

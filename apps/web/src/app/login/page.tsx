@@ -17,10 +17,11 @@ import {
 } from "@/lib/auth-api";
 import { saveAuthTokens } from "@/lib/auth-storage";
 import { getSecurityPolicy, type SecurityPolicy } from "@/lib/security-api";
+import { localizedPath } from "@/lib/i18n";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { locale, phrase, t } = useLanguage();
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -70,7 +71,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/");
+    router.push(localizedPath("/", locale));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -104,12 +105,12 @@ export default function LoginPage() {
         setTurnstileRequired(false);
         setTurnstileToken("");
         setTurnstileResetKey((value) => value + 1);
-        setNotice(`验证码已发送至 ${response.emailHint}`);
+        setNotice(phrase(`验证码已发送至 ${response.emailHint}`, `Verification code sent to ${response.emailHint}`));
         return;
       }
 
       saveAuthTokens(response);
-      router.push("/dashboard");
+      router.push(localizedPath("/dashboard", locale));
     } catch (loginError) {
       if (isLeavingRef.current) return;
 
@@ -155,7 +156,7 @@ export default function LoginPage() {
       });
       if (isLeavingRef.current) return;
       saveAuthTokens(response);
-      router.push("/dashboard");
+      router.push(localizedPath("/dashboard", locale));
     } catch (verificationError) {
       setError(
         verificationError instanceof Error
@@ -187,7 +188,7 @@ export default function LoginPage() {
           : current,
       );
       setRetryAfter(Math.max(1, result.retryAfterSeconds));
-      setNotice(`验证码已重新发送至 ${result.emailHint}`);
+      setNotice(phrase(`验证码已重新发送至 ${result.emailHint}`, `Verification code resent to ${result.emailHint}`));
     } catch (resendError) {
       setError(
         resendError instanceof Error ? resendError.message : t("auth.loginFailed"),
@@ -239,7 +240,7 @@ export default function LoginPage() {
                       event.target.value.replace(/\D/g, "").slice(0, 6),
                     )
                   }
-                  placeholder={`已发送至 ${deviceChallenge.emailHint}`}
+                  placeholder={phrase(`已发送至 ${deviceChallenge.emailHint}`, `Sent to ${deviceChallenge.emailHint}`)}
                   value={deviceCode}
                 />
               </label>
@@ -285,7 +286,7 @@ export default function LoginPage() {
               <label>
                 <span className="auth-label-row">
                   <span>{t("auth.password")}</span>
-                  <Link href="/forgot-password">{t("auth.forgotPassword")}</Link>
+                  <Link href={localizedPath("/forgot-password", locale)}>{t("auth.forgotPassword")}</Link>
                 </span>
                 <PasswordInput
                   autoComplete="current-password"
@@ -313,7 +314,7 @@ export default function LoginPage() {
                 >
                   {isSubmitting ? t("auth.loggingIn") : t("auth.login")}
                 </button>
-                <Link className="button secondary" href="/register">
+                <Link className="button secondary" href={localizedPath("/register", locale)}>
                   {t("auth.register")}
                 </Link>
               </div>

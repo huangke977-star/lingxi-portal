@@ -36,7 +36,7 @@ export function RequestComposerDialog({
   title,
   value,
 }: RequestComposerDialogProps) {
-  const { t } = useLanguage();
+  const { phrase, t } = useLanguage();
   if (typeof document === "undefined") return null;
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -59,7 +59,7 @@ export function RequestComposerDialog({
             <div className="request-composer-input">
               <textarea autoFocus maxLength={maxLength} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={5} value={value} />
               <small>{value.length} / {maxLength}</small>
-              <button aria-label={isSubmitting ? `正在${submitLabel}` : submitLabel} disabled={isSubmitting || (requireContent && !value.trim())} title={submitLabel} type="submit"><Send aria-hidden="true" size={17} /></button>
+              <button aria-label={isSubmitting ? phrase(`正在${submitLabel}`, `Sending ${submitLabel}`) : submitLabel} disabled={isSubmitting || (requireContent && !value.trim())} title={submitLabel} type="submit"><Send aria-hidden="true" size={17} /></button>
             </div>
           </label>
         </form>

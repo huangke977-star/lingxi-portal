@@ -101,7 +101,7 @@ function pendingReportActionUrl(report: ModerationReport): string {
 export function TopNav() {
   const router = useRouter();
   const pathname = usePathname();
-  const { locale, setLocale, t } = useLanguage();
+  const { locale, phrase, setLocale, t } = useLanguage();
   const navRef = useRef<HTMLElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const messagePopoverRef = useRef<HTMLDivElement | null>(null);
@@ -249,8 +249,8 @@ export function TopNav() {
   const avatarText = useMemo(() => user ? getAvatarFallbackText(user) : "H", [user]);
   const roleBadge = useMemo(() => user ? {
     code: user.role.code,
-    tooltip: `成长等级：${user.role.name}`,
-  } : null, [user]);
+    tooltip: phrase(`成长等级：${user.role.name}`, `Account level: ${user.role.name}`),
+  } : null, [phrase, user]);
   const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
   const siteLogoUrl = useMemo(() => resolveConfiguredAssetUrl(siteBrand.logoPath), [siteBrand.logoPath]);
   const pushDisabledChannels = useMemo(
@@ -294,7 +294,7 @@ export function TopNav() {
     setIsMessagePopoverOpen(false);
     if (token && !notification.openedAt) {
       await markNotificationRead(token, notification.id).catch((actionError) => {
-        setHeaderError(actionError instanceof Error ? actionError.message : "通知状态更新失败。");
+        setHeaderError(actionError instanceof Error ? actionError.message : phrase("通知状态更新失败。", "Could not update notification status."));
       });
       notifySocialStateChange();
     }
@@ -324,8 +324,8 @@ export function TopNav() {
         await respondChatGroupJoinRequest(token, context.groupId, context.joinRequestId, action === "accept" ? "approved" : "rejected");
       } else if (context.kind === "group_report" && context.reportId) {
         await handleChatGroupReport(token, context.reportId, action === "resolve-report"
-          ? { status: "resolved", deleteMessage: true, resolution: "管理员已删除被举报消息" }
-          : { status: "rejected", resolution: "未发现违规" });
+          ? { status: "resolved", deleteMessage: true, resolution: phrase("管理员已删除被举报消息", "An administrator deleted the reported message") }
+          : { status: "rejected", resolution: phrase("未发现违规", "No violation found") });
       } else {
         await handleNotification(notification);
         return;
@@ -335,7 +335,7 @@ export function TopNav() {
       await refreshHeaderData();
       notifySocialStateChange();
     } catch (actionError) {
-      setHeaderError(actionError instanceof Error ? actionError.message : "消息处理失败。");
+      setHeaderError(actionError instanceof Error ? actionError.message : phrase("消息处理失败。", "Could not process the message."));
     }
   }
 
@@ -370,7 +370,7 @@ export function TopNav() {
     <header className="topbar">
       <nav aria-label={t("nav.main")} className="topbar-inner" ref={navRef}>
         <button aria-expanded={isMenuOpen} aria-label={isMenuOpen ? t("nav.closeMenu") : t("nav.openMenu")} className="menu-toggle" onClick={() => setIsMenuOpen((current) => !current)} type="button"><span /><span /><span /></button>
-        <Link className="brand" href={localizedPath("/", locale)}><span className="brand-mark brand-logo-mark"><img alt="" src={siteLogoUrl} /></span><span className="brand-copy"><strong>{siteBrand.siteName}</strong><span>Personal Portal</span></span></Link>
+        <Link className="brand" href={localizedPath("/", locale)}><span className="brand-mark brand-logo-mark"><img alt="" src={siteLogoUrl} /></span><span className="brand-copy"><strong>{siteBrand.siteName}</strong><span>{phrase("个人门户", "Personal Portal")}</span></span></Link>
         <div className="top-links desktop-links">{navItems.map((item) => <Link className={isActiveRoute(item.href) ? "active" : undefined} href={localizedPath(item.href, locale)} key={item.href}>{t(item.key)}</Link>)}</div>
         <div className="account-zone">
           <PwaInstallButton />
@@ -383,7 +383,7 @@ export function TopNav() {
               <button aria-expanded={isTaskPopoverOpen} aria-label={t("nav.pendingReports")} className={`header-action-button${isTaskPopoverOpen ? " active" : ""}`} onClick={() => setIsTaskPopoverOpen((current) => !current)} title={t("nav.pendingReports")} type="button"><ListTodo aria-hidden="true" size={19} />{pendingReportCount ? <b>{pendingReportCount > 99 ? "99+" : pendingReportCount}</b> : null}</button>
               <div className={`header-popover task-popover${isTaskPopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(taskCloseTimerRef)}>
                 <div className="header-popover-heading"><strong>{t("nav.pendingReports")}</strong><button onClick={() => { setIsTaskPopoverOpen(false); router.push(localizedPath("/admin/reports", locale)); }} type="button">{t("nav.enterManagement")}</button></div>
-                <div className="header-popover-list">{pendingReports.length ? pendingReports.slice(0, 6).map((report) => <button key={report.key} onClick={() => { setIsTaskPopoverOpen(false); router.push(pendingReportActionUrl(report)); }} type="button"><span className="header-popover-icon"><ListTodo aria-hidden="true" size={16} /></span><span><strong>{report.sourceLabel} · {report.article?.title || report.group?.name || report.comment?.body || report.message?.body || "待处理内容"}</strong><small>{report.reporter.nickname} · {formatHeaderTime(report.createdAt, locale)}</small></span></button>) : <span className="header-popover-empty">{t("nav.noPendingReports")}</span>}</div>
+                <div className="header-popover-list">{pendingReports.length ? pendingReports.slice(0, 6).map((report) => <button key={report.key} onClick={() => { setIsTaskPopoverOpen(false); router.push(localizedPath(pendingReportActionUrl(report), locale)); }} type="button"><span className="header-popover-icon"><ListTodo aria-hidden="true" size={16} /></span><span><strong>{report.sourceLabel} · {report.article?.title || report.group?.name || report.comment?.body || report.message?.body || phrase("待处理内容", "Pending content")}</strong><small>{report.reporter.nickname} · {formatHeaderTime(report.createdAt, locale)}</small></span></button>) : <span className="header-popover-empty">{t("nav.noPendingReports")}</span>}</div>
               </div>
             </div> : null}
             <div className="header-action-wrap" ref={messagePopoverRef} onPointerEnter={(event) => handleHoverOpen(event, messageCloseTimerRef, () => setIsMessagePopoverOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(messageCloseTimerRef, () => setIsMessagePopoverOpen(false)); }}>
@@ -391,8 +391,8 @@ export function TopNav() {
               <div className={`header-popover message-popover${isMessagePopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(messageCloseTimerRef)}>
                 <div className="header-popover-heading"><strong>{t("nav.messages")}</strong><button onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">{t("nav.openChat")}</button></div>
                 <div className="header-popover-list">
-                  {unreadConversations.map((conversation) => <button key={`conversation-${conversation.id}`} onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ conversationId: conversation.id }); }} type="button"><span className="header-popover-icon"><MessageCircleMore aria-hidden="true" size={16} /></span><span><strong>{conversation.user.nickname}</strong><small>{conversation.lastMessage?.body || "发来附件"}</small></span><b>{conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</b></button>)}
-                  {messageNotifications.map((notification) => notification.context?.actionable ? <div className="header-popover-actionable" key={`notification-${notification.id}`}><button onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy notification={notification} siteAnnouncementLabel={t("home.siteAnnouncements")} /></button><span className="header-popover-inline-actions"><button aria-label="同意或处理" onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "resolve-report" : "accept")} title={notification.context?.kind === "group_report" ? "处理" : "同意"} type="button"><Check aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? "处理" : "同意"}</button><button aria-label="拒绝或驳回" onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "reject-report" : "reject")} title={notification.context?.kind === "group_report" ? "驳回" : "拒绝"} type="button"><X aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? "驳回" : "拒绝"}</button></span></div> : <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy notification={notification} siteAnnouncementLabel={t("home.siteAnnouncements")} /></button>)}
+                  {unreadConversations.map((conversation) => <button key={`conversation-${conversation.id}`} onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ conversationId: conversation.id }); }} type="button"><span className="header-popover-icon"><MessageCircleMore aria-hidden="true" size={16} /></span><span><strong>{conversation.user.nickname}</strong><small>{conversation.lastMessage?.body || phrase("发来附件", "Sent an attachment")}</small></span><b>{conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</b></button>)}
+                  {messageNotifications.map((notification) => notification.context?.actionable ? <div className="header-popover-actionable" key={`notification-${notification.id}`}><button onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy notification={notification} siteAnnouncementLabel={t("home.siteAnnouncements")} /></button><span className="header-popover-inline-actions"><button aria-label={phrase("同意或处理", "Accept or handle")} onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "resolve-report" : "accept")} title={notification.context?.kind === "group_report" ? phrase("处理", "Handle") : phrase("同意", "Accept")} type="button"><Check aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? phrase("处理", "Handle") : phrase("同意", "Accept")}</button><button aria-label={phrase("拒绝或驳回", "Decline or reject")} onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "reject-report" : "reject")} title={notification.context?.kind === "group_report" ? phrase("驳回", "Reject") : phrase("拒绝", "Decline")} type="button"><X aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? phrase("驳回", "Reject") : phrase("拒绝", "Decline")}</button></span></div> : <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy notification={notification} siteAnnouncementLabel={t("home.siteAnnouncements")} /></button>)}
                   {hiddenUnreadCount ? <button className="header-popover-more" onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">{t("nav.moreUnread", { count: hiddenUnreadCount })}</button> : null}
                   {!unreadConversations.length && !messageNotifications.length ? <span className="header-popover-empty">{t("nav.noNewMessages")}</span> : null}
                 </div>

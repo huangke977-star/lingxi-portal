@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import { openChatDock } from "@/lib/social-events";
+import { localizedPath } from "@/lib/i18n";
+import { useLanguage } from "@/components/language-provider";
 
 export default function MessagesPage() {
   return <Suspense><MessagesCompatibilityRoute /></Suspense>;
@@ -11,6 +13,7 @@ export default function MessagesPage() {
 function MessagesCompatibilityRoute() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { locale } = useLanguage();
 
   useEffect(() => {
     const conversationId = Number(searchParams.get("conversation") ?? 0);
@@ -18,8 +21,8 @@ function MessagesCompatibilityRoute() {
     openChatDock(conversationId > 0
       ? { conversationId }
       : friendshipId > 0 ? { tab: "friends" } : {});
-    router.replace("/");
-  }, [router, searchParams]);
+    router.replace(localizedPath("/", locale));
+  }, [locale, router, searchParams]);
 
   return null;
 }

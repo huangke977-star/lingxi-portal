@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
+import { useLanguage } from "@/components/language-provider";
 import { isAuthExpiredError } from "@/lib/auth-api";
+import { localizedPath } from "@/lib/i18n";
 import {
   AUTH_STATE_CHANGE_EVENT,
   clearAuthTokens,
@@ -22,7 +24,10 @@ import {
 
 interface PortalContentListProps {
   kinds: PortalCategoryKind[];
-  emptyMessage: string;
+  emptyMessage: {
+    chinese: string;
+    english: string;
+  };
 }
 
 export function PortalContentList({
@@ -30,6 +35,7 @@ export function PortalContentList({
   emptyMessage,
 }: PortalContentListProps) {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [categories, setCategories] = useState<PortalCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -49,14 +55,14 @@ export function PortalContentList({
       } catch (loadError) {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
         if (isMounted) {
           setError(
             loadError instanceof Error
               ? loadError.message
-              : "无法读取门户内容。",
+              : phrase("无法读取门户内容。", "Could not load portal content."),
           );
         }
       } finally {
@@ -72,12 +78,12 @@ export function PortalContentList({
       isMounted = false;
       window.removeEventListener(AUTH_STATE_CHANGE_EVENT, loadContent);
     };
-  }, [kinds, router]);
+  }, [kinds, locale, phrase, router]);
 
   if (isLoading) {
     return (
       <div className="status-row compact-status-row">
-        <span className="status">正在读取内容</span>
+        <span className="status">{phrase("正在读取内容", "Loading content")}</span>
       </div>
     );
   }
@@ -94,14 +100,14 @@ export function PortalContentList({
                 </div>
                 <div className="portal-category-heading-aside">
                   <span className="portal-category-count">
-                    {category.entries.length} 个入口
+                    {phrase(`${category.entries.length} 个入口`, `${category.entries.length} entries`)}
                   </span>
                   {category.description ? <p>{category.description}</p> : null}
                 </div>
               </div>
               <div className="entry-list card-grid portal-entry-grid">
                 {category.entries.map((entry) => (
-                  <PortalEntryItem entry={entry} key={entry.id} />
+                  <PortalEntryItem entry={entry} key={entry.id} locale={locale} phrase={phrase} />
                 ))}
               </div>
             </section>
@@ -109,8 +115,8 @@ export function PortalContentList({
         </div>
       ) : (
         <div className="portal-empty-state">
-          <strong>暂时没有可见内容</strong>
-          <p>{emptyMessage}</p>
+          <strong>{phrase("暂时没有可见内容", "No visible content")}</strong>
+          <p>{phrase(emptyMessage.chinese, emptyMessage.english)}</p>
         </div>
       )}
       <AppToast
@@ -123,7 +129,7 @@ export function PortalContentList({
   );
 }
 
-function PortalEntryItem({ entry }: { entry: PortalEntry }) {
+function PortalEntryItem({ entry, locale, phrase }: { entry: PortalEntry; locale: "zh-CN" | "en-US"; phrase: (chinese: string, english: string) => string }) {
   const description = entry.description.trim();
   const iconPath = entry.iconPath?.trim() || null;
   const [failedIconPath, setFailedIconPath] = useState<string | null>(null);
@@ -133,7 +139,8 @@ function PortalEntryItem({ entry }: { entry: PortalEntry }) {
   const descriptionId = description
     ? `portal-entry-description-${entry.id}`
     : undefined;
-  const subtitle = portalEntrySubtitle(entry.url);
+  const subtitle = portalEntrySubtitle(entry.url, phrase);
+  const href = entry.url?.startsWith("/") ? localizedPath(entry.url, locale) : entry.url;
   const content = (
     <>
       <span
@@ -172,7 +179,7 @@ function PortalEntryItem({ entry }: { entry: PortalEntry }) {
     </>
   );
 
-  if (!entry.url) {
+  if (!href) {
     return (
       <div
         aria-describedby={descriptionId}
@@ -188,7 +195,7 @@ function PortalEntryItem({ entry }: { entry: PortalEntry }) {
     <a
       aria-describedby={descriptionId}
       className="entry-item portal-entry-card"
-      href={entry.url}
+      href={href}
       rel={entry.openInNewTab ? "noreferrer" : undefined}
       target={entry.openInNewTab ? "_blank" : undefined}
     >
@@ -197,21 +204,21 @@ function PortalEntryItem({ entry }: { entry: PortalEntry }) {
   );
 }
 
-function portalEntrySubtitle(url: string | null): string {
+function portalEntrySubtitle(url: string | null, phrase: (chinese: string, english: string) => string): string {
   const normalizedUrl = url?.trim();
-  if (!normalizedUrl) return "暂未配置链接";
+  if (!normalizedUrl) return phrase("暂未配置链接", "Link not configured");
   if (
     normalizedUrl.startsWith("/") ||
     normalizedUrl.startsWith("#") ||
     normalizedUrl.startsWith("?")
   ) {
-    return "站内页面";
+    return phrase("站内页面", "Internal page");
   }
 
   try {
     const parsedUrl = new URL(normalizedUrl);
-    return parsedUrl.hostname.replace(/^www\./, "") || "链接入口";
+    return parsedUrl.hostname.replace(/^www\./, "") || phrase("链接入口", "Link entry");
   } catch {
-    return "链接入口";
+    return phrase("链接入口", "Link entry");
   }
 }

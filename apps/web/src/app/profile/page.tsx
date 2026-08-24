@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import Cropper, { type Area, type CropperProps } from "react-easy-crop";
 import { BookOpen, Coins, Eye, EyeOff, KeyRound, LogOut, MonitorSmartphone, Pin, Sparkles, TrendingUp, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
+import { useLanguage } from "@/components/language-provider";
 import { AccountSecurityPanel } from "@/components/account-security-panel";
 import { GlassSelect } from "@/components/glass-select";
 import { PasswordInput } from "@/components/password-input";
@@ -38,6 +39,7 @@ import {
   readAccessToken,
 } from "@/lib/auth-storage";
 import { getAccountMotto } from "@/lib/account-mottos";
+import { localizedPath } from "@/lib/i18n";
 import { getAvatarFallbackText, getUserDisplayName } from "@/lib/user-display";
 import { getMyReputation, type ReputationSummary } from "@/lib/reputation-api";
 import { listMyArticles, type Article } from "@/lib/article-api";
@@ -119,33 +121,24 @@ const defaultProfileSettings: ProfileSettings = {
   pinnedCollectionId: null,
 };
 
-const profileAccessOptions = [
-  { label: "所有人", value: "public" },
-  { label: "仅登录用户", value: "authenticated" },
-  { label: "仅好友", value: "friends" },
-  { label: "仅自己", value: "private" },
-] as const;
-
-const friendRequestOptions = [
-  { label: "允许所有人申请", value: "everyone" },
-  { label: "不接收申请", value: "none" },
-] as const;
-
-const directMessageOptions = [
-  { label: "所有人可直接私信", value: "everyone" },
-  { label: "陌生人先进入请求箱", value: "request" },
-  { label: "仅好友可私信", value: "friends" },
-  { label: "不接收私信", value: "none" },
-] as const;
-
-const groupInvitationOptions = [
-  { label: "允许所有人邀请", value: "everyone" },
-  { label: "仅好友可邀请", value: "friends" },
-  { label: "不接收邀请", value: "none" },
-] as const;
+function levelName(code: string, locale: "zh-CN" | "en-US"): string {
+  const names: Record<string, readonly [string, string]> = {
+    qi_refining: ["练气", "Qi Refining"],
+    foundation_building: ["筑基", "Foundation Building"],
+    golden_core: ["金丹", "Golden Core"],
+    nascent_soul: ["元婴", "Nascent Soul"],
+    spirit_transformation: ["化神", "Spirit Transformation"],
+    void_refining: ["炼虚", "Void Refining"],
+    body_integration: ["合体", "Body Integration"],
+    mahayana: ["大乘", "Mahayana"],
+  };
+  const name = names[code];
+  return name ? name[locale === "en-US" ? 1 : 0] : code;
+}
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -188,6 +181,39 @@ export default function ProfilePage() {
   const [preference, setPreference] = useState<ThemePreference>(() =>
     readThemePreference(),
   );
+  const profileAccessOptions = useMemo(() => [
+    { label: phrase("所有人", "Everyone"), value: "public" as const },
+    { label: phrase("仅登录用户", "Signed-in users"), value: "authenticated" as const },
+    { label: phrase("仅好友", "Friends only"), value: "friends" as const },
+    { label: phrase("仅自己", "Only me"), value: "private" as const },
+  ], [phrase]);
+  const friendRequestOptions = useMemo(() => [
+    { label: phrase("允许所有人申请", "Allow requests from everyone"), value: "everyone" as const },
+    { label: phrase("不接收申请", "Do not accept requests"), value: "none" as const },
+  ], [phrase]);
+  const directMessageOptions = useMemo(() => [
+    { label: phrase("所有人可直接私信", "Everyone can message directly"), value: "everyone" as const },
+    { label: phrase("陌生人先进入请求箱", "Requests required for non-friends"), value: "request" as const },
+    { label: phrase("仅好友可私信", "Friends only"), value: "friends" as const },
+    { label: phrase("不接收私信", "Do not accept messages"), value: "none" as const },
+  ], [phrase]);
+  const groupInvitationOptions = useMemo(() => [
+    { label: phrase("允许所有人邀请", "Allow invitations from everyone"), value: "everyone" as const },
+    { label: phrase("仅好友可邀请", "Friends only"), value: "friends" as const },
+    { label: phrase("不接收邀请", "Do not accept invitations"), value: "none" as const },
+  ], [phrase]);
+  const featuredArticleOptions = useMemo(() => [
+    { label: phrase("暂不设置", "Not set"), value: "0" },
+    ...profileArticles.map((article) => ({ label: article.title, value: String(article.id) })),
+  ], [phrase, profileArticles]);
+  const featuredCollectionOptions = useMemo(() => [
+    { label: phrase("暂不设置", "Not set"), value: "0" },
+    ...profileCollections.map((collection) => ({ label: collection.name, value: String(collection.id) })),
+  ], [phrase, profileCollections]);
+  const localizedLevelRoadmap = useMemo(() => levelRoadmap.map((item) => ({
+    ...item,
+    name: levelName(item.code, locale),
+  })), [locale]);
 
   const loadAccountSessions = useCallback(
     async (token = readAccessToken()) => {
@@ -201,25 +227,25 @@ export default function ProfilePage() {
       } catch (sessionError) {
         if (isAuthExpiredError(sessionError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
         setError(
           sessionError instanceof Error
             ? sessionError.message
-            : "无法读取登录设备。",
+          : phrase("无法读取登录设备。", "Could not load signed-in devices."),
         );
       } finally {
         setIsLoadingSessions(false);
       }
     },
-    [router],
+    [locale, phrase, router],
   );
 
   useEffect(() => {
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
 
@@ -246,24 +272,24 @@ export default function ProfilePage() {
           setProfileCollections(collectionResult.items);
           setReputation(reputationResult);
         }).catch((profileSettingsError) => {
-          setError(profileSettingsError instanceof Error ? profileSettingsError.message : "主页展示设置加载失败。");
+          setError(profileSettingsError instanceof Error ? profileSettingsError.message : phrase("主页展示设置加载失败。", "Could not load public-profile settings."));
         });
       })
       .catch((loadError) => {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
 
         setError(
-          loadError instanceof Error ? loadError.message : "无法获取当前用户。",
+          loadError instanceof Error ? loadError.message : phrase("无法获取当前用户。", "Could not load the current user."),
         );
       })
       .finally(() => {
         setIsLoading(false);
       });
-  }, [loadAccountSessions, router]);
+  }, [loadAccountSessions, locale, phrase, router]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -384,7 +410,7 @@ export default function ProfilePage() {
   async function commitPreference(partialPreference: Partial<ThemePreference>) {
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
 
@@ -405,10 +431,10 @@ export default function ProfilePage() {
         toAppearancePayload(nextPreference),
       );
       setUser(updatedUser);
-      setNotice("外观设置已保存。");
+      setNotice(phrase("外观设置已保存。", "Appearance settings saved."));
     } catch (saveError) {
       setError(
-        saveError instanceof Error ? saveError.message : "外观设置保存失败。",
+        saveError instanceof Error ? saveError.message : phrase("外观设置保存失败。", "Could not save appearance settings."),
       );
     } finally {
       setIsSavingAppearance(false);
@@ -463,19 +489,19 @@ export default function ProfilePage() {
     const token = readAccessToken();
     if (!token || !file) {
       if (!token) {
-        router.replace("/login");
+        router.replace(localizedPath("/login", locale));
       }
       return;
     }
 
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setError("头像仅支持 JPEG、PNG 或 WebP 图片。");
+      setError(phrase("头像仅支持 JPEG、PNG 或 WebP 图片。", "Only JPEG, PNG, or WebP images can be used for an avatar."));
       setNotice("");
       return;
     }
 
     if (file.size > AVATAR_SOURCE_MAX_FILE_SIZE) {
-      setError("原始头像图片不能超过 20 MB。");
+      setError(phrase("原始头像图片不能超过 20 MB。", "The source avatar image cannot exceed 20 MB."));
       setNotice("");
       return;
     }
@@ -494,7 +520,7 @@ export default function ProfilePage() {
     const token = readAccessToken();
     if (!token || !avatarCropSource || !avatarCropPixels) {
       if (!token) {
-        router.replace("/login");
+        router.replace(localizedPath("/login", locale));
       }
       return;
     }
@@ -507,20 +533,21 @@ export default function ProfilePage() {
         avatarCropSource,
         avatarCropPixels,
         avatarCropFileName,
+        phrase,
       );
 
       if (croppedFile.size > AVATAR_UPLOAD_MAX_FILE_SIZE) {
-        throw new Error("裁剪后的头像超过 2 MB，请缩小图片后重试。");
+        throw new Error(phrase("裁剪后的头像超过 2 MB，请缩小图片后重试。", "The cropped avatar exceeds 2 MB. Choose a smaller image and try again."));
       }
 
       const updatedUser = await uploadMyAvatar(token, croppedFile);
       setUser(updatedUser);
       setAvatarCropSource(null);
       window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
-      setNotice("头像已更新。");
+      setNotice(phrase("头像已更新。", "Avatar updated."));
     } catch (uploadError) {
       setError(
-        uploadError instanceof Error ? uploadError.message : "头像上传失败。",
+        uploadError instanceof Error ? uploadError.message : phrase("头像上传失败。", "Could not upload avatar."),
       );
     } finally {
       setIsUploadingAvatar(false);
@@ -531,7 +558,7 @@ export default function ProfilePage() {
     event.preventDefault();
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
 
@@ -541,25 +568,25 @@ export default function ProfilePage() {
     const nicknameLength = Array.from(nextNickname).length;
 
     if (!nextNickname) {
-      setError("昵称不能为空。");
+      setError(phrase("昵称不能为空。", "Nickname is required."));
       setNotice("");
       return;
     }
 
     if (nicknameLength > 24 && nextNickname !== user?.nickname) {
-      setError("昵称最多 24 个字符。");
+      setError(phrase("昵称最多 24 个字符。", "Nickname can contain at most 24 characters."));
       setNotice("");
       return;
     }
 
     if (!nextEmail) {
-      setError("邮箱不能为空。");
+      setError(phrase("邮箱不能为空。", "Email is required."));
       setNotice("");
       return;
     }
 
     if (!nextBio) {
-      setError("个人介绍不能为空。");
+      setError(phrase("个人介绍不能为空。", "Bio is required."));
       setNotice("");
       return;
     }
@@ -578,10 +605,10 @@ export default function ProfilePage() {
       setEmailDraft(updatedUser.email);
       setProfileBioDraft(updatedUser.profileBio);
       window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
-      setNotice("个人资料已保存。");
+      setNotice(phrase("个人资料已保存。", "Profile saved."));
     } catch (saveError) {
       setError(
-        saveError instanceof Error ? saveError.message : "个人资料保存失败。",
+        saveError instanceof Error ? saveError.message : phrase("个人资料保存失败。", "Could not save profile."),
       );
     } finally {
       setIsSavingProfile(false);
@@ -597,10 +624,10 @@ export default function ProfilePage() {
     try {
       const updated = await updateProfileSettings(token, patch);
       setProfileSettings(updated);
-      setNotice("主页展示设置已更新。");
+      setNotice(phrase("主页展示设置已更新。", "Public-profile settings updated."));
     } catch (saveError) {
       setProfileSettings(previous);
-      setError(saveError instanceof Error ? saveError.message : "主页展示设置保存失败。");
+      setError(saveError instanceof Error ? saveError.message : phrase("主页展示设置保存失败。", "Could not save public-profile settings."));
     } finally {
       setIsSavingProfileSettings(false);
     }
@@ -627,19 +654,19 @@ export default function ProfilePage() {
     event.preventDefault();
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
     if (!currentPassword) {
-      setError("请输入当前密码。");
+      setError(phrase("请输入当前密码。", "Enter your current password."));
       return;
     }
     if (newPassword.length < 8) {
-      setError("新密码至少需要 8 位。");
+      setError(phrase("新密码至少需要 8 位。", "New password must be at least 8 characters."));
       return;
     }
     if (newPassword !== passwordConfirmation) {
-      setError("两次输入的新密码不一致。");
+      setError(phrase("两次输入的新密码不一致。", "The new passwords do not match."));
       return;
     }
 
@@ -658,25 +685,25 @@ export default function ProfilePage() {
       await loadAccountSessions(readAccessToken());
       setNotice(
         result.revokedSessions
-          ? `密码已更新，并退出了 ${result.revokedSessions} 个其他设备会话。`
-          : "密码已更新。",
+          ? phrase(`密码已更新，并退出了 ${result.revokedSessions} 个其他设备会话。`, `Password updated and ${result.revokedSessions} other device session(s) were signed out.`)
+          : phrase("密码已更新。", "Password updated."),
       );
     } catch (passwordError) {
       if (isAuthExpiredError(passwordError)) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
       const message =
         passwordError instanceof ApiRequestError
           ? passwordError.message === "Current password is incorrect."
-            ? "当前密码不正确。"
+            ? phrase("当前密码不正确。", "Current password is incorrect.")
             : passwordError.message === "New password must be different."
-              ? "新密码不能与当前密码相同。"
+              ? phrase("新密码不能与当前密码相同。", "New password cannot match the current password.")
               : passwordError.message
           : passwordError instanceof Error
             ? passwordError.message
-            : "密码修改失败。";
+            : phrase("密码修改失败。", "Could not change password.");
       setError(message);
     } finally {
       setIsChangingPassword(false);
@@ -686,10 +713,10 @@ export default function ProfilePage() {
   async function handleRevokeOtherSessions() {
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
-    if (!window.confirm("确定退出其他设备吗？当前设备会保持登录。")) {
+    if (!window.confirm(phrase("确定退出其他设备吗？当前设备会保持登录。", "Sign out other devices? This device will remain signed in."))) {
       return;
     }
 
@@ -699,17 +726,17 @@ export default function ProfilePage() {
     try {
       const revoked = await revokeOtherSessions(token);
       await loadAccountSessions(readAccessToken());
-      setNotice(`已退出 ${revoked} 个其他设备会话。`);
+      setNotice(phrase(`已退出 ${revoked} 个其他设备会话。`, `${revoked} other device session(s) signed out.`));
     } catch (sessionError) {
       if (isAuthExpiredError(sessionError)) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
       setError(
         sessionError instanceof Error
           ? sessionError.message
-          : "退出其他设备失败。",
+          : phrase("退出其他设备失败。", "Could not sign out other devices."),
       );
     } finally {
       setSessionAction(null);
@@ -719,10 +746,10 @@ export default function ProfilePage() {
   async function handleRevokeAllSessions() {
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
-    if (!window.confirm("确定退出全部设备吗？当前页面也会退出登录。")) {
+    if (!window.confirm(phrase("确定退出全部设备吗？当前页面也会退出登录。", "Sign out all devices? This page will sign out too."))) {
       return;
     }
 
@@ -732,17 +759,17 @@ export default function ProfilePage() {
     try {
       await revokeAllSessions(token);
       clearAuthTokens();
-      router.replace("/");
+      router.replace(localizedPath("/", locale));
     } catch (sessionError) {
       if (isAuthExpiredError(sessionError)) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
       setError(
         sessionError instanceof Error
           ? sessionError.message
-          : "退出全部设备失败。",
+          : phrase("退出全部设备失败。", "Could not sign out all devices."),
       );
       setSessionAction(null);
     }
@@ -751,12 +778,12 @@ export default function ProfilePage() {
   async function handleRevokeSession(session: AuthSession) {
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
     const prompt = session.current
-      ? "确定退出当前设备吗？"
-      : `确定退出 ${formatSessionDevice(session.userAgent)} 吗？`;
+      ? phrase("确定退出当前设备吗？", "Sign out this device?")
+      : phrase(`确定退出 ${formatSessionDevice(session.userAgent, locale)} 吗？`, `Sign out ${formatSessionDevice(session.userAgent, locale)}?`);
     if (!window.confirm(prompt)) return;
 
     setSessionAction(`session:${session.id}`);
@@ -766,19 +793,19 @@ export default function ProfilePage() {
       const result = await revokeSession(token, session.id);
       if (result.current) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
       await loadAccountSessions(readAccessToken());
-      setNotice("设备已退出。");
+      setNotice(phrase("设备已退出。", "Device signed out."));
     } catch (sessionError) {
       if (isAuthExpiredError(sessionError)) {
         clearAuthTokens();
-        router.replace("/");
+        router.replace(localizedPath("/", locale));
         return;
       }
       setError(
-        sessionError instanceof Error ? sessionError.message : "退出设备失败。",
+        sessionError instanceof Error ? sessionError.message : phrase("退出设备失败。", "Could not sign out device."),
       );
     } finally {
       setSessionAction(null);
@@ -797,22 +824,22 @@ export default function ProfilePage() {
   const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
   const currentSession = sessions.find((session) => session.current) ?? null;
   const joinedAt = user?.createdAt ? new Date(user.createdAt) : null;
-  const joinedAtText = joinedAt ? formatJoinedAt(joinedAt) : "";
+  const joinedAtText = joinedAt ? formatJoinedAt(joinedAt, locale) : "";
   const memberDurationText = joinedAt
-    ? formatDuration(now - joinedAt.getTime())
+    ? formatDuration(now - joinedAt.getTime(), locale)
     : "";
   const accountMotto = useMemo(
     () => (user ? getAccountMotto(user) : ""),
     [user],
   );
   const toastMessage = isSavingAppearance
-    ? "外观保存中"
+    ? phrase("外观保存中", "Saving appearance")
     : isSavingProfile
-      ? "资料保存中"
+      ? phrase("资料保存中", "Saving profile")
       : sessionAction
-        ? "会话处理中"
+        ? phrase("会话处理中", "Updating session")
         : isChangingPassword
-          ? "密码保存中"
+          ? phrase("密码保存中", "Saving password")
           : notice;
 
   const previewStyle = {
@@ -831,18 +858,18 @@ export default function ProfilePage() {
     label: string;
     value: string;
   }> = [
-    { key: "customAccent", label: "强调色", value: customAccent },
-    { key: "customSurface", label: "卡片底色", value: customSurface },
-    { key: "customForeground", label: "主文字", value: customForeground },
-    { key: "customMuted", label: "辅助文字", value: customMuted },
-    { key: "glassTint", label: "磨砂颜色", value: glassTint },
+    { key: "customAccent", label: phrase("强调色", "Accent color"), value: customAccent },
+    { key: "customSurface", label: phrase("卡片底色", "Card background"), value: customSurface },
+    { key: "customForeground", label: phrase("主文字", "Primary text"), value: customForeground },
+    { key: "customMuted", label: phrase("辅助文字", "Muted text"), value: customMuted },
+    { key: "glassTint", label: phrase("磨砂颜色", "Glass tint"), value: glassTint },
   ];
 
   return (
     <section className="page-shell profile-page">
       {isLoading ? (
         <div className="status-row compact-status-row">
-          <span className="status">正在读取身份</span>
+          <span className="status">{phrase("正在读取身份", "Loading account")}</span>
         </div>
       ) : null}
       {user ? (
@@ -850,9 +877,9 @@ export default function ProfilePage() {
           <section className="profile-panel account-card">
             <div className="account-profile-row account-profile-hero">
               <label
-                aria-label={isUploadingAvatar ? "头像上传中" : "更换头像"}
+                aria-label={isUploadingAvatar ? phrase("头像上传中", "Uploading avatar") : phrase("更换头像", "Change avatar")}
                 className="avatar-uploader"
-                title={isUploadingAvatar ? "头像上传中" : "更换头像"}
+                title={isUploadingAvatar ? phrase("头像上传中", "Uploading avatar") : phrase("更换头像", "Change avatar")}
               >
                 <input
                   accept="image/jpeg,image/png,image/webp"
@@ -867,7 +894,7 @@ export default function ProfilePage() {
                   <span className="identity-avatar-visual">
                     {avatarUrl ? (
                       <img
-                        alt={`${getUserDisplayName(user)} 的头像`}
+                        alt={phrase(`${getUserDisplayName(user)} 的头像`, `${getUserDisplayName(user)}'s avatar`)}
                         src={avatarUrl}
                       />
                     ) : (
@@ -889,10 +916,10 @@ export default function ProfilePage() {
             </div>
 
             <div className="account-role-tag">
-              <span><RoleSymbol code={user.role.code} />{user.role.name}</span>
+              <span><RoleSymbol code={user.role.code} />{levelName(user.role.code, locale)}</span>
               <button
                 aria-expanded={isLevelInfoOpen}
-                aria-label="查看账号等级说明"
+                aria-label={phrase("查看账号等级说明", "View account level guide")}
                 className="level-help-trigger"
                 onClick={openLevelInfo}
                 onFocus={openLevelInfo}
@@ -907,45 +934,45 @@ export default function ProfilePage() {
 
             <dl className="account-metrics">
               <div>
-                <dt>来到 HLOVET</dt>
+                <dt>{phrase("来到 HLOVET", "Joined HLOVET")}</dt>
                 <dd>{joinedAtText}</dd>
               </div>
               <div>
-                <dt>相伴时长</dt>
+                <dt>{phrase("相伴时长", "Time with HLOVET")}</dt>
                 <dd>{memberDurationText}</dd>
               </div>
             </dl>
 
             <blockquote className="account-motto">
-              <span>给你的话</span>
+              <span>{phrase("给你的话", "A note for you")}</span>
               <p>{accountMotto}</p>
             </blockquote>
 
             <div className="current-session-summary">
               <div className="current-session-copy">
-                <span>当前登录设备</span>
+                <span>{phrase("当前登录设备", "Current signed-in device")}</span>
                 <strong>
                   {isLoadingSessions && !currentSession
-                    ? "正在识别设备"
+                    ? phrase("正在识别设备", "Identifying device")
                     : currentSession
-                      ? formatSessionDevice(currentSession.userAgent)
-                      : "未知设备"}
+                      ? formatSessionDevice(currentSession.userAgent, locale)
+                      : phrase("未知设备", "Unknown device")}
                 </strong>
                 <small>
                   {currentSession?.ip && currentSession.ip !== "unknown"
                     ? currentSession.ip
-                    : "IP 未记录"}
+                    : phrase("IP 未记录", "IP not recorded")}
                 </small>
               </div>
               <button
                 aria-controls="account-sessions-panel"
                 aria-expanded={isSessionsOpen}
                 aria-label={
-                  isSessionsOpen ? "收起登录设备列表" : "展开登录设备列表"
+                  isSessionsOpen ? phrase("收起登录设备列表", "Collapse signed-in device list") : phrase("展开登录设备列表", "Expand signed-in device list")
                 }
                 className={`session-panel-toggle ${isSessionsOpen ? "active" : ""}`}
                 onClick={handleSessionPanelToggle}
-                title={isSessionsOpen ? "收起登录设备" : "查看登录设备"}
+                title={isSessionsOpen ? phrase("收起登录设备", "Collapse devices") : phrase("查看登录设备", "View devices")}
                 type="button"
               >
                 <MonitorSmartphone aria-hidden="true" strokeWidth={1.8} />
@@ -955,13 +982,13 @@ export default function ProfilePage() {
 
           <section className="profile-panel profile-bio-panel">
             <div className="panel-heading profile-bio-heading">
-              <span className="section-label">Personal profile</span>
-              <strong>个人资料</strong>
+              <span className="section-label">{phrase("个人资料", "Personal profile")}</span>
+              <strong>{phrase("个人资料", "Personal profile")}</strong>
               <button
-                aria-label="修改密码"
+                aria-label={phrase("修改密码", "Change password")}
                 className="profile-password-trigger"
                 onClick={openPasswordDialog}
-                title="修改密码"
+                title={phrase("修改密码", "Change password")}
                 type="button"
               >
                 <KeyRound aria-hidden="true" size={19} />
@@ -970,7 +997,7 @@ export default function ProfilePage() {
             <form className="profile-bio-form" onSubmit={handleProfileSubmit}>
               <div className="profile-field-grid">
                 <label className="profile-field">
-                  <span>昵称</span>
+                  <span>{phrase("昵称", "Nickname")}</span>
                   <input
                     aria-describedby="nickname-hint"
                     autoComplete="nickname"
@@ -979,22 +1006,21 @@ export default function ProfilePage() {
                         limitCharacterCount(event.target.value, 24),
                       )
                     }
-                    placeholder="输入昵称"
+                    placeholder={phrase("输入昵称", "Enter nickname")}
                     required
                     value={nicknameDraft}
                   />
                   <small id="nickname-hint">
-                    {Array.from(nicknameDraft.trim()).length}/24 · 用户名 @
-                    {user.username} 不会改变
+                    {phrase(`${Array.from(nicknameDraft.trim()).length}/24 · 用户名 @${user.username} 不会改变`, `${Array.from(nicknameDraft.trim()).length}/24 · Username @${user.username} cannot be changed`)}
                   </small>
                 </label>
                 <label className="profile-field">
-                  <span>邮箱</span>
+                  <span>{phrase("邮箱", "Email")}</span>
                   <input
                     autoComplete="email"
                     maxLength={191}
                     onChange={(event) => setEmailDraft(event.target.value)}
-                    placeholder="输入邮箱"
+                    placeholder={phrase("输入邮箱", "Enter email")}
                     required
                     type="email"
                     value={emailDraft}
@@ -1002,11 +1028,11 @@ export default function ProfilePage() {
                 </label>
               </div>
               <label className="profile-field">
-                <span>个人介绍</span>
+                <span>{phrase("个人介绍", "Bio")}</span>
                 <textarea
                   maxLength={180}
                   onChange={(event) => setProfileBioDraft(event.target.value)}
-                  placeholder="写一句别人能看到的介绍。"
+                  placeholder={phrase("写一句别人能看到的介绍。", "Write a short introduction that others can see.")}
                   required
                   value={profileBioDraft}
                 />
@@ -1014,7 +1040,7 @@ export default function ProfilePage() {
               <div className="profile-bio-actions">
                 <span>{profileBioDraft.trim().length}/180</span>
                 <button disabled={isSavingProfile} type="submit">
-                  {isSavingProfile ? "保存中" : "保存资料"}
+                  {isSavingProfile ? phrase("保存中", "Saving") : phrase("保存资料", "Save profile")}
                 </button>
               </div>
             </form>
@@ -1023,26 +1049,26 @@ export default function ProfilePage() {
           <section className="profile-panel reputation-panel">
             <div className="panel-heading reputation-heading">
               <span className="section-label">Growth & points</span>
-              <strong>成长与积分</strong><button className="text-action reputation-detail-link" onClick={() => router.push("/profile/points")} type="button">积分明细</button>
+              <strong>{phrase("成长与积分", "Growth and points")}</strong><button className="text-action reputation-detail-link" onClick={() => router.push(localizedPath("/profile/points", locale))} type="button">{phrase("积分明细", "Point details")}</button>
             </div>
             {reputation ? <div className="reputation-layout">
               <div className="reputation-overview">
                 <div className="reputation-level-summary">
                   <span className="reputation-symbol"><RoleSymbol code={reputation.level.code} /></span>
-                  <div><span>成长等级</span><strong>{reputation.level.name} <small>Lv.{reputation.level.level}</small></strong><p>{reputation.nextLevel ? `距离 ${reputation.nextLevel.name} 还需 ${reputation.experienceToNext} 经验` : "已达到当前最高成长等级"}</p></div>
+                  <div><span>{phrase("成长等级", "Growth level")}</span><strong>{levelName(reputation.level.code, locale)} <small>Lv.{reputation.level.level}</small></strong><p>{reputation.nextLevel ? phrase(`距离 ${reputation.nextLevel.name} 还需 ${reputation.experienceToNext} 经验`, `${reputation.experienceToNext} experience to ${levelName(reputation.nextLevel.code, locale)}`) : phrase("已达到当前最高成长等级", "You have reached the current maximum growth level")}</p></div>
                 </div>
-                <div className="reputation-progress" aria-label={`经验进度 ${reputation.progressPercent}%`}><span style={{ width: `${reputation.progressPercent}%` }} /></div>
-                <div className="reputation-balances"><span><TrendingUp aria-hidden="true" size={17} /><small>经验</small><strong>{reputation.experience}</strong></span><span><Coins aria-hidden="true" size={17} /><small>积分</small><strong>{reputation.points}</strong></span></div>
+                <div className="reputation-progress" aria-label={phrase(`经验进度 ${reputation.progressPercent}%`, `Experience progress ${reputation.progressPercent}%`)}><span style={{ width: `${reputation.progressPercent}%` }} /></div>
+                <div className="reputation-balances"><span><TrendingUp aria-hidden="true" size={17} /><small>{phrase("经验", "Experience")}</small><strong>{reputation.experience}</strong></span><span><Coins aria-hidden="true" size={17} /><small>{phrase("积分", "Points")}</small><strong>{reputation.points}</strong></span></div>
               </div>
               <div className="reputation-rules">
-                <strong>获取规则</strong>
-                {reputation.rules.map((rule) => <div key={rule.reason}><span>{rule.label}</span><em>{rule.experience ? `+${rule.experience} 经验` : ""}{rule.experience && rule.points ? " · " : ""}{rule.points ? `+${rule.points} 积分` : ""}</em>{rule.dailyExperienceCap ? <small>每日经验上限 {rule.dailyExperienceCap}</small> : null}</div>)}
+                <strong>{phrase("获取规则", "Earning rules")}</strong>
+                {reputation.rules.map((rule) => <div key={rule.reason}><span>{rule.label}</span><em>{rule.experience ? phrase(`+${rule.experience} 经验`, `+${rule.experience} XP`) : ""}{rule.experience && rule.points ? " · " : ""}{rule.points ? phrase(`+${rule.points} 积分`, `+${rule.points} points`) : ""}</em>{rule.dailyExperienceCap ? <small>{phrase(`每日经验上限 ${rule.dailyExperienceCap}`, `Daily XP cap ${rule.dailyExperienceCap}`)}</small> : null}</div>)}
               </div>
               <div className="reputation-ledger">
-                <strong>最近记录</strong>
-                {reputation.recent.length ? reputation.recent.slice(0, 6).map((item) => <div key={item.id}><span><b>{item.description}</b><small>{formatReputationTime(item.createdAt)}</small></span><em>{item.experienceDelta ? `${item.experienceDelta > 0 ? "+" : ""}${item.experienceDelta} 经验` : ""}{item.experienceDelta && item.pointDelta ? " · " : ""}{item.pointDelta ? `${item.pointDelta > 0 ? "+" : ""}${item.pointDelta} 积分` : ""}</em></div>) : <p>完成阅读、评论或创作后，这里会显示记录。</p>}
+                <strong>{phrase("最近记录", "Recent activity")}</strong>
+                {reputation.recent.length ? reputation.recent.slice(0, 6).map((item) => <div key={item.id}><span><b>{item.description}</b><small>{formatReputationTime(item.createdAt, locale)}</small></span><em>{item.experienceDelta ? phrase(`${item.experienceDelta > 0 ? "+" : ""}${item.experienceDelta} 经验`, `${item.experienceDelta > 0 ? "+" : ""}${item.experienceDelta} XP`) : ""}{item.experienceDelta && item.pointDelta ? " · " : ""}{item.pointDelta ? phrase(`${item.pointDelta > 0 ? "+" : ""}${item.pointDelta} 积分`, `${item.pointDelta > 0 ? "+" : ""}${item.pointDelta} points`) : ""}</em></div>) : <p>{phrase("完成阅读、评论或创作后，这里会显示记录。", "Records appear here after you read, comment, or publish.")}</p>}
               </div>
-            </div> : <div className="reputation-empty"><Sparkles aria-hidden="true" size={18} />正在读取成长记录</div>}
+            </div> : <div className="reputation-empty"><Sparkles aria-hidden="true" size={18} />{phrase("正在读取成长记录", "Loading growth activity")}</div>}
           </section>
 
           {isSessionsOpen ? (
@@ -1053,7 +1079,7 @@ export default function ProfilePage() {
               <div className="account-sessions-heading">
                 <div className="panel-heading">
                   <span className="section-label">Login sessions</span>
-                  <strong>登录设备</strong>
+                  <strong>{phrase("登录设备", "Signed-in devices")}</strong>
                 </div>
                 <div className="account-session-actions">
                   <button
@@ -1066,7 +1092,7 @@ export default function ProfilePage() {
                     onClick={() => void handleRevokeOtherSessions()}
                     type="button"
                   >
-                    退出其他设备
+                    {phrase("退出其他设备", "Sign out other devices")}
                   </button>
                   <button
                     className="cache-danger-action"
@@ -1074,42 +1100,42 @@ export default function ProfilePage() {
                     onClick={() => void handleRevokeAllSessions()}
                     type="button"
                   >
-                    退出全部设备
+                    {phrase("退出全部设备", "Sign out all devices")}
                   </button>
                 </div>
               </div>
 
               <div className="account-session-list">
                 {isLoadingSessions ? (
-                  <p className="account-session-state">正在读取登录设备</p>
+                  <p className="account-session-state">{phrase("正在读取登录设备", "Loading signed-in devices")}</p>
                 ) : sessions.length ? (
                   sessions.map((session) => (
                     <div className="account-session-row" key={session.id}>
                       <div>
                         <strong>
-                          {formatSessionDevice(session.userAgent)}
+                          {formatSessionDevice(session.userAgent, locale)}
                         </strong>
                         <span>
-                          {session.ip === "unknown" ? "IP 未记录" : session.ip}
+                          {session.ip === "unknown" ? phrase("IP 未记录", "IP not recorded") : session.ip}
                         </span>
                       </div>
                       <div>
-                        <span>登录时间</span>
-                        <strong>{formatSessionTime(session.issuedAt)}</strong>
+                        <span>{phrase("登录时间", "Signed in")}</span>
+                        <strong>{formatSessionTime(session.issuedAt, locale)}</strong>
                       </div>
                       <div>
-                        <span>有效期至</span>
-                        <strong>{formatSessionTime(session.expiresAt)}</strong>
+                        <span>{phrase("有效期至", "Expires")}</span>
+                        <strong>{formatSessionTime(session.expiresAt, locale)}</strong>
                       </div>
                       <em className={session.current ? "current" : ""}>
-                        {session.current ? "当前设备" : "其他设备"}
+                        {session.current ? phrase("当前设备", "Current device") : phrase("其他设备", "Other device")}
                       </em>
                       <button
-                        aria-label={`退出 ${formatSessionDevice(session.userAgent)}`}
+                        aria-label={phrase(`退出 ${formatSessionDevice(session.userAgent, locale)}`, `Sign out ${formatSessionDevice(session.userAgent, locale)}`)}
                         className="account-session-revoke"
                         disabled={sessionAction !== null}
                         onClick={() => void handleRevokeSession(session)}
-                        title="退出设备"
+                        title={phrase("退出设备", "Sign out device")}
                         type="button"
                       >
                         <LogOut aria-hidden="true" size={17} />
@@ -1117,7 +1143,7 @@ export default function ProfilePage() {
                     </div>
                   ))
                 ) : (
-                  <p className="account-session-state">暂无可用登录会话</p>
+                  <p className="account-session-state">{phrase("暂无可用登录会话", "No active sign-in sessions")}</p>
                 )}
               </div>
             </section>
@@ -1128,30 +1154,30 @@ export default function ProfilePage() {
           <section className="profile-panel profile-display-panel">
             <div className="panel-heading profile-display-heading">
               <span className="section-label">Public profile</span>
-              <strong>主页展示</strong>
-              <span>{isSavingProfileSettings ? "正在同步" : "账号级保存"}</span>
+              <strong>{phrase("主页展示", "Public profile")}</strong>
+              <span>{isSavingProfileSettings ? phrase("正在同步", "Syncing") : phrase("账号级保存", "Saved to your account")}</span>
             </div>
             <div className="profile-policy-grid">
               <label>
-                <span>主页可见范围</span>
-                <GlassSelect ariaLabel="主页可见范围" disabled={isSavingProfileSettings} onChange={(profileAccess) => void commitProfileSettings({ profileAccess })} options={profileAccessOptions} value={profileSettings.profileAccess} />
+                <span>{phrase("主页可见范围", "Profile visibility")}</span>
+                <GlassSelect ariaLabel={phrase("主页可见范围", "Profile visibility")} disabled={isSavingProfileSettings} onChange={(profileAccess) => void commitProfileSettings({ profileAccess })} options={profileAccessOptions} value={profileSettings.profileAccess} />
               </label>
               <label>
-                <span>好友申请</span>
-                <GlassSelect ariaLabel="好友申请接收范围" disabled={isSavingProfileSettings} onChange={(friendRequestPolicy) => void commitProfileSettings({ friendRequestPolicy })} options={friendRequestOptions} value={profileSettings.friendRequestPolicy} />
+                <span>{phrase("好友申请", "Friend requests")}</span>
+                <GlassSelect ariaLabel={phrase("好友申请接收范围", "Friend request policy")} disabled={isSavingProfileSettings} onChange={(friendRequestPolicy) => void commitProfileSettings({ friendRequestPolicy })} options={friendRequestOptions} value={profileSettings.friendRequestPolicy} />
               </label>
               <label>
-                <span>陌生私信</span>
-                <GlassSelect ariaLabel="私信接收范围" disabled={isSavingProfileSettings} onChange={(directMessagePolicy) => void commitProfileSettings({ directMessagePolicy })} options={directMessageOptions} value={profileSettings.directMessagePolicy} />
+                <span>{phrase("陌生私信", "Direct messages")}</span>
+                <GlassSelect ariaLabel={phrase("私信接收范围", "Direct message policy")} disabled={isSavingProfileSettings} onChange={(directMessagePolicy) => void commitProfileSettings({ directMessagePolicy })} options={directMessageOptions} value={profileSettings.directMessagePolicy} />
               </label>
               <label>
-                <span>群聊邀请</span>
-                <GlassSelect ariaLabel="群聊邀请接收范围" disabled={isSavingProfileSettings} onChange={(groupInvitationPolicy) => void commitProfileSettings({ groupInvitationPolicy })} options={groupInvitationOptions} value={profileSettings.groupInvitationPolicy} />
+                <span>{phrase("群聊邀请", "Group invitations")}</span>
+                <GlassSelect ariaLabel={phrase("群聊邀请接收范围", "Group invitation policy")} disabled={isSavingProfileSettings} onChange={(groupInvitationPolicy) => void commitProfileSettings({ groupInvitationPolicy })} options={groupInvitationOptions} value={profileSettings.groupInvitationPolicy} />
               </label>
               <label className="profile-search-field">
-                <span>站内搜索</span>
+                <span>{phrase("站内搜索", "Site search")}</span>
                 <span className="profile-search-toggle">
-                  <span>允许通过站内搜索找到我</span>
+                  <span>{phrase("允许通过站内搜索找到我", "Allow others to find me in site search")}</span>
                   <input checked={profileSettings.searchable} disabled={isSavingProfileSettings} onChange={(event) => void commitProfileSettings({ searchable: event.target.checked })} type="checkbox" />
                 </span>
               </label>
@@ -1159,11 +1185,11 @@ export default function ProfilePage() {
             <div className="profile-display-layout">
               <div className="profile-visibility-list">
                 {([
-                  ["showBio", "个人介绍"],
-                  ["showJoinedAt", "加入时间"],
-                  ["showStats", "内容与访问统计"],
-                  ["showFollowingCount", "已订阅数量"],
-                  ["showPinnedContent", "代表内容"],
+                  ["showBio", phrase("个人介绍", "Bio")],
+                  ["showJoinedAt", phrase("加入时间", "Join date")],
+                  ["showStats", phrase("内容与访问统计", "Content and visit stats")],
+                  ["showFollowingCount", phrase("已订阅数量", "Subscription count")],
+                  ["showPinnedContent", phrase("代表内容", "Featured content")],
                 ] as Array<[keyof Pick<ProfileSettings, "showBio" | "showJoinedAt" | "showStats" | "showFollowingCount" | "showPinnedContent">, string]>).map(([key, label]) => (
                   <label key={key}>
                     <span>{profileSettings[key] ? <Eye aria-hidden="true" size={16} /> : <EyeOff aria-hidden="true" size={16} />}{label}</span>
@@ -1173,16 +1199,16 @@ export default function ProfilePage() {
                 ))}
               </div>
               <div className="profile-pin-controls">
-                <label><span><Pin aria-hidden="true" size={16} />代表文章</span><select disabled={!profileSettings.showPinnedContent || isSavingProfileSettings} onChange={(event) => void commitProfileSettings({ pinnedArticleId: Number(event.target.value) || null })} value={profileSettings.pinnedArticleId ?? 0}><option value={0}>暂不设置</option>{profileArticles.map((article) => <option key={article.id} value={article.id}>{article.title}</option>)}</select></label>
-                <label><span><BookOpen aria-hidden="true" size={16} />代表合集</span><select disabled={!profileSettings.showPinnedContent || isSavingProfileSettings} onChange={(event) => void commitProfileSettings({ pinnedCollectionId: Number(event.target.value) || null })} value={profileSettings.pinnedCollectionId ?? 0}><option value={0}>暂不设置</option>{profileCollections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select></label>
+                <label><span><Pin aria-hidden="true" size={16} />{phrase("代表文章", "Featured article")}</span><GlassSelect ariaLabel={phrase("代表文章", "Featured article")} disabled={!profileSettings.showPinnedContent || isSavingProfileSettings} onChange={(value) => void commitProfileSettings({ pinnedArticleId: Number(value) || null })} options={featuredArticleOptions} value={String(profileSettings.pinnedArticleId ?? 0)} /></label>
+                <label><span><BookOpen aria-hidden="true" size={16} />{phrase("代表合集", "Featured collection")}</span><GlassSelect ariaLabel={phrase("代表合集", "Featured collection")} disabled={!profileSettings.showPinnedContent || isSavingProfileSettings} onChange={(value) => void commitProfileSettings({ pinnedCollectionId: Number(value) || null })} options={featuredCollectionOptions} value={String(profileSettings.pinnedCollectionId ?? 0)} /></label>
               </div>
             </div>
           </section>
 
           <section className="profile-panel theme-panel">
             <div className="panel-heading">
-              <span className="section-label">主题外观</span>
-              <strong>外观设置</strong>
+              <span className="section-label">{phrase("主题外观", "Theme appearance")}</span>
+              <strong>{phrase("外观设置", "Appearance settings")}</strong>
             </div>
 
             <div className="theme-grid">
@@ -1207,7 +1233,7 @@ export default function ProfilePage() {
                       <span>{theme.description}</span>
                     </span>
                     {isActive ? (
-                      <span className="theme-selected">当前</span>
+                      <span className="theme-selected">{phrase("当前", "Current")}</span>
                     ) : null}
                   </button>
                 );
@@ -1231,11 +1257,11 @@ export default function ProfilePage() {
                   ))}
                 </span>
                 <span className="theme-option-copy">
-                  <strong>自定义配色</strong>
-                  <span>使用下方颜色组合自己的主题。</span>
+                  <strong>{phrase("自定义配色", "Custom colors")}</strong>
+                  <span>{phrase("使用下方颜色组合自己的主题。", "Build your own theme with the colors below.")}</span>
                 </span>
                 {normalizedPreference.themeId === "custom" ? (
-                  <span className="theme-selected">当前</span>
+                  <span className="theme-selected">{phrase("当前", "Current")}</span>
                 ) : null}
               </button>
             </div>
@@ -1244,11 +1270,11 @@ export default function ProfilePage() {
               <div className="theme-control-list">
                 <label className="theme-control-row range-row">
                   <span>
-                    <strong>卡片透明度</strong>
+                    <strong>{phrase("卡片透明度", "Card opacity")}</strong>
                     <small>{cardAlpha}%</small>
                   </span>
                   <input
-                    aria-label="卡片透明度"
+                    aria-label={phrase("卡片透明度", "Card opacity")}
                     max={76}
                     min={38}
                     onChange={(event) =>
@@ -1263,11 +1289,11 @@ export default function ProfilePage() {
 
                 <label className="theme-control-row range-row">
                   <span>
-                    <strong>磨砂程度</strong>
+                    <strong>{phrase("磨砂程度", "Glass blur")}</strong>
                     <small>{glassBlur}px</small>
                   </span>
                   <input
-                    aria-label="磨砂程度"
+                    aria-label={phrase("磨砂程度", "Glass blur")}
                     max={36}
                     min={0}
                     onChange={(event) =>
@@ -1282,11 +1308,11 @@ export default function ProfilePage() {
 
                 <label className="theme-control-row range-row">
                   <span>
-                    <strong>磨砂透明度</strong>
+                    <strong>{phrase("磨砂透明度", "Glass opacity")}</strong>
                     <small>{glassTintAlpha}%</small>
                   </span>
                   <input
-                    aria-label="磨砂透明度"
+                    aria-label={phrase("磨砂透明度", "Glass opacity")}
                     max={100}
                     min={0}
                     onChange={(event) =>
@@ -1333,9 +1359,9 @@ export default function ProfilePage() {
                   <div className="preview-mini-card" />
                   <div className="preview-mini-card small" />
                 </div>
-                <span>Preview</span>
+                <span>{phrase("预览", "Preview")}</span>
                 <strong>HLOVET</strong>
-                <p>半透明玻璃会叠在背景上，磨砂颜色决定整体氛围。</p>
+                <p>{phrase("半透明玻璃会叠在背景上，磨砂颜色决定整体氛围。", "Translucent glass layers over the background, and its tint sets the overall mood.")}</p>
               </div>
             </div>
           </section>
@@ -1345,7 +1371,7 @@ export default function ProfilePage() {
       {user && isLevelInfoOpen && typeof document !== "undefined"
         ? createPortal(
             <div
-              aria-label="账号等级说明"
+              aria-label={phrase("账号等级说明", "Account level guide")}
               className="level-popover"
               data-placement={levelPopoverPlacement}
               onFocus={cancelLevelInfoClose}
@@ -1356,11 +1382,11 @@ export default function ProfilePage() {
               style={levelPopoverStyle}
             >
               <div className="panel-heading level-popover-heading">
-                <span className="section-label">经验等级</span>
-                <strong>成长规则</strong>
+                <span className="section-label">{phrase("经验等级", "Experience levels")}</span>
+                <strong>{phrase("成长规则", "Growth rules")}</strong>
               </div>
               <div className="level-roadmap">
-                {levelRoadmap.map((role) => {
+                {localizedLevelRoadmap.map((role) => {
                   const isCurrent = (reputation?.level.code ?? user.role.code) === role.code;
                   return (
                     <div className={isCurrent ? "current" : ""} key={role.code}>
@@ -1371,7 +1397,7 @@ export default function ProfilePage() {
                         <strong>{role.name}</strong>
                         <small>Lv.{role.level}</small>
                       </span>
-                      <em>{isCurrent ? "当前等级" : `${role.minExperience} 经验`}</em>
+                      <em>{isCurrent ? phrase("当前等级", "Current level") : phrase(`${role.minExperience} 经验`, `${role.minExperience} XP`)}</em>
                     </div>
                   );
                 })}
@@ -1400,12 +1426,12 @@ export default function ProfilePage() {
               >
                 <div className="password-modal-heading">
                   <div className="modal-heading">
-                    <span className="section-label">Account security</span>
-                    <h2 id="profile-password-modal-title">修改密码</h2>
-                    <p>修改后当前设备保持登录，其他设备将退出。</p>
+                    <span className="section-label">{phrase("账号安全", "Account security")}</span>
+                    <h2 id="profile-password-modal-title">{phrase("修改密码", "Change password")}</h2>
+                    <p>{phrase("修改后当前设备保持登录，其他设备将退出。", "After you change the password, this device stays signed in and other devices are signed out.")}</p>
                   </div>
                   <button
-                    aria-label="关闭修改密码弹窗"
+                    aria-label={phrase("关闭修改密码弹窗", "Close change-password dialog")}
                     className="level-modal-close"
                     disabled={isChangingPassword}
                     onClick={closePasswordDialog}
@@ -1419,7 +1445,7 @@ export default function ProfilePage() {
                   onSubmit={(event) => void handlePasswordSubmit(event)}
                 >
                   <label>
-                    当前密码
+                    {phrase("当前密码", "Current password")}
                     <PasswordInput
                       autoComplete="current-password"
                       autoFocus
@@ -1432,7 +1458,7 @@ export default function ProfilePage() {
                     />
                   </label>
                   <label>
-                    新密码
+                    {phrase("新密码", "New password")}
                     <PasswordInput
                       autoComplete="new-password"
                       disabled={isChangingPassword}
@@ -1443,7 +1469,7 @@ export default function ProfilePage() {
                     />
                   </label>
                   <label>
-                    确认新密码
+                    {phrase("确认新密码", "Confirm new password")}
                     <PasswordInput
                       autoComplete="new-password"
                       disabled={isChangingPassword}
@@ -1461,7 +1487,7 @@ export default function ProfilePage() {
                       disabled={isChangingPassword}
                       type="submit"
                     >
-                      {isChangingPassword ? "保存中" : "确认修改"}
+                      {isChangingPassword ? phrase("保存中", "Saving") : phrase("确认修改", "Confirm change")}
                     </button>
                     <button
                       className="button secondary"
@@ -1469,7 +1495,7 @@ export default function ProfilePage() {
                       onClick={closePasswordDialog}
                       type="button"
                     >
-                      取消
+                      {phrase("取消", "Cancel")}
                     </button>
                   </div>
                 </form>
@@ -1508,7 +1534,7 @@ export default function ProfilePage() {
               role="presentation"
             >
               <div
-                aria-label="裁剪头像"
+                aria-label={phrase("裁剪头像", "Crop avatar")}
                 aria-modal="true"
                 className="avatar-crop-modal"
                 onClick={(event) => event.stopPropagation()}
@@ -1516,11 +1542,11 @@ export default function ProfilePage() {
               >
                 <div className="avatar-crop-heading">
                   <div>
-                    <span className="section-label">Avatar</span>
-                    <strong>调整头像</strong>
+                    <span className="section-label">{phrase("头像", "Avatar")}</span>
+                    <strong>{phrase("调整头像", "Adjust avatar")}</strong>
                   </div>
                   <button
-                    aria-label="取消裁剪头像"
+                    aria-label={phrase("取消裁剪头像", "Cancel avatar crop")}
                     className="level-modal-close"
                     disabled={isUploadingAvatar}
                     onClick={() => setAvatarCropSource(null)}
@@ -1550,11 +1576,11 @@ export default function ProfilePage() {
 
                 <label className="avatar-zoom-control">
                   <span>
-                    <strong>缩放</strong>
+                    <strong>{phrase("缩放", "Zoom")}</strong>
                     <small>{Math.round(avatarZoom * 100)}%</small>
                   </span>
                   <input
-                    aria-label="头像缩放"
+                    aria-label={phrase("头像缩放", "Avatar zoom")}
                     max={3}
                     min={1}
                     onChange={(event) =>
@@ -1573,7 +1599,7 @@ export default function ProfilePage() {
                     onClick={() => setAvatarCropSource(null)}
                     type="button"
                   >
-                    取消
+                    {phrase("取消", "Cancel")}
                   </button>
                   <button
                     className="text-action primary"
@@ -1581,7 +1607,7 @@ export default function ProfilePage() {
                     onClick={() => void handleAvatarCropConfirm()}
                     type="button"
                   >
-                    {isUploadingAvatar ? "处理中" : "使用此头像"}
+                    {isUploadingAvatar ? phrase("处理中", "Processing") : phrase("使用此头像", "Use this avatar")}
                   </button>
                 </div>
               </div>
@@ -1650,15 +1676,16 @@ async function createCroppedAvatarFile(
   source: string,
   cropArea: Area,
   originalName: string,
+  phrase: (chinese: string, english: string) => string,
 ): Promise<File> {
-  const image = await loadImage(source);
+  const image = await loadImage(source, phrase);
   const canvas = document.createElement("canvas");
   canvas.width = AVATAR_OUTPUT_SIZE;
   canvas.height = AVATAR_OUTPUT_SIZE;
   const context = canvas.getContext("2d");
 
   if (!context) {
-    throw new Error("当前浏览器无法处理头像图片。");
+    throw new Error(phrase("当前浏览器无法处理头像图片。", "This browser cannot process avatar images."));
   }
 
   context.imageSmoothingEnabled = true;
@@ -1681,7 +1708,7 @@ async function createCroppedAvatarFile(
         if (result) {
           resolve(result);
         } else {
-          reject(new Error("头像裁剪失败，请重新选择图片。"));
+          reject(new Error(phrase("头像裁剪失败，请重新选择图片。", "Could not crop the avatar. Choose the image again.")));
         }
       },
       "image/webp",
@@ -1696,11 +1723,11 @@ async function createCroppedAvatarFile(
   });
 }
 
-function loadImage(source: string): Promise<HTMLImageElement> {
+function loadImage(source: string, phrase: (chinese: string, english: string) => string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("无法读取所选头像图片。"));
+    image.onerror = () => reject(new Error(phrase("无法读取所选头像图片。", "Could not read the selected avatar image.")));
     image.src = source;
   });
 }
@@ -1716,8 +1743,8 @@ function hexToRgbString(value: string): string {
     .join(", ");
 }
 
-function formatJoinedAt(value: Date): string {
-  return new Intl.DateTimeFormat("zh-CN", {
+function formatJoinedAt(value: Date, locale: "zh-CN" | "en-US"): string {
+  return new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -1726,18 +1753,20 @@ function formatJoinedAt(value: Date): string {
   }).format(value);
 }
 
-function formatDuration(value: number): string {
+function formatDuration(value: number, locale: "zh-CN" | "en-US"): string {
   const totalSeconds = Math.max(0, Math.floor(value / 1000));
   const days = Math.floor(totalSeconds / 86400);
   const hours = Math.floor((totalSeconds % 86400) / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
 
-  return `${days}天 ${hours}小时 ${minutes}分 ${seconds}秒`;
+  return locale === "en-US"
+    ? `${days}d ${hours}h ${minutes}m ${seconds}s`
+    : `${days}天 ${hours}小时 ${minutes}分 ${seconds}秒`;
 }
 
-function formatSessionTime(value: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
+function formatSessionTime(value: string, locale: "zh-CN" | "en-US"): string {
+  return new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -1746,8 +1775,8 @@ function formatSessionTime(value: string): string {
   }).format(new Date(value));
 }
 
-function formatReputationTime(value: string): string {
-  return new Intl.DateTimeFormat("zh-CN", {
+function formatReputationTime(value: string, locale: "zh-CN" | "en-US"): string {
+  return new Intl.DateTimeFormat(locale, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -1755,9 +1784,9 @@ function formatReputationTime(value: string): string {
   }).format(new Date(value));
 }
 
-function formatSessionDevice(userAgent: string): string {
+function formatSessionDevice(userAgent: string, locale: "zh-CN" | "en-US"): string {
   if (!userAgent || userAgent === "unknown") {
-    return "未知设备";
+    return locale === "en-US" ? "Unknown device" : "未知设备";
   }
   const device = /iPhone/i.test(userAgent)
     ? "iPhone"
@@ -1769,7 +1798,7 @@ function formatSessionDevice(userAgent: string): string {
           ? "Windows"
           : /Macintosh|Mac OS X/i.test(userAgent)
             ? "Mac"
-            : "其他设备";
+            : locale === "en-US" ? "Other device" : "其他设备";
   const browser = /Edg\//i.test(userAgent)
     ? "Edge"
     : /Chrome\//i.test(userAgent)
@@ -1778,7 +1807,7 @@ function formatSessionDevice(userAgent: string): string {
         ? "Firefox"
         : /Safari\//i.test(userAgent)
           ? "Safari"
-          : "浏览器";
+          : locale === "en-US" ? "Browser" : "浏览器";
   return `${device} · ${browser}`;
 }
 

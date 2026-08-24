@@ -6,7 +6,10 @@ export default function NavPage() {
   return (
     <section className="page-shell">
       <PortalContentList
-        emptyMessage="超级管理员还没有添加导航条目。"
+        emptyMessage={{
+          chinese: "超级管理员还没有添加导航条目。",
+          english: "No navigation entries have been added by a super administrator yet.",
+        }}
         kinds={[...navigationKinds]}
       />
     </section>

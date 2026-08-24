@@ -125,7 +125,7 @@ export function HomeWorkspace() {
     <section className="p8-page p8-home-page">
       <header className="p8-page-heading">
         <div>
-          <span className="section-label">{t("home.section")}</span>
+          {locale === "zh-CN" ? <span className="section-label">{t("home.section")}</span> : null}
           <h1>{t("home.title")}</h1>
         </div>
         <HomeStats locale={locale} summary={data.homeSummary} />
@@ -206,7 +206,8 @@ function HomeStats({ summary, locale }: { summary: PortalHomeSummary | null; loc
 }
 
 function PortalShortcut({ entry }: { entry: PortalEntry }) {
-  const content = <><PortalEntryVisual entry={entry} /><span><strong>{entry.title}</strong><small>{entry.description || portalHost(entry.url)}</small></span></>;
+  const { phrase } = useLanguage();
+  const content = <><PortalEntryVisual entry={entry} /><span><strong>{entry.title}</strong><small>{entry.description || portalHost(entry.url, phrase)}</small></span></>;
   return entry.url ? <a href={entry.url} rel={entry.openInNewTab ? "noreferrer" : undefined} target={entry.openInNewTab ? "_blank" : undefined}>{content}</a> : <div className="muted">{content}</div>;
 }
 
@@ -222,10 +223,10 @@ function orderedEntries(entries: PortalEntry[], ids: number[]) {
   });
 }
 
-function portalHost(url: string | null) {
-  if (!url) return "暂未配置链接";
-  if (url.startsWith("/")) return "站内入口";
-  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "链接入口"; }
+function portalHost(url: string | null, phrase: (chinese: string, english: string) => string) {
+  if (!url) return phrase("暂未配置链接", "Link not configured");
+  if (url.startsWith("/")) return phrase("站内入口", "Internal page");
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return phrase("链接入口", "Link entry"); }
 }
 
 function formatDate(value: string, locale: "zh-CN" | "en-US") {

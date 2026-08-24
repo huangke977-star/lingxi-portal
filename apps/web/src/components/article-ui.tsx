@@ -18,6 +18,30 @@ import { AvatarManagementBadge } from "@/components/user-identity-badges";
 import { useLanguage } from "@/components/language-provider";
 import { localizedPath, type Locale } from "@/lib/i18n";
 
+const defaultTaxonomyTranslations: Record<string, string> = {
+  "随笔": "Essay",
+  "技术": "Technology",
+  "服务器": "Servers",
+  "工具": "Tools",
+  "资源": "Resources",
+  "教程": "Tutorials",
+  "生活": "Life",
+  "公告": "Announcements",
+  "开发": "Development",
+  "前端": "Frontend",
+  "后端": "Backend",
+  "数据库": "Databases",
+  "运维": "Operations",
+  "网络": "Networking",
+  "经验": "Experience",
+};
+
+// Built-in taxonomy values are stored in Chinese for compatibility. Translate only
+// those defaults at render time; administrator-configured taxonomy remains user data.
+export function displayArticleTaxonomy(value: string, locale: Locale): string {
+  return locale === "en-US" ? defaultTaxonomyTranslations[value] ?? value : value;
+}
+
 export function formatArticleDate(value: string | null, locale: Locale = "zh-CN"): string {
   if (!value) return locale === "en-US" ? "Not published" : "尚未发布";
   const date = new Date(value);
@@ -75,9 +99,9 @@ export function ArticleTaxonomy({ article, limit = 3 }: { article: Article; limi
   const hiddenCount = Math.max(0, article.tags.length - visibleTags.length);
   return (
     <span className="article-taxonomy">
-      <span className="article-category">{article.category || t("article.defaultCategory")}</span>
+      <span className="article-category">{article.category ? displayArticleTaxonomy(article.category, locale) : t("article.defaultCategory")}</span>
       {article.resource.enabled ? <span className="article-resource-chip" title={`${article.resource.blocks.length} ${t("article.resource")}`}><Coins aria-hidden="true" size={12} />{t("article.resource")}</span> : null}
-      {visibleTags.map((tag) => <span className="article-tag-chip" key={tag}>#{tag}</span>)}
+      {visibleTags.map((tag) => <span className="article-tag-chip" key={tag}>#{displayArticleTaxonomy(tag, locale)}</span>)}
       {hiddenCount ? <span className="article-tag-more">+{hiddenCount}</span> : null}
       {(article.collections ?? []).slice(0, 2).map((collection) => (
         <Link className="article-group-chip collection" href={localizedPath(collection.href, locale)} key={`collection-${collection.id}`} onClick={(event) => event.stopPropagation()}>{collection.label}</Link>

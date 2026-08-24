@@ -21,7 +21,7 @@ interface ToolRecord {
 type Translator = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
 export function ToolsCenter() {
-  const { t } = useLanguage();
+  const { locale, t } = useLanguage();
   const [categories, setCategories] = useState<PortalCategory[]>([]);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -97,7 +97,7 @@ export function ToolsCenter() {
   }
 
   return <section className="p8-page p8-tools-page">
-    <header className="p8-page-heading"><div><span className="section-label">{t("tools.section")}</span><h1>{t("tools.title")}</h1></div><span className="p8-heading-note">{token ? t("tools.savedNote") : t("tools.loginNote")}</span></header>
+    <header className="p8-page-heading"><div>{locale === "zh-CN" ? <span className="section-label">{t("tools.section")}</span> : null}<h1>{t("tools.title")}</h1></div><span className="p8-heading-note">{token ? t("tools.savedNote") : t("tools.loginNote")}</span></header>
     <label className="p8-tool-search"><Search aria-hidden="true" size={17} /><input aria-label={t("tools.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} placeholder={t("tools.searchPlaceholder")} value={query} /><span>{filteredRecords.length}</span></label>
     {isLoading ? <div className="status-row compact-status-row"><span className="status">{t("tools.reading")}</span></div> : <div className="p8-tools-layout">
       <section className="p8-surface p8-saved-tools"><div className="p8-section-heading"><div><Star aria-hidden="true" size={17} /><h2>{t("tools.myCommon")}</h2></div><small>{isSaving ? t("tools.saving") : `${savedRecords.length}/30`}</small></div>

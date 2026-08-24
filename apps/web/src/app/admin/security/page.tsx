@@ -12,9 +12,12 @@ import {
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { GlassSelect } from "@/components/glass-select";
+import { useLanguage } from "@/components/language-provider";
 import { PasswordInput } from "@/components/password-input";
 import { type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { localizedPath } from "@/lib/i18n";
 import { isSiteManager } from "@/lib/user-permissions";
 import {
   getSecurityAdminConfig,
@@ -63,6 +66,7 @@ const statusOptions: Record<SecurityAdminTab, Array<[string, string]>> = {
 
 export default function SecurityAdminPage() {
   const router = useRouter();
+  const { locale, phrase } = useLanguage();
   const [accessToken, setAccessToken] = useState("");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [config, setConfig] = useState<SecurityAdminConfig | null>(null);
@@ -85,7 +89,7 @@ export default function SecurityAdminPage() {
   useEffect(() => {
     const token = readAccessToken();
     if (!token) {
-      router.replace("/login");
+      router.replace(localizedPath("/login", locale));
       return;
     }
     let active = true;
@@ -105,14 +109,14 @@ export default function SecurityAdminPage() {
       } catch (loadError) {
         if (isAuthExpiredError(loadError)) {
           clearAuthTokens();
-          router.replace("/");
+          router.replace(localizedPath("/", locale));
           return;
         }
         if (active) {
           setError(
             loadError instanceof Error
               ? loadError.message
-              : "安全管理数据读取失败。",
+              : phrase("安全管理数据读取失败。", "Could not load security management data."),
           );
         }
       } finally {
@@ -124,7 +128,7 @@ export default function SecurityAdminPage() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [locale, phrase, router]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -156,12 +160,12 @@ export default function SecurityAdminPage() {
         .catch((loadError) => {
           if (isAuthExpiredError(loadError)) {
             clearAuthTokens();
-            router.replace("/");
+            router.replace(localizedPath("/", locale));
             return;
           }
           if (active) {
             setError(
-              loadError instanceof Error ? loadError.message : "记录读取失败。",
+              loadError instanceof Error ? loadError.message : phrase("记录读取失败。", "Could not load records."),
             );
           }
         })
@@ -173,12 +177,12 @@ export default function SecurityAdminPage() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [accessToken, page, router, search, status, tab, user]);
+  }, [accessToken, locale, page, phrase, router, search, status, tab, user]);
 
   const canEdit = user?.isSuperAdmin ?? false;
   const lastUpdated = config?.updatedAt
-    ? formatDateTime(config.updatedAt)
-    : "尚未记录";
+    ? formatDateTime(config.updatedAt, locale)
+    : phrase("尚未记录", "Not recorded");
 
   function updateDraft<K extends keyof SecurityAdminConfig>(
     key: K,
@@ -240,10 +244,10 @@ export default function SecurityAdminPage() {
       const saved = await updateSecurityAdminConfig(accessToken, update);
       setConfig(saved);
       setDraft({ ...saved, smtpPassword: "", turnstileSecret: "" });
-      setNotice("账号安全配置已保存。");
+      setNotice(phrase("账号安全配置已保存。", "Account security settings saved."));
     } catch (saveError) {
       setError(
-        saveError instanceof Error ? saveError.message : "安全配置保存失败。",
+        saveError instanceof Error ? saveError.message : phrase("安全配置保存失败。", "Could not save security settings."),
       );
     } finally {
       setIsSaving(false);
@@ -257,10 +261,10 @@ export default function SecurityAdminPage() {
     setNotice("");
     try {
       const result = await testSmtpConnection(accessToken);
-      setNotice(result.message || "SMTP 连接测试成功。");
+      setNotice(result.message || phrase("SMTP 连接测试成功。", "SMTP connection test passed."));
     } catch (testError) {
       setError(
-        testError instanceof Error ? testError.message : "SMTP 连接测试失败。",
+        testError instanceof Error ? testError.message : phrase("SMTP 连接测试失败。", "SMTP connection test failed."),
       );
     } finally {
       setIsTesting(false);
@@ -276,7 +280,7 @@ export default function SecurityAdminPage() {
   if (isLoading) {
     return (
       <section className="page-shell admin-shell security-admin-shell">
-        <span className="status">正在读取安全配置</span>
+        <span className="status">{phrase("正在读取安全配置", "Loading security settings")}</span>
       </section>
     );
   }
@@ -285,8 +289,8 @@ export default function SecurityAdminPage() {
     return (
       <section className="page-shell admin-shell security-admin-shell">
         <div className="search-page-empty">
-          <strong>无权访问</strong>
-          <span>安全管理仅超级管理员和管理员可查看。</span>
+          <strong>{phrase("无权访问", "Access denied")}</strong>
+          <span>{phrase("安全管理仅超级管理员和管理员可查看。", "Only super administrators and administrators can view security management.")}</span>
         </div>
       </section>
     );
@@ -300,14 +304,14 @@ export default function SecurityAdminPage() {
             <ShieldCheck aria-hidden="true" size={21} />
           </span>
           <div>
-            <h1>安全管理</h1>
+            <h1>{phrase("安全管理", "Security management")}</h1>
             <p>
-              {canEdit ? "超级管理员配置" : "管理员只读"} · 更新于 {lastUpdated}
+              {canEdit ? phrase("超级管理员配置", "Super administrator settings") : phrase("管理员只读", "Administrator read-only")} · {phrase("更新于", "Updated")} {lastUpdated}
             </p>
           </div>
         </div>
         <span className={config?.encryptionConfigured ? "ready" : "warning"}>
-          {config?.encryptionConfigured ? "凭据加密可用" : "凭据加密未配置"}
+          {config?.encryptionConfigured ? phrase("凭据加密可用", "Credential encryption available") : phrase("凭据加密未配置", "Credential encryption is not configured")}
         </span>
       </header>
 
@@ -317,17 +321,17 @@ export default function SecurityAdminPage() {
             <div className="security-config-heading">
               <div>
                 <Mail aria-hidden="true" size={17} />
-                <strong>SMTP 邮件</strong>
+                <strong>{phrase("SMTP 邮件", "SMTP mail")}</strong>
               </div>
               <ToggleField
                 checked={draft.smtpEnabled}
                 disabled={!canEdit}
-                label="启用邮件服务"
+                label={phrase("启用邮件服务", "Enable mail service")}
                 onChange={updateMailServiceEnabled}
               />
             </div>
             <div className="security-form-grid">
-              <Field label="SMTP 主机">
+              <Field label={phrase("SMTP 主机", "SMTP host")}>
                 <input
                   disabled={!canEdit}
                   onChange={(event) =>
@@ -336,7 +340,7 @@ export default function SecurityAdminPage() {
                   value={draft.smtpHost}
                 />
               </Field>
-              <Field label="端口">
+              <Field label={phrase("端口", "Port")}>
                 <input
                   disabled={!canEdit}
                   max={65535}
@@ -348,7 +352,7 @@ export default function SecurityAdminPage() {
                   value={draft.smtpPort}
                 />
               </Field>
-              <Field label="账号">
+              <Field label={phrase("账号", "Account")}>
                 <input
                   autoComplete="off"
                   disabled={!canEdit}
@@ -358,7 +362,7 @@ export default function SecurityAdminPage() {
                   value={draft.smtpUsername}
                 />
               </Field>
-              <Field label="密码">
+              <Field label={phrase("密码", "Password")}>
                 <PasswordInput
                   autoComplete="new-password"
                   disabled={!canEdit}
@@ -367,13 +371,13 @@ export default function SecurityAdminPage() {
                   }
                   placeholder={
                     draft.smtpPasswordConfigured
-                      ? "已配置，留空保持不变"
-                      : "输入 SMTP 密码"
+                      ? phrase("已配置，留空保持不变", "Configured. Leave blank to keep it unchanged.")
+                      : phrase("输入 SMTP 密码", "Enter SMTP password")
                   }
                   value={draft.smtpPassword ?? ""}
                 />
               </Field>
-              <Field label="发件名称">
+              <Field label={phrase("发件名称", "Sender name")}>
                 <input
                   disabled={!canEdit}
                   onChange={(event) =>
@@ -382,7 +386,7 @@ export default function SecurityAdminPage() {
                   value={draft.smtpFromName}
                 />
               </Field>
-              <Field label="发件邮箱">
+              <Field label={phrase("发件邮箱", "Sender email")}>
                 <input
                   disabled={!canEdit}
                   onChange={(event) =>
@@ -396,7 +400,7 @@ export default function SecurityAdminPage() {
             <ToggleField
               checked={draft.smtpSecure}
               disabled={!canEdit}
-              label="使用 TLS 安全连接"
+              label={phrase("使用 TLS 安全连接", "Use TLS")}
               onChange={(checked) => updateDraft("smtpSecure", checked)}
             />
           </section>
@@ -405,14 +409,14 @@ export default function SecurityAdminPage() {
             <div className="security-config-heading">
               <div>
                 <ShieldCheck aria-hidden="true" size={17} />
-                <strong>验证策略</strong>
+                <strong>{phrase("验证策略", "Verification policy")}</strong>
               </div>
             </div>
             <div className="security-policy-toggles">
               <ToggleField
                 checked={draft.registrationEmailVerificationEnabled}
                 disabled={!canEdit || !draft.smtpEnabled}
-                label="注册邮箱验证"
+                label={phrase("注册邮箱验证", "Verify email on registration")}
                 onChange={(checked) =>
                   updateDraft("registrationEmailVerificationEnabled", checked)
                 }
@@ -420,7 +424,7 @@ export default function SecurityAdminPage() {
               <ToggleField
                 checked={draft.passwordRecoveryEnabled}
                 disabled={!canEdit || !draft.smtpEnabled}
-                label="密码找回"
+                label={phrase("密码找回", "Password recovery")}
                 onChange={(checked) =>
                   updateDraft("passwordRecoveryEnabled", checked)
                 }
@@ -428,7 +432,7 @@ export default function SecurityAdminPage() {
               <ToggleField
                 checked={draft.untrustedDeviceEmailVerificationEnabled}
                 disabled={!canEdit || !draft.smtpEnabled}
-                label="非信任设备邮箱验证"
+                label={phrase("非信任设备邮箱验证", "Email verification for untrusted devices")}
                 onChange={(checked) =>
                   updateDraft(
                     "untrustedDeviceEmailVerificationEnabled",
@@ -456,13 +460,13 @@ export default function SecurityAdminPage() {
                   }
                   placeholder={
                     draft.turnstileSecretConfigured
-                      ? "已配置，留空保持不变"
-                      : "输入 Secret Key"
+                      ? phrase("已配置，留空保持不变", "Configured. Leave blank to keep it unchanged")
+                      : phrase("输入 Secret Key", "Enter Secret Key")
                   }
                   value={draft.turnstileSecret ?? ""}
                 />
               </Field>
-              <Field label="失败触发次数">
+              <Field label={phrase("失败触发次数", "Failure threshold")}>
                 <input
                   disabled={!canEdit}
                   max={5}
@@ -482,7 +486,7 @@ export default function SecurityAdminPage() {
               <ToggleField
                 checked={draft.turnstileRegistrationEnabled}
                 disabled={!canEdit}
-                label="注册"
+                label={phrase("注册", "Registration")}
                 onChange={(checked) =>
                   updateDraft("turnstileRegistrationEnabled", checked)
                 }
@@ -490,7 +494,7 @@ export default function SecurityAdminPage() {
               <ToggleField
                 checked={draft.turnstileLoginEnabled}
                 disabled={!canEdit}
-                label="登录失败"
+                label={phrase("登录失败", "Sign-in failures")}
                 onChange={(checked) =>
                   updateDraft("turnstileLoginEnabled", checked)
                 }
@@ -498,7 +502,7 @@ export default function SecurityAdminPage() {
               <ToggleField
                 checked={draft.turnstileRecoveryEnabled}
                 disabled={!canEdit || !draft.smtpEnabled}
-                label="密码找回"
+                label={phrase("密码找回", "Password recovery")}
                 onChange={(checked) =>
                   updateDraft("turnstileRecoveryEnabled", checked)
                 }
@@ -515,11 +519,11 @@ export default function SecurityAdminPage() {
                 type="button"
               >
                 <Send aria-hidden="true" size={15} />
-                {isTesting ? "测试中" : "测试连接"}
+                {isTesting ? phrase("测试中", "Testing") : phrase("测试连接", "Test connection")}
               </button>
               <button className="button" disabled={isSaving} type="submit">
                 <Save aria-hidden="true" size={15} />
-                {isSaving ? "保存中" : "保存配置"}
+                {isSaving ? phrase("保存中", "Saving") : phrase("保存配置", "Save settings")}
               </button>
             </div>
           ) : null}
@@ -528,8 +532,8 @@ export default function SecurityAdminPage() {
 
       <section className="security-records-panel">
         <div className="security-records-head">
-          <nav aria-label="安全记录类型" className="security-admin-tabs">
-            {tabOptions.map(({ value, label, Icon }) => (
+          <nav aria-label={phrase("安全记录类型", "Security record type")} className="security-admin-tabs">
+            {tabOptions.map(({ value, Icon }) => (
               <button
                 aria-selected={tab === value}
                 className={tab === value ? "active" : ""}
@@ -539,46 +543,41 @@ export default function SecurityAdminPage() {
                 type="button"
               >
                 <Icon aria-hidden="true" size={15} />
-                {label}
+                {securityTabLabel(value, phrase)}
               </button>
             ))}
           </nav>
-          <span>{total} 条记录</span>
+          <span>{phrase(`${total} 条记录`, `${total} records`)}</span>
         </div>
 
         <div className="security-record-filters">
           <label className="security-record-search">
             <Search aria-hidden="true" size={15} />
             <input
-              aria-label="搜索安全记录"
+              aria-label={phrase("搜索安全记录", "Search security records")}
               onChange={(event) => setSearchDraft(event.target.value)}
-              placeholder={searchPlaceholder(tab)}
+              placeholder={searchPlaceholder(tab, phrase)}
               type="search"
               value={searchDraft}
             />
           </label>
-          <select
-            aria-label="记录状态"
-            onChange={(event) => {
+          <GlassSelect
+            ariaLabel={phrase("记录状态", "Record status")}
+            onChange={(value) => {
               setPage(1);
-              setStatus(event.target.value);
+              setStatus(value);
             }}
+            options={statusOptions[tab].map(([value]) => ({ value, label: securityStatusLabel(value, phrase) }))}
             value={status}
-          >
-            {statusOptions[tab].map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+          />
         </div>
 
         <div className="admin-table-wrap security-table-wrap">
-          <SecurityTable isLoading={isListLoading} items={items} tab={tab} />
+          <SecurityTable isLoading={isListLoading} items={items} locale={locale} phrase={phrase} tab={tab} />
         </div>
-        <nav aria-label="安全记录分页" className="admin-pagination">
+        <nav aria-label={phrase("安全记录分页", "Security records pagination")} className="admin-pagination">
           <span>
-            第 {page} / {totalPages} 页
+            {phrase(`第 ${page} / ${totalPages} 页`, `Page ${page} / ${totalPages}`)}
           </span>
           <div>
             <button
@@ -586,14 +585,14 @@ export default function SecurityAdminPage() {
               onClick={() => setPage((value) => value - 1)}
               type="button"
             >
-              上一页
+              {phrase("上一页", "Previous")}
             </button>
             <button
               disabled={isListLoading || page >= totalPages}
               onClick={() => setPage((value) => value + 1)}
               type="button"
             >
-              下一页
+              {phrase("下一页", "Next")}
             </button>
           </div>
         </nav>
@@ -654,10 +653,14 @@ function ToggleField({
 function SecurityTable({
   isLoading,
   items,
+  locale,
+  phrase,
   tab,
 }: {
   isLoading: boolean;
   items: SecurityAdminOverviewItem[];
+  locale: "zh-CN" | "en-US";
+  phrase: (chinese: string, english: string) => string;
   tab: SecurityAdminTab;
 }) {
   const columnCount = tab === "risk-events" ? 5 : 6;
@@ -666,29 +669,29 @@ function SecurityTable({
       <thead>
         {tab === "mail-jobs" ? (
           <tr>
-            <th>创建时间</th>
-            <th>收件人</th>
-            <th>类型</th>
-            <th>主题</th>
-            <th>状态</th>
-            <th>发送结果</th>
+            <th>{phrase("创建时间", "Created")}</th>
+            <th>{phrase("收件人", "Recipient")}</th>
+            <th>{phrase("类型", "Type")}</th>
+            <th>{phrase("主题", "Subject")}</th>
+            <th>{phrase("状态", "Status")}</th>
+            <th>{phrase("发送结果", "Delivery result")}</th>
           </tr>
         ) : tab === "verification-codes" ? (
           <tr>
-            <th>创建时间</th>
-            <th>邮箱</th>
-            <th>用途</th>
-            <th>状态</th>
-            <th>尝试次数</th>
-            <th>有效时间</th>
+            <th>{phrase("创建时间", "Created")}</th>
+            <th>{phrase("邮箱", "Email")}</th>
+            <th>{phrase("用途", "Purpose")}</th>
+            <th>{phrase("状态", "Status")}</th>
+            <th>{phrase("尝试次数", "Attempts")}</th>
+            <th>{phrase("有效时间", "Expires")}</th>
           </tr>
         ) : (
           <tr>
-            <th>发生时间</th>
-            <th>用户</th>
-            <th>事件</th>
-            <th>风险</th>
-            <th>来源</th>
+            <th>{phrase("发生时间", "Time")}</th>
+            <th>{phrase("用户", "User")}</th>
+            <th>{phrase("事件", "Event")}</th>
+            <th>{phrase("风险", "Risk")}</th>
+            <th>{phrase("来源", "Source")}</th>
           </tr>
         )}
       </thead>
@@ -696,18 +699,18 @@ function SecurityTable({
         {isLoading ? (
           <tr>
             <td className="admin-table-state" colSpan={columnCount}>
-              正在读取安全记录
+              {phrase("正在读取安全记录", "Loading security records")}
             </td>
           </tr>
         ) : !items.length ? (
           <tr>
             <td className="admin-table-state" colSpan={columnCount}>
-              暂无匹配记录
+              {phrase("暂无匹配记录", "No matching records")}
             </td>
           </tr>
         ) : (
           items.map((item) => (
-            <SecurityRecordRow item={item} key={item.id} tab={tab} />
+            <SecurityRecordRow item={item} key={item.id} locale={locale} phrase={phrase} tab={tab} />
           ))
         )}
       </tbody>
@@ -717,26 +720,30 @@ function SecurityTable({
 
 function SecurityRecordRow({
   item,
+  locale,
+  phrase,
   tab,
 }: {
   item: SecurityAdminOverviewItem;
+  locale: "zh-CN" | "en-US";
+  phrase: (chinese: string, english: string) => string;
   tab: SecurityAdminTab;
 }) {
   if (tab === "mail-jobs") {
     return (
       <tr>
-        <td>{formatDateTime(item.createdAt)}</td>
+        <td>{formatDateTime(item.createdAt, locale)}</td>
         <td>{item.recipient || item.email || "-"}</td>
-        <td>{mailTypeLabel(item.type)}</td>
+        <td>{mailTypeLabel(item.type, phrase)}</td>
         <td className="security-table-summary">{item.subject || "-"}</td>
         <td>
-          <StatusBadge value={item.status} />
+          <StatusBadge phrase={phrase} value={item.status} />
         </td>
         <td>
           <strong>
             {item.sentAt
-              ? formatDateTime(item.sentAt)
-              : `${item.attempts ?? 0} 次尝试`}
+              ? formatDateTime(item.sentAt, locale)
+              : phrase(`${item.attempts ?? 0} 次尝试`, `${item.attempts ?? 0} attempts`)}
           </strong>
           {item.lastError ? <small>{item.lastError}</small> : null}
         </td>
@@ -747,18 +754,18 @@ function SecurityRecordRow({
   if (tab === "verification-codes") {
     return (
       <tr>
-        <td>{formatDateTime(item.createdAt)}</td>
+        <td>{formatDateTime(item.createdAt, locale)}</td>
         <td>{item.email || "-"}</td>
-        <td>{purposeLabel(item.purpose)}</td>
+        <td>{purposeLabel(item.purpose, phrase)}</td>
         <td>
-          <StatusBadge value={item.status} />
+          <StatusBadge phrase={phrase} value={item.status} />
         </td>
         <td>{item.attempts ?? 0}</td>
         <td>
-          <strong>{formatDateTime(item.expiresAt)}</strong>
+          <strong>{formatDateTime(item.expiresAt, locale)}</strong>
           {item.verifiedAt || item.consumedAt ? (
             <small>
-              完成于 {formatDateTime(item.consumedAt || item.verifiedAt)}
+              {phrase("完成于", "Completed")} {formatDateTime(item.consumedAt || item.verifiedAt, locale)}
             </small>
           ) : null}
         </td>
@@ -768,30 +775,30 @@ function SecurityRecordRow({
 
   return (
     <tr>
-      <td>{formatDateTime(item.createdAt)}</td>
+      <td>{formatDateTime(item.createdAt, locale)}</td>
       <td>
-        <strong>{item.user?.nickname || "未知用户"}</strong>
+        <strong>{item.user?.nickname || phrase("未知用户", "Unknown user")}</strong>
         <small>{item.user?.username ? `@${item.user.username}` : ""}</small>
       </td>
       <td className="security-table-summary">
-        <strong>{item.summary || securityTypeLabel(item.type)}</strong>
-        <small>{securityTypeLabel(item.type)}</small>
+        <strong>{item.summary || securityTypeLabel(item.type, phrase)}</strong>
+        <small>{securityTypeLabel(item.type, phrase)}</small>
       </td>
       <td>
-        <StatusBadge value={item.riskLevel} />
+        <StatusBadge phrase={phrase} value={item.riskLevel} />
       </td>
       <td>
-        <strong>{item.deviceLabel || "未知设备"}</strong>
-        <small>{item.ip || "IP 未记录"}</small>
+        <strong>{item.deviceLabel || phrase("未知设备", "Unknown device")}</strong>
+        <small>{item.ip || phrase("IP 未记录", "IP not recorded")}</small>
       </td>
     </tr>
   );
 }
 
-function StatusBadge({ value = "unknown" }: { value?: string }) {
+function StatusBadge({ phrase, value = "unknown" }: { phrase: (chinese: string, english: string) => string; value?: string }) {
   return (
     <span className={`security-status-badge ${value}`}>
-      {statusLabel(value)}
+      {securityStatusLabel(value, phrase)}
     </span>
   );
 }
@@ -800,67 +807,77 @@ function canAccessSecurityAdmin(user: AuthUser): boolean {
   return isSiteManager(user);
 }
 
-function searchPlaceholder(tab: SecurityAdminTab): string {
-  if (tab === "mail-jobs") return "收件人、主题或错误";
-  if (tab === "verification-codes") return "邮箱或 IP";
-  return "用户、事件、设备或 IP";
+function securityTabLabel(tab: SecurityAdminTab, phrase: (chinese: string, english: string) => string): string {
+  if (tab === "mail-jobs") return phrase("邮件任务", "Mail jobs");
+  if (tab === "verification-codes") return phrase("验证码", "Verification codes");
+  return phrase("风险事件", "Risk events");
 }
 
-function statusLabel(value: string): string {
-  const labels: Record<string, string> = {
-    pending: "待处理",
-    sending: "发送中",
-    sent: "已发送",
-    failed: "失败",
-    verified: "已验证",
-    consumed: "已使用",
-    expired: "已过期",
-    info: "信息",
-    low: "低风险",
-    medium: "中风险",
-    high: "高风险",
+function searchPlaceholder(tab: SecurityAdminTab, phrase: (chinese: string, english: string) => string): string {
+  if (tab === "mail-jobs") return phrase("收件人、主题或错误", "Recipient, subject, or error");
+  if (tab === "verification-codes") return phrase("邮箱或 IP", "Email or IP");
+  return phrase("用户、事件、设备或 IP", "User, event, device, or IP");
+}
+
+function securityStatusLabel(value: string, phrase: (chinese: string, english: string) => string): string {
+  const labels: Record<string, [string, string]> = {
+    "": ["全部状态", "All statuses"],
+    pending: ["待处理", "Pending"],
+    sending: ["发送中", "Sending"],
+    sent: ["已发送", "Sent"],
+    failed: ["失败", "Failed"],
+    verified: ["已验证", "Verified"],
+    consumed: ["已使用", "Used"],
+    expired: ["已过期", "Expired"],
+    info: ["信息", "Info"],
+    low: ["低风险", "Low risk"],
+    medium: ["中风险", "Medium risk"],
+    high: ["高风险", "High risk"],
   };
-  return labels[value] ?? value;
+  const label = labels[value];
+  return label ? phrase(label[0], label[1]) : value;
 }
 
-function mailTypeLabel(value?: string): string {
-  const labels: Record<string, string> = {
-    registration_verification: "注册验证",
-    account_email_verification: "邮箱验证",
-    password_reset: "密码找回",
-    login_risk: "登录风险",
-    security_notice: "安全通知",
+function mailTypeLabel(value: string | undefined, phrase: (chinese: string, english: string) => string): string {
+  const labels: Record<string, [string, string]> = {
+    registration_verification: ["注册验证", "Registration verification"],
+    account_email_verification: ["邮箱验证", "Email verification"],
+    password_reset: ["密码找回", "Password recovery"],
+    login_risk: ["登录风险", "Sign-in risk"],
+    security_notice: ["安全通知", "Security notice"],
   };
-  return labels[value ?? ""] ?? value ?? "-";
+  const label = labels[value ?? ""];
+  return label ? phrase(label[0], label[1]) : value ?? "-";
 }
 
-function purposeLabel(value?: string): string {
+function purposeLabel(value: string | undefined, phrase: (chinese: string, english: string) => string): string {
   return value === "registration"
-    ? "注册验证"
+    ? phrase("注册验证", "Registration verification")
     : value === "account_email"
-      ? "账号邮箱"
+      ? phrase("账号邮箱", "Account email")
       : value || "-";
 }
 
-function securityTypeLabel(value?: string): string {
-  const labels: Record<string, string> = {
-    login_success: "登录成功",
-    new_device: "新设备登录",
-    new_ip: "陌生 IP 登录",
-    unusual_frequency: "异常登录频率",
-    login_blocked: "登录已限制",
-    password_reset: "密码已重置",
-    password_changed: "密码已修改",
-    email_verified: "邮箱已验证",
+function securityTypeLabel(value: string | undefined, phrase: (chinese: string, english: string) => string): string {
+  const labels: Record<string, [string, string]> = {
+    login_success: ["登录成功", "Sign-in succeeded"],
+    new_device: ["新设备登录", "New device sign-in"],
+    new_ip: ["陌生 IP 登录", "New IP sign-in"],
+    unusual_frequency: ["异常登录频率", "Unusual sign-in frequency"],
+    login_blocked: ["登录已限制", "Sign-in restricted"],
+    password_reset: ["密码已重置", "Password reset"],
+    password_changed: ["密码已修改", "Password changed"],
+    email_verified: ["邮箱已验证", "Email verified"],
   };
-  return labels[value ?? ""] ?? value ?? "安全事件";
+  const label = labels[value ?? ""];
+  return label ? phrase(label[0], label[1]) : value ?? phrase("安全事件", "Security event");
 }
 
-function formatDateTime(value?: string | null): string {
+function formatDateTime(value: string | null | undefined, locale: "zh-CN" | "en-US"): string {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
