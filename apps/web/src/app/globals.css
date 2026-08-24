@@ -17060,6 +17060,19 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .moderation-report-preview-message > div { width: 100%; }
 .moderation-report-preview-message p { box-sizing: border-box; width: 100%; }
 
+/* Final compact typography for the writing page. Keep this after the shared editor rules. */
+.article-editor-page .article-editor-workspace .article-editor-panel .article-title-input { font-size: 1rem; }
+.article-editor-page .article-editor-workspace .article-editor-panel .article-editor-textarea { font-size: 0.84rem; line-height: 1.68; }
+.article-editor-page .article-editor-workspace .article-editor-preview .article-body { font-size: 0.82rem; line-height: 1.68; }
+.article-editor-page .article-editor-workspace .article-editor-preview .article-body h2 { font-size: 1.15rem; }
+.article-editor-page .article-editor-workspace .article-editor-preview .article-body h3 { font-size: 1rem; }
+.article-editor-page .article-editor-workspace .article-editor-preview .article-body h4 { font-size: 0.9rem; }
+.article-editor-page .article-editor-actions > button { min-height: 32px; font-size: 0.74rem; }
+.article-editor-page .article-editor-actions > .button { padding-right: 10px; padding-left: 10px; }
+.article-editor-page .article-editor-fields > .article-editor-grid label,
+.article-editor-page .article-editor-fields > .article-editor-taxonomy-grid > div > span,
+.article-editor-page .article-editor-fields > .article-resource-settings { font-size: 0.74rem; }
+
 @media (max-width: 680px) {
   .moderation-reports-header { align-items: flex-start; flex-direction: column; }
   .moderation-summary { width: 100%; justify-content: flex-start; }
