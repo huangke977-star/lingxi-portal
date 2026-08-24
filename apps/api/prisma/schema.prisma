@@ -99,6 +99,29 @@ enum ArticleCommentReportStatus {
   rejected
 }
 
+enum ModerationRuleType {
+  sensitive_word
+  link_rate
+  duplicate_content
+  high_frequency
+}
+
+enum ModerationRuleAction {
+  record
+  block
+}
+
+enum ModerationContentSource {
+  article
+  comment
+  group_message
+}
+
+enum ModerationDeadlineStage {
+  approaching
+  overdue
+}
+
 enum FriendshipStatus {
   pending
   accepted
@@ -536,6 +559,11 @@ model User {
   profileSettings            UserProfileSettings?
   profileVisits              ProfileVisit[]                  @relation("ProfileVisitTarget")
   auditLogs                  AuditLog[]                      @relation("AuditLogActor")
+  moderationRulesCreated     ModerationRule[]                @relation("ModerationRuleCreatedBy")
+  moderationRuleHits         ModerationRuleHit[]             @relation("ModerationRuleHitActor")
+  moderationTemplatesCreated ModerationTemplate[]            @relation("ModerationTemplateCreatedBy")
+  moderationTemplatesUpdated ModerationTemplate[]            @relation("ModerationTemplateUpdatedBy")
+  moderationContentRecords   ModerationContentRecord[]
   pushSubscriptions          PushSubscription[]
   securityPreference         UserSecurityPreference?
   knownLoginDevices          KnownLoginDevice[]
@@ -2388,4 +2416,98 @@ model AuditLog {
   @@index([actorId, createdAt])
   @@index([action, createdAt])
   @@map("audit_logs")
+}
+
+model ModerationRule {
+  id            Int                  @id @default(autoincrement())
+  name          String               @db.VarChar(80)
+  type          ModerationRuleType
+  action        ModerationRuleAction @default(record)
+  sources       String               @default("article,comment,group_message") @db.VarChar(80)
+  keywords      String?              @db.Text
+  threshold     Int                  @default(1)
+  windowSeconds Int                  @default(60) @map("window_seconds")
+  enabled       Boolean              @default(true)
+  createdById   Int?                 @map("created_by_id")
+  createdBy     User?                @relation("ModerationRuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+  hits          ModerationRuleHit[]
+
+  @@index([enabled, type])
+  @@map("moderation_rules")
+}
+
+model ModerationRuleHit {
+  id             Int                     @id @default(autoincrement())
+  ruleId         Int                     @map("rule_id")
+  rule           ModerationRule          @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  actorId        Int                     @map("actor_id")
+  actor          User                    @relation("ModerationRuleHitActor", fields: [actorId], references: [id], onDelete: Cascade)
+  source         ModerationContentSource
+  action         ModerationRuleAction
+  contentPreview String                  @map("content_preview") @db.VarChar(240)
+  detail         String                  @db.VarChar(255)
+  createdAt      DateTime                @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([ruleId, createdAt])
+  @@index([actorId, createdAt])
+  @@map("moderation_rule_hits")
+}
+
+model ModerationContentRecord {
+  id          Int                     @id @default(autoincrement())
+  userId      Int                     @map("user_id")
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source      ModerationContentSource
+  contentRef  String                  @map("content_ref") @db.VarChar(80)
+  contentHash String                  @map("content_hash") @db.Char(64)
+  linkCount   Int                     @default(0) @map("link_count")
+  createdAt   DateTime                @default(now()) @map("created_at")
+  updatedAt   DateTime                @updatedAt @map("updated_at")
+
+  @@unique([source, contentRef])
+  @@index([userId, source, createdAt])
+  @@index([userId, source, contentHash, createdAt])
+  @@map("moderation_content_records")
+}
+
+model ModerationTemplate {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(80)
+  status      String   @db.VarChar(20)
+  content     String   @db.VarChar(500)
+  enabled     Boolean  @default(true)
+  createdById Int?     @map("created_by_id")
+  createdBy   User?    @relation("ModerationTemplateCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById Int?     @map("updated_by_id")
+  updatedBy   User?    @relation("ModerationTemplateUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([enabled, status])
+  @@map("moderation_templates")
+}
+
+model ModerationSetting {
+  id                         Int      @id
+  deadlineHours              Int      @default(24) @map("deadline_hours")
+  reminderLeadHours          Int      @default(4) @map("reminder_lead_hours")
+  automaticRemindersEnabled  Boolean  @default(true) @map("automatic_reminders_enabled")
+  updatedById                Int?     @map("updated_by_id")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
+}
+
+model ModerationDeadlineNotice {
+  id        Int                     @id @default(autoincrement())
+  source    ModerationContentSource
+  reportId  Int                     @map("report_id")
+  stage     ModerationDeadlineStage
+  dueAt     DateTime                @map("due_at")
+  createdAt DateTime                @default(now()) @map("created_at")
+
+  @@unique([source, reportId, stage])
+  @@index([createdAt])
+  @@map("moderation_deadline_notices")
 }

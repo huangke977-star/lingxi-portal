@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -27,6 +28,7 @@ import { RedisService } from "../redis/redis.service";
 import { ReputationService } from "../reputation/reputation.service";
 import { buildSearchFields } from "../search/search-normalization";
 import { SiteSettingsService } from "../site-settings/site-settings.service";
+import { ContentModerationService } from "../moderation/content-moderation.service";
 import {
   ARTICLE_STATUSES,
   ArticleStatusValue,
@@ -70,6 +72,10 @@ import { parseArticleContent } from "./article-resources";
 
 export const ARTICLE_IMAGE_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 export const ARTICLE_IMAGE_MAX_FILES_PER_ARTICLE = 20;
+const noOpContentModerationService: Pick<ContentModerationService, "enforce" | "recordAccepted"> = {
+  enforce: async () => undefined,
+  recordAccepted: async () => undefined,
+};
 
 export interface UploadedArticleImage {
   buffer: Buffer;
@@ -324,6 +330,8 @@ export class ArticlesService {
     private readonly siteSettingsService: SiteSettingsService,
     private readonly redis: RedisService,
     private readonly reputationService: ReputationService,
+    @Inject(ContentModerationService)
+    private readonly contentModerationService: Pick<ContentModerationService, "enforce" | "recordAccepted"> = noOpContentModerationService,
   ) {}
 
   listPublic(query: ListArticlesQueryDto): Promise<ArticleListResponse> {
@@ -575,6 +583,9 @@ export class ArticlesService {
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
     const status = this.normalizeAuthorStatus(dto.status);
     if (status === ArticleStatus.published) await this.assertArticlePublishAllowed(user);
+    if (status === ArticleStatus.published) {
+      await this.contentModerationService.enforce({ source: "article", actorId: user.id, content: `${title}\n${content}` });
+    }
     const slug = await this.createUniqueSlug(title);
     const tags = this.normalizeTags(dto.tags);
     const article = await this.prisma.$transaction(async (transaction) => {
@@ -603,6 +614,9 @@ export class ArticlesService {
       }
       return created;
     });
+    if (status === ArticleStatus.published) {
+      await this.contentModerationService.recordAccepted({ source: "article", actorId: user.id, content: `${title}\n${content}`, contentRef: `article:${article.id}` });
+    }
     return this.toResponse(article, user);
   }
 
@@ -779,12 +793,16 @@ export class ArticlesService {
     const title = dto.title?.trim() || existing.title;
     const category = dto.category === undefined ? existing.category : dto.category.trim();
     const tags = dto.tags === undefined ? existing.tags : this.normalizeTags(dto.tags);
-    parseArticleContent(dto.content === undefined ? existing.content : dto.content.trim());
+    const content = dto.content === undefined ? existing.content : dto.content.trim();
+    parseArticleContent(content);
+    if (status === ArticleStatus.published && !this.canManageContent(user)) {
+      await this.contentModerationService.enforce({ source: "article", actorId: user.id, content: `${title}\n${content}`, contentRef: `article:${id}` });
+    }
     const article = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.article.update({ where: { id }, data: {
         title,
         summary: dto.summary === undefined ? existing.summary : dto.summary.trim(),
-        content: dto.content === undefined ? existing.content : dto.content.trim(),
+        content,
         category,
         tags,
         titleColor: dto.titleColor === undefined ? existing.titleColor : this.normalizeTitleColor(dto.titleColor),
@@ -812,6 +830,9 @@ export class ArticlesService {
       }
       return updated;
     });
+    if (status === ArticleStatus.published && !this.canManageContent(user)) {
+      await this.contentModerationService.recordAccepted({ source: "article", actorId: user.id, content: `${title}\n${content}`, contentRef: `article:${article.id}` });
+    }
     return this.toResponse(article, user);
   }
 
@@ -826,6 +847,9 @@ export class ArticlesService {
       throw new BadRequestException("文章标题和正文不能为空。");
     }
     parseArticleContent(existing.content);
+    if (!this.canManageContent(user)) {
+      await this.contentModerationService.enforce({ source: "article", actorId: user.id, content: `${existing.title}\n${existing.content}`, contentRef: `article:${id}` });
+    }
     const isFirstPublication = existing.publishedAt === null;
     const isNewPublication = existing.status !== ArticleStatus.published;
     const article = await this.prisma.$transaction(async (transaction) => {
@@ -841,6 +865,9 @@ export class ArticlesService {
       }
       return updated;
     });
+    if (!this.canManageContent(user)) {
+      await this.contentModerationService.recordAccepted({ source: "article", actorId: user.id, content: `${article.title}\n${article.content}`, contentRef: `article:${article.id}` });
+    }
     return this.toResponse(article, user);
   }
 
@@ -1135,6 +1162,7 @@ export class ArticlesService {
     if (!body) {
       throw new BadRequestException("评论内容不能为空。");
     }
+    await this.contentModerationService.enforce({ source: "comment", actorId: user.id, content: body });
     let parent: { id: number; authorId: number } | null = null;
     if (dto.parentId) {
       parent = await this.prisma.articleComment.findFirst({ where: { id: dto.parentId, articleId: id, status: ArticleCommentStatus.active }, select: { id: true, authorId: true } });
@@ -1183,6 +1211,7 @@ export class ArticlesService {
       } });
       return created;
     });
+    await this.contentModerationService.recordAccepted({ source: "comment", actorId: user.id, content: body, contentRef: `comment:${comment.id}` });
     return this.toCommentResponse(comment);
   }
 

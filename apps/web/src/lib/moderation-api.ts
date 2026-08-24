@@ -63,6 +63,64 @@ export interface ModerationReportSummary {
   bySource: Record<ModerationReportSource, number>;
 }
 
+export type ModerationRuleType = "sensitive_word" | "link_rate" | "duplicate_content" | "high_frequency";
+export type ModerationRuleAction = "record" | "block";
+
+export interface ModerationRule {
+  id: number;
+  name: string;
+  type: ModerationRuleType;
+  action: ModerationRuleAction;
+  sources: ModerationReportSource[];
+  keywords: string;
+  threshold: number;
+  windowSeconds: number;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ModerationRuleHit {
+  id: number;
+  rule: Pick<ModerationRule, "id" | "name" | "type">;
+  actor: Pick<ModerationUser, "id" | "nickname" | "username" | "avatarUrl">;
+  source: ModerationReportSource;
+  action: ModerationRuleAction;
+  contentPreview: string;
+  detail: string;
+  createdAt: string;
+}
+
+export interface ModerationTemplate {
+  id: number;
+  name: string;
+  status: Exclude<ModerationReportStatus, "pending">;
+  content: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ModerationSettings {
+  deadlineHours: number;
+  reminderLeadHours: number;
+  automaticRemindersEnabled: boolean;
+  updatedAt: string;
+}
+
+export interface ModerationOverview {
+  reports: {
+    total: number;
+    pending: number;
+    resolved: number;
+    rejected: number;
+    overdue: number;
+    averageHandleMinutes: number | null;
+    bySource: Record<ModerationReportSource, { total: number; pending: number; overdue: number }>;
+  };
+  ruleHits: { last7Days: number; last30Days: number; byType: Array<{ type: ModerationRuleType; count: number }> };
+}
+
 function authHeaders(accessToken: string) {
   return { Authorization: `Bearer ${accessToken}` };
 }
@@ -82,4 +140,56 @@ export function listModerationReports(
 
 export function getModerationReportSummary(accessToken: string): Promise<ModerationReportSummary> {
   return requestJson("/moderation/reports/summary", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function getModerationOverview(accessToken: string): Promise<ModerationOverview> {
+  return requestJson("/moderation/overview", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function listModerationRules(accessToken: string): Promise<{ items: ModerationRule[] }> {
+  return requestJson("/moderation/rules", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function createModerationRule(accessToken: string, body: Omit<ModerationRule, "id" | "createdAt" | "updatedAt">): Promise<ModerationRule> {
+  return requestJson("/moderation/rules", { method: "POST", headers: { ...authHeaders(accessToken), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export function updateModerationRule(accessToken: string, id: number, body: Partial<Omit<ModerationRule, "id" | "type" | "createdAt" | "updatedAt">>): Promise<ModerationRule> {
+  return requestJson(`/moderation/rules/${id}`, { method: "PATCH", headers: { ...authHeaders(accessToken), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export function deleteModerationRule(accessToken: string, id: number): Promise<{ success: true }> {
+  return requestJson(`/moderation/rules/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function listModerationRuleHits(accessToken: string, page = 1, pageSize = 20): Promise<{ items: ModerationRuleHit[]; total: number; page: number; pageSize: number; totalPages: number }> {
+  return requestJson(`/moderation/rule-hits?page=${page}&pageSize=${pageSize}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function listModerationTemplates(accessToken: string): Promise<{ items: ModerationTemplate[] }> {
+  return requestJson("/moderation/templates", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function createModerationTemplate(accessToken: string, body: Pick<ModerationTemplate, "name" | "status" | "content" | "enabled">): Promise<ModerationTemplate> {
+  return requestJson("/moderation/templates", { method: "POST", headers: { ...authHeaders(accessToken), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export function updateModerationTemplate(accessToken: string, id: number, body: Partial<Pick<ModerationTemplate, "name" | "status" | "content" | "enabled">>): Promise<ModerationTemplate> {
+  return requestJson(`/moderation/templates/${id}`, { method: "PATCH", headers: { ...authHeaders(accessToken), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export function deleteModerationTemplate(accessToken: string, id: number): Promise<{ success: true }> {
+  return requestJson(`/moderation/templates/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function getModerationSettings(accessToken: string): Promise<ModerationSettings> {
+  return requestJson("/moderation/settings", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function updateModerationSettings(accessToken: string, body: Omit<ModerationSettings, "updatedAt">): Promise<ModerationSettings> {
+  return requestJson("/moderation/settings", { method: "PUT", headers: { ...authHeaders(accessToken), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export function bulkHandleModerationReports(accessToken: string, body: { source: ModerationReportSource; reportIds: number[]; status: Exclude<ModerationReportStatus, "pending">; resolution: string }): Promise<{ succeeded: number[]; failed: Array<{ id: number; message: string }> }> {
+  return requestJson("/moderation/reports/bulk", { method: "POST", headers: { ...authHeaders(accessToken), "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }

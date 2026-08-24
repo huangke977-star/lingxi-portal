@@ -12,6 +12,38 @@ const user = (id: number, nickname: string) => ({
 });
 
 describe("ModerationService", () => {
+  it("keeps rule configuration super-admin only while managers can read the queue", async () => {
+    const prisma = {
+      moderationRule: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn() },
+    };
+    const service = new ModerationService(prisma as unknown as PrismaService);
+    await expect(service.createRule({ id: 3, isSuperAdmin: false } as never, {
+      name: "敏感词", type: "sensitive_word", sources: ["article"], keywords: "测试",
+    })).rejects.toThrow("仅超级管理员");
+    expect(prisma.moderationRule.create).not.toHaveBeenCalled();
+  });
+
+  it("creates one approaching-deadline notice and notifies active site managers", async () => {
+    const prisma = {
+      moderationSetting: { upsert: jest.fn().mockResolvedValue({ id: 1, deadlineHours: 24, reminderLeadHours: 4, automaticRemindersEnabled: true, updatedAt: new Date() }) },
+      articleCommentReport: { findMany: jest.fn().mockResolvedValue([{ id: 9, createdAt: new Date(Date.now() - 21 * 60 * 60 * 1_000) }]) },
+      articleReport: { findMany: jest.fn().mockResolvedValue([]) },
+      chatGroupMessageReport: { findMany: jest.fn().mockResolvedValue([]) },
+      moderationDeadlineNotice: { create: jest.fn().mockResolvedValue({ id: 1 }) },
+      user: { findMany: jest.fn().mockResolvedValue([{ id: 1 }, { id: 2 }]) },
+      userNotification: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    };
+    const service = new ModerationService(prisma as unknown as PrismaService);
+
+    await service.runDeadlineNotifications();
+
+    expect(prisma.moderationDeadlineNotice.create).toHaveBeenCalledWith({ data: expect.objectContaining({ source: "comment", reportId: 9, stage: "approaching" }) });
+    expect(prisma.userNotification.createMany).toHaveBeenCalledWith({ data: expect.arrayContaining([
+      expect.objectContaining({ userId: 1, title: "举报处理即将超时" }),
+      expect.objectContaining({ userId: 2, actionUrl: "/admin/reports?status=pending&source=comment" }),
+    ]) });
+  });
+
   it("merges the three report sources into one time-ordered page", async () => {
     const prisma = {
       articleCommentReport: {

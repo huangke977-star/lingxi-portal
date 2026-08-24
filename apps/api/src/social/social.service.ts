@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -29,6 +30,7 @@ import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import { SiteSettingsService } from "../site-settings/site-settings.service";
 import { ReputationService } from "../reputation/reputation.service";
+import { ContentModerationService } from "../moderation/content-moderation.service";
 import { ChatAttachmentsService } from "./chat-attachments.service";
 import {
   ListMessagesQueryDto,
@@ -52,6 +54,10 @@ import {
 } from "./social.types";
 
 const MESSAGE_RECALL_WINDOW_MS = 2 * 60 * 1000;
+const noOpContentModerationService: Pick<ContentModerationService, "enforce" | "recordAccepted"> = {
+  enforce: async () => undefined,
+  recordAccepted: async () => undefined,
+};
 
 const socialUserSelect = {
   id: true,
@@ -196,6 +202,8 @@ export class SocialService {
     private readonly chatAttachmentsService: ChatAttachmentsService,
     private readonly siteSettingsService: SiteSettingsService,
     private readonly reputationService: ReputationService,
+    @Inject(ContentModerationService)
+    private readonly contentModerationService: Pick<ContentModerationService, "enforce" | "recordAccepted"> = noOpContentModerationService,
   ) {}
 
   async getProfile(viewer: AuthenticatedUser, userId: number): Promise<PublicProfileResponse> {
@@ -1110,6 +1118,9 @@ export class SocialService {
       throw new ForbiddenException(`你已被禁言至 ${membership.group.mutedUntil.toLocaleString("zh-CN", { hour12: false })}。`);
     }
     this.assertGroupCanSend(membership.group);
+    if (membership.group) {
+      await this.contentModerationService.enforce({ source: "group_message", actorId: userId, content: body || "[附件消息]", attachmentOnly: !body });
+    }
     const message = await this.prisma.$transaction(async (transaction) => {
       const created = await transaction.chatMessage.create({
         data: {
@@ -1140,6 +1151,9 @@ export class SocialService {
       await transaction.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
       return transaction.chatMessage.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude });
     });
+    if (membership.group) {
+      await this.contentModerationService.recordAccepted({ source: "group_message", actorId: userId, content: body || "[附件消息]", contentRef: `group_message:${message.id}` });
+    }
     return this.toMessage(message, membership.group?.alias ?? undefined);
   }
 
@@ -1182,6 +1196,11 @@ export class SocialService {
     );
     if (totalAttachmentBytes > 100 * 1024 * 1024) {
       throw new BadRequestException("单次转发的附件总大小不能超过 100MB。");
+    }
+    if (targetMembership.group) {
+      for (const source of sourceMessages) {
+        await this.contentModerationService.enforce({ source: "group_message", actorId: userId, content: source.body || "[附件消息]", attachmentOnly: !source.body });
+      }
     }
 
     const copiedStoredNames: string[] = [];
@@ -1226,6 +1245,14 @@ export class SocialService {
         await transaction.conversation.update({ where: { id: targetConversationId }, data: { updatedAt: new Date() } });
         return records;
       });
+      if (targetMembership.group) {
+        await Promise.all(forwarded.map((message) => this.contentModerationService.recordAccepted({
+          source: "group_message",
+          actorId: userId,
+          content: message.body || "[附件消息]",
+          contentRef: `group_message:${message.id}`,
+        })));
+      }
       return {
         messages: forwarded.map((message) => this.toMessage(message)),
         participantIds: targetMembership.participantIds,

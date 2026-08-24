@@ -73,3 +73,62 @@ export interface ModerationReportPageResponse {
   pageSize: number;
   totalPages: number;
 }
+
+export interface ModerationRuleResponse {
+  id: number;
+  name: string;
+  type: "sensitive_word" | "link_rate" | "duplicate_content" | "high_frequency";
+  action: "record" | "block";
+  sources: ModerationReportSource[];
+  keywords: string;
+  threshold: number;
+  windowSeconds: number;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ModerationRuleHitResponse {
+  id: number;
+  rule: Pick<ModerationRuleResponse, "id" | "name" | "type">;
+  actor: Pick<ModerationUserResponse, "id" | "nickname" | "username" | "avatarUrl">;
+  source: ModerationReportSource;
+  action: "record" | "block";
+  contentPreview: string;
+  detail: string;
+  createdAt: string;
+}
+
+export interface ModerationTemplateResponse {
+  id: number;
+  name: string;
+  status: "resolved" | "rejected";
+  content: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ModerationSettingsResponse {
+  deadlineHours: number;
+  reminderLeadHours: number;
+  automaticRemindersEnabled: boolean;
+  updatedAt: string;
+}
+
+export interface ModerationOverviewResponse {
+  reports: {
+    total: number;
+    pending: number;
+    resolved: number;
+    rejected: number;
+    overdue: number;
+    averageHandleMinutes: number | null;
+    bySource: Record<ModerationReportSource, { total: number; pending: number; overdue: number }>;
+  };
+  ruleHits: {
+    last7Days: number;
+    last30Days: number;
+    byType: Array<{ type: ModerationRuleResponse["type"]; count: number }>;
+  };
+}

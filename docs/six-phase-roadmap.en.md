@@ -2,8 +2,8 @@
 
 - Document status: Active
 - Created: 2026-08-04
-- Last updated: 2026-08-19
-- Current phase: Phase 10 not started (Phase 9 Privacy And Discovery Extension is complete)
+- Last updated: 2026-08-24
+- Current phase: Phase 10 completed
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -42,7 +42,7 @@ Status definitions:
 | Phase 7 | Backup Recovery Closure | Paired database/media snapshots, integrity verification, restore preflight | Completed |
 | Phase 8 | Portal Entry Upgrade | Home, dashboard, and tools-center redesign | Completed |
 | Phase 9 | Privacy And Discovery Extension | Social permissions, search scope, discovery entry points | Completed |
-| Phase 10 | Moderation Automation | Unified reports, anti-spam, and review rules | In progress (P10-01 completed) |
+| Phase 10 | Moderation Automation | Unified reports, anti-spam, and review rules | Completed |
 
 ## 4. External Prerequisites
 
@@ -416,15 +416,19 @@ Goal: reduce manual review pressure while retaining a complete handling record a
 | ID | Scope | Status |
 | --- | --- | --- |
 | P10-01 | Consolidate article-comment, group-message, and user-related reports into one pending queue | Completed |
-| P10-02 | Add configurable sensitive-word, link-frequency, duplicate-content, and high-frequency-message rules | Not started |
-| P10-03 | Add bulk handling, resolution templates, handling deadlines, and automatic notices | Not started |
-| P10-04 | Add moderation audit, statistics, and administrator permission-boundary coverage | Not started |
+| P10-02 | Add configurable sensitive-word, link-frequency, duplicate-content, and high-frequency-message rules | Completed |
+| P10-03 | Add bulk handling, resolution templates, handling deadlines, and automatic notices | Completed |
+| P10-04 | Add moderation audit, statistics, and administrator permission-boundary coverage | Completed |
 
-### Current P10-01 Implementation Results
+### Current Implementation Results
 
 - Added unified report-query and summary endpoints that merge article, comment, and group-message reports into one time-ordered pending queue with source, status, and pagination filters.
 - Added an administrator report center, a unified header pending-report popover, a dashboard entry, and an account-menu entry. User feedback remains an independent workflow.
 - Resolution and rejection continue to call the existing article, comment, and group-message moderation endpoints, preserving notifications, reputation awards, message deletion, and duplicate-handling protection.
+- Added sensitive-word, link-frequency, duplicate-content, and high-frequency-message rules. Rules can target articles, comments, and group messages, and can either record or block a submission. Drafts, autosaves, and direct messages stay outside rule enforcement; content fingerprints and rate data are recorded only after a successful submission.
+- The report center now supports bulk handling for same-source pending reports, reusable resolution templates, handling deadlines, and idempotent approaching/overdue in-app notices. Bulk handling preserves content by default; destructive block/delete actions remain explicit per-report decisions.
+- Added rule-hit, pending, overdue, handling-time, and per-source statistics. Administrators can view statistics, hits, rules, and templates and can resolve reports; only super administrators can create, edit, or delete rules, templates, and deadline settings.
+- `/moderation` create, update, delete, and bulk actions are written to business audit logs. Added coverage for rule enforcement, deadline notices, source routing, audit classification, and super-administrator configuration boundaries.
 - API/Web lint and production builds passed. Two focused unified-report service tests passed, and the full API suite passed with 41 suites and 270 tests.
 - Playwright covered the unified list, header pending queue, filters, and action dialog at 1280px desktop and 390x844 mobile viewports without page-level horizontal overflow.
 - Commit `fc183f4` was pushed and GitHub Actions `32441111237` published the API and Web images successfully. Production bootstrap confirmed all 49 migrations were already applied with none pending; only API and Web were recreated, the external home page, `/admin/reports`, and `/api/health` returned `200`, all six core containers retained restart count zero, and the previous API/Web images plus the stopped bootstrap container were removed.

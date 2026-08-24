@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { forwardRef, Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { RedisModule } from "../redis/redis.module";
 import { SiteSettingsModule } from "../site-settings/site-settings.module";
@@ -14,9 +14,10 @@ import { PublicProfilesController } from "./public-profiles.controller";
 import { PushModule } from "../push/push.module";
 import { PendingActionReminderService } from "./pending-action-reminder.service";
 import { ReputationModule } from "../reputation/reputation.module";
+import { ModerationModule } from "../moderation/moderation.module";
 
 @Module({
-  imports: [JwtModule.register({}), UsersModule, RedisModule, SiteSettingsModule, PushModule, ReputationModule],
+  imports: [JwtModule.register({}), UsersModule, RedisModule, SiteSettingsModule, PushModule, ReputationModule, forwardRef(() => ModerationModule)],
   controllers: [SocialController, PublicProfilesController, ChatGroupsController, ChatGroupAvatarsController],
   providers: [SocialService, ChatAttachmentsService, ChatGroupsService, CallsService, ChatGateway, PendingActionReminderService],
   exports: [SocialService, ChatGroupsService],

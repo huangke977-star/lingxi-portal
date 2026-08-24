@@ -97,4 +97,14 @@ describe("audit logs", () => {
       },
     }) });
   });
+
+  it("records moderation mutations in the business audit scope", async () => {
+    const create = jest.fn(async () => undefined);
+    const interceptor = new AuditInterceptor({ auditLog: { create } } as unknown as PrismaService);
+    const request = { method: "POST", path: "/moderation/reports/bulk", params: {}, query: {}, body: { source: "article", reportIds: [8] }, headers: {}, ip: "127.0.0.1", user: user(false) };
+    const context = { getType: () => "http", switchToHttp: () => ({ getRequest: () => request, getResponse: () => ({ statusCode: 200 }) }) } as unknown as ExecutionContext;
+    await firstValueFrom(interceptor.intercept(context, { handle: () => of({ success: true }) } as CallHandler));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "moderation.create", targetType: "moderation", scope: "business" }) });
+  });
 });
