@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { PasswordInput } from "@/components/password-input";
@@ -345,17 +346,7 @@ export default function AdminPage() {
     );
   }
 
-  if (isLoading) {
-    return (
-      <section className="page-shell admin-shell">
-        <span className="eyebrow">HLOVET Admin</span>
-        <h1>{phrase("用户管理", "User management")}</h1>
-        <div className="status-row">
-          <span className="status">{phrase("正在读取权限", "Checking access")}</span>
-        </div>
-      </section>
-    );
-  }
+  if (isLoading) return <AdminPageLoading loadingLabel={phrase("正在读取权限", "Checking access")} title={phrase("用户管理", "User management")} />;
 
   if (!currentUser) {
     return (
@@ -389,6 +380,7 @@ export default function AdminPage() {
 
   return (
     <section className="page-shell admin-shell">
+      <AdminPageHeader title={phrase("用户管理", "User management")} />
       <div className="admin-list-toolbar">
         <div className="admin-summary" aria-label={phrase("用户概览", "User summary")}>
           <span>{phrase(`${total} 个账号`, `${total} accounts`)}</span>

@@ -2,8 +2,9 @@
 
 import { type ReactNode, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronLeft, ChevronRight, LifeBuoy, Plus, Send, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Plus, Send, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader } from "@/components/admin-page-header";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
@@ -79,7 +80,7 @@ export function FeedbackPanel({ mode = "mine" }: { mode?: "mine" | "inbox" }) {
 
   return (
     <section className="p8-surface feedback-panel">
-    <header className="feedback-panel-heading"><div>{locale === "zh-CN" ? <span className="section-label"><LifeBuoy aria-hidden="true" size={14} /> PRIVATE FEEDBACK</span> : null}<h1>{mode === "inbox" ? phrase("用户反馈", "User feedback") : phrase("我的反馈", "My feedback")}</h1><p>{mode === "inbox" ? phrase("处理用户提交的问题和使用反馈。", "Review issues and feedback submitted by users.") : phrase("反馈只对你和管理员可见。", "Feedback is visible only to you and administrators.")}</p></div>{mode === "mine" ? <button className="icon-action" aria-label={phrase("提交反馈", "Submit feedback")} onClick={() => setIsCreateOpen(true)} title={phrase("提交反馈", "Submit feedback")} type="button"><Plus aria-hidden="true" size={17} /></button> : null}</header>
+    <AdminPageHeader className="feedback-panel-heading" description={mode === "inbox" ? phrase("处理用户提交的问题和使用反馈。", "Review issues and feedback submitted by users.") : phrase("反馈只对你和管理员可见。", "Feedback is visible only to you and administrators.")} title={mode === "inbox" ? phrase("用户反馈", "User feedback") : phrase("我的反馈", "My feedback")} actions={mode === "mine" ? <button aria-label={phrase("提交反馈", "Submit feedback")} className="admin-header-icon-action" onClick={() => setIsCreateOpen(true)} title={phrase("提交反馈", "Submit feedback")} type="button"><Plus aria-hidden="true" size={16} /></button> : undefined} />
       <div className="feedback-toolbar">
         <input
           aria-label={phrase("搜索反馈", "Search feedback")}

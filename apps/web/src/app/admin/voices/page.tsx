@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AnonymousTopicsPanel } from "@/components/anonymous-topics-panel";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader } from "@/components/admin-page-header";
 import { useLanguage } from "@/components/language-provider";
 import { getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
@@ -39,9 +40,7 @@ export default function AnonymousTopicManagementPage() {
 
   return (
     <section className="p8-page p8-directory-page anonymous-topic-management-page">
-      <header className="p8-page-heading">
-        <div><span className="section-label">MODERATION</span><h1>{phrase("匿名话题管理", "Anonymous topic management")}</h1></div>
-      </header>
+      <AdminPageHeader className="p8-page-heading" title={phrase("匿名话题管理", "Anonymous topic management")} />
       {isReady ? <AnonymousTopicsPanel management pageSize={20} showLoadMore showSearch showSort title={phrase("全部匿名话题", "All anonymous topics")} /> : !error ? <div className="article-empty-state">{phrase("正在读取匿名话题。", "Loading anonymous topics.")}</div> : null}
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>

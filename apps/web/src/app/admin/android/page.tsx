@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
 import { useLanguage } from "@/components/language-provider";
 import {
   type AndroidRelease,
@@ -224,17 +225,7 @@ export default function AndroidReleaseManagementPage() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <section className="page-shell admin-shell">
-        <span className="eyebrow">HLOVET Admin</span>
-        <h1>{phrase("安装包管理", "Package management")}</h1>
-        <div className="status-row">
-          <span className="status">{phrase("正在读取安装包", "Loading packages")}</span>
-        </div>
-      </section>
-    );
-  }
+  if (isLoading) return <AdminPageLoading className="android-release-admin-shell" loadingLabel={phrase("正在读取安装包", "Loading packages")} title={phrase("安装包管理", "Package management")} />;
 
   if (!currentUser) {
     return (
@@ -274,6 +265,7 @@ export default function AndroidReleaseManagementPage() {
         tone={error ? "error" : "success"}
       />
 
+      <AdminPageHeader title={phrase("安装包管理", "Package management")} />
       <form className="android-release-upload-panel" onSubmit={(event) => void handleUpload(event)}>
         <div className="android-release-upload-copy">
           <span className="section-label">Android APK</span>

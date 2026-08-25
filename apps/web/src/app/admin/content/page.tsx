@@ -4,8 +4,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Star, Trash2 } from "lucide-react";
+import { FilePlus2, FolderPlus, Pencil, Star, Trash2 } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { listRoles } from "@/lib/admin-api";
@@ -377,17 +378,7 @@ export default function ContentManagementPage() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <section className="page-shell admin-shell">
-        <span className="eyebrow">HLOVET Admin</span>
-        <h1>{phrase("内容管理", "Content management")}</h1>
-        <div className="status-row compact-status-row">
-          <span className="status">{phrase("正在读取门户内容", "Loading portal content")}</span>
-        </div>
-      </section>
-    );
-  }
+  if (isLoading) return <AdminPageLoading className="portal-admin-shell" loadingLabel={phrase("正在读取门户内容", "Loading portal content")} title={phrase("内容管理", "Content management")} />;
 
   if (!currentUser) {
     return (
@@ -414,6 +405,7 @@ export default function ContentManagementPage() {
 
   return (
     <section className="page-shell admin-shell portal-admin-shell">
+      <AdminPageHeader title={phrase("内容管理", "Content management")} actions={<><button aria-label={phrase("新建分类", "New category")} className="admin-header-icon-action" onClick={openCreateCategory} title={phrase("新建分类", "New category")} type="button"><FolderPlus aria-hidden="true" size={16} /></button><button aria-label={phrase("新建条目", "New entry")} className="admin-header-icon-action" onClick={openCreateEntry} title={phrase("新建条目", "New entry")} type="button"><FilePlus2 aria-hidden="true" size={16} /></button></>} />
       <div className="portal-admin-toolbar">
         <div aria-label={phrase("内容类型", "Content type")} className="portal-kind-tabs" role="tablist">
           {(["all", ...availableKinds.map(([kind]) => kind)] as KindFilter[]).map(
@@ -430,14 +422,6 @@ export default function ContentManagementPage() {
               </button>
             ),
           )}
-        </div>
-        <div className="portal-admin-header-actions">
-          <button className="text-action primary" onClick={openCreateCategory} type="button">
-            <Plus aria-hidden="true" size={17} />{phrase("新建分类", "New category")}
-          </button>
-          <button className="text-action primary" onClick={openCreateEntry} type="button">
-            <Plus aria-hidden="true" size={17} />{phrase("新建条目", "New entry")}
-          </button>
         </div>
       </div>
 

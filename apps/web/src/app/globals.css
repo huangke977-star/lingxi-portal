@@ -17186,3 +17186,32 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .moderation-hit-list article p { grid-column: 1 / -1; }
   .moderation-metric-lines > div { gap: 7px; }
 }
+
+/* Shared management-page chrome keeps loading and loaded pages from jumping between unrelated headings. */
+.admin-page-header { align-items: flex-end; border-bottom: 1px solid var(--control-line); display: flex; gap: 14px; justify-content: space-between; min-width: 0; padding: 2px 2px 10px; }
+.admin-page-header-copy { display: grid; gap: 3px; min-width: 0; }
+.admin-page-header h1 { color: var(--foreground); font-size: 1.42rem; line-height: 1.2; margin: 0; }
+.admin-page-header p { color: var(--muted); font-size: 0.75rem; line-height: 1.45; margin: 0; }
+.admin-page-header-actions { align-items: center; display: flex; flex: 0 0 auto; gap: 6px; justify-content: flex-end; min-width: 0; }
+.admin-page-header-actions > button, .admin-page-header-actions > a, .admin-page-header-actions .admin-header-icon-action { align-items: center; background: transparent; border: 0; border-radius: 6px; color: var(--accent-strong); cursor: pointer; display: inline-flex; font: inherit; height: 30px; justify-content: center; padding: 0; width: 30px; }
+.admin-page-header-actions > button:hover:not(:disabled), .admin-page-header-actions > a:hover, .admin-page-header-actions .admin-header-icon-action:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-soft) 62%, transparent); }
+.admin-page-header-actions > button:disabled, .admin-page-header-actions .admin-header-icon-action:disabled { cursor: wait; opacity: 0.48; }
+.admin-page-header .site-settings-head-actions, .admin-page-header .system-status-head-actions, .admin-page-header .storage-management-head-actions { align-items: center; display: flex; gap: 7px; }
+.admin-page-header :is(.site-settings-head-actions > span, .system-status-head-actions small, .storage-management-head-actions small) { color: var(--muted); font-size: 0.68rem; white-space: nowrap; }
+.admin-page-loading { display: grid; gap: 14px; min-height: 420px; }
+.admin-page-loading-body { align-content: start; display: grid; gap: 9px; min-height: 250px; padding: 4px 0; }
+.admin-page-loading-status { align-items: center; color: var(--muted-strong); display: inline-flex; font-size: 0.76rem; gap: 6px; }
+.admin-page-loading-line { background: color-mix(in srgb, var(--surface-strong) 72%, transparent); border-radius: 6px; display: block; height: 56px; max-width: 100%; }
+.admin-page-loading-line.short { height: 30px; width: min(42%, 320px); }
+
+/* Administrative filters are intentionally quiet so all pages share the borderless GlassSelect treatment. */
+.page-shell :is(.admin-search-field, .group-management-search, .security-record-search, .storage-filter-row form, .announcement-admin-toolbar > label) input { font-size: 0.75rem; min-height: 32px; }
+.page-shell :is(.announcement-editor-select-trigger, .admin-page-size .announcement-editor-select-trigger) { background: transparent; border: 0; box-shadow: none; font-size: 0.72rem; min-height: 32px; }
+.admin-page-header :is(.page-kicker, .eyebrow, .section-label) { display: none; }
+
+@media (max-width: 680px) {
+  .admin-page-header { align-items: center; gap: 10px; }
+  .admin-page-header h1 { font-size: 1.28rem; }
+  .admin-page-header p { display: none; }
+  .admin-page-loading { min-height: 340px; }
+}

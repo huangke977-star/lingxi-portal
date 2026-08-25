@@ -4,6 +4,7 @@ import { Ban, Check, Flag, LoaderCircle, Search, ShieldOff, UserRound, X } from 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader } from "@/components/admin-page-header";
 import { GroupReportMessagePreview } from "@/components/group-report-message-preview";
 import { useLanguage } from "@/components/language-provider";
 import { getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
@@ -176,7 +177,7 @@ export default function GroupReportsAdminPage() {
   }
 
   return <section className="page-shell group-management-admin-page">
-    <header className="group-management-admin-header"><div><span className="page-kicker">{t("groupAdmin.kicker")}</span><h1>{t("groupAdmin.title")}</h1><p>{t("groupAdmin.description")}</p></div><span className="group-management-admin-summary"><b>{groups.length}</b><small>{t("groupAdmin.groupCount", { count: groups.length })}</small></span></header>
+    <AdminPageHeader className="group-management-admin-header" description={t("groupAdmin.description")} title={t("groupAdmin.title")} actions={<span className="group-management-admin-summary"><b>{groups.length}</b><small>{t("groupAdmin.groupCount", { count: groups.length })}</small></span>} />
     <div className="group-management-admin-toolbar">
       <nav aria-label={t("groupAdmin.title")}><button className={tab === "groups" ? "active" : ""} onClick={() => setTab("groups")} type="button"><ShieldOff aria-hidden="true" size={16} />{t("groupAdmin.groups")}</button><button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")} type="button"><Flag aria-hidden="true" size={16} />{t("groupAdmin.reports")}{reportStatus === "pending" && reports.length ? <b>{reports.length}</b> : null}</button></nav>
       <div className="group-management-toolbar-actions">

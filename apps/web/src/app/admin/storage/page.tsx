@@ -27,6 +27,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
@@ -378,9 +379,7 @@ export default function StorageManagementPage() {
     }
   }
 
-  if (isLoading) {
-    return <section className="page-shell admin-shell storage-management-shell"><span className="status">{phrase("正在读取存储状态", "Loading storage status")}</span></section>;
-  }
+  if (isLoading) return <AdminPageLoading className="storage-management-shell" loadingLabel={phrase("正在读取存储状态", "Loading storage status")} title={phrase("存储管理", "Storage management")} />;
 
   if (!currentUser?.isSuperAdmin) {
     return <section className="page-shell admin-shell storage-management-shell"><h1>{phrase("无权访问", "Access denied")}</h1><p>{phrase("存储管理仅超级管理员可以查看。", "Only super administrators can view storage management.")}</p><Link className="text-action primary" href={localizedPath("/", locale)}>{phrase("返回首页", "Back to home")}</Link></section>;
@@ -388,13 +387,10 @@ export default function StorageManagementPage() {
 
   return <section className="page-shell admin-shell storage-management-shell">
     <AppToast duration={error ? 4200 : 3200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
-    <header className="storage-management-head">
-      <div><span className="section-label">{phrase("存储完整性", "STORAGE INTEGRITY")}</span><h1>{phrase("存储管理", "Storage management")}</h1></div>
-      <div className="storage-management-head-actions">
+    <AdminPageHeader className="storage-management-head" title={phrase("存储管理", "Storage management")} actions={<div className="storage-management-head-actions">
         {overview?.latestScan ? <small>{phrase("最近扫描 ", "Last scan ")}{formatDateTime(overview.latestScan.completedAt || overview.latestScan.startedAt, locale)}</small> : <small>{phrase("尚未扫描", "Not scanned yet")}</small>}
-        <button disabled={isScanning} onClick={() => void handleStartScan()} type="button"><RefreshCcw aria-hidden="true" className={isScanning ? "spin" : ""} size={16} /><span>{isScanning ? phrase("扫描中", "Scanning") : phrase("立即扫描", "Scan now")}</span></button>
-      </div>
-    </header>
+        <button aria-label={phrase("立即扫描", "Scan now")} className="admin-header-icon-action" disabled={isScanning} onClick={() => void handleStartScan()} title={phrase("立即扫描", "Scan now")} type="button"><RefreshCcw aria-hidden="true" className={isScanning ? "spin" : ""} size={16} /></button>
+      </div>} />
 
     <div className="storage-health-strip">
       <StorageMetric icon={Gauge} label={phrase("磁盘使用", "Disk usage")} tone={diskTone(summary?.disk.usedPercent, overview?.configuration.warningThresholdPercent)} value={summary?.disk.usedPercent === null || summary?.disk.usedPercent === undefined ? phrase("未读取", "Not available") : `${summary.disk.usedPercent}%`} detail={summary?.disk.availableBytes === null || summary?.disk.availableBytes === undefined ? phrase("等待扫描", "Waiting for scan") : phrase(`可用 ${formatBytes(summary.disk.availableBytes)}`, `${formatBytes(summary.disk.availableBytes)} available`)} />

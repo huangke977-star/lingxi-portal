@@ -5,6 +5,7 @@ import { RefreshCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
@@ -499,17 +500,7 @@ export default function CacheManagementPage() {
     });
   }
 
-  if (isLoading) {
-    return (
-      <section className="page-shell admin-shell">
-        <span className="eyebrow">HLOVET Admin</span>
-        <h1>{phrase("缓存管理", "Cache management")}</h1>
-        <div className="status-row">
-          <span className="status">{phrase("正在连接 Redis", "Connecting to Redis")}</span>
-        </div>
-      </section>
-    );
-  }
+  if (isLoading) return <AdminPageLoading className="cache-admin-shell" loadingLabel={phrase("正在连接 Redis", "Connecting to Redis")} title={phrase("缓存管理", "Cache management")} />;
 
   if (!currentUser) {
     return (
@@ -539,6 +530,7 @@ export default function CacheManagementPage() {
 
   return (
     <section className="page-shell admin-shell cache-admin-shell">
+      <AdminPageHeader title={phrase("缓存管理", "Cache management")} actions={<button aria-label={phrase("刷新缓存数据", "Refresh cache data")} className="admin-header-icon-action" disabled={isOverviewRefreshing} onClick={() => void refreshOverview()} title={phrase("刷新缓存数据", "Refresh cache data")} type="button"><RefreshCcw aria-hidden="true" className={isOverviewRefreshing ? "spinning" : undefined} size={17} /></button>} />
       <AppToast
         duration={error ? 4200 : 2600}
         message={error || notice}
@@ -548,13 +540,6 @@ export default function CacheManagementPage() {
         }}
         tone={error ? "error" : "success"}
       />
-
-      <div className="cache-overview-toolbar">
-        <span>Redis</span>
-        <button aria-label={phrase("刷新缓存数据", "Refresh cache data")} disabled={isOverviewRefreshing} onClick={() => void refreshOverview()} title={phrase("刷新缓存数据", "Refresh cache data")} type="button">
-          <RefreshCcw aria-hidden="true" className={isOverviewRefreshing ? "spinning" : undefined} size={17} />
-        </button>
-      </div>
 
       {overview ? <CacheOverviewGrid overview={overview} phrase={phrase} /> : null}
 

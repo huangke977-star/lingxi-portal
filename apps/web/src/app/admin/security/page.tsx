@@ -12,6 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { PasswordInput } from "@/components/password-input";
@@ -277,13 +278,7 @@ export default function SecurityAdminPage() {
     setStatus("");
   }
 
-  if (isLoading) {
-    return (
-      <section className="page-shell admin-shell security-admin-shell">
-        <span className="status">{phrase("正在读取安全配置", "Loading security settings")}</span>
-      </section>
-    );
-  }
+  if (isLoading) return <AdminPageLoading className="security-admin-shell" loadingLabel={phrase("正在读取安全配置", "Loading security settings")} title={phrase("安全管理", "Security management")} />;
 
   if (!user || !canAccessSecurityAdmin(user)) {
     return (
@@ -298,22 +293,9 @@ export default function SecurityAdminPage() {
 
   return (
     <section className="page-shell admin-shell security-admin-shell">
-      <header className="security-admin-head">
-        <div>
-          <span className="security-admin-mark">
-            <ShieldCheck aria-hidden="true" size={21} />
-          </span>
-          <div>
-            <h1>{phrase("安全管理", "Security management")}</h1>
-            <p>
-              {canEdit ? phrase("超级管理员配置", "Super administrator settings") : phrase("管理员只读", "Administrator read-only")} · {phrase("更新于", "Updated")} {lastUpdated}
-            </p>
-          </div>
-        </div>
-        <span className={config?.encryptionConfigured ? "ready" : "warning"}>
+      <AdminPageHeader className="security-admin-head" description={`${canEdit ? phrase("超级管理员配置", "Super administrator settings") : phrase("管理员只读", "Administrator read-only")} · ${phrase("更新于", "Updated")} ${lastUpdated}`} title={phrase("安全管理", "Security management")} actions={<span className={config?.encryptionConfigured ? "ready" : "warning"}>
           {config?.encryptionConfigured ? phrase("凭据加密可用", "Credential encryption available") : phrase("凭据加密未配置", "Credential encryption is not configured")}
-        </span>
-      </header>
+        </span>} />
 
       {draft ? (
         <form className="security-config-grid" onSubmit={handleSave}>

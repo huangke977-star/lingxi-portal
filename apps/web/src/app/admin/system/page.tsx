@@ -28,6 +28,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
 import { useLanguage } from "@/components/language-provider";
 import { type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
@@ -333,9 +334,7 @@ export default function SystemStatusPage() {
     }
   }
 
-  if (isLoading) {
-    return <section className="page-shell admin-shell system-status-shell"><span className="status">{phrase("正在读取系统状态", "Loading system status")}</span></section>;
-  }
+  if (isLoading) return <AdminPageLoading className="system-status-shell" loadingLabel={phrase("正在读取系统状态", "Loading system status")} title={phrase("系统运行概览", "System overview")} />;
 
   if (!currentUser?.isSuperAdmin) {
     return <section className="page-shell admin-shell system-status-shell">
@@ -347,15 +346,12 @@ export default function SystemStatusPage() {
 
   return <section className="page-shell admin-shell system-status-shell">
     <AppToast duration={error ? 4200 : 3200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
-    <header className="system-status-head">
-      <div><span className="section-label">HLOVET OPERATIONS</span><h1>{phrase("系统运行概览", "System overview")}</h1></div>
-      <div className="system-status-head-actions">
+    <AdminPageHeader className="system-status-head" title={phrase("系统运行概览", "System overview")} actions={<div className="system-status-head-actions">
         {status ? <small>{phrase("更新于 ", "Updated ")}{formatDateTime(status.generatedAt, locale)}</small> : null}
-        <button aria-label={phrase("刷新系统状态", "Refresh system status")} disabled={isRefreshing || !accessToken} onClick={() => accessToken && void Promise.all([loadStatus(accessToken, true), loadStorageOverview(accessToken), loadMediaJobs(accessToken)])} title={phrase("刷新", "Refresh")} type="button">
+        <button aria-label={phrase("刷新系统状态", "Refresh system status")} className="admin-header-icon-action" disabled={isRefreshing || !accessToken} onClick={() => accessToken && void Promise.all([loadStatus(accessToken, true), loadStorageOverview(accessToken), loadMediaJobs(accessToken)])} title={phrase("刷新", "Refresh")} type="button">
           <RefreshCcw aria-hidden="true" className={isRefreshing ? "spin" : ""} size={17} />
         </button>
-      </div>
-    </header>
+      </div>} />
 
     {status ? <>
       <div className="system-overview-strip">

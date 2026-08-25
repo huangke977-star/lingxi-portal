@@ -4,6 +4,7 @@ import { Archive, BellRing, Check, ChevronDown, Eye, LoaderCircle, Pencil, Plus,
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader } from "@/components/admin-page-header";
 import { useLanguage } from "@/components/language-provider";
 import { listRoles } from "@/lib/admin-api";
 import {
@@ -185,10 +186,10 @@ export default function AnnouncementAdminPage() {
 
   const filterOptions = useMemo(() => ["all", ...Object.keys(statusLabels)] as StatusFilter[], []);
   return <section className="page-shell announcement-admin-page">
+    <AdminPageHeader title={phrase("公告管理", "Announcement management")} actions={<button aria-label={phrase("新建公告", "New announcement")} className="admin-header-icon-action" onClick={() => setEditor({ id: null, status: "draft", input: { ...emptyInput } })} title={phrase("新建公告", "New announcement")} type="button"><Plus aria-hidden="true" size={16} /></button>} />
     <div className="announcement-admin-toolbar">
       <nav aria-label={phrase("公告状态", "Announcement status")}>{filterOptions.map((value) => <button className={status === value ? "active" : undefined} key={value} onClick={() => { setPage(1); setStatus(value); }} type="button">{value === "all" ? phrase("全部", "All") : statusLabel(value, phrase)}</button>)}</nav>
       <label><Search aria-hidden="true" size={15} /><input aria-label={phrase("搜索公告", "Search announcements")} onChange={(event) => setSearchDraft(event.target.value)} placeholder={phrase("搜索标题或内容", "Search title or content")} value={searchDraft} />{searchDraft ? <button aria-label={phrase("清空搜索", "Clear search")} onClick={() => setSearchDraft("")} type="button"><X aria-hidden="true" size={13} /></button> : null}</label>
-      <button className="announcement-create" onClick={() => setEditor({ id: null, status: "draft", input: { ...emptyInput } })} type="button"><Plus aria-hidden="true" size={14} />{phrase("新建公告", "New announcement")}</button>
     </div>
     {isLoading ? <div className="article-empty-state"><LoaderCircle aria-hidden="true" className="spin" size={22} />{phrase("正在读取公告。", "Loading announcements.")}</div> : <div className="announcement-admin-list">{data?.items.map((item) => {
       const canEdit = item.status !== "published";

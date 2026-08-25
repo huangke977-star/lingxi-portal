@@ -21,6 +21,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { listRoles } from "@/lib/admin-api";
@@ -486,15 +487,7 @@ export default function SiteSettingsPage() {
     }));
   }
 
-  if (isLoading) {
-    return (
-      <section className="page-shell admin-shell">
-        <span className="eyebrow">HLOVET Admin</span>
-        <h1>{phrase("站点设置", "Site settings")}</h1>
-        <div className="status-row"><span className="status">{phrase("正在读取设置", "Loading settings")}</span></div>
-      </section>
-    );
-  }
+  if (isLoading) return <AdminPageLoading className="site-settings-shell" loadingLabel={phrase("正在读取设置", "Loading settings")} title={phrase("站点设置", "Site settings")} />;
 
   if (!currentUser) {
     return (
@@ -531,19 +524,12 @@ export default function SiteSettingsPage() {
       />
 
       <div className="site-settings-form">
-        <div className="site-settings-head">
-          <div>
-            <span className="section-label">HLOVET Admin</span>
-            <h1>{phrase("站点设置中心", "Site settings")}</h1>
-          </div>
-          <div className="site-settings-head-actions">
+        <AdminPageHeader title={phrase("站点设置", "Site settings")} actions={<div className="site-settings-head-actions">
             <span className={isSaving ? "saving" : ""}>{isSaving ? phrase("正在自动保存", "Saving automatically") : phrase("修改后自动保存", "Changes save automatically")}</span>
-            <button className="button site-settings-save" disabled={isSaving} onClick={() => void handleResetSettings()} type="button">
+            <button aria-label={phrase("恢复默认", "Restore defaults")} className="admin-header-icon-action site-settings-save" disabled={isSaving} onClick={() => void handleResetSettings()} title={phrase("恢复默认", "Restore defaults")} type="button">
               {isSaving ? <Settings2 aria-hidden="true" className="spin" size={16} /> : <RotateCcw aria-hidden="true" size={16} />}
-              {phrase("恢复默认", "Restore defaults")}
             </button>
-          </div>
-        </div>
+          </div>} />
 
         <div className="site-settings-grid">
           <section className="site-settings-card">

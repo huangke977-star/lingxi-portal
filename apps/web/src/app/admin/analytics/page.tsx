@@ -21,6 +21,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader } from "@/components/admin-page-header";
 import { useLanguage } from "@/components/language-provider";
 import {
   AdminAnalytics,
@@ -123,13 +124,10 @@ export default function AdminAnalyticsPage() {
   }
 
   return <section className="page-shell analytics-page">
-    <div className="analytics-toolbar">
-      <div><h1>{phrase("运营数据", "Operations analytics")}</h1><p>{phrase("按中国时区自然日聚合，页面只读取聚合结果。", "Data is aggregated by calendar day in the China time zone; this page reads the aggregates only.")}</p></div>
-      <div className="analytics-toolbar-actions">
+    <AdminPageHeader className="analytics-toolbar" description={phrase("按中国时区自然日聚合，页面只读取聚合结果。", "Data is aggregated by calendar day in the China time zone; this page reads the aggregates only.")} title={phrase("运营数据", "Operations analytics")} actions={<div className="analytics-toolbar-actions">
         <div className="analytics-range" role="group" aria-label={phrase("统计范围", "Analytics range")}>{([7, 30, 90] as const).map((value) => <button className={range === value ? "active" : undefined} key={value} onClick={() => setRange(value)} type="button">{phrase(`${value} 天`, `${value} days`)}</button>)}</div>
         <button aria-label={phrase("重新补算运营数据", "Rebuild operations analytics")} className="analytics-rebuild" disabled={isLoading || isRebuilding} onClick={() => void rebuild()} title={phrase(`补算最近 ${range} 天`, `Rebuild the last ${range} days`)} type="button">{isRebuilding ? <LoaderCircle aria-hidden="true" className="spin" size={16} /> : <RefreshCw aria-hidden="true" size={16} />}</button>
-      </div>
-    </div>
+      </div>} />
     {isLoading ? <div className="article-empty-state"><LoaderCircle aria-hidden="true" className="spin" size={22} />{phrase("正在读取聚合数据。", "Loading aggregated analytics.")}</div> : data ? <>
       <div className="analytics-metrics">{metrics.map(({ key, label, icon: Icon }) => <article className={key === "failedJobs" || key === "loginRisks" || key === "reports" ? "warning" : undefined} key={key}><Icon aria-hidden="true" size={17} /><span><small>{label[locale === "en-US" ? 1 : 0]}</small><strong>{data.summary[key].toLocaleString(locale)}</strong></span></article>)}</div>
       <div className="analytics-charts">

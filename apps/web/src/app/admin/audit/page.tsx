@@ -4,6 +4,7 @@ import { ClipboardList, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { AdminPageHeader } from "@/components/admin-page-header";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { AuditLog, listAuditLogs } from "@/lib/audit-api";
@@ -74,6 +75,7 @@ export default function AuditLogPage() {
   }
 
   return <section className="page-shell admin-shell audit-page">
+    <AdminPageHeader title={phrase("审计日志", "Audit log")} />
     <div className="audit-toolbar">
       <div className="audit-summary"><ClipboardList aria-hidden="true" size={18} /><span>{phrase(`${total} 条操作记录`, `${total} audit entries`)}</span></div>
       <label className="admin-search-field"><Search aria-hidden="true" size={15} /><input aria-label={phrase("搜索审计日志", "Search audit logs")} onChange={(event) => setSearchDraft(event.target.value)} placeholder={phrase("操作者、路径、操作或目标", "Actor, path, action, or target")} value={searchDraft} /></label>
