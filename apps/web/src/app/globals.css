@@ -17790,3 +17790,33 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .page-shell.android-release-admin-shell .background-list-heading h2 {
   font-size: 0.9rem;
 }
+
+/* Keep announcement filters visually aligned with the compact group search control. */
+.page-shell.announcement-admin-page .announcement-admin-toolbar nav {
+  gap: 5px;
+}
+
+.page-shell.announcement-admin-page .announcement-admin-toolbar nav button {
+  min-height: 32px;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  padding: 0 9px;
+}
+
+.page-shell.announcement-admin-page .announcement-admin-toolbar > label {
+  box-sizing: border-box;
+  width: min(350px, 100%);
+  min-height: 32px;
+  height: 32px;
+  align-items: center;
+  gap: 7px;
+  border-radius: 6px;
+  padding: 0 9px;
+}
+
+.page-shell.announcement-admin-page .announcement-admin-toolbar > label input {
+  width: 100%;
+  height: 100%;
+  line-height: normal;
+  font-size: 0.7rem;
+}

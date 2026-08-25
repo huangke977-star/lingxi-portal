@@ -177,7 +177,7 @@ export default function GroupReportsAdminPage() {
   }
 
   return <section className="page-shell group-management-admin-page">
-    <AdminPageHeader className="group-management-admin-header" description={t("groupAdmin.description")} title={t("groupAdmin.title")} actions={<span className="group-management-admin-summary"><b>{groups.length}</b><small>{t("groupAdmin.groupCount", { count: groups.length })}</small></span>} />
+    <AdminPageHeader className="group-management-admin-header" description={t("groupAdmin.description")} title={t("groupAdmin.title")} actions={<span className="group-management-admin-summary"><small>{t("groupAdmin.groupCount", { count: groups.length })}</small></span>} />
     <div className="group-management-admin-toolbar">
       <nav aria-label={t("groupAdmin.title")}><button className={tab === "groups" ? "active" : ""} onClick={() => setTab("groups")} type="button"><ShieldOff aria-hidden="true" size={16} />{t("groupAdmin.groups")}</button><button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")} type="button"><Flag aria-hidden="true" size={16} />{t("groupAdmin.reports")}{reportStatus === "pending" && reports.length ? <b>{reports.length}</b> : null}</button></nav>
       <div className="group-management-toolbar-actions">

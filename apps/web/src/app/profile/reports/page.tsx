@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Clock3, Flag, XCircle } from "lucide-react";
+import { CheckCircle2, Clock3, XCircle } from "lucide-react";
 import { AdminArticlePreviewModal } from "@/components/admin-article-preview-modal";
 import { AppToast } from "@/components/app-toast";
 import { useLanguage } from "@/components/language-provider";
@@ -86,7 +86,6 @@ export default function MyArticleReportsPage() {
     <section className="p8-page p8-directory-page my-reports-page">
       <header className="p8-page-heading">
         <div>
-          <span className="section-label"><Flag aria-hidden="true" size={14} />{phrase("举报记录", "REPORT HISTORY")}</span>
           <h1>{phrase("我的举报", "My reports")}</h1>
           <p>{phrase("查看你提交的文章举报和处理结果。", "Review article reports you submitted and their outcomes.")}</p>
         </div>
