@@ -27,6 +27,7 @@ import { getAvatarFallbackText } from "@/lib/user-display";
 import { getManagementIdentity } from "@/lib/user-permissions";
 import { useLanguage } from "@/components/language-provider";
 import { localizedPath } from "@/lib/i18n";
+import { growthLevelLabel } from "@/lib/system-labels";
 
 interface Position {
   left: number;
@@ -219,7 +220,7 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
               <span>@{displayProfile.username}</span>
             </div>
             <span className="public-profile-identities">
-              <span className="public-profile-role" title={t("profile.level", { name: author.role.name })}><RoleSymbol code={author.role.code} />{author.role.name}</span>
+              <span className="public-profile-role" title={t("profile.level", { name: growthLevelLabel(author.role.code, locale, author.role.name) })}><RoleSymbol code={author.role.code} />{growthLevelLabel(author.role.code, locale, author.role.name)}</span>
               {management ? <span className="public-profile-role" title={management.label}><ManagementIdentitySymbol user={author} />{management.label}</span> : null}
             </span>
           </div>
@@ -253,7 +254,7 @@ export function CommentAuthorIdentity({ author }: { author: ArticleAuthor }) {
     <span className="comment-author-identity">
       <PublicProfilePopover author={author} />
       <Link className="comment-author-profile-link" href={localizedPath(`/users/${encodeURIComponent(author.username)}`, locale)}>{author.nickname}</Link>
-      <span className="comment-role-icon" title={t("profile.level", { name: author.role.name })}><RoleSymbol code={author.role.code} /></span>
+      <span className="comment-role-icon" title={t("profile.level", { name: growthLevelLabel(author.role.code, locale, author.role.name) })}><RoleSymbol code={author.role.code} /></span>
     </span>
   );
 }

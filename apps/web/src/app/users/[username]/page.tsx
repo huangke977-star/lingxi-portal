@@ -33,6 +33,7 @@ import { getManagementIdentity } from "@/lib/user-permissions";
 import { getAvatarFallbackText } from "@/lib/user-display";
 import { getProfileShowcase, type ProfileShowcase } from "@/lib/discovery-api";
 import { localizedPath } from "@/lib/i18n";
+import { growthLevelLabel } from "@/lib/system-labels";
 
 const emptyArticles: ArticleList = { items: [], total: 0, page: 1, pageSize: 12, totalPages: 1 };
 
@@ -218,7 +219,7 @@ export default function UserProfilePage() {
       <div className="public-user-avatar identity-avatar-host"><span className="identity-avatar-visual">{avatarUrl ? <img alt="" src={avatarUrl} /> : getAvatarFallbackText(profile)}</span><AvatarManagementBadge user={profile} /></div>
       <div className="public-user-overview">
         <div className="public-user-copy">
-          <div className="public-user-name"><span><h1>{profile.nickname}</h1><small>@{profile.username}</small></span><span className="public-user-role"><RoleSymbol code={profile.role.code} />{profile.role.name}</span>{management ? <span className="public-user-role"><ManagementIdentitySymbol user={profile} />{management.label}</span> : null}</div>
+          <div className="public-user-name"><span><h1>{profile.nickname}</h1><small>@{profile.username}</small></span><span className="public-user-role"><RoleSymbol code={profile.role.code} />{growthLevelLabel(profile.role.code, locale, profile.role.name)}</span>{management ? <span className="public-user-role"><ManagementIdentitySymbol user={profile} />{management.label}</span> : null}</div>
           {profile.profileBio ? <p className="public-user-bio" title={profile.profileBio}>{profile.profileBio}</p> : null}
           <div className="public-user-facts">{profile.createdAt ? <span><Clock3 aria-hidden="true" size={15} />{phrase(`${formatJoinedAt(profile.createdAt, locale)} 加入`, `Joined ${formatJoinedAt(profile.createdAt, locale)}`)}</span> : null}<span>{phrase(`${articles.total} 篇当前可见内容`, `${articles.total} visible articles`)}</span></div>
         </div>

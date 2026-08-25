@@ -59,6 +59,7 @@ import {
 } from "@/lib/social-events";
 import { getPublicSiteSettings } from "@/lib/site-settings-api";
 import { localizedPath, stripLocalePath } from "@/lib/i18n";
+import { growthLevelLabel, notificationTitle } from "@/lib/system-labels";
 import { getAvatarFallbackText, getUserDisplayName } from "@/lib/user-display";
 
 const navItems = [
@@ -77,7 +78,7 @@ const emptySummary = {
 
 const HEADER_MESSAGE_PREVIEW_LIMIT = 8;
 
-function HeaderNotificationCopy({ notification, siteAnnouncementLabel }: { notification: SocialNotification; siteAnnouncementLabel: string }) {
+function HeaderNotificationCopy({ locale, notification, siteAnnouncementLabel }: { locale: "zh-CN" | "en-US"; notification: SocialNotification; siteAnnouncementLabel: string }) {
   const announcement = notification.context?.kind === "announcement" ? notification.context.announcement : null;
   if (announcement) {
     return <span className="header-announcement-notification">
@@ -87,7 +88,7 @@ function HeaderNotificationCopy({ notification, siteAnnouncementLabel }: { notif
     </span>;
   }
 
-  return <span><strong>{notification.title}</strong><small>{notification.context?.requestBody ?? notification.context?.commentBody ?? notification.body}</small></span>;
+  return <span><strong>{notificationTitle(notification.type, notification.context?.kind, locale, notification.title)}</strong><small>{notification.context?.requestBody ?? notification.context?.commentBody ?? notification.body}</small></span>;
 }
 
 function pendingReportActionUrl(report: ModerationReport): string {
@@ -249,8 +250,8 @@ export function TopNav() {
   const avatarText = useMemo(() => user ? getAvatarFallbackText(user) : "H", [user]);
   const roleBadge = useMemo(() => user ? {
     code: user.role.code,
-    tooltip: phrase(`成长等级：${user.role.name}`, `Account level: ${user.role.name}`),
-  } : null, [phrase, user]);
+    tooltip: phrase(`成长等级：${growthLevelLabel(user.role.code, locale, user.role.name)}`, `Account level: ${growthLevelLabel(user.role.code, locale, user.role.name)}`),
+  } : null, [locale, phrase, user]);
   const avatarUrl = user?.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
   const siteLogoUrl = useMemo(() => resolveConfiguredAssetUrl(siteBrand.logoPath), [siteBrand.logoPath]);
   const pushDisabledChannels = useMemo(
@@ -392,7 +393,7 @@ export function TopNav() {
                 <div className="header-popover-heading"><strong>{t("nav.messages")}</strong><button onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">{t("nav.openChat")}</button></div>
                 <div className="header-popover-list">
                   {unreadConversations.map((conversation) => <button key={`conversation-${conversation.id}`} onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ conversationId: conversation.id }); }} type="button"><span className="header-popover-icon"><MessageCircleMore aria-hidden="true" size={16} /></span><span><strong>{conversation.user.nickname}</strong><small>{conversation.lastMessage?.body || phrase("发来附件", "Sent an attachment")}</small></span><b>{conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</b></button>)}
-                  {messageNotifications.map((notification) => notification.context?.actionable ? <div className="header-popover-actionable" key={`notification-${notification.id}`}><button onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy notification={notification} siteAnnouncementLabel={t("home.siteAnnouncements")} /></button><span className="header-popover-inline-actions"><button aria-label={phrase("同意或处理", "Accept or handle")} onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "resolve-report" : "accept")} title={notification.context?.kind === "group_report" ? phrase("处理", "Handle") : phrase("同意", "Accept")} type="button"><Check aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? phrase("处理", "Handle") : phrase("同意", "Accept")}</button><button aria-label={phrase("拒绝或驳回", "Decline or reject")} onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "reject-report" : "reject")} title={notification.context?.kind === "group_report" ? phrase("驳回", "Reject") : phrase("拒绝", "Decline")} type="button"><X aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? phrase("驳回", "Reject") : phrase("拒绝", "Decline")}</button></span></div> : <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy notification={notification} siteAnnouncementLabel={t("home.siteAnnouncements")} /></button>)}
+                  {messageNotifications.map((notification) => notification.context?.actionable ? <div className="header-popover-actionable" key={`notification-${notification.id}`}><button onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy locale={locale} notification={notification} siteAnnouncementLabel={t("home.siteAnnouncements")} /></button><span className="header-popover-inline-actions"><button aria-label={phrase("同意或处理", "Accept or handle")} onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "resolve-report" : "accept")} title={notification.context?.kind === "group_report" ? phrase("处理", "Handle") : phrase("同意", "Accept")} type="button"><Check aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? phrase("处理", "Handle") : phrase("同意", "Accept")}</button><button aria-label={phrase("拒绝或驳回", "Decline or reject")} onClick={() => void handleNotificationAction(notification, notification.context?.kind === "group_report" ? "reject-report" : "reject")} title={notification.context?.kind === "group_report" ? phrase("驳回", "Reject") : phrase("拒绝", "Decline")} type="button"><X aria-hidden="true" size={12} />{notification.context?.kind === "group_report" ? phrase("驳回", "Reject") : phrase("拒绝", "Decline")}</button></span></div> : <button key={`notification-${notification.id}`} onClick={() => void handleNotification(notification)} type="button"><span className="header-popover-icon"><Bell aria-hidden="true" size={16} /></span><HeaderNotificationCopy locale={locale} notification={notification} siteAnnouncementLabel={t("home.siteAnnouncements")} /></button>)}
                   {hiddenUnreadCount ? <button className="header-popover-more" onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">{t("nav.moreUnread", { count: hiddenUnreadCount })}</button> : null}
                   {!unreadConversations.length && !messageNotifications.length ? <span className="header-popover-empty">{t("nav.noNewMessages")}</span> : null}
                 </div>

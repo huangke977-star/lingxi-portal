@@ -125,6 +125,7 @@ import {
 } from "@/lib/social-events";
 import { getAvatarFallbackText } from "@/lib/user-display";
 import { localizedPath } from "@/lib/i18n";
+import { notificationTitle } from "@/lib/system-labels";
 import {
   type BrowserPushState,
   disableBrowserPush,
@@ -2617,7 +2618,7 @@ function NotificationPanel({
             <div className="chat-system-notification-main">
               <button className="chat-system-notification-copy" onClick={() => void onSelect(notification)} type="button"><span>
                 <span className="chat-notification-heading">
-                  {notification.context?.kind === "announcement" ? <span className="chat-announcement-notification-type">{phrase("站点公告", "Site announcement")}</span> : <strong>{notification.title}</strong>}
+                  {notification.context?.kind === "announcement" ? <span className="chat-announcement-notification-type">{phrase("站点公告", "Site announcement")}</span> : <strong>{notificationTitle(notification.type, notification.context?.kind, locale, notification.title)}</strong>}
                 </span>
                 {notification.context?.kind === "announcement" ? <>
                   <span className="chat-announcement-notification-title">{notification.context.announcement?.title || notification.title}</span>

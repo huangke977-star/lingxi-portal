@@ -12,6 +12,7 @@ import { listRoles } from "@/lib/admin-api";
 import { AuthRole, AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
+import { growthLevelLabel } from "@/lib/system-labels";
 import { isSiteManager } from "@/lib/user-permissions";
 import {
   createPortalCategory,
@@ -748,7 +749,7 @@ function EntryDialog({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   roles: AuthRole[];
 }) {
-  const { phrase } = useLanguage();
+  const { locale, phrase } = useLanguage();
   const category = categories.find(
     (item) => item.id === dialog.draft.categoryId,
   );
@@ -916,7 +917,7 @@ function EntryDialog({
                       }
                       type="checkbox"
                     />
-                    <span>{role.name}</span>
+                    <span>{growthLevelLabel(role.code, locale, role.name)}</span>
                   </label>
                 ))}
               </div>

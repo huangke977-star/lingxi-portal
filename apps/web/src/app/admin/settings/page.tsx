@@ -27,6 +27,7 @@ import { listRoles } from "@/lib/admin-api";
 import { type AuthRole, type AuthUser, getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
+import { growthLevelLabel } from "@/lib/system-labels";
 import {
   activateBackground,
   clearActiveBackground,
@@ -550,7 +551,7 @@ export default function SiteSettingsPage() {
               <label><span>{phrase("网站名称", "Site name")}</span><input maxLength={80} onChange={(event) => updateDraft({ siteName: event.target.value })} value={draft.siteName} /></label>
               <label><span>{phrase("浏览器标题", "Browser title")}</span><input maxLength={120} onChange={(event) => updateDraft({ browserTitle: event.target.value })} value={draft.browserTitle} /></label>
               <label><span>{phrase("开放注册", "Open registration")}</span><GlassSelect ariaLabel={phrase("开放注册", "Open registration")} onChange={(value) => updateDraft({ registrationOpen: value === "true" }, true)} options={[{ value: "true", label: phrase("开放", "Open") }, { value: "false", label: phrase("关闭", "Closed") }]} value={String(draft.registrationOpen)} /></label>
-              <label><span>{phrase("默认角色", "Default role")}</span><GlassSelect ariaLabel={phrase("默认角色", "Default role")} onChange={(value) => updateDraft({ defaultRoleCode: value }, true)} options={roleOptions.map((role) => ({ value: role.code, label: role.name }))} value={draft.defaultRoleCode} /></label>
+              <label><span>{phrase("默认角色", "Default role")}</span><GlassSelect ariaLabel={phrase("默认角色", "Default role")} onChange={(value) => updateDraft({ defaultRoleCode: value }, true)} options={roleOptions.map((role) => ({ value: role.code, label: growthLevelLabel(role.code, locale, role.name) }))} value={draft.defaultRoleCode} /></label>
             </div>
             <div className="site-resource-stack">
               <SiteResourcePicker

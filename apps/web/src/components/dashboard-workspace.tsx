@@ -18,6 +18,7 @@ import { openChatDock } from "@/lib/social-events";
 import { getUserDisplayName } from "@/lib/user-display";
 import { getManagementIdentity, isSiteManager } from "@/lib/user-permissions";
 import { localizedPath } from "@/lib/i18n";
+import { growthLevelLabel } from "@/lib/system-labels";
 
 interface DashboardData {
   article: ArticleMineSummary;
@@ -77,7 +78,7 @@ export function DashboardWorkspace() {
     <header className="p8-page-heading"><div>{locale === "zh-CN" ? <span className="section-label">{t("dashboard.section")}</span> : null}<h1>{t("dashboard.title")}</h1></div><Link className="p8-primary-link" href={localizedPath("/articles/write", locale)}><FilePenLine aria-hidden="true" size={16} />{t("dashboard.writeArticle")}</Link></header>
     {isLoading ? <div className="status-row compact-status-row"><span className="status">{t("dashboard.loading")}</span></div> : user ? <>
       <section className="p8-surface p8-dashboard-identity">
-        <div><span className="p8-avatar identity-avatar-host"><span className="identity-avatar-visual">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : getUserDisplayName(user).slice(0, 2)}</span><AvatarManagementBadge user={user} /></span><span><strong>{getUserDisplayName(user)}</strong><small>@{user.username} · {user.role.name}{managementIdentity ? ` · ${managementIdentity.label}` : ""}</small></span></div>
+        <div><span className="p8-avatar identity-avatar-host"><span className="identity-avatar-visual">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : getUserDisplayName(user).slice(0, 2)}</span><AvatarManagementBadge user={user} /></span><span><strong>{getUserDisplayName(user)}</strong><small>@{user.username} · {growthLevelLabel(user.role.code, locale, user.role.name)}{managementIdentity ? ` · ${managementIdentity.label}` : ""}</small></span></div>
         <div className="p8-identity-stats"><span><b>{data.article.published}</b>{t("dashboard.published")}</span><span><b>{data.article.draft}</b>{t("dashboard.drafts")}</span><span><b>{data.groupCount}</b>{t("home.groupCount")}</span></div>
       </section>
       <div className="p8-dashboard-grid">

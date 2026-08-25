@@ -23,6 +23,7 @@ import {
 import { AuthRole, AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
+import { growthLevelLabel } from "@/lib/system-labels";
 import { isSiteManager } from "@/lib/user-permissions";
 
 type StatusFilter = "all" | AnnouncementStatus;
@@ -232,7 +233,7 @@ function AnnouncementSelect({ label, onChange, options, value }: { label: string
 }
 
 function AnnouncementEditor({ editor, roles, isSaving, setEditor, onPublish, onSubmit }: { editor: EditorState; roles: AuthRole[]; isSaving: boolean; setEditor: (value: EditorState | null) => void; onPublish: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  const { phrase } = useLanguage();
+  const { locale, phrase } = useLanguage();
   const input = editor.input;
   const setInput = (next: Partial<AnnouncementInput>) => setEditor({ ...editor, input: { ...input, ...next } });
   const publishBlocked = !isPublishable(input);
@@ -248,7 +249,7 @@ function AnnouncementEditor({ editor, roles, isSaving, setEditor, onPublish, onS
       <label><span>{phrase("自动下线", "Auto-expire")}</span><input onChange={(event) => setInput({ expiresAt: event.target.value || null })} step={60} type="datetime-local" value={input.expiresAt ?? ""} /></label>
       <label><span>{phrase("置顶顺序", "Pin order")}</span><input disabled={!input.isPinned} min={0} onChange={(event) => setInput({ pinOrder: Number(event.target.value) })} type="number" value={input.pinOrder} /></label>
       <div className="announcement-editor-options"><button aria-pressed={input.isPinned} onClick={() => setInput({ isPinned: !input.isPinned })} type="button"><i>{input.isPinned ? <Check aria-hidden="true" size={11} /> : null}</i>{phrase("置顶公告", "Pin announcement")}</button><button aria-pressed={input.pushEnabled} onClick={() => setInput({ pushEnabled: !input.pushEnabled })} type="button"><i>{input.pushEnabled ? <Check aria-hidden="true" size={11} /> : null}</i>{phrase("浏览器推送", "Browser push")}</button></div>
-      {input.audience === "role_restricted" ? <fieldset className="wide"><legend>{phrase("可见角色", "Visible roles")}</legend><div>{roles.map((role) => <button aria-pressed={input.roleCodes.includes(role.code)} key={role.code} onClick={() => setInput({ roleCodes: input.roleCodes.includes(role.code) ? input.roleCodes.filter((code) => code !== role.code) : [...input.roleCodes, role.code] })} type="button"><i>{input.roleCodes.includes(role.code) ? <Check aria-hidden="true" size={11} /> : null}</i>{role.name}</button>)}</div></fieldset> : null}
+      {input.audience === "role_restricted" ? <fieldset className="wide"><legend>{phrase("可见角色", "Visible roles")}</legend><div>{roles.map((role) => <button aria-pressed={input.roleCodes.includes(role.code)} key={role.code} onClick={() => setInput({ roleCodes: input.roleCodes.includes(role.code) ? input.roleCodes.filter((code) => code !== role.code) : [...input.roleCodes, role.code] })} type="button"><i>{input.roleCodes.includes(role.code) ? <Check aria-hidden="true" size={11} /> : null}</i>{growthLevelLabel(role.code, locale, role.name)}</button>)}</div></fieldset> : null}
     </div>
     <footer><button aria-label={phrase("保存草稿", "Save draft")} disabled={isSaving} title={isSaving ? phrase("保存中", "Saving") : phrase("保存草稿", "Save draft")} type="submit">{isSaving ? <LoaderCircle aria-hidden="true" className="spin" size={16} /> : <Save aria-hidden="true" size={16} />}</button><button aria-label={input.publishMode === "scheduled" ? phrase("定时发布", "Schedule publishing") : phrase("发布公告", "Publish announcement")} disabled={isSaving || publishBlocked} onClick={onPublish} title={publishBlocked ? publishBlockReason(input, phrase) : input.publishMode === "scheduled" ? phrase("定时发布", "Schedule publishing") : phrase("发布公告", "Publish announcement")} type="button"><Send aria-hidden="true" size={16} /></button></footer>
   </form></div>;

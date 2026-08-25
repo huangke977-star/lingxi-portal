@@ -10,6 +10,7 @@ import { AuditLog, listAuditLogs } from "@/lib/audit-api";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
+import { auditActionLabel } from "@/lib/system-labels";
 import { isSiteManager } from "@/lib/user-permissions";
 
 export default function AuditLogPage() {
@@ -101,7 +102,7 @@ function AuditRow({ expanded, item, onToggle }: { expanded: boolean; item: Audit
     <tr className="audit-row" onClick={onToggle}>
       <td>{formatDateTime(item.createdAt, locale)}</td>
       <td><strong>{item.actor.nickname}</strong><small>@{item.actor.username}</small></td>
-      <td><span className={`audit-scope ${item.scope}`}>{scopeLabel(item.scope, phrase)}</span><strong>{item.summary}</strong><small>{item.method} {item.path}</small></td>
+      <td><span className={`audit-scope ${item.scope}`}>{scopeLabel(item.scope, phrase)}</span><strong>{auditActionLabel(item.action, locale, item.summary)}</strong><small>{item.method} {item.path}</small></td>
       <td>{item.targetId || "-"}</td>
       <td><span className={item.statusCode < 400 ? "audit-result success" : "audit-result failed"}>{item.statusCode < 400 ? phrase("成功", "Success") : phrase(`失败 ${item.statusCode}`, `Failed ${item.statusCode}`)}</span><small>{item.durationMs} ms</small></td>
       <td><span>{item.ip || "-"}</span></td>

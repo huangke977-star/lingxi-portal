@@ -32,6 +32,7 @@ import {
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
+import { analyticsDefinitionDescription, analyticsDefinitionLabel, analyticsRankingSecondary } from "@/lib/system-labels";
 import { isSiteManager } from "@/lib/user-permissions";
 
 type Range = 7 | 30 | 90;
@@ -138,24 +139,24 @@ export default function AdminAnalyticsPage() {
         <TrendChart data={data.trend} series={[{ key: "anonymousTopics", label: phrase("话题", "Topics"), color: "#3f7f9b" }, { key: "anonymousMessages", label: phrase("发言", "Messages"), color: "#6d75b8" }, { key: "anonymousLikes", label: phrase("点评获赞", "Message likes"), color: "#b15c76" }, { key: "anonymousFavorites", label: phrase("话题喜欢", "Topic favorites"), color: "#c08338" }]} title={phrase("匿名话题", "Anonymous topics")} />
       </div>
       <div className="analytics-rankings">
-        <Ranking title={phrase("热门作者", "Popular authors")} items={data.rankings.authors} kind="author" />
-        <Ranking title={phrase("热门文章", "Popular articles")} items={data.rankings.articles} kind="article" />
-        <Ranking title={phrase("热门搜索", "Popular searches")} items={data.rankings.searches} kind="search" />
-        <Ranking title={phrase("订阅增长", "Subscription growth")} items={data.rankings.subscriptionGrowth} kind="author" />
-        <Ranking title={phrase("热门匿名话题", "Popular anonymous topics")} items={data.rankings.anonymousTopics} kind="topic" />
+        <Ranking category="author" title={phrase("热门作者", "Popular authors")} items={data.rankings.authors} kind="author" />
+        <Ranking category="article" title={phrase("热门文章", "Popular articles")} items={data.rankings.articles} kind="article" />
+        <Ranking category="search" title={phrase("热门搜索", "Popular searches")} items={data.rankings.searches} kind="search" />
+        <Ranking category="subscription_growth" title={phrase("订阅增长", "Subscription growth")} items={data.rankings.subscriptionGrowth} kind="author" />
+        <Ranking category="anonymous_topic" title={phrase("热门匿名话题", "Popular anonymous topics")} items={data.rankings.anonymousTopics} kind="topic" />
       </div>
-      <details className="analytics-definitions"><summary>{phrase("统计口径", "Definitions")}</summary><div>{data.definitions.map((item) => <p key={item.key}><strong>{item.label}</strong><span>{item.definition}</span></p>)}</div></details>
+      <details className="analytics-definitions"><summary>{phrase("统计口径", "Definitions")}</summary><div>{data.definitions.map((item) => <p key={item.key}><strong>{analyticsDefinitionLabel(item.key, locale, item.label)}</strong><span>{analyticsDefinitionDescription(item.key, locale, item.definition)}</span></p>)}</div></details>
       <span className="analytics-generated">{phrase("最近聚合：", "Latest aggregate: ")}{data.latestAggregateAt ? formatTime(data.latestAggregateAt, locale) : phrase("尚未生成", "Not generated")} · {phrase("页面读取：", "Page read: ")}{formatTime(data.generatedAt, locale)}</span>
     </> : null}
     <AppToast duration={error ? 4200 : 2600} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
   </section>;
 }
 
-function Ranking({ items, kind, title }: { items: AnalyticsRankingItem[]; kind: "author" | "article" | "search" | "topic"; title: string }) {
+function Ranking({ category, items, kind, title }: { category: "author" | "article" | "search" | "subscription_growth" | "anonymous_topic"; items: AnalyticsRankingItem[]; kind: "author" | "article" | "search" | "topic"; title: string }) {
   const { locale, phrase } = useLanguage();
   return <section className="analytics-ranking"><header><strong>{title}</strong><span>{items.length ? phrase(`前 ${items.length}`, `Top ${items.length}`) : phrase("暂无数据", "No data")}</span></header><ol>{items.map((item, index) => {
     const slug = typeof item.metadata?.slug === "string" ? item.metadata.slug : "";
-    const content = <><b>{index + 1}</b><span><strong>{item.label}</strong><small>{item.secondary}</small></span><em>{item.score.toLocaleString(locale)}</em></>;
+    const content = <><b>{index + 1}</b><span><strong>{item.label}</strong><small>{analyticsRankingSecondary(category, item.secondary, locale)}</small></span><em>{item.score.toLocaleString(locale)}</em></>;
     if (kind === "article" && slug) return <li key={item.key}><Link href={localizedPath(`/articles/${slug}`, locale)}>{content}</Link></li>;
     return <li key={item.key}><div>{content}</div></li>;
   })}</ol></section>;

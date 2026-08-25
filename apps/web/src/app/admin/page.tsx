@@ -32,6 +32,7 @@ import {
 } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
+import { growthLevelLabel } from "@/lib/system-labels";
 import { getManagementIdentity, isSiteManager } from "@/lib/user-permissions";
 
 export default function AdminPage() {
@@ -470,7 +471,7 @@ export default function AdminPage() {
                       <div className="admin-user-identity">
                         <span className="table-role-label" title={phrase("成长等级", "Account level")}>
                           <RoleSymbol code={user.role.code} />
-                          {user.role.name} · Lv.{user.role.level}
+                          {growthLevelLabel(user.role.code, locale, user.role.name)} · Lv.{user.role.level}
                         </span>
                         {getManagementIdentity(user) ? (
                           <span className="table-management-label">

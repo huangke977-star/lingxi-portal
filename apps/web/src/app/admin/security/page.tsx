@@ -781,8 +781,7 @@ function SecurityRecordRow({
         <small>{item.user?.username ? `@${item.user.username}` : ""}</small>
       </td>
       <td className="security-table-summary">
-        <strong>{item.summary || securityTypeLabel(item.type, phrase)}</strong>
-        <small>{securityTypeLabel(item.type, phrase)}</small>
+        <strong>{securityTypeLabel(item.type, phrase)}</strong>
       </td>
       <td>
         <StatusBadge phrase={phrase} value={item.riskLevel} />

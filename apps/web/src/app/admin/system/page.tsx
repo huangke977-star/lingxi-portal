@@ -32,6 +32,7 @@ import { useLanguage } from "@/components/language-provider";
 import { type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
+import { containerRuntimeMessage, mediaBackupLogMessage, storageCategoryLabel } from "@/lib/system-labels";
 import {
   createDatabaseBackup,
   deleteDatabaseBackup,
@@ -382,7 +383,7 @@ export default function SystemStatusPage() {
           <PanelHeading icon={HardDrive} title={phrase("文件存储分布", "File storage distribution")} />
           <div className="system-storage-list">
             {status.storage.items.map((item) => <div className="system-storage-row" key={item.key}>
-              <div><strong>{item.label}</strong><span>{item.available ? phrase(`${item.fileCount} 个文件`, `${item.fileCount} files`) : phrase("目录暂不可用", "Directory unavailable")}</span></div>
+              <div><strong>{storageCategoryLabel(item.key, locale, item.label)}</strong><span>{item.available ? phrase(`${item.fileCount} 个文件`, `${item.fileCount} files`) : phrase("目录暂不可用", "Directory unavailable")}</span></div>
               <b>{formatBytes(item.sizeBytes)}</b>
               <i><span style={{ width: `${Math.max(item.sizeBytes ? 4 : 0, item.sizeBytes / largestStorageBytes * 100)}%` }} /></i>
             </div>)}
@@ -431,7 +432,7 @@ export default function SystemStatusPage() {
         <div className="system-monitoring-left">
           <section className="system-status-panel runtime">
             <PanelHeading icon={Server} title={phrase("容器与宿主机", "Containers and host")} />
-            <div className="system-runtime-note"><CircleAlert aria-hidden="true" size={20} /><p>{status.containerRuntime.message}</p></div>
+            <div className="system-runtime-note"><CircleAlert aria-hidden="true" size={20} /><p>{containerRuntimeMessage(locale, status.containerRuntime.message)}</p></div>
             <div className="system-runtime-links"><span>{phrase("容器启停、CPU、整机内存和磁盘清理由 1Panel 或 SSH 负责。", "Container lifecycle, CPU, host memory, and disk cleanup are managed through 1Panel or SSH.")}</span><Link href={localizedPath("/admin/cache", locale)}>{phrase("查看 Redis 缓存", "View Redis cache")}</Link><Link href={localizedPath("/admin/settings", locale)}>{phrase("查看站点资源", "View site assets")}</Link></div>
           </section>
 
@@ -521,7 +522,7 @@ export default function SystemStatusPage() {
     {selectedMediaJob ? <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedMediaJob(null); }} role="presentation"><div aria-modal="true" className="modal-panel media-backup-detail-modal" role="dialog">
       <header><span><small>Media backup</small><h2>{phrase(`媒体备份任务 #${selectedMediaJob.id}`, `Media backup job #${selectedMediaJob.id}`)}</h2></span><button aria-label={phrase("关闭任务详情", "Close job details")} onClick={() => setSelectedMediaJob(null)} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={18} /></button></header>
       <div className="media-backup-detail-summary"><span><small>{phrase("状态", "Status")}</small><strong className={mediaJobTone(selectedMediaJob.status)}>{mediaJobStatusLabel(selectedMediaJob.status, phrase)}</strong></span><span><small>{phrase("文件", "Files")}</small><strong>{selectedMediaJob.processedFiles} / {selectedMediaJob.totalFiles}</strong></span><span><small>{phrase("上传流量", "Upload traffic")}</small><strong>{formatBytes(selectedMediaJob.uploadedBytes)}</strong></span><span><small>{phrase("提供商", "Providers")}</small><strong>{selectedMediaJob.providers.map((provider) => providerLabel(provider, phrase)).join(" · ") || phrase("未配置", "Not configured")}</strong></span></div>
-      <section><h3>{phrase("任务日志", "Job logs")}</h3><div className="media-backup-log-list">{selectedMediaJob.logs.map((log) => <article className={log.level} key={log.id}><time>{formatDateTime(log.createdAt, locale)}</time><span>{log.message}</span></article>)}{!selectedMediaJob.logs.length ? <p>{phrase("暂无任务日志。", "No job logs.")}</p> : null}</div></section>
+      <section><h3>{phrase("任务日志", "Job logs")}</h3><div className="media-backup-log-list">{selectedMediaJob.logs.map((log) => <article className={log.level} key={log.id}><time>{formatDateTime(log.createdAt, locale)}</time><span>{mediaBackupLogMessage(log, selectedMediaJob, locale)}</span></article>)}{!selectedMediaJob.logs.length ? <p>{phrase("暂无任务日志。", "No job logs.")}</p> : null}</div></section>
       <section><h3>{phrase("文件清单", "File manifest")}</h3><div className="media-backup-manifest-list">{selectedMediaJob.manifests.map((manifest) => <article key={manifest.id}><span><strong title={manifest.storedName}>{manifest.storedName}</strong><small>{providerLabel(manifest.provider, phrase)} · {formatBytes(manifest.sizeBytes)}</small></span><i className={mediaManifestTone(manifest.status)}>{mediaManifestStatusLabel(manifest.status, phrase)}</i></article>)}{!selectedMediaJob.manifests.length ? <p>{phrase("任务尚未生成文件清单。", "This job has not created a file manifest yet.")}</p> : null}</div></section>
     </div></div> : null}
   </section>;

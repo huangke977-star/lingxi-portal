@@ -377,7 +377,7 @@ function SecurityEvents({ events }: { events: SecurityEvent[] }) {
           <div className="security-event-row" key={event.id}>
             <span className={`security-risk-dot ${event.riskLevel}`} />
             <div>
-              <strong>{event.summary || securityEventLabel(event.type, locale)}</strong>
+              <strong>{securityEventLabel(event.type, locale, event.summary)}</strong>
               <small>
                 {event.deviceLabel || phrase("未知设备", "Unknown device")} · {event.ip || phrase("IP 未记录", "IP not recorded")}
               </small>
@@ -442,7 +442,7 @@ function TrustedDevices({
   );
 }
 
-function securityEventLabel(type: string, locale: "zh-CN" | "en-US"): string {
+function securityEventLabel(type: string, locale: "zh-CN" | "en-US", fallback = ""): string {
   const labels: Record<string, readonly [string, string]> = {
     login: ["账号登录", "Account sign-in"],
     login_success: ["登录成功", "Sign-in successful"],
@@ -453,7 +453,7 @@ function securityEventLabel(type: string, locale: "zh-CN" | "en-US"): string {
     password_reset: ["密码已重置", "Password reset"],
   };
   const label = labels[type]?.[locale === "en-US" ? 1 : 0];
-  return label || type || (locale === "en-US" ? "Security event" : "安全事件");
+  return label || fallback || type || (locale === "en-US" ? "Security event" : "安全事件");
 }
 
 function formatDateTime(value: string, locale: "zh-CN" | "en-US"): string {

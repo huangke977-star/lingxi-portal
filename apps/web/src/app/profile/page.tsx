@@ -42,6 +42,7 @@ import { getAccountMotto } from "@/lib/account-mottos";
 import { localizedPath } from "@/lib/i18n";
 import { getAvatarFallbackText, getUserDisplayName } from "@/lib/user-display";
 import { getMyReputation, type ReputationSummary } from "@/lib/reputation-api";
+import { reputationReasonLabel } from "@/lib/system-labels";
 import { listMyArticles, type Article } from "@/lib/article-api";
 import {
   getProfileSettings,
@@ -1062,11 +1063,11 @@ export default function ProfilePage() {
               </div>
               <div className="reputation-rules">
                 <strong>{phrase("获取规则", "Earning rules")}</strong>
-                {reputation.rules.map((rule) => <div key={rule.reason}><span>{rule.label}</span><em>{rule.experience ? phrase(`+${rule.experience} 经验`, `+${rule.experience} XP`) : ""}{rule.experience && rule.points ? " · " : ""}{rule.points ? phrase(`+${rule.points} 积分`, `+${rule.points} points`) : ""}</em>{rule.dailyExperienceCap ? <small>{phrase(`每日经验上限 ${rule.dailyExperienceCap}`, `Daily XP cap ${rule.dailyExperienceCap}`)}</small> : null}</div>)}
+                {reputation.rules.map((rule) => <div key={rule.reason}><span>{reputationReasonLabel(rule.reason, locale, rule.label)}</span><em>{rule.experience ? phrase(`+${rule.experience} 经验`, `+${rule.experience} XP`) : ""}{rule.experience && rule.points ? " · " : ""}{rule.points ? phrase(`+${rule.points} 积分`, `+${rule.points} points`) : ""}</em>{rule.dailyExperienceCap ? <small>{phrase(`每日经验上限 ${rule.dailyExperienceCap}`, `Daily XP cap ${rule.dailyExperienceCap}`)}</small> : null}</div>)}
               </div>
               <div className="reputation-ledger">
                 <strong>{phrase("最近记录", "Recent activity")}</strong>
-                {reputation.recent.length ? reputation.recent.slice(0, 6).map((item) => <div key={item.id}><span><b>{item.description}</b><small>{formatReputationTime(item.createdAt, locale)}</small></span><em>{item.experienceDelta ? phrase(`${item.experienceDelta > 0 ? "+" : ""}${item.experienceDelta} 经验`, `${item.experienceDelta > 0 ? "+" : ""}${item.experienceDelta} XP`) : ""}{item.experienceDelta && item.pointDelta ? " · " : ""}{item.pointDelta ? phrase(`${item.pointDelta > 0 ? "+" : ""}${item.pointDelta} 积分`, `${item.pointDelta > 0 ? "+" : ""}${item.pointDelta} points`) : ""}</em></div>) : <p>{phrase("完成阅读、评论或创作后，这里会显示记录。", "Records appear here after you read, comment, or publish.")}</p>}
+                {reputation.recent.length ? reputation.recent.slice(0, 6).map((item) => <div key={item.id}><span><b>{reputationReasonLabel(item.reason, locale, item.description)}</b><small>{formatReputationTime(item.createdAt, locale)}</small></span><em>{item.experienceDelta ? phrase(`${item.experienceDelta > 0 ? "+" : ""}${item.experienceDelta} 经验`, `${item.experienceDelta > 0 ? "+" : ""}${item.experienceDelta} XP`) : ""}{item.experienceDelta && item.pointDelta ? " · " : ""}{item.pointDelta ? phrase(`${item.pointDelta > 0 ? "+" : ""}${item.pointDelta} 积分`, `${item.pointDelta > 0 ? "+" : ""}${item.pointDelta} points`) : ""}</em></div>) : <p>{phrase("完成阅读、评论或创作后，这里会显示记录。", "Records appear here after you read, comment, or publish.")}</p>}
               </div>
             </div> : <div className="reputation-empty"><Sparkles aria-hidden="true" size={18} />{phrase("正在读取成长记录", "Loading growth activity")}</div>}
           </section>

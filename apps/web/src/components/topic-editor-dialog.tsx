@@ -10,6 +10,7 @@ import { useLanguage } from "@/components/language-provider";
 import type { AuthRole } from "@/lib/auth-api";
 import { resolveApiUrl } from "@/lib/auth-api";
 import type { ArticleTopicInput } from "@/lib/discovery-api";
+import { growthLevelLabel } from "@/lib/system-labels";
 
 export interface TopicEditorDraft extends ArticleTopicInput {
   coverPath: string;
@@ -48,7 +49,7 @@ export function TopicEditorDialog({
   roles: AuthRole[];
   selectedArticles: ManageableArticle[];
 }) {
-  const { phrase } = useLanguage();
+  const { locale, phrase } = useLanguage();
   if (typeof document === "undefined") return null;
   const title = isEdit ? phrase("编辑专题", "Edit topic") : phrase("创建专题", "Create topic");
   const topicVisibilityOptions = [
@@ -96,7 +97,7 @@ export function TopicEditorDialog({
           {draft.visibility === "role_restricted" ? (
             <div className="topic-role-grid">
               {roles.map((role) => (
-                <label key={role.code}><input checked={draft.roleCodes.includes(role.code)} onChange={() => toggleRole(role.code)} type="checkbox" />{role.name}</label>
+                <label key={role.code}><input checked={draft.roleCodes.includes(role.code)} onChange={() => toggleRole(role.code)} type="checkbox" />{growthLevelLabel(role.code, locale, role.name)}</label>
               ))}
             </div>
           ) : null}
