@@ -86,7 +86,7 @@ export default function MyArticleReportsPage() {
     <section className="p8-page p8-directory-page my-reports-page">
       <header className="p8-page-heading">
         <div>
-          {locale === "zh-CN" ? <span className="section-label"><Flag aria-hidden="true" size={14} /> REPORT HISTORY</span> : null}
+          <span className="section-label"><Flag aria-hidden="true" size={14} />{phrase("举报记录", "REPORT HISTORY")}</span>
           <h1>{phrase("我的举报", "My reports")}</h1>
           <p>{phrase("查看你提交的文章举报和处理结果。", "Review article reports you submitted and their outcomes.")}</p>
         </div>

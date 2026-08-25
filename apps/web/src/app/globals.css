@@ -17649,3 +17649,144 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
     white-space: normal;
   }
 }
+
+/* Final page-specific sizing corrections. Keep the shared chrome compact without changing content typography. */
+.p8-page.my-reports-page {
+  gap: 8px;
+}
+
+.p8-page.my-reports-page .p8-page-heading {
+  padding-bottom: 5px !important;
+}
+
+.p8-page.my-reports-page .p8-page-heading .section-label {
+  font-size: 0.62rem;
+}
+
+.p8-page.my-reports-page .p8-page-heading h1 {
+  font-size: 1.18rem !important;
+}
+
+.p8-page.my-reports-page .p8-page-heading p {
+  font-size: 0.67rem;
+}
+
+.p8-page .feedback-panel {
+  display: grid;
+  min-width: 0;
+  gap: 9px;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.p8-page .feedback-list-surface {
+  display: grid;
+  min-width: 0;
+  gap: 9px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  padding: 12px;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.page-shell.group-management-admin-page {
+  gap: 6px;
+}
+
+.page-shell.group-management-admin-page .group-management-admin-toolbar {
+  gap: 7px;
+  padding-bottom: 4px;
+}
+
+.page-shell.group-management-admin-page .group-management-search {
+  box-sizing: border-box;
+  min-height: 32px;
+  height: 32px;
+  align-items: center;
+  padding: 0 9px;
+}
+
+.page-shell.group-management-admin-page .group-management-search input {
+  height: 100%;
+  line-height: normal;
+  font-size: 0.7rem;
+}
+
+.page-shell.announcement-admin-page .announcement-admin-toolbar {
+  gap: 8px;
+  padding-bottom: 5px;
+}
+
+.page-shell.announcement-admin-page .announcement-admin-toolbar > label {
+  box-sizing: border-box;
+  min-height: 32px;
+  height: 32px;
+  align-items: center;
+  padding: 0 9px;
+}
+
+.page-shell.announcement-admin-page .announcement-admin-toolbar input {
+  height: 100%;
+  line-height: normal;
+  font-size: 0.7rem;
+}
+
+.page-shell.security-admin-shell .security-config-actions {
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.page-shell.security-admin-shell .security-config-actions :is(.button, .text-action) {
+  min-height: 32px;
+  font-size: 0.72rem;
+  padding: 0 9px;
+}
+
+.page-shell.android-release-admin-shell {
+  gap: 8px;
+}
+
+.page-shell.android-release-admin-shell .android-release-upload-panel {
+  gap: 16px;
+  margin-bottom: 0;
+  padding: 16px;
+}
+
+.page-shell.android-release-admin-shell .android-release-upload-copy {
+  gap: 5px;
+}
+
+.page-shell.android-release-admin-shell .android-release-upload-copy p {
+  font-size: 0.72rem;
+}
+
+.page-shell.android-release-admin-shell .android-release-active-check,
+.page-shell.android-release-admin-shell .android-release-submit {
+  min-height: 32px;
+  font-size: 0.72rem;
+}
+
+.page-shell.android-release-admin-shell .android-release-active-check {
+  padding: 0 9px;
+}
+
+.page-shell.android-release-admin-shell .android-release-submit {
+  padding: 0 10px;
+}
+
+.page-shell.android-release-admin-shell .background-list-heading {
+  gap: 10px;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.page-shell.android-release-admin-shell .background-list-heading > div {
+  gap: 3px;
+}
+
+.page-shell.android-release-admin-shell .background-list-heading h2 {
+  font-size: 0.9rem;
+}
