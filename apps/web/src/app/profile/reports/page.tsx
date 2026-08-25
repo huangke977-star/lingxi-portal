@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CheckCircle2, Clock3, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { AdminArticlePreviewModal } from "@/components/admin-article-preview-modal";
@@ -65,6 +66,59 @@ function reportDetail(item: ModerationReport, phrase: (chinese: string, english:
   return `${reportContext(item, phrase)} · ${reasonLabel(item.reason, phrase)}${item.detail ? ` · ${item.detail}` : ""}`;
 }
 
+function ReportDetailText({ value }: { value: string }) {
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState({ left: 0, top: 0 });
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!tooltipOpen || !pointer || !tooltipRef.current) return;
+    const tooltip = tooltipRef.current.getBoundingClientRect();
+    const margin = 12;
+    const gap = 10;
+    const aboveTop = pointer.y - tooltip.height - gap;
+    const belowTop = pointer.y + gap;
+    const top = aboveTop >= margin
+      ? aboveTop
+      : belowTop + tooltip.height <= window.innerHeight - margin
+        ? belowTop
+        : Math.max(margin, Math.min(aboveTop, window.innerHeight - tooltip.height - margin));
+    const left = Math.max(margin, Math.min(pointer.x - tooltip.width / 2, window.innerWidth - tooltip.width - margin));
+    setTooltipPosition({ left, top });
+  }, [pointer, tooltipOpen, value]);
+
+  function openTooltip(event: ReactMouseEvent<HTMLParagraphElement>) {
+    if (event.currentTarget.scrollWidth <= event.currentTarget.clientWidth) return;
+    setPointer({ x: event.clientX, y: event.clientY });
+    setTooltipOpen(true);
+  }
+
+  return <>
+    <p
+      aria-label={value}
+      className="my-report-detail-text"
+      onBlur={() => setTooltipOpen(false)}
+      onFocus={(event) => {
+        if (event.currentTarget.scrollWidth <= event.currentTarget.clientWidth) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        setPointer({ x: rect.left + rect.width / 2, y: rect.top });
+        setTooltipOpen(true);
+      }}
+      onMouseEnter={openTooltip}
+      onMouseLeave={() => setTooltipOpen(false)}
+      onMouseMove={(event) => { if (tooltipOpen) setPointer({ x: event.clientX, y: event.clientY }); }}
+      tabIndex={0}
+    >{value}</p>
+    {tooltipOpen && typeof document !== "undefined" ? createPortal(
+      <div className="my-report-detail-tooltip" ref={tooltipRef} role="tooltip" style={{ left: tooltipPosition.left, top: tooltipPosition.top }}>
+        {value}
+      </div>,
+      document.body,
+    ) : null}
+  </>;
+}
+
 export default function MyArticleReportsPage() {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
@@ -124,20 +178,21 @@ export default function MyArticleReportsPage() {
       </header>
       {isLoading ? <div className="article-empty-state">{phrase("正在读取举报记录。", "Loading report history.")}</div> : items.length ? (
         <div className="my-reports-list">
-          {items.map((item) => (
-            <article className="my-report-row" key={`${item.source}-${item.id}`}>
+          {items.map((item) => {
+            const detail = reportDetail(item, phrase);
+            return <article className="my-report-row" key={`${item.source}-${item.id}`}>
               <div className="my-report-main">
                 <div className="my-report-title-line">
                   <button className="my-report-title-button" onClick={() => void openReport(item)} title={phrase("查看举报内容", "View reported content")} type="button">{reportTitle(item, phrase)}</button>
                   <span className={`my-report-source ${item.source}`}>{sourceLabel(item.source, phrase)}</span>
                   <small className="my-report-timestamps">{phrase(`提交于 ${formatDate(item.createdAt, locale)}`, `Submitted ${formatDate(item.createdAt, locale)}`)}{item.handledAt ? phrase(` · 处理于 ${formatDate(item.handledAt, locale)}`, ` · Processed ${formatDate(item.handledAt, locale)}`) : ""}</small>
                 </div>
-                <p aria-label={reportDetail(item, phrase)} title={reportDetail(item, phrase)}>{reportDetail(item, phrase)}</p>
+                <ReportDetailText value={detail} />
                 {item.resolution ? <small className="my-report-resolution">{phrase("处理反馈：", "Resolution: ")}{item.resolution}</small> : null}
               </div>
               <span className={`my-report-status ${item.status}`}>{statusIcon(item.status)}{statusLabel(item.status, phrase)}</span>
             </article>
-          ))}
+          })}
         </div>
       ) : <div className="article-empty-state">{phrase("暂无举报记录。", "No reports yet.")}</div>}
       {previewArticle ? <AdminArticlePreviewModal article={previewArticle} onClose={() => setPreviewArticle(null)} /> : null}
