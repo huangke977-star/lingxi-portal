@@ -59,7 +59,7 @@ import {
 } from "@/lib/social-events";
 import { getPublicSiteSettings } from "@/lib/site-settings-api";
 import { localizedPath, stripLocalePath } from "@/lib/i18n";
-import { growthLevelLabel, notificationTitle } from "@/lib/system-labels";
+import { growthLevelLabel, notificationBody, notificationTitle } from "@/lib/system-labels";
 import { getAvatarFallbackText, getUserDisplayName } from "@/lib/user-display";
 
 const navItems = [
@@ -79,16 +79,17 @@ const emptySummary = {
 const HEADER_MESSAGE_PREVIEW_LIMIT = 8;
 
 function HeaderNotificationCopy({ locale, notification, siteAnnouncementLabel }: { locale: "zh-CN" | "en-US"; notification: SocialNotification; siteAnnouncementLabel: string }) {
+  const localizedBody = notificationBody(notification.body, notification.bodyEn, locale);
   const announcement = notification.context?.kind === "announcement" ? notification.context.announcement : null;
   if (announcement) {
     return <span className="header-announcement-notification">
       <small className="header-announcement-notification-type">{siteAnnouncementLabel}</small>
       <strong className="header-announcement-notification-title">{announcement.title}</strong>
-      <small className="header-announcement-notification-summary">{announcement.summary || notification.body}</small>
+      <small className="header-announcement-notification-summary">{announcement.summary || localizedBody}</small>
     </span>;
   }
 
-  return <span><strong>{notificationTitle(notification.type, notification.context?.kind, locale, notification.title)}</strong><small>{notification.context?.requestBody ?? notification.context?.commentBody ?? notification.body}</small></span>;
+  return <span><strong>{notificationTitle(notification.type, notification.context?.kind, locale, notification.title)}</strong><small>{notification.context?.requestBody ?? notification.context?.commentBody ?? localizedBody}</small></span>;
 }
 
 function pendingReportActionUrl(report: ModerationReport): string {

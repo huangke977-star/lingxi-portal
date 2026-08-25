@@ -62,6 +62,15 @@ interface SiteSettingRecord {
   templateFriendRequest: string;
   templateCommentReportHandled: string;
   templateCommentAuthorModerated: string;
+  templateArticleLikedEn: string;
+  templateArticleFavoritedEn: string;
+  templateArticleCommentedEn: string;
+  templateCommentRepliedEn: string;
+  templateAuthorSubscribedEn: string;
+  templateSubscriptionPublishedEn: string;
+  templateFriendRequestEn: string;
+  templateCommentReportHandledEn: string;
+  templateCommentAuthorModeratedEn: string;
   updatedAt: Date;
 }
 
@@ -121,6 +130,15 @@ const DEFAULT_SITE_SETTINGS: Prisma.SiteSettingUpdateInput = {
   templateFriendRequest: "{actor} 向你发送了好友申请。",
   templateCommentReportHandled: "你对《{article}》中评论的举报已{result}。",
   templateCommentAuthorModerated: "你在《{article}》中的评论已被{result}。",
+  templateArticleLikedEn: "{actor} liked {article}.",
+  templateArticleFavoritedEn: "{actor} favorited {article}.",
+  templateArticleCommentedEn: "{actor} commented on {article}.",
+  templateCommentRepliedEn: "{actor} replied to your comment on {article}.",
+  templateAuthorSubscribedEn: "{actor} subscribed to you.",
+  templateSubscriptionPublishedEn: "{author} published {article}.",
+  templateFriendRequestEn: "{actor} sent you a friend request.",
+  templateCommentReportHandledEn: "Your report of a comment on {article} was {result}.",
+  templateCommentAuthorModeratedEn: "Your comment on {article} was {result}.",
 };
 
 @Injectable()
@@ -265,6 +283,18 @@ export class SiteSettingsService {
     return settings.templates[name];
   }
 
+  renderNotificationTemplate(
+    settings: NotificationSettingsResponse,
+    name: NotificationTemplateName,
+    chineseVariables: Record<string, string | number | null | undefined>,
+    englishVariables = chineseVariables,
+  ): { body: string; bodyEn: string } {
+    return {
+      body: this.renderTemplate(settings.templates[name], chineseVariables),
+      bodyEn: this.renderTemplate(settings.templatesEn[name], englishVariables),
+    };
+  }
+
   private async getSettingsRecord(): Promise<SiteSettingRecord> {
     return this.prisma.siteSetting.upsert({
       where: { id: SETTINGS_ID },
@@ -328,6 +358,15 @@ export class SiteSettingsService {
       templateFriendRequest: dto.templateFriendRequest === undefined ? undefined : this.trimOrFallback(dto.templateFriendRequest, "{actor} 向你发送了好友申请。"),
       templateCommentReportHandled: dto.templateCommentReportHandled === undefined ? undefined : this.trimOrFallback(dto.templateCommentReportHandled, "你对《{article}》中评论的举报已{result}。"),
       templateCommentAuthorModerated: dto.templateCommentAuthorModerated === undefined ? undefined : this.trimOrFallback(dto.templateCommentAuthorModerated, "你在《{article}》中的评论已被{result}。"),
+      templateArticleLikedEn: dto.templateArticleLikedEn === undefined ? undefined : this.trimOrFallback(dto.templateArticleLikedEn, "{actor} liked {article}."),
+      templateArticleFavoritedEn: dto.templateArticleFavoritedEn === undefined ? undefined : this.trimOrFallback(dto.templateArticleFavoritedEn, "{actor} favorited {article}."),
+      templateArticleCommentedEn: dto.templateArticleCommentedEn === undefined ? undefined : this.trimOrFallback(dto.templateArticleCommentedEn, "{actor} commented on {article}."),
+      templateCommentRepliedEn: dto.templateCommentRepliedEn === undefined ? undefined : this.trimOrFallback(dto.templateCommentRepliedEn, "{actor} replied to your comment on {article}."),
+      templateAuthorSubscribedEn: dto.templateAuthorSubscribedEn === undefined ? undefined : this.trimOrFallback(dto.templateAuthorSubscribedEn, "{actor} subscribed to you."),
+      templateSubscriptionPublishedEn: dto.templateSubscriptionPublishedEn === undefined ? undefined : this.trimOrFallback(dto.templateSubscriptionPublishedEn, "{author} published {article}."),
+      templateFriendRequestEn: dto.templateFriendRequestEn === undefined ? undefined : this.trimOrFallback(dto.templateFriendRequestEn, "{actor} sent you a friend request."),
+      templateCommentReportHandledEn: dto.templateCommentReportHandledEn === undefined ? undefined : this.trimOrFallback(dto.templateCommentReportHandledEn, "Your report of a comment on {article} was {result}."),
+      templateCommentAuthorModeratedEn: dto.templateCommentAuthorModeratedEn === undefined ? undefined : this.trimOrFallback(dto.templateCommentAuthorModeratedEn, "Your comment on {article} was {result}."),
     };
   }
 
@@ -397,6 +436,15 @@ export class SiteSettingsService {
       templateFriendRequest: true,
       templateCommentReportHandled: true,
       templateCommentAuthorModerated: true,
+      templateArticleLikedEn: true,
+      templateArticleFavoritedEn: true,
+      templateArticleCommentedEn: true,
+      templateCommentRepliedEn: true,
+      templateAuthorSubscribedEn: true,
+      templateSubscriptionPublishedEn: true,
+      templateFriendRequestEn: true,
+      templateCommentReportHandledEn: true,
+      templateCommentAuthorModeratedEn: true,
       updatedAt: true,
     } as const;
   }
@@ -479,6 +527,17 @@ export class SiteSettingsService {
         friendRequest: settings.templateFriendRequest,
         commentReportHandled: settings.templateCommentReportHandled,
         commentAuthorModerated: settings.templateCommentAuthorModerated,
+      },
+      templatesEn: {
+        articleLiked: settings.templateArticleLikedEn,
+        articleFavorited: settings.templateArticleFavoritedEn,
+        articleCommented: settings.templateArticleCommentedEn,
+        commentReplied: settings.templateCommentRepliedEn,
+        authorSubscribed: settings.templateAuthorSubscribedEn,
+        subscriptionPublished: settings.templateSubscriptionPublishedEn,
+        friendRequest: settings.templateFriendRequestEn,
+        commentReportHandled: settings.templateCommentReportHandledEn,
+        commentAuthorModerated: settings.templateCommentAuthorModeratedEn,
       },
     };
   }

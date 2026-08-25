@@ -246,6 +246,7 @@ export interface SocialNotification {
   channel: NotificationChannel;
   title: string;
   body: string;
+  bodyEn: string | null;
   actionUrl: string | null;
   friendshipId: number | null;
   commentReportId: number | null;

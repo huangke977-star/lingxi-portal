@@ -361,7 +361,7 @@ export class SocialService {
             type: UserNotificationType.author_subscribed,
             channel: UserNotificationChannel.interaction,
             title: "新的订阅者",
-            body: this.siteSettingsService.renderTemplate(notificationSettings.templates.authorSubscribed, {
+            ...this.siteSettingsService.renderNotificationTemplate(notificationSettings, "authorSubscribed", {
               actor: user.nickname || user.username,
             }),
           } });
@@ -556,7 +556,7 @@ export class SocialService {
           actorId: user.id,
           type: UserNotificationType.friend_request_received,
           title: "新的好友申请",
-          body: this.siteSettingsService.renderTemplate(notificationSettings.templates.friendRequest, {
+          ...this.siteSettingsService.renderNotificationTemplate(notificationSettings, "friendRequest", {
             actor: user.nickname || user.username,
             note: requestNote,
           }),
@@ -634,6 +634,7 @@ export class SocialService {
               : UserNotificationType.friend_request_declined,
             title: status === "accepted" ? "好友申请已通过" : "好友申请未通过",
             body: `${user.nickname || user.username}${status === "accepted" ? "接受" : "拒绝"}了你的好友申请。`,
+            bodyEn: `${user.nickname || user.username} ${status === "accepted" ? "accepted" : "declined"} your friend request.`,
             actionUrl: "/messages",
             friendshipId,
           },
@@ -2197,6 +2198,7 @@ export class SocialService {
       channel: notification.channel,
       title: notification.title,
       body: notification.body,
+      bodyEn: notification.bodyEn,
       actionUrl: notification.actionUrl,
       friendshipId: notification.friendshipId,
       commentReportId: notification.commentReportId,

@@ -258,6 +258,7 @@ export interface UserNotificationResponse {
   channel: "system" | "subscription" | "interaction";
   title: string;
   body: string;
+  bodyEn: string | null;
   actionUrl: string | null;
   friendshipId: number | null;
   commentReportId: number | null;

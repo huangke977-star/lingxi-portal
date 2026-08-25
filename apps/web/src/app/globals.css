@@ -14405,6 +14405,47 @@ html:has(.article-comment-form) {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.notification-template-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.notification-template-heading strong {
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.notification-template-locale-switcher {
+  align-items: center;
+  backdrop-filter: blur(12px) saturate(118%);
+  background: color-mix(in srgb, var(--surface-soft) 74%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 1px 5px color-mix(in srgb, var(--shadow-color) 16%, transparent);
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+}
+
+.notification-template-locale-switcher button {
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--muted-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 10px;
+}
+
+.notification-template-locale-switcher button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent-soft) 78%, var(--surface-strong));
+  box-shadow: 0 1px 5px color-mix(in srgb, var(--accent-strong) 22%, transparent);
+  color: var(--accent-strong);
+}
+
 @media (max-width: 920px) {
   .site-settings-shell {
     min-width: 0;

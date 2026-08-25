@@ -830,8 +830,8 @@ export default function ProfilePage() {
     ? formatDuration(now - joinedAt.getTime(), locale)
     : "";
   const accountMotto = useMemo(
-    () => (user ? getAccountMotto(user) : ""),
-    [user],
+    () => (user ? getAccountMotto(user, locale) : ""),
+    [locale, user],
   );
   const toastMessage = isSavingAppearance
     ? phrase("外观保存中", "Saving appearance")

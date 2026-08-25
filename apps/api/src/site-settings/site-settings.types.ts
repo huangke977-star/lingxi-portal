@@ -84,6 +84,17 @@ export interface NotificationSettingsResponse {
     commentReportHandled: string;
     commentAuthorModerated: string;
   };
+  templatesEn: {
+    articleLiked: string;
+    articleFavorited: string;
+    articleCommented: string;
+    commentReplied: string;
+    authorSubscribed: string;
+    subscriptionPublished: string;
+    friendRequest: string;
+    commentReportHandled: string;
+    commentAuthorModerated: string;
+  };
 }
 
 export interface RegistrationPolicy {

@@ -81,15 +81,15 @@ const notificationRows = [
 ] as const;
 
 const templateRows = [
-  ["templateArticleLiked", "点赞模板", "Like template"],
-  ["templateArticleFavorited", "收藏模板", "Favorite template"],
-  ["templateArticleCommented", "评论模板", "Comment template"],
-  ["templateCommentReplied", "回复模板", "Reply template"],
-  ["templateAuthorSubscribed", "订阅者模板", "Subscriber template"],
-  ["templateSubscriptionPublished", "订阅发布模板", "Subscription publish template"],
-  ["templateFriendRequest", "好友申请模板", "Friend request template"],
-  ["templateCommentReportHandled", "举报结果模板", "Report result template"],
-  ["templateCommentAuthorModerated", "评论处理模板", "Comment moderation template"],
+  ["templateArticleLiked", "templateArticleLikedEn", "点赞模板", "Like template"],
+  ["templateArticleFavorited", "templateArticleFavoritedEn", "收藏模板", "Favorite template"],
+  ["templateArticleCommented", "templateArticleCommentedEn", "评论模板", "Comment template"],
+  ["templateCommentReplied", "templateCommentRepliedEn", "回复模板", "Reply template"],
+  ["templateAuthorSubscribed", "templateAuthorSubscribedEn", "订阅者模板", "Subscriber template"],
+  ["templateSubscriptionPublished", "templateSubscriptionPublishedEn", "订阅发布模板", "Subscription publish template"],
+  ["templateFriendRequest", "templateFriendRequestEn", "好友申请模板", "Friend request template"],
+  ["templateCommentReportHandled", "templateCommentReportHandledEn", "举报结果模板", "Report result template"],
+  ["templateCommentAuthorModerated", "templateCommentAuthorModeratedEn", "评论处理模板", "Comment moderation template"],
 ] as const;
 
 const emptyTaxonomyDraft: ArticleTaxonomyInput = {
@@ -138,6 +138,7 @@ export default function SiteSettingsPage() {
   const [previewBackground, setPreviewBackground] = useState<ManagedBackground | null>(null);
   const [taxonomyDrafts, setTaxonomyDrafts] = useState<Record<number, ArticleTaxonomyInput>>({});
   const [newTaxonomy, setNewTaxonomy] = useState<ArticleTaxonomyInput>(emptyTaxonomyDraft);
+  const [templateLocale, setTemplateLocale] = useState<"zh-CN" | "en-US">(locale);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isBackgroundUploading, setIsBackgroundUploading] = useState(false);
@@ -711,17 +712,25 @@ export default function SiteSettingsPage() {
                 </label>
               ))}
             </div>
+            <div className="notification-template-heading">
+              <strong>{phrase("通知模板", "Notification templates")}</strong>
+              <div aria-label={phrase("模板语言", "Template language")} className="notification-template-locale-switcher" role="group">
+                <button aria-pressed={templateLocale === "zh-CN"} onClick={() => setTemplateLocale("zh-CN")} type="button">中文</button>
+                <button aria-pressed={templateLocale === "en-US"} onClick={() => setTemplateLocale("en-US")} type="button">English</button>
+              </div>
+            </div>
             <div className="notification-template-grid">
-              {templateRows.map(([key, chinese, english]) => (
-                <label key={key}>
+              {templateRows.map(([chineseKey, englishKey, chinese, english]) => {
+                const key = templateLocale === "zh-CN" ? chineseKey : englishKey;
+                return <label key={chineseKey}>
                   <span>{phrase(chinese, english)}</span>
                   <input
                     maxLength={240}
                     onChange={(event) => updateDraft({ [key]: event.target.value } as Partial<SiteSettingsInput>)}
                     value={String(draft[key])}
                   />
-                </label>
-              ))}
+                </label>;
+              })}
             </div>
             <p className="site-settings-hint">{phrase("模板支持变量：", "Templates support: ")}{"{actor}"}、{"{author}"}、{"{article}"}、{"{comment}"}、{"{result}"}、{"{count}"}。</p>
           </section>

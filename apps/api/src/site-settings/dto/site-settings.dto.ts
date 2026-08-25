@@ -213,6 +213,51 @@ export class UpdateSiteSettingsDto {
   @IsString()
   @MaxLength(240)
   templateCommentAuthorModerated?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(240)
+  templateArticleLikedEn?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(240)
+  templateArticleFavoritedEn?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(240)
+  templateArticleCommentedEn?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(240)
+  templateCommentRepliedEn?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(240)
+  templateAuthorSubscribedEn?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(240)
+  templateSubscriptionPublishedEn?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(240)
+  templateFriendRequestEn?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(240)
+  templateCommentReportHandledEn?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(240)
+  templateCommentAuthorModeratedEn?: string;
 }
 
 export class UpsertArticleTaxonomyDto {

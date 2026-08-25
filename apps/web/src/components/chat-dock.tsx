@@ -125,7 +125,7 @@ import {
 } from "@/lib/social-events";
 import { getAvatarFallbackText } from "@/lib/user-display";
 import { localizedPath } from "@/lib/i18n";
-import { notificationTitle } from "@/lib/system-labels";
+import { notificationBody, notificationTitle } from "@/lib/system-labels";
 import {
   type BrowserPushState,
   disableBrowserPush,
@@ -2601,6 +2601,7 @@ function NotificationPanel({
           if (isSelectionMode) onToggleSelection(notification.id);
           else if (longPressTriggeredIdRef.current !== notification.id) onOpenActions(notification.id, event);
         }
+        const localizedBody = notificationBody(notification.body, notification.bodyEn, locale);
         return <article
           className={`${notification.openedAt ? "" : "unopened"}${selectedId === notification.id ? " selected" : ""}${isSelectionMode ? " selection-mode" : ""}${selected ? " batch-selected" : ""}`}
           data-notification-id={notification.id}
@@ -2622,10 +2623,10 @@ function NotificationPanel({
                 </span>
                 {notification.context?.kind === "announcement" ? <>
                   <span className="chat-announcement-notification-title">{notification.context.announcement?.title || notification.title}</span>
-                  <small className="chat-announcement-notification-summary">{notification.context.announcement?.summary || notification.body}</small>
+                  <small className="chat-announcement-notification-summary">{notification.context.announcement?.summary || localizedBody}</small>
                 </> : null}
                 {notification.context?.group?.name ? <small className="chat-notification-group-name">{notification.context.group.name}</small> : null}
-                {notification.context?.kind !== "announcement" && notification.context?.kind !== "group_report" ? <small>{notification.context?.kind === "friend_request" && notification.context.requestNote ? notification.context.requestNote : notification.context?.kind === "stranger_message_request" && notification.context.requestBody ? notification.context.requestBody : notification.body}</small> : null}
+                {notification.context?.kind !== "announcement" && notification.context?.kind !== "group_report" ? <small>{notification.context?.kind === "friend_request" && notification.context.requestNote ? notification.context.requestNote : notification.context?.kind === "stranger_message_request" && notification.context.requestBody ? notification.context.requestBody : localizedBody}</small> : null}
                 {notification.context?.commentBody ? <q>{notification.context.commentBody}</q> : null}
                 {notification.context && !notification.context.actionable && notification.context.status ? <em>{notificationStatusLabel(notification.context.kind, notification.context.status, locale)}</em> : null}
               </span></button>

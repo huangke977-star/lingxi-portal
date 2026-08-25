@@ -1014,7 +1014,9 @@ export class ArticlesService {
             recipientId: target.authorId,
             type: UserNotificationType.article_liked,
             verb: "点赞了",
+            verbEn: "liked",
             bodyTemplate: notificationSettings.templates.articleLiked,
+            bodyTemplateEn: notificationSettings.templatesEn.articleLiked,
           });
         }
       });
@@ -1043,7 +1045,9 @@ export class ArticlesService {
             recipientId: target.authorId,
             type: UserNotificationType.article_favorited,
             verb: "收藏了",
+            verbEn: "favorited",
             bodyTemplate: notificationSettings.templates.articleFavorited,
+            bodyTemplateEn: notificationSettings.templatesEn.articleFavorited,
           });
         }
       });
@@ -1182,7 +1186,7 @@ export class ArticlesService {
         if (notificationSettings.notifyCommentReplied && parent.authorId !== user.id) await transaction.userNotification.create({ data: {
           userId: parent.authorId, actorId: user.id,
           type: UserNotificationType.comment_replied, channel: UserNotificationChannel.interaction,
-          title: "评论有了新回复", body: this.siteSettingsService.renderTemplate(notificationSettings.templates.commentReplied, {
+          title: "评论有了新回复", ...this.siteSettingsService.renderNotificationTemplate(notificationSettings, "commentReplied", {
             actor: user.nickname || user.username,
             article: article.title,
             comment: body,
@@ -1192,7 +1196,7 @@ export class ArticlesService {
         if (notificationSettings.notifyArticleCommented && article.authorId !== user.id && article.authorId !== parent.authorId) await transaction.userNotification.create({ data: {
           userId: article.authorId, actorId: user.id,
           type: UserNotificationType.article_commented, channel: UserNotificationChannel.interaction,
-          title: "文章有了新回复", body: this.siteSettingsService.renderTemplate(notificationSettings.templates.articleCommented, {
+          title: "文章有了新回复", ...this.siteSettingsService.renderNotificationTemplate(notificationSettings, "articleCommented", {
             actor: user.nickname || user.username,
             article: article.title,
             comment: body,
@@ -1202,7 +1206,7 @@ export class ArticlesService {
       } else if (notificationSettings.notifyArticleCommented && article.authorId !== user.id) await transaction.userNotification.create({ data: {
         userId: article.authorId, actorId: user.id,
         type: UserNotificationType.article_commented, channel: UserNotificationChannel.interaction,
-        title: "文章有了新评论", body: this.siteSettingsService.renderTemplate(notificationSettings.templates.articleCommented, {
+        title: "文章有了新评论", ...this.siteSettingsService.renderNotificationTemplate(notificationSettings, "articleCommented", {
           actor: user.nickname || user.username,
           article: article.title,
           comment: body,
@@ -1563,13 +1567,17 @@ export class ArticlesService {
               ? UserNotificationType.comment_report_resolved
               : UserNotificationType.comment_report_rejected,
             title: resolved ? "举报已处理" : "举报已驳回",
-            body: (resolution
-              ? `你对《${report.comment.article.title}》中评论的举报处理结果：${resolution}`
-              : this.siteSettingsService.renderTemplate(notificationSettings.templates.commentReportHandled, {
-                article: report.comment.article.title,
-                result: resolved ? "处理" : "驳回",
-                comment: report.comment.body,
-              })).slice(0, 500),
+            ...(resolution
+              ? {
+                body: `你对《${report.comment.article.title}》中评论的举报处理结果：${resolution}`.slice(0, 500),
+                bodyEn: `Your report of a comment on ${report.comment.article.title} was handled: ${resolution}`.slice(0, 500),
+              }
+              : this.siteSettingsService.renderNotificationTemplate(
+                notificationSettings,
+                "commentReportHandled",
+                { article: report.comment.article.title, result: resolved ? "处理" : "驳回", comment: report.comment.body },
+                { article: report.comment.article.title, result: resolved ? "resolved" : "rejected", comment: report.comment.body },
+              )),
             actionUrl: `/articles/${report.comment.article.slug}?commentId=${report.commentId}`,
             commentReportId: id,
           },
@@ -1587,11 +1595,12 @@ export class ArticlesService {
             actorId: null,
             type: UserNotificationType.comment_author_moderated,
             title: commentStatus === ArticleCommentStatus.deleted ? "你的评论已被删除" : "你的评论已被屏蔽",
-            body: this.siteSettingsService.renderTemplate(notificationSettings.templates.commentAuthorModerated, {
-              article: report.comment.article.title,
-              result: commentStatus === ArticleCommentStatus.deleted ? "删除" : "屏蔽",
-              comment: report.comment.body,
-            }),
+            ...this.siteSettingsService.renderNotificationTemplate(
+              notificationSettings,
+              "commentAuthorModerated",
+              { article: report.comment.article.title, result: commentStatus === ArticleCommentStatus.deleted ? "删除" : "屏蔽", comment: report.comment.body },
+              { article: report.comment.article.title, result: commentStatus === ArticleCommentStatus.deleted ? "deleted" : "blocked", comment: report.comment.body },
+            ),
             actionUrl: `/articles/${report.comment.article.slug}?commentId=${report.commentId}`,
             commentReportId: id,
           },
@@ -1650,6 +1659,7 @@ export class ArticlesService {
             channel: UserNotificationChannel.system,
             title: resolved ? "文章举报已处理" : "文章举报已驳回",
             body: feedback.slice(0, 500),
+            bodyEn: (dto.resolution?.trim() || `Your report of ${report.article.title} was ${resolved ? "resolved" : "rejected"}.`).slice(0, 500),
             actionUrl: `/articles/${report.article.slug}`,
             articleId: report.articleId,
             articleReportId: id,
@@ -1667,6 +1677,7 @@ export class ArticlesService {
                 ? "你的文章已屏蔽"
                 : "文章举报处理结果",
             body: `《${report.article.title}》的举报处理结果：${feedback}`.slice(0, 500),
+            bodyEn: `Report handling result for ${report.article.title}: ${feedback}`.slice(0, 500),
             actionUrl: `/articles/${report.article.slug}`,
             articleId: report.articleId,
             articleReportId: id,
@@ -2247,7 +2258,9 @@ export class ArticlesService {
     recipientId: number;
     type: "article_liked" | "article_favorited";
     verb: "点赞了" | "收藏了";
+    verbEn: "liked" | "favorited";
     bodyTemplate: string;
+    bodyTemplateEn: string;
   }): Promise<void> {
     const existing = await transaction.userNotification.findFirst({
       where: { userId: input.recipientId, type: input.type, articleId: input.article.id, readAt: null },
@@ -2261,11 +2274,17 @@ export class ArticlesService {
       article: input.article.title,
       count: aggregateCount,
     });
+    const renderedBodyEn = this.siteSettingsService.renderTemplate(input.bodyTemplateEn, {
+      actor: actorName,
+      article: input.article.title,
+      count: aggregateCount,
+    });
     await transaction.userNotification.create({ data: {
       userId: input.recipientId, actorId: input.actor.id, type: input.type,
       channel: UserNotificationChannel.interaction,
       title: input.type === UserNotificationType.article_liked ? "文章收到点赞" : "文章被收藏",
       body: aggregateCount > 1 ? `${actorName} 等 ${aggregateCount} 人${input.verb}《${input.article.title}》。` : renderedBody,
+      bodyEn: aggregateCount > 1 ? `${actorName} and ${aggregateCount - 1} others ${input.verbEn} ${input.article.title}.` : renderedBodyEn,
       actionUrl: `/articles/${input.article.slug}`, articleId: input.article.id, aggregateCount,
     } });
   }
@@ -2287,7 +2306,7 @@ export class ArticlesService {
     await transaction.userNotification.createMany({ data: subscriptions.map(({ subscriberId }) => ({
       userId: subscriberId, actorId: article.authorId,
       type: UserNotificationType.subscription_published, channel: UserNotificationChannel.subscription,
-      title: "订阅作者发布了新内容", body: this.siteSettingsService.renderTemplate(notificationSettings.templates.subscriptionPublished, {
+      title: "订阅作者发布了新内容", ...this.siteSettingsService.renderNotificationTemplate(notificationSettings, "subscriptionPublished", {
         author: article.author.nickname || article.author.username,
         article: article.title,
       }),

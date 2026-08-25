@@ -180,6 +180,10 @@ export function notificationTitle(
   return value ? pick(locale, value) : fallback;
 }
 
+export function notificationBody(body: string, bodyEn: string | null, locale: Locale): string {
+  return locale === "en-US" && bodyEn ? bodyEn : body;
+}
+
 export function containerRuntimeMessage(locale: Locale, fallback: string): string {
   return fallback === "为避免授予 Web API 宿主机控制权限，容器状态请在 1Panel 或 SSH 中查看。"
     ? pick(locale, ["为避免授予 Web API 宿主机控制权限，容器状态请在 1Panel 或 SSH 中查看。", "Container status is available through 1Panel or SSH so the Web API does not receive host-control access."])

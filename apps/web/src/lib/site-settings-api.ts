@@ -64,6 +64,17 @@ export interface NotificationSettings {
     commentReportHandled: string;
     commentAuthorModerated: string;
   };
+  templatesEn: {
+    articleLiked: string;
+    articleFavorited: string;
+    articleCommented: string;
+    commentReplied: string;
+    authorSubscribed: string;
+    subscriptionPublished: string;
+    friendRequest: string;
+    commentReportHandled: string;
+    commentAuthorModerated: string;
+  };
 }
 
 export interface SiteSettings {
@@ -134,6 +145,15 @@ export interface SiteSettingsInput {
   templateFriendRequest: string;
   templateCommentReportHandled: string;
   templateCommentAuthorModerated: string;
+  templateArticleLikedEn: string;
+  templateArticleFavoritedEn: string;
+  templateArticleCommentedEn: string;
+  templateCommentRepliedEn: string;
+  templateAuthorSubscribedEn: string;
+  templateSubscriptionPublishedEn: string;
+  templateFriendRequestEn: string;
+  templateCommentReportHandledEn: string;
+  templateCommentAuthorModeratedEn: string;
 }
 
 export interface ArticleTaxonomyInput {
@@ -279,5 +299,14 @@ export function siteSettingsToInput(settings: SiteSettings): SiteSettingsInput {
     templateFriendRequest: settings.notifications.templates.friendRequest,
     templateCommentReportHandled: settings.notifications.templates.commentReportHandled,
     templateCommentAuthorModerated: settings.notifications.templates.commentAuthorModerated,
+    templateArticleLikedEn: settings.notifications.templatesEn.articleLiked,
+    templateArticleFavoritedEn: settings.notifications.templatesEn.articleFavorited,
+    templateArticleCommentedEn: settings.notifications.templatesEn.articleCommented,
+    templateCommentRepliedEn: settings.notifications.templatesEn.commentReplied,
+    templateAuthorSubscribedEn: settings.notifications.templatesEn.authorSubscribed,
+    templateSubscriptionPublishedEn: settings.notifications.templatesEn.subscriptionPublished,
+    templateFriendRequestEn: settings.notifications.templatesEn.friendRequest,
+    templateCommentReportHandledEn: settings.notifications.templatesEn.commentReportHandled,
+    templateCommentAuthorModeratedEn: settings.notifications.templatesEn.commentAuthorModerated,
   };
 }
