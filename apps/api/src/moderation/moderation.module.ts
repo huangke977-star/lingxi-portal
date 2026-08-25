@@ -10,12 +10,13 @@ import { UsersModule } from "../users/users.module";
 import { SocialModule } from "../social/social.module";
 import { ContentModerationService } from "./content-moderation.service";
 import { ModerationController } from "./moderation.controller";
+import { MyReportsController } from "./my-reports.controller";
 import { ModerationService } from "./moderation.service";
 import { ModerationWorkflowService } from "./moderation-workflow.service";
 
 @Module({
   imports: [JwtModule.register({}), PrismaModule, RedisModule, UsersModule, forwardRef(() => ArticlesModule), forwardRef(() => SocialModule)],
-  controllers: [ModerationController],
+  controllers: [ModerationController, MyReportsController],
   providers: [ModerationService, ContentModerationService, ModerationWorkflowService, JwtAuthGuard, UserManagementGuard, SuperAdminGuard],
   exports: [ContentModerationService],
 })

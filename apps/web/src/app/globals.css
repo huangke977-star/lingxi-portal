@@ -17820,3 +17820,76 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   line-height: normal;
   font-size: 0.7rem;
 }
+
+.my-report-source {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 0.61rem;
+  line-height: 1.2;
+  padding: 3px 5px;
+  white-space: nowrap;
+}
+
+.my-report-source.comment {
+  background: rgba(63, 122, 152, 0.12);
+  color: #2e6d8b;
+}
+
+.my-report-source.group_message {
+  background: rgba(123, 91, 157, 0.12);
+  color: #73508f;
+}
+
+.my-report-comment-preview {
+  width: min(560px, 100%);
+}
+
+.my-report-comment-preview-content {
+  display: grid;
+  max-height: min(70vh, 620px);
+  gap: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+}
+
+.my-report-comment-author {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.my-report-comment-author > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.my-report-comment-author strong {
+  overflow: hidden;
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.my-report-comment-author small {
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.my-report-comment-preview-content > p {
+  margin: 0;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--foreground);
+  font-size: 0.78rem;
+  line-height: 1.65;
+  padding: 12px 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

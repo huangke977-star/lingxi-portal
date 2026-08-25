@@ -168,6 +168,18 @@ export class ModerationService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  async listMyReports(user: AuthenticatedUser): Promise<{ items: ModerationReportResponse[] }> {
+    const [comments, articles, groups] = await Promise.all([
+      this.fetchComments(undefined, undefined, undefined, user.id),
+      this.fetchArticles(undefined, undefined, undefined, user.id),
+      this.fetchGroups(undefined, undefined, undefined, user.id),
+    ]);
+    return {
+      items: [...comments, ...articles, ...groups]
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id - left.id),
+    };
+  }
+
   async getSummary(): Promise<ModerationReportSummaryResponse> {
     const [commentPending, articlePending, groupPending, commentTotal, articleTotal, groupTotal] = await Promise.all([
       this.countComments("comment", "pending"),
@@ -525,32 +537,32 @@ export class ModerationService implements OnModuleInit, OnModuleDestroy {
     if (!user.isSuperAdmin) throw new ForbiddenException("仅超级管理员可以配置内容治理规则。");
   }
 
-  private fetchComments(type: ModerationReportSource | undefined, status: string | undefined, take: number) {
+  private fetchComments(type: ModerationReportSource | undefined, status: string | undefined, take?: number, reporterId?: number) {
     if (type && type !== "comment") return Promise.resolve([] as ModerationReportResponse[]);
     return this.prisma.articleCommentReport.findMany({
-      where: status ? { status: status as ArticleCommentReportStatus } : undefined,
+      where: { ...(reporterId ? { reporterId } : {}), ...(status ? { status: status as ArticleCommentReportStatus } : {}) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take,
+      ...(take ? { take } : {}),
       select: commentReportSelect,
     }).then((rows) => rows.map((row) => this.toCommentReport(row)));
   }
 
-  private fetchArticles(type: ModerationReportSource | undefined, status: string | undefined, take: number) {
+  private fetchArticles(type: ModerationReportSource | undefined, status: string | undefined, take?: number, reporterId?: number) {
     if (type && type !== "article") return Promise.resolve([] as ModerationReportResponse[]);
     return this.prisma.articleReport.findMany({
-      where: status ? { status: status as ArticleCommentReportStatus } : undefined,
+      where: { ...(reporterId ? { reporterId } : {}), ...(status ? { status: status as ArticleCommentReportStatus } : {}) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take,
+      ...(take ? { take } : {}),
       select: articleReportSelect,
     }).then((rows) => rows.map((row) => this.toArticleReport(row)));
   }
 
-  private fetchGroups(type: ModerationReportSource | undefined, status: string | undefined, take: number) {
+  private fetchGroups(type: ModerationReportSource | undefined, status: string | undefined, take?: number, reporterId?: number) {
     if (type && type !== "group_message") return Promise.resolve([] as ModerationReportResponse[]);
     return this.prisma.chatGroupMessageReport.findMany({
-      where: status ? { status: status as ChatGroupReportStatus } : undefined,
+      where: { ...(reporterId ? { reporterId } : {}), ...(status ? { status: status as ChatGroupReportStatus } : {}) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take,
+      ...(take ? { take } : {}),
       select: groupReportSelect,
     }).then((rows) => rows.map((row) => this.toGroupReport(row)));
   }

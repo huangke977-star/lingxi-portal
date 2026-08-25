@@ -138,6 +138,10 @@ export function listModerationReports(
   return requestJson(`/moderation/reports?${params.toString()}`, { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
+export function listMyReports(accessToken: string): Promise<{ items: ModerationReport[] }> {
+  return requestJson("/moderation/my-reports", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
 export function getModerationReportSummary(accessToken: string): Promise<ModerationReportSummary> {
   return requestJson("/moderation/reports/summary", { cache: "no-store", headers: authHeaders(accessToken) });
 }
