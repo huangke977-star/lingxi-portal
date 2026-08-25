@@ -54,8 +54,10 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
+  type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -2441,6 +2443,7 @@ function ChatSidebarContactRow({ active, friendship, menuOpen, muted, preview, u
   onViewProfile: () => void;
 }) {
   const { phrase } = useLanguage();
+  const actionTriggerRef = useRef<HTMLButtonElement>(null);
   return <div className={`chat-sidebar-contact-row${active ? " active" : ""}`}>
     <button className="chat-sidebar-primary-row" onClick={onOpen} type="button">
       <UserAvatar user={user} />
@@ -2448,8 +2451,8 @@ function ChatSidebarContactRow({ active, friendship, menuOpen, muted, preview, u
       {unreadCount ? <b className={muted ? "muted" : undefined}>{muted ? "" : formatCount(unreadCount)}</b> : null}
     </button>
     {friendship || onConversationAction ? <div className="chat-friend-action" data-chat-friend-action>
-      <button aria-expanded={menuOpen} aria-label={phrase(`${user.nickname} 的聊天管理`, `Manage chat with ${user.nickname}`)} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(friendship?.id ?? -user.id); }} title={phrase("聊天管理", "Chat actions")} type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
-      {menuOpen ? <div className="chat-friend-action-menu">
+      <button ref={actionTriggerRef} aria-expanded={menuOpen} aria-label={phrase(`${user.nickname} 的聊天管理`, `Manage chat with ${user.nickname}`)} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(friendship?.id ?? -user.id); }} title={phrase("聊天管理", "Chat actions")} type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
+      {menuOpen ? <ChatFriendActionMenu anchorRef={actionTriggerRef}>
         {friendship ? <>
           <button onClick={onViewProfile} type="button"><UserRound aria-hidden="true" size={15} />{phrase("查看主页", "View profile")}</button>
           <button onClick={() => onAction(friendship, "remove")} type="button"><UserMinus aria-hidden="true" size={15} />{phrase("删除好友", "Remove friend")}</button>
@@ -2461,7 +2464,7 @@ function ChatSidebarContactRow({ active, friendship, menuOpen, muted, preview, u
           <button onClick={() => onConversationAction("clear")} type="button"><Eraser aria-hidden="true" size={15} />{phrase("清空聊天", "Clear chat")}</button>
           <button className="danger" onClick={() => onConversationAction("delete")} type="button"><Trash2 aria-hidden="true" size={15} />{phrase("删除聊天", "Delete chat")}</button>
         </> : null}
-      </div> : null}
+      </ChatFriendActionMenu> : null}
     </div> : null}
   </div>;
 }
@@ -2478,6 +2481,7 @@ function ChatSidebarGroupRow({ active, conversation, menuOpen, onConversationAct
 }) {
   const { locale, phrase } = useLanguage();
   const group = conversation.group!;
+  const actionTriggerRef = useRef<HTMLButtonElement>(null);
   return <div className={`chat-sidebar-contact-row chat-sidebar-group-row${active ? " active" : ""}`}>
     <button className="chat-sidebar-primary-row" onClick={onOpen} type="button">
       <ConversationAvatar conversation={conversation} />
@@ -2485,16 +2489,81 @@ function ChatSidebarGroupRow({ active, conversation, menuOpen, onConversationAct
       <span className="chat-group-pending-badges">{group.pendingJoinRequestCount ? <b title={phrase("待处理入群申请", "Pending join requests")}><UserPlus aria-hidden="true" size={11} />{formatCount(group.pendingJoinRequestCount)}</b> : null}{group.pendingReportCount ? <b className="report" title={phrase("待处理举报", "Pending reports")}><Flag aria-hidden="true" size={11} />{formatCount(group.pendingReportCount)}</b> : null}{conversation.unreadCount ? <b className={conversation.muted ? "muted" : undefined}>{conversation.muted ? "" : formatCount(conversation.unreadCount)}</b> : null}</span>
     </button>
     <div className="chat-friend-action" data-chat-friend-action>
-      <button aria-expanded={menuOpen} aria-label={phrase(`${group.name} 的群聊管理`, `Manage ${group.name}`)} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(); }} title={phrase("群聊管理", "Group actions")} type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
-      {menuOpen ? <div className="chat-friend-action-menu">
+      <button ref={actionTriggerRef} aria-expanded={menuOpen} aria-label={phrase(`${group.name} 的群聊管理`, `Manage ${group.name}`)} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(); }} title={phrase("群聊管理", "Group actions")} type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
+      {menuOpen ? <ChatFriendActionMenu anchorRef={actionTriggerRef}>
         <button onClick={onManage} type="button"><Users aria-hidden="true" size={15} />{phrase("群资料与成员", "Group details and members")}</button>
         <span className="chat-friend-action-menu-divider" />
         <button onClick={() => onToggleMute(!conversation.muted)} type="button">{conversation.muted ? <Bell aria-hidden="true" size={15} /> : <BellOff aria-hidden="true" size={15} />}{conversation.muted ? phrase("关闭免打扰", "Unmute notifications") : phrase("消息免打扰", "Mute notifications")}</button>
         <button onClick={() => onConversationAction("clear")} type="button"><Eraser aria-hidden="true" size={15} />{phrase("清空聊天", "Clear chat")}</button>
         <button className="danger" onClick={() => onConversationAction("delete")} type="button"><Trash2 aria-hidden="true" size={15} />{phrase("删除聊天", "Delete chat")}</button>
-      </div> : null}
+      </ChatFriendActionMenu> : null}
     </div>
   </div>;
+}
+
+function ChatFriendActionMenu({ anchorRef, children }: { anchorRef: RefObject<HTMLElement | null>; children: ReactNode }) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    let frame = 0;
+    let active = true;
+
+    function updatePosition() {
+      if (!active || !anchorRef.current || !menuRef.current) return;
+      const anchor = anchorRef.current.getBoundingClientRect();
+      const menu = menuRef.current.getBoundingClientRect();
+      const margin = 8;
+      const gap = 5;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const left = viewportWidth - anchor.left >= menu.width + margin
+        ? anchor.left
+        : anchor.right - menu.width;
+      const belowTop = anchor.bottom + gap;
+      const aboveTop = anchor.top - menu.height - gap;
+      const top = viewportHeight - belowTop >= menu.height + margin
+        ? belowTop
+        : aboveTop >= margin
+          ? aboveTop
+          : Math.max(margin, Math.min(belowTop, viewportHeight - menu.height - margin));
+      setPosition({
+        left: Math.max(margin, Math.min(left, viewportWidth - menu.width - margin)),
+        top,
+      });
+    }
+
+    function schedulePosition() {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(updatePosition);
+    }
+
+    updatePosition();
+    window.addEventListener("resize", schedulePosition);
+    document.addEventListener("scroll", schedulePosition, true);
+    window.visualViewport?.addEventListener("resize", schedulePosition);
+    window.visualViewport?.addEventListener("scroll", schedulePosition);
+    return () => {
+      active = false;
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", schedulePosition);
+      document.removeEventListener("scroll", schedulePosition, true);
+      window.visualViewport?.removeEventListener("resize", schedulePosition);
+      window.visualViewport?.removeEventListener("scroll", schedulePosition);
+    };
+  }, [anchorRef]);
+
+  return typeof document === "undefined" ? null : createPortal(
+    <div
+      className="chat-friend-action-menu chat-friend-action-menu-floating"
+      data-chat-friend-action
+      ref={menuRef}
+      style={{ left: position?.left ?? 0, top: position?.top ?? 0, visibility: position ? "visible" : "hidden" }}
+    >
+      {children}
+    </div>,
+    document.body,
+  );
 }
 
 function ConversationAvatar({ conversation }: { conversation: Conversation }) {

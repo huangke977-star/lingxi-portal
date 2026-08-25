@@ -61,6 +61,10 @@ function reportContext(item: ModerationReport, phrase: (chinese: string, english
   return phrase("文章内容", "Article content");
 }
 
+function reportDetail(item: ModerationReport, phrase: (chinese: string, english: string) => string): string {
+  return `${reportContext(item, phrase)} · ${reasonLabel(item.reason, phrase)}${item.detail ? ` · ${item.detail}` : ""}`;
+}
+
 export default function MyArticleReportsPage() {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
@@ -128,7 +132,7 @@ export default function MyArticleReportsPage() {
                   <span className={`my-report-source ${item.source}`}>{sourceLabel(item.source, phrase)}</span>
                   <small className="my-report-timestamps">{phrase(`提交于 ${formatDate(item.createdAt, locale)}`, `Submitted ${formatDate(item.createdAt, locale)}`)}{item.handledAt ? phrase(` · 处理于 ${formatDate(item.handledAt, locale)}`, ` · Processed ${formatDate(item.handledAt, locale)}`) : ""}</small>
                 </div>
-                <p>{reportContext(item, phrase)} · {reasonLabel(item.reason, phrase)}{item.detail ? ` · ${item.detail}` : ""}</p>
+                <p aria-label={reportDetail(item, phrase)} title={reportDetail(item, phrase)}>{reportDetail(item, phrase)}</p>
                 {item.resolution ? <small className="my-report-resolution">{phrase("处理反馈：", "Resolution: ")}{item.resolution}</small> : null}
               </div>
               <span className={`my-report-status ${item.status}`}>{statusIcon(item.status)}{statusLabel(item.status, phrase)}</span>

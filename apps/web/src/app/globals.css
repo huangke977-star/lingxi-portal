@@ -16613,13 +16613,28 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 /* Management indexes follow the dashboard suggestion list: compact rows with a stable title/meta scale. */
 .my-report-row { gap: 10px; padding: 7px 10px; }
-.my-report-main { flex: 1 1 auto; gap: 2px; }
-.my-report-title-line { gap: 6px; }
+.my-report-main { width: 0; flex: 1 1 0; gap: 2px; }
+.my-report-title-line { width: 100%; gap: 6px; }
+.my-report-source { flex: 0 0 auto; }
 .my-report-title-button { min-width: 0; overflow: hidden; border: 0; background: transparent; color: var(--foreground); cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 700; padding: 0; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.my-report-title-button { flex: 1 1 auto; }
 .my-report-title-button:hover { color: var(--accent-strong); }
 .my-report-timestamps { min-width: 0; overflow: hidden; color: var(--muted); font-size: 0.68rem; text-overflow: ellipsis; white-space: nowrap; }
+.my-report-main p { width: 100%; min-width: 0; cursor: help; }
 .my-report-main :is(p, small) { font-size: 0.68rem; }
 .my-report-status { font-size: 0.62rem; padding: 3px 5px; }
+
+/* Portal menus can escape clipped chat list containers while keeping viewport collision handling in React. */
+.chat-friend-action-menu-floating {
+  position: fixed;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  z-index: 1200;
+  width: 142px;
+  grid-template-columns: minmax(0, 1fr);
+}
 
 @media (max-width: 760px) {
   .my-report-title-line { align-items: center; flex-direction: row; gap: 5px; }
