@@ -16620,7 +16620,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .my-report-title-button { flex: 0 1 auto; }
 .my-report-title-button:hover { color: var(--accent-strong); }
 .my-report-timestamps { min-width: 0; overflow: hidden; color: var(--muted); font-size: 0.68rem; text-overflow: ellipsis; white-space: nowrap; }
-.my-report-detail-text { width: 100%; min-width: 0; cursor: help; }
+.my-report-detail-text { display: block; min-width: 0; flex: 1 1 auto; overflow: hidden; margin: 0; color: var(--muted-strong); cursor: help; font-size: 0.68rem; text-overflow: ellipsis; white-space: nowrap; }
 .my-report-main :is(p, small) { font-size: 0.68rem; }
 .my-report-status { font-size: 0.62rem; padding: 3px 5px; }
 

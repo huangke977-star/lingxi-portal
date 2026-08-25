@@ -88,14 +88,14 @@ function ReportDetailText({ value }: { value: string }) {
     setTooltipPosition({ left, top });
   }, [pointer, tooltipOpen, value]);
 
-  function openTooltip(event: ReactMouseEvent<HTMLParagraphElement>) {
+  function openTooltip(event: ReactMouseEvent<HTMLSpanElement>) {
     if (event.currentTarget.scrollWidth <= event.currentTarget.clientWidth) return;
     setPointer({ x: event.clientX, y: event.clientY });
     setTooltipOpen(true);
   }
 
   return <>
-    <p
+    <span
       aria-label={value}
       className="my-report-detail-text"
       onBlur={() => setTooltipOpen(false)}
@@ -109,7 +109,7 @@ function ReportDetailText({ value }: { value: string }) {
       onMouseLeave={() => setTooltipOpen(false)}
       onMouseMove={(event) => { if (tooltipOpen) setPointer({ x: event.clientX, y: event.clientY }); }}
       tabIndex={0}
-    >{value}</p>
+    >{value}</span>
     {tooltipOpen && typeof document !== "undefined" ? createPortal(
       <div className="my-report-detail-tooltip" ref={tooltipRef} role="tooltip" style={{ left: tooltipPosition.left, top: tooltipPosition.top }}>
         {value}
@@ -186,8 +186,8 @@ export default function MyArticleReportsPage() {
                   <button className="my-report-title-button" onClick={() => void openReport(item)} title={phrase("查看举报内容", "View reported content")} type="button">{reportTitle(item, phrase)}</button>
                   <span className={`my-report-source ${item.source}`}>{sourceLabel(item.source, phrase)}</span>
                   <small className="my-report-timestamps">{phrase(`提交于 ${formatDate(item.createdAt, locale)}`, `Submitted ${formatDate(item.createdAt, locale)}`)}{item.handledAt ? phrase(` · 处理于 ${formatDate(item.handledAt, locale)}`, ` · Processed ${formatDate(item.handledAt, locale)}`) : ""}</small>
+                  <ReportDetailText value={detail} />
                 </div>
-                <ReportDetailText value={detail} />
                 {item.resolution ? <small className="my-report-resolution">{phrase("处理反馈：", "Resolution: ")}{item.resolution}</small> : null}
               </div>
               <span className={`my-report-status ${item.status}`}>{statusIcon(item.status)}{statusLabel(item.status, phrase)}</span>
