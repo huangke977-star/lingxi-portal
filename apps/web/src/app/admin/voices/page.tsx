@@ -40,7 +40,7 @@ export default function AnonymousTopicManagementPage() {
 
   return (
     <section className="p8-page p8-directory-page anonymous-topic-management-page">
-      <AdminPageHeader className="p8-page-heading" title={phrase("匿名话题管理", "Anonymous topic management")} />
+      <AdminPageHeader className="p8-page-heading" description={phrase("查看、搜索和管理匿名话题。", "Review, search, and manage anonymous topics.")} title={phrase("匿名话题管理", "Anonymous topic management")} />
       {isReady ? <AnonymousTopicsPanel management pageSize={20} showLoadMore showSearch showSort title={phrase("全部匿名话题", "All anonymous topics")} /> : !error ? <div className="article-empty-state">{phrase("正在读取匿名话题。", "Loading anonymous topics.")}</div> : null}
       <AppToast message={error} onDismiss={() => setError("")} tone="error" />
     </section>

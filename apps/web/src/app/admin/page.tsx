@@ -346,7 +346,9 @@ export default function AdminPage() {
     );
   }
 
-  if (isLoading) return <AdminPageLoading loadingLabel={phrase("正在读取权限", "Checking access")} title={phrase("用户管理", "User management")} />;
+  const pageDescription = phrase("管理用户账号、角色和状态。", "Manage user accounts, roles, and status.");
+
+  if (isLoading) return <AdminPageLoading description={pageDescription} loadingLabel={phrase("正在读取权限", "Checking access")} title={phrase("用户管理", "User management")} />;
 
   if (!currentUser) {
     return (
@@ -380,7 +382,7 @@ export default function AdminPage() {
 
   return (
     <section className="page-shell admin-shell">
-      <AdminPageHeader title={phrase("用户管理", "User management")} />
+      <AdminPageHeader description={pageDescription} title={phrase("用户管理", "User management")} />
       <div className="admin-list-toolbar">
         <div className="admin-summary" aria-label={phrase("用户概览", "User summary")}>
           <span>{phrase(`${total} 个账号`, `${total} accounts`)}</span>

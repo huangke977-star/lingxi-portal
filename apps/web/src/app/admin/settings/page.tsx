@@ -487,7 +487,9 @@ export default function SiteSettingsPage() {
     }));
   }
 
-  if (isLoading) return <AdminPageLoading className="site-settings-shell" loadingLabel={phrase("正在读取设置", "Loading settings")} title={phrase("站点设置", "Site settings")} />;
+  const pageDescription = phrase("配置站点基础信息、主题和资源。", "Configure site basics, theme, and resources.");
+
+  if (isLoading) return <AdminPageLoading className="site-settings-shell" description={pageDescription} loadingLabel={phrase("正在读取设置", "Loading settings")} title={phrase("站点设置", "Site settings")} />;
 
   if (!currentUser) {
     return (
@@ -524,7 +526,7 @@ export default function SiteSettingsPage() {
       />
 
       <div className="site-settings-form">
-        <AdminPageHeader title={phrase("站点设置", "Site settings")} actions={<div className="site-settings-head-actions">
+        <AdminPageHeader description={pageDescription} title={phrase("站点设置", "Site settings")} actions={<div className="site-settings-head-actions">
             <span className={isSaving ? "saving" : ""}>{isSaving ? phrase("正在自动保存", "Saving automatically") : phrase("修改后自动保存", "Changes save automatically")}</span>
             <button aria-label={phrase("恢复默认", "Restore defaults")} className="admin-header-icon-action site-settings-save" disabled={isSaving} onClick={() => void handleResetSettings()} title={phrase("恢复默认", "Restore defaults")} type="button">
               {isSaving ? <Settings2 aria-hidden="true" className="spin" size={16} /> : <RotateCcw aria-hidden="true" size={16} />}

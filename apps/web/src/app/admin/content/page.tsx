@@ -378,7 +378,9 @@ export default function ContentManagementPage() {
     }
   }
 
-  if (isLoading) return <AdminPageLoading className="portal-admin-shell" loadingLabel={phrase("正在读取门户内容", "Loading portal content")} title={phrase("内容管理", "Content management")} />;
+  const pageDescription = phrase("管理导航、工具和门户内容。", "Manage navigation, tools, and portal content.");
+
+  if (isLoading) return <AdminPageLoading className="portal-admin-shell" description={pageDescription} loadingLabel={phrase("正在读取门户内容", "Loading portal content")} title={phrase("内容管理", "Content management")} />;
 
   if (!currentUser) {
     return (
@@ -405,7 +407,7 @@ export default function ContentManagementPage() {
 
   return (
     <section className="page-shell admin-shell portal-admin-shell">
-      <AdminPageHeader title={phrase("内容管理", "Content management")} actions={<><button aria-label={phrase("新建分类", "New category")} className="admin-header-icon-action" onClick={openCreateCategory} title={phrase("新建分类", "New category")} type="button"><FolderPlus aria-hidden="true" size={16} /></button><button aria-label={phrase("新建条目", "New entry")} className="admin-header-icon-action" onClick={openCreateEntry} title={phrase("新建条目", "New entry")} type="button"><FilePlus2 aria-hidden="true" size={16} /></button></>} />
+      <AdminPageHeader description={pageDescription} title={phrase("内容管理", "Content management")} actions={<><button aria-label={phrase("新建分类", "New category")} className="admin-header-icon-action" onClick={openCreateCategory} title={phrase("新建分类", "New category")} type="button"><FolderPlus aria-hidden="true" size={16} /></button><button aria-label={phrase("新建条目", "New entry")} className="admin-header-icon-action" onClick={openCreateEntry} title={phrase("新建条目", "New entry")} type="button"><FilePlus2 aria-hidden="true" size={16} /></button></>} />
       <div className="portal-admin-toolbar">
         <div aria-label={phrase("内容类型", "Content type")} className="portal-kind-tabs" role="tablist">
           {(["all", ...availableKinds.map(([kind]) => kind)] as KindFilter[]).map(

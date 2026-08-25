@@ -286,9 +286,10 @@ export default function ModerationReportsPage() {
     }
   }
 
-  if (!user && isLoading && !error) return <AdminPageLoading className="moderation-reports-page" loadingLabel={phrase("正在打开举报中心。", "Opening report center.")} title={phrase("举报中心", "Report center")} />;
+  const pageDescription = phrase("统一处理举报、规则命中和处理时限。", "Handle reports, rule matches, and response deadlines in one place.");
+  if (!user && isLoading && !error) return <AdminPageLoading className="moderation-reports-page" description={pageDescription} loadingLabel={phrase("正在打开举报中心。", "Opening report center.")} title={phrase("举报中心", "Report center")} />;
   return <section className="page-shell moderation-reports-page">
-    <AdminPageHeader className="moderation-reports-header" description={phrase("统一处理举报、规则命中和处理时限。", "Handle reports, rule matches, and response deadlines in one place.")} title={phrase("举报中心", "Report center")} actions={<div className="moderation-summary"><span><b>{summary.pending}</b><small>{phrase("待处理", "Pending")}</small></span><span><b>{overview?.reports.overdue ?? 0}</b><small>{phrase("已超时", "Overdue")}</small></span><span><b>{summary.total}</b><small>{phrase("全部记录", "All records")}</small></span></div>} />
+    <AdminPageHeader className="moderation-reports-header" description={pageDescription} title={phrase("举报中心", "Report center")} actions={<div className="moderation-summary"><span><b>{summary.pending}</b><small>{phrase("待处理", "Pending")}</small></span><span><b>{overview?.reports.overdue ?? 0}</b><small>{phrase("已超时", "Overdue")}</small></span><span><b>{summary.total}</b><small>{phrase("全部记录", "All records")}</small></span></div>} />
     <nav aria-label={phrase("举报中心功能", "Report center views")} className="moderation-admin-tabs">
       <button className={view === "queue" ? "active" : ""} onClick={() => setView("queue")} type="button"><ClipboardCheck size={15} />{phrase("举报队列", "Report queue")}</button>
       <button className={view === "insights" ? "active" : ""} onClick={() => setView("insights")} type="button"><BarChart3 size={15} />{phrase("规则命中与统计", "Rule matches and analytics")}</button>

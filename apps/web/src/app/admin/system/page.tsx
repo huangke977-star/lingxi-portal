@@ -334,7 +334,9 @@ export default function SystemStatusPage() {
     }
   }
 
-  if (isLoading) return <AdminPageLoading className="system-status-shell" loadingLabel={phrase("正在读取系统状态", "Loading system status")} title={phrase("系统运行概览", "System overview")} />;
+  const pageDescription = phrase("查看应用、数据库、缓存和备份运行状态。", "Monitor application, database, cache, and backup status.");
+
+  if (isLoading) return <AdminPageLoading className="system-status-shell" description={pageDescription} loadingLabel={phrase("正在读取系统状态", "Loading system status")} title={phrase("系统运行概览", "System overview")} />;
 
   if (!currentUser?.isSuperAdmin) {
     return <section className="page-shell admin-shell system-status-shell">
@@ -346,7 +348,7 @@ export default function SystemStatusPage() {
 
   return <section className="page-shell admin-shell system-status-shell">
     <AppToast duration={error ? 4200 : 3200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
-    <AdminPageHeader className="system-status-head" title={phrase("系统运行概览", "System overview")} actions={<div className="system-status-head-actions">
+    <AdminPageHeader className="system-status-head" description={pageDescription} title={phrase("系统运行概览", "System overview")} actions={<div className="system-status-head-actions">
         {status ? <small>{phrase("更新于 ", "Updated ")}{formatDateTime(status.generatedAt, locale)}</small> : null}
         <button aria-label={phrase("刷新系统状态", "Refresh system status")} className="admin-header-icon-action" disabled={isRefreshing || !accessToken} onClick={() => accessToken && void Promise.all([loadStatus(accessToken, true), loadStorageOverview(accessToken), loadMediaJobs(accessToken)])} title={phrase("刷新", "Refresh")} type="button">
           <RefreshCcw aria-hidden="true" className={isRefreshing ? "spin" : ""} size={17} />

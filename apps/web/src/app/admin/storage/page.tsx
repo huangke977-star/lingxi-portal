@@ -379,7 +379,9 @@ export default function StorageManagementPage() {
     }
   }
 
-  if (isLoading) return <AdminPageLoading className="storage-management-shell" loadingLabel={phrase("正在读取存储状态", "Loading storage status")} title={phrase("存储管理", "Storage management")} />;
+  const pageDescription = phrase("检查上传文件完整性并维护存储空间。", "Check uploaded-file integrity and maintain storage.");
+
+  if (isLoading) return <AdminPageLoading className="storage-management-shell" description={pageDescription} loadingLabel={phrase("正在读取存储状态", "Loading storage status")} title={phrase("存储管理", "Storage management")} />;
 
   if (!currentUser?.isSuperAdmin) {
     return <section className="page-shell admin-shell storage-management-shell"><h1>{phrase("无权访问", "Access denied")}</h1><p>{phrase("存储管理仅超级管理员可以查看。", "Only super administrators can view storage management.")}</p><Link className="text-action primary" href={localizedPath("/", locale)}>{phrase("返回首页", "Back to home")}</Link></section>;
@@ -387,7 +389,7 @@ export default function StorageManagementPage() {
 
   return <section className="page-shell admin-shell storage-management-shell">
     <AppToast duration={error ? 4200 : 3200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
-    <AdminPageHeader className="storage-management-head" title={phrase("存储管理", "Storage management")} actions={<div className="storage-management-head-actions">
+    <AdminPageHeader className="storage-management-head" description={pageDescription} title={phrase("存储管理", "Storage management")} actions={<div className="storage-management-head-actions">
         {overview?.latestScan ? <small>{phrase("最近扫描 ", "Last scan ")}{formatDateTime(overview.latestScan.completedAt || overview.latestScan.startedAt, locale)}</small> : <small>{phrase("尚未扫描", "Not scanned yet")}</small>}
         <button aria-label={phrase("立即扫描", "Scan now")} className="admin-header-icon-action" disabled={isScanning} onClick={() => void handleStartScan()} title={phrase("立即扫描", "Scan now")} type="button"><RefreshCcw aria-hidden="true" className={isScanning ? "spin" : ""} size={16} /></button>
       </div>} />

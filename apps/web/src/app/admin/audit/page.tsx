@@ -75,7 +75,7 @@ export default function AuditLogPage() {
   }
 
   return <section className="page-shell admin-shell audit-page">
-    <AdminPageHeader title={phrase("审计日志", "Audit log")} />
+    <AdminPageHeader description={phrase("查看管理员操作与系统审计记录。", "Review administrator actions and system audit records.")} title={phrase("审计日志", "Audit log")} />
     <div className="audit-toolbar">
       <div className="audit-summary"><ClipboardList aria-hidden="true" size={18} /><span>{phrase(`${total} 条操作记录`, `${total} audit entries`)}</span></div>
       <label className="admin-search-field"><Search aria-hidden="true" size={15} /><input aria-label={phrase("搜索审计日志", "Search audit logs")} onChange={(event) => setSearchDraft(event.target.value)} placeholder={phrase("操作者、路径、操作或目标", "Actor, path, action, or target")} value={searchDraft} /></label>

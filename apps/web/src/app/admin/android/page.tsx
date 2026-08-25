@@ -225,7 +225,9 @@ export default function AndroidReleaseManagementPage() {
     }
   }
 
-  if (isLoading) return <AdminPageLoading className="android-release-admin-shell" loadingLabel={phrase("正在读取安装包", "Loading packages")} title={phrase("安装包管理", "Package management")} />;
+  const pageDescription = phrase("管理安装页展示的 Android 安装包。", "Manage Android packages shown on the install page.");
+
+  if (isLoading) return <AdminPageLoading className="android-release-admin-shell" description={pageDescription} loadingLabel={phrase("正在读取安装包", "Loading packages")} title={phrase("安装包管理", "Package management")} />;
 
   if (!currentUser) {
     return (
@@ -265,7 +267,7 @@ export default function AndroidReleaseManagementPage() {
         tone={error ? "error" : "success"}
       />
 
-      <AdminPageHeader title={phrase("安装包管理", "Package management")} />
+      <AdminPageHeader description={pageDescription} title={phrase("安装包管理", "Package management")} />
       <form className="android-release-upload-panel" onSubmit={(event) => void handleUpload(event)}>
         <div className="android-release-upload-copy">
           <span className="section-label">Android APK</span>

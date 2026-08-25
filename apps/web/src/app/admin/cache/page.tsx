@@ -500,7 +500,9 @@ export default function CacheManagementPage() {
     });
   }
 
-  if (isLoading) return <AdminPageLoading className="cache-admin-shell" loadingLabel={phrase("正在连接 Redis", "Connecting to Redis")} title={phrase("缓存管理", "Cache management")} />;
+  const pageDescription = phrase("查看和维护 Redis 缓存数据。", "Inspect and maintain Redis cache data.");
+
+  if (isLoading) return <AdminPageLoading className="cache-admin-shell" description={pageDescription} loadingLabel={phrase("正在连接 Redis", "Connecting to Redis")} title={phrase("缓存管理", "Cache management")} />;
 
   if (!currentUser) {
     return (
@@ -530,7 +532,7 @@ export default function CacheManagementPage() {
 
   return (
     <section className="page-shell admin-shell cache-admin-shell">
-      <AdminPageHeader title={phrase("缓存管理", "Cache management")} actions={<button aria-label={phrase("刷新缓存数据", "Refresh cache data")} className="admin-header-icon-action" disabled={isOverviewRefreshing} onClick={() => void refreshOverview()} title={phrase("刷新缓存数据", "Refresh cache data")} type="button"><RefreshCcw aria-hidden="true" className={isOverviewRefreshing ? "spinning" : undefined} size={17} /></button>} />
+      <AdminPageHeader description={pageDescription} title={phrase("缓存管理", "Cache management")} actions={<button aria-label={phrase("刷新缓存数据", "Refresh cache data")} className="admin-header-icon-action" disabled={isOverviewRefreshing} onClick={() => void refreshOverview()} title={phrase("刷新缓存数据", "Refresh cache data")} type="button"><RefreshCcw aria-hidden="true" className={isOverviewRefreshing ? "spinning" : undefined} size={17} /></button>} />
       <AppToast
         duration={error ? 4200 : 2600}
         message={error || notice}

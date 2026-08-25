@@ -181,9 +181,6 @@ export default function SecurityAdminPage() {
   }, [accessToken, locale, page, phrase, router, search, status, tab, user]);
 
   const canEdit = user?.isSuperAdmin ?? false;
-  const lastUpdated = config?.updatedAt
-    ? formatDateTime(config.updatedAt, locale)
-    : phrase("尚未记录", "Not recorded");
 
   function updateDraft<K extends keyof SecurityAdminConfig>(
     key: K,
@@ -278,7 +275,9 @@ export default function SecurityAdminPage() {
     setStatus("");
   }
 
-  if (isLoading) return <AdminPageLoading className="security-admin-shell" loadingLabel={phrase("正在读取安全配置", "Loading security settings")} title={phrase("安全管理", "Security management")} />;
+  const pageDescription = phrase("配置邮件、验证码和登录安全策略。", "Configure mail, verification, and sign-in security policies.");
+
+  if (isLoading) return <AdminPageLoading className="security-admin-shell" description={pageDescription} loadingLabel={phrase("正在读取安全配置", "Loading security settings")} title={phrase("安全管理", "Security management")} />;
 
   if (!user || !canAccessSecurityAdmin(user)) {
     return (
@@ -293,7 +292,7 @@ export default function SecurityAdminPage() {
 
   return (
     <section className="page-shell admin-shell security-admin-shell">
-      <AdminPageHeader className="security-admin-head" description={`${canEdit ? phrase("超级管理员配置", "Super administrator settings") : phrase("管理员只读", "Administrator read-only")} · ${phrase("更新于", "Updated")} ${lastUpdated}`} title={phrase("安全管理", "Security management")} actions={<span className={config?.encryptionConfigured ? "ready" : "warning"}>
+      <AdminPageHeader className="security-admin-head" description={pageDescription} title={phrase("安全管理", "Security management")} actions={<span className={config?.encryptionConfigured ? "ready" : "warning"}>
           {config?.encryptionConfigured ? phrase("凭据加密可用", "Credential encryption available") : phrase("凭据加密未配置", "Credential encryption is not configured")}
         </span>} />
 

@@ -178,7 +178,9 @@ export default function BackgroundManagementPage() {
     }
   }
 
-  if (isLoading) return <AdminPageLoading className="background-admin-shell" loadingLabel={phrase('正在读取图片', 'Loading images')} title={phrase('背景管理', 'Background management')} />;
+  const pageDescription = phrase('管理登录页和站点使用的背景图片。', 'Manage backgrounds used by the sign-in page and site.');
+
+  if (isLoading) return <AdminPageLoading className="background-admin-shell" description={pageDescription} loadingLabel={phrase('正在读取图片', 'Loading images')} title={phrase('背景管理', 'Background management')} />;
 
   if (!currentUser) {
     return (
@@ -218,7 +220,7 @@ export default function BackgroundManagementPage() {
         tone={error ? 'error' : 'success'}
       />
 
-      <AdminPageHeader title={phrase('背景管理', 'Background management')} />
+      <AdminPageHeader description={pageDescription} title={phrase('背景管理', 'Background management')} />
       <form className="background-upload-panel" onSubmit={(event) => void handleUpload(event)}>
         <div>
           <span className="section-label">{phrase('上传图片', 'UPLOAD IMAGES')}</span>

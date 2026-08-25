@@ -17215,3 +17215,392 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .admin-page-header p { display: none; }
   .admin-page-loading { min-height: 340px; }
 }
+
+/* Final management-page normalization. Keep legacy page selectors from changing the shared chrome. */
+.page-shell :is(.admin-page-header, .admin-page-header-copy, .admin-page-header-actions) {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.page-shell .admin-page-header {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end !important;
+  gap: 10px;
+  min-height: 50px;
+  padding: 0 2px 7px !important;
+}
+
+.page-shell .admin-page-header-copy {
+  display: grid !important;
+  min-width: 0;
+  align-content: end;
+  gap: 2px;
+}
+
+.page-shell .admin-page-header h1,
+.page-shell .analytics-toolbar h1,
+.page-shell .system-status-head h1,
+.page-shell .storage-management-head h1,
+.page-shell .security-admin-head h1,
+.page-shell .moderation-reports-header h1,
+.page-shell .group-management-admin-header h1,
+.page-shell .p8-page-heading h1,
+.page-shell .feedback-panel-heading h1 {
+  margin: 0 !important;
+  color: var(--foreground);
+  font-size: 1.24rem !important;
+  font-weight: 650;
+  line-height: 1.2 !important;
+  letter-spacing: 0;
+}
+
+.page-shell .admin-page-header p {
+  display: block !important;
+  max-width: 72ch;
+  margin: 0 !important;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.68rem !important;
+  font-weight: 400;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-shell .admin-page-header-actions {
+  align-self: end;
+  min-width: 0;
+  padding-bottom: 1px;
+}
+
+.page-shell .admin-page-header-actions > button,
+.page-shell .admin-page-header-actions > a,
+.page-shell .admin-page-header-actions .admin-header-icon-action {
+  width: 28px;
+  height: 28px;
+}
+
+.page-shell .admin-page-header :is(.site-settings-head-actions, .system-status-head-actions, .storage-management-head-actions) {
+  align-items: center;
+  gap: 5px;
+}
+
+.page-shell .admin-page-header :is(.site-settings-head-actions > span, .system-status-head-actions small, .storage-management-head-actions small) {
+  font-size: 0.64rem;
+  line-height: 1.3;
+}
+
+.page-shell:is(.admin-shell, .announcement-admin-page, .analytics-page, .cache-admin-shell, .group-management-admin-page, .moderation-reports-page, .p8-directory-page, .portal-admin-shell, .security-admin-shell, .site-settings-shell, .storage-management-shell, .system-status-shell, .violation-authors-page) {
+  gap: 10px;
+}
+
+.page-shell :is(.admin-page-header + *, .admin-page-loading-body) {
+  margin-top: 0;
+}
+
+.page-shell :is(.admin-list-toolbar, .audit-toolbar, .portal-admin-toolbar, .announcement-admin-toolbar, .group-management-admin-toolbar, .storage-filter-row, .cache-overview-toolbar) {
+  gap: 8px;
+}
+
+/* Compact, borderless search and filter controls. Labels remain available to assistive technology. */
+.page-shell :is(.admin-search-field, .admin-page-size, .cache-toolbar label, .cache-ttl-form label) > span,
+.page-shell :is(.storage-filter-row, .announcement-admin-toolbar) label > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.page-shell :is(.admin-search-field input, .admin-page-size select, .cache-toolbar input, .cache-toolbar select, .cache-ttl-form input, .storage-filter-row input, .storage-filter-row select, .announcement-admin-toolbar > label) {
+  min-height: 31px;
+  height: 31px;
+  border: 0 !important;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent) !important;
+  box-shadow: none !important;
+  color: var(--foreground);
+  font-size: 0.71rem;
+  outline: 0 !important;
+}
+
+.page-shell :is(.admin-search-field, .admin-page-size, .cache-toolbar label, .cache-ttl-form label) {
+  gap: 0;
+}
+
+.page-shell :is(.admin-search-field input, .cache-toolbar input, .cache-ttl-form input) {
+  padding: 0 9px;
+}
+
+.page-shell :is(.admin-search-field input, .admin-page-size select, .cache-toolbar input, .cache-toolbar select, .cache-ttl-form input, .storage-filter-row input, .storage-filter-row select):focus,
+.page-shell :is(.announcement-editor-select-trigger, .feedback-toolbar input):focus-visible {
+  border-color: transparent !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 24%, transparent) !important;
+  outline: 0 !important;
+}
+
+.page-shell :is(.announcement-editor-select-trigger, .announcement-editor-select-menu) {
+  border: 0 !important;
+  box-shadow: none;
+}
+
+.page-shell .announcement-editor-select-trigger {
+  min-height: 31px !important;
+  height: 31px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent) !important;
+  font-size: 0.71rem !important;
+  padding: 5px 7px;
+}
+
+.page-shell .announcement-editor-select-menu {
+  z-index: 80;
+  min-width: 100%;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--popover-surface) 96%, transparent) !important;
+  box-shadow: var(--shadow-soft) !important;
+}
+
+.page-shell .announcement-editor-select-menu button {
+  min-height: 28px;
+  font-size: 0.7rem;
+}
+
+.page-shell :is(.admin-search-field, .admin-page-size, .cache-toolbar label, .cache-ttl-form label, .storage-filter-row form, .announcement-admin-toolbar > label) input:focus,
+.page-shell :is(.admin-search-field, .admin-page-size, .cache-toolbar label, .cache-ttl-form label, .storage-filter-row form, .announcement-admin-toolbar > label) select:focus,
+.page-shell textarea:focus {
+  border-color: transparent !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 24%, transparent) !important;
+  outline: 0 !important;
+}
+
+.page-shell .admin-list-toolbar,
+.page-shell .audit-toolbar,
+.page-shell .cache-toolbar,
+.page-shell .portal-admin-toolbar,
+.page-shell .announcement-admin-toolbar,
+.page-shell .group-management-admin-toolbar,
+.page-shell .storage-filter-row {
+  min-height: 31px;
+}
+
+.page-shell .admin-list-toolbar > .admin-summary {
+  font-size: 0.7rem;
+}
+
+.page-shell .audit-toolbar select,
+.page-shell .cache-toolbar select,
+.page-shell .storage-filter-row select {
+  min-height: 31px;
+  height: 31px;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+  font-size: 0.71rem;
+  outline: 0;
+  padding: 0 7px;
+}
+
+.page-shell .audit-toolbar,
+.page-shell .cache-toolbar {
+  align-items: center;
+}
+
+.page-shell :is(.moderation-reports-page, .group-management-admin-page, .announcement-admin-page) .admin-page-header + * {
+  margin-top: 0;
+}
+
+.page-shell.moderation-reports-page {
+  gap: 8px;
+}
+
+.page-shell .moderation-reports-header {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end !important;
+  gap: 10px;
+}
+
+.page-shell .moderation-summary {
+  align-self: end;
+  gap: 10px;
+}
+
+.page-shell .moderation-summary b {
+  font-size: 1.08rem;
+}
+
+.page-shell .moderation-reports-toolbar {
+  align-items: center;
+  padding-bottom: 6px;
+}
+
+.page-shell .moderation-filter-group .announcement-editor-select-trigger {
+  min-height: 29px !important;
+  height: 29px;
+  font-size: 0.68rem !important;
+}
+
+.page-shell .moderation-report-row {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.page-shell .feedback-panel {
+  gap: 9px;
+  padding: 12px;
+}
+
+.page-shell .feedback-panel > .admin-page-header {
+  background: transparent !important;
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+}
+
+.page-shell .feedback-list-item {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.page-shell .p8-page-heading {
+  padding-top: 0 !important;
+  padding-bottom: 7px !important;
+}
+
+.page-shell .p8-page-heading > div {
+  align-content: end;
+  gap: 2px;
+}
+
+.page-shell .p8-page-heading .admin-page-header-actions {
+  align-self: end;
+}
+
+@media (max-width: 680px) {
+  .page-shell .admin-page-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px;
+  }
+
+  .page-shell .admin-page-header h1 {
+    font-size: 1.08rem !important;
+  }
+
+  .page-shell .admin-page-header p {
+    max-width: 46ch;
+    font-size: 0.63rem !important;
+    white-space: normal;
+  }
+
+  .page-shell .admin-page-header-actions {
+    flex-wrap: wrap;
+  }
+
+  .page-shell .moderation-reports-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .page-shell .moderation-summary {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .page-shell :is(.admin-list-toolbar, .audit-toolbar, .cache-toolbar, .portal-admin-toolbar, .announcement-admin-toolbar, .group-management-admin-toolbar, .storage-filter-row) {
+    align-items: stretch;
+    min-height: 0;
+  }
+}
+
+/* The feedback and anonymous-topic pages use p8-page instead of page-shell. */
+.admin-page-header {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end !important;
+  gap: 10px;
+  min-height: 50px;
+  padding: 0 2px 7px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.admin-page-header-copy {
+  display: grid !important;
+  min-width: 0;
+  align-content: end;
+  gap: 2px;
+}
+
+.admin-page-header h1 {
+  margin: 0 !important;
+  font-size: 1.24rem !important;
+  line-height: 1.2 !important;
+}
+
+.admin-page-header p {
+  display: block !important;
+  max-width: 72ch;
+  margin: 0 !important;
+  color: var(--muted);
+  font-size: 0.68rem !important;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.admin-page-header-actions {
+  align-self: end;
+  padding-bottom: 1px;
+}
+
+.p8-page .feedback-panel {
+  gap: 9px;
+  padding: 12px;
+}
+
+.p8-page .feedback-panel > .admin-page-header {
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+}
+
+.p8-page .feedback-list-item {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.p8-page .feedback-toolbar {
+  gap: 7px;
+}
+
+.p8-page .feedback-toolbar :is(input, .announcement-editor-select-trigger) {
+  min-height: 31px;
+  height: 31px;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+  box-shadow: none;
+  font-size: 0.71rem;
+  outline: 0;
+}
+
+.p8-page .feedback-toolbar .announcement-editor-select-trigger {
+  padding: 5px 7px;
+}
+
+@media (max-width: 680px) {
+  .admin-page-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px;
+  }
+
+  .admin-page-header h1 {
+    font-size: 1.08rem !important;
+  }
+
+  .admin-page-header p {
+    max-width: 46ch;
+    font-size: 0.63rem !important;
+    white-space: normal;
+  }
+}
