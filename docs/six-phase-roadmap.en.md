@@ -435,7 +435,22 @@ Goal: reduce manual review pressure while retaining a complete handling record a
 - Commit `fc183f4` was pushed and GitHub Actions `32441111237` published the API and Web images successfully. Production bootstrap confirmed all 49 migrations were already applied with none pending; only API and Web were recreated, the external home page, `/admin/reports`, and `/api/health` returned `200`, all six core containers retained restart count zero, and the previous API/Web images plus the stopped bootstrap container were removed.
 - Commits `d4b0d3a` and `ab3edcb` were pushed and GitHub Actions `32681800667` and `32683906735` published the API and Web images. The new P10 migration initially stopped on MySQL's index-name length limit; after confirming all six new tables were empty, only those partial tables were removed and the corrected migration was applied from a clean state. API and Web were recreated, `/api/health` and `/admin/reports` returned `200`, and the stopped bootstrap container plus dangling images were removed, reclaiming about 2.86 GB. MySQL, Redis, Caddy, TURN, and all data volumes remained intact.
 
-The fixed delivery order is remaining P7 work -> P8 home/dashboard/tools center -> P9 -> P10. Each phase must be independently accepted, deployed, and recorded under this roadmap's definition of done.
+### Phase 11: Product Stability Closeout
+
+Goal: close the recent chat-menu, personal-report, and profile-layout work with repeatable desktop and mobile regression checks.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P11-01 | Add desktop/mobile regression coverage for the chat menu, personal reports, and key profile layout order | Completed |
+
+### P11-01 Acceptance Record
+
+- Added `scripts/p11-01-playwright.py`. Mock API data verifies that the chat-list three-dot menu is rendered through a Portal and remains above the chat dock; desktop checks confirm the menu is hit-testable, while the 390px mobile check confirms no menu or page horizontal overflow.
+- Verified the personal-report title/source/time first row, full-width detail second row, and long-detail ellipsis with a borderless frosted tooltip showing the complete text on both desktop and mobile viewports.
+- Verified that expanding signed-in devices places the `Signed-in devices` section before `Growth and points` on the profile page in both tested viewports.
+- The two Playwright viewports passed; Web lint passed with the existing 23 warnings, and TypeScript, production build, and `git diff --check` passed.
+
+The fixed delivery order is remaining P7 work -> P8 home/dashboard/tools center -> P9 -> P10 -> P11. Each phase must be independently accepted, deployed, and recorded under this roadmap's definition of done.
 
 ## 14. Resume Procedure
 

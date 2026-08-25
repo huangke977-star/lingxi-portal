@@ -2451,7 +2451,7 @@ function ChatSidebarContactRow({ active, friendship, menuOpen, muted, preview, u
       {unreadCount ? <b className={muted ? "muted" : undefined}>{muted ? "" : formatCount(unreadCount)}</b> : null}
     </button>
     {friendship || onConversationAction ? <div className="chat-friend-action" data-chat-friend-action>
-      <button ref={actionTriggerRef} aria-expanded={menuOpen} aria-label={phrase(`${user.nickname} 的聊天管理`, `Manage chat with ${user.nickname}`)} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(friendship?.id ?? -user.id); }} title={phrase("聊天管理", "Chat actions")} type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
+      <button data-testid="chat-conversation-action-trigger" ref={actionTriggerRef} aria-expanded={menuOpen} aria-label={phrase(`${user.nickname} 的聊天管理`, `Manage chat with ${user.nickname}`)} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(friendship?.id ?? -user.id); }} title={phrase("聊天管理", "Chat actions")} type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
       {menuOpen ? <ChatFriendActionMenu anchorRef={actionTriggerRef}>
         {friendship ? <>
           <button onClick={onViewProfile} type="button"><UserRound aria-hidden="true" size={15} />{phrase("查看主页", "View profile")}</button>
@@ -2489,7 +2489,7 @@ function ChatSidebarGroupRow({ active, conversation, menuOpen, onConversationAct
       <span className="chat-group-pending-badges">{group.pendingJoinRequestCount ? <b title={phrase("待处理入群申请", "Pending join requests")}><UserPlus aria-hidden="true" size={11} />{formatCount(group.pendingJoinRequestCount)}</b> : null}{group.pendingReportCount ? <b className="report" title={phrase("待处理举报", "Pending reports")}><Flag aria-hidden="true" size={11} />{formatCount(group.pendingReportCount)}</b> : null}{conversation.unreadCount ? <b className={conversation.muted ? "muted" : undefined}>{conversation.muted ? "" : formatCount(conversation.unreadCount)}</b> : null}</span>
     </button>
     <div className="chat-friend-action" data-chat-friend-action>
-      <button ref={actionTriggerRef} aria-expanded={menuOpen} aria-label={phrase(`${group.name} 的群聊管理`, `Manage ${group.name}`)} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(); }} title={phrase("群聊管理", "Group actions")} type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
+      <button data-testid="chat-conversation-action-trigger" ref={actionTriggerRef} aria-expanded={menuOpen} aria-label={phrase(`${group.name} 的群聊管理`, `Manage ${group.name}`)} className="chat-friend-action-trigger" onClick={(event) => { event.stopPropagation(); onToggleMenu(); }} title={phrase("群聊管理", "Group actions")} type="button"><MoreHorizontal aria-hidden="true" size={16} /></button>
       {menuOpen ? <ChatFriendActionMenu anchorRef={actionTriggerRef}>
         <button onClick={onManage} type="button"><Users aria-hidden="true" size={15} />{phrase("群资料与成员", "Group details and members")}</button>
         <span className="chat-friend-action-menu-divider" />
@@ -2556,6 +2556,7 @@ function ChatFriendActionMenu({ anchorRef, children }: { anchorRef: RefObject<HT
   return typeof document === "undefined" ? null : createPortal(
     <div
       className="chat-friend-action-menu chat-friend-action-menu-floating"
+      data-testid="chat-conversation-action-menu"
       data-chat-friend-action
       ref={menuRef}
       style={{ left: position?.left ?? 0, top: position?.top ?? 0, visibility: position ? "visible" : "hidden" }}

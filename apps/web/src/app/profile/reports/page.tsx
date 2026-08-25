@@ -98,6 +98,7 @@ function ReportDetailText({ value }: { value: string }) {
     <span
       aria-label={value}
       className="my-report-detail-text"
+      data-testid="my-report-detail"
       onBlur={() => setTooltipOpen(false)}
       onFocus={(event) => {
         if (event.currentTarget.scrollWidth <= event.currentTarget.clientWidth) return;
@@ -111,7 +112,7 @@ function ReportDetailText({ value }: { value: string }) {
       tabIndex={0}
     >{value}</span>
     {tooltipOpen && typeof document !== "undefined" ? createPortal(
-      <div className="my-report-detail-tooltip" ref={tooltipRef} role="tooltip" style={{ left: tooltipPosition.left, top: tooltipPosition.top }}>
+      <div className="my-report-detail-tooltip" data-testid="my-report-detail-tooltip" ref={tooltipRef} role="tooltip" style={{ backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)", left: tooltipPosition.left, top: tooltipPosition.top }}>
         {value}
       </div>,
       document.body,
@@ -180,7 +181,7 @@ export default function MyArticleReportsPage() {
         <div className="my-reports-list">
           {items.map((item) => {
             const detail = reportDetail(item, phrase);
-            return <article className="my-report-row" key={`${item.source}-${item.id}`}>
+            return <article className="my-report-row" data-testid="my-report-row" key={`${item.source}-${item.id}`}>
               <div className="my-report-main">
                 <div className="my-report-title-line">
                   <button className="my-report-title-button" onClick={() => void openReport(item)} title={phrase("查看举报内容", "View reported content")} type="button">{reportTitle(item, phrase)}</button>

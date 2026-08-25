@@ -1047,31 +1047,6 @@ export default function ProfilePage() {
             </form>
           </section>
 
-          <section className="profile-panel reputation-panel">
-            <div className="panel-heading reputation-heading">
-              <span className="section-label">Growth & points</span>
-              <strong>{phrase("成长与积分", "Growth and points")}</strong><button className="text-action reputation-detail-link" onClick={() => router.push(localizedPath("/profile/points", locale))} type="button">{phrase("积分明细", "Point details")}</button>
-            </div>
-            {reputation ? <div className="reputation-layout">
-              <div className="reputation-overview">
-                <div className="reputation-level-summary">
-                  <span className="reputation-symbol"><RoleSymbol code={reputation.level.code} /></span>
-                  <div><span>{phrase("成长等级", "Growth level")}</span><strong>{levelName(reputation.level.code, locale)} <small>Lv.{reputation.level.level}</small></strong><p>{reputation.nextLevel ? phrase(`距离 ${reputation.nextLevel.name} 还需 ${reputation.experienceToNext} 经验`, `${reputation.experienceToNext} experience to ${levelName(reputation.nextLevel.code, locale)}`) : phrase("已达到当前最高成长等级", "You have reached the current maximum growth level")}</p></div>
-                </div>
-                <div className="reputation-progress" aria-label={phrase(`经验进度 ${reputation.progressPercent}%`, `Experience progress ${reputation.progressPercent}%`)}><span style={{ width: `${reputation.progressPercent}%` }} /></div>
-                <div className="reputation-balances"><span><TrendingUp aria-hidden="true" size={17} /><small>{phrase("经验", "Experience")}</small><strong>{reputation.experience}</strong></span><span><Coins aria-hidden="true" size={17} /><small>{phrase("积分", "Points")}</small><strong>{reputation.points}</strong></span></div>
-              </div>
-              <div className="reputation-rules">
-                <strong>{phrase("获取规则", "Earning rules")}</strong>
-                {reputation.rules.map((rule) => <div key={rule.reason}><span>{reputationReasonLabel(rule.reason, locale, rule.label)}</span><em>{rule.experience ? phrase(`+${rule.experience} 经验`, `+${rule.experience} XP`) : ""}{rule.experience && rule.points ? " · " : ""}{rule.points ? phrase(`+${rule.points} 积分`, `+${rule.points} points`) : ""}</em>{rule.dailyExperienceCap ? <small>{phrase(`每日经验上限 ${rule.dailyExperienceCap}`, `Daily XP cap ${rule.dailyExperienceCap}`)}</small> : null}</div>)}
-              </div>
-              <div className="reputation-ledger">
-                <strong>{phrase("最近记录", "Recent activity")}</strong>
-                {reputation.recent.length ? reputation.recent.slice(0, 6).map((item) => <div key={item.id}><span><b>{reputationReasonLabel(item.reason, locale, item.description)}</b><small>{formatReputationTime(item.createdAt, locale)}</small></span><em>{item.experienceDelta ? phrase(`${item.experienceDelta > 0 ? "+" : ""}${item.experienceDelta} 经验`, `${item.experienceDelta > 0 ? "+" : ""}${item.experienceDelta} XP`) : ""}{item.experienceDelta && item.pointDelta ? " · " : ""}{item.pointDelta ? phrase(`${item.pointDelta > 0 ? "+" : ""}${item.pointDelta} 积分`, `${item.pointDelta > 0 ? "+" : ""}${item.pointDelta} points`) : ""}</em></div>) : <p>{phrase("完成阅读、评论或创作后，这里会显示记录。", "Records appear here after you read, comment, or publish.")}</p>}
-              </div>
-            </div> : <div className="reputation-empty"><Sparkles aria-hidden="true" size={18} />{phrase("正在读取成长记录", "Loading growth activity")}</div>}
-          </section>
-
           {isSessionsOpen ? (
             <section
               className="profile-panel account-sessions-panel"
@@ -1113,12 +1088,8 @@ export default function ProfilePage() {
                   sessions.map((session) => (
                     <div className="account-session-row" key={session.id}>
                       <div>
-                        <strong>
-                          {formatSessionDevice(session.userAgent, locale)}
-                        </strong>
-                        <span>
-                          {session.ip === "unknown" ? phrase("IP 未记录", "IP not recorded") : session.ip}
-                        </span>
+                        <strong>{formatSessionDevice(session.userAgent, locale)}</strong>
+                        <span>{session.ip === "unknown" ? phrase("IP 未记录", "IP not recorded") : session.ip}</span>
                       </div>
                       <div>
                         <span>{phrase("登录时间", "Signed in")}</span>
@@ -1149,6 +1120,31 @@ export default function ProfilePage() {
               </div>
             </section>
           ) : null}
+
+          <section className="profile-panel reputation-panel">
+            <div className="panel-heading reputation-heading">
+              <span className="section-label">Growth & points</span>
+              <strong>{phrase("成长与积分", "Growth and points")}</strong><button className="text-action reputation-detail-link" onClick={() => router.push(localizedPath("/profile/points", locale))} type="button">{phrase("积分明细", "Point details")}</button>
+            </div>
+            {reputation ? <div className="reputation-layout">
+              <div className="reputation-overview">
+                <div className="reputation-level-summary">
+                  <span className="reputation-symbol"><RoleSymbol code={reputation.level.code} /></span>
+                  <div><span>{phrase("成长等级", "Growth level")}</span><strong>{levelName(reputation.level.code, locale)} <small>Lv.{reputation.level.level}</small></strong><p>{reputation.nextLevel ? phrase(`距离 ${reputation.nextLevel.name} 还需 ${reputation.experienceToNext} 经验`, `${reputation.experienceToNext} experience to ${levelName(reputation.nextLevel.code, locale)}`) : phrase("已达到当前最高成长等级", "You have reached the current maximum growth level")}</p></div>
+                </div>
+                <div className="reputation-progress" aria-label={phrase(`经验进度 ${reputation.progressPercent}%`, `Experience progress ${reputation.progressPercent}%`)}><span style={{ width: `${reputation.progressPercent}%` }} /></div>
+                <div className="reputation-balances"><span><TrendingUp aria-hidden="true" size={17} /><small>{phrase("经验", "Experience")}</small><strong>{reputation.experience}</strong></span><span><Coins aria-hidden="true" size={17} /><small>{phrase("积分", "Points")}</small><strong>{reputation.points}</strong></span></div>
+              </div>
+              <div className="reputation-rules">
+                <strong>{phrase("获取规则", "Earning rules")}</strong>
+                {reputation.rules.map((rule) => <div key={rule.reason}><span>{reputationReasonLabel(rule.reason, locale, rule.label)}</span><em>{rule.experience ? phrase(`+${rule.experience} 经验`, `+${rule.experience} XP`) : ""}{rule.experience && rule.points ? " · " : ""}{rule.points ? phrase(`+${rule.points} 积分`, `+${rule.points} points`) : ""}</em>{rule.dailyExperienceCap ? <small>{phrase(`每日经验上限 ${rule.dailyExperienceCap}`, `Daily XP cap ${rule.dailyExperienceCap}`)}</small> : null}</div>)}
+              </div>
+              <div className="reputation-ledger">
+                <strong>{phrase("最近记录", "Recent activity")}</strong>
+                {reputation.recent.length ? reputation.recent.slice(0, 6).map((item) => <div key={item.id}><span><b>{reputationReasonLabel(item.reason, locale, item.description)}</b><small>{formatReputationTime(item.createdAt, locale)}</small></span><em>{item.experienceDelta ? phrase(`${item.experienceDelta > 0 ? "+" : ""}${item.experienceDelta} 经验`, `${item.experienceDelta > 0 ? "+" : ""}${item.experienceDelta} XP`) : ""}{item.experienceDelta && item.pointDelta ? " · " : ""}{item.pointDelta ? phrase(`${item.pointDelta > 0 ? "+" : ""}${item.pointDelta} 积分`, `${item.pointDelta > 0 ? "+" : ""}${item.pointDelta} points`) : ""}</em></div>) : <p>{phrase("完成阅读、评论或创作后，这里会显示记录。", "Records appear here after you read, comment, or publish.")}</p>}
+              </div>
+            </div> : <div className="reputation-empty"><Sparkles aria-hidden="true" size={18} />{phrase("正在读取成长记录", "Loading growth activity")}</div>}
+          </section>
 
           <AccountSecurityPanel email={user.email} />
 
