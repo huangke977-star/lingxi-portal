@@ -42,11 +42,19 @@ export class ListSubscriptionFeedQueryDto extends ListDiscoveryQueryDto {
 export class CompleteOnboardingDto {
   @IsArray()
   @ArrayUnique()
-  @ArrayMaxSize(6)
+  @ArrayMaxSize(3)
   @Type(() => Number)
   @IsInt({ each: true })
   @Min(1, { each: true })
   topicIds: number[] = [];
+
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(6)
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  authorIds: number[] = [];
 }
 
 export class ListResourceCatalogQueryDto extends ListDiscoveryQueryDto {

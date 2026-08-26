@@ -72,11 +72,18 @@ def mock_api(route: Route) -> None:
             "articleCount": 6,
             "subscriberCount": 3,
             "subscribed": False,
+        }], "authors": [{
+            "id": 2,
+            "nickname": "运维作者",
+            "username": "operations-author",
+            "avatarUrl": None,
+            "topCategory": "服务器",
+            "subscribed": False,
         }]})
     elif path == "/discovery/onboarding" and route.request.method == "POST":
         payload = route.request.post_data_json
-        assert payload == {"topicIds": [18]}, f"unexpected onboarding payload: {payload}"
-        respond(route, {"completed": True, "topicIds": [18]})
+        assert payload == {"topicIds": [18], "authorIds": [2]}, f"unexpected onboarding payload: {payload}"
+        respond(route, {"completed": True, "topicIds": [18], "authorIds": [2]})
     elif path == "/discovery/resources/visible":
         respond(route, {"items": [{
             "article": {
@@ -130,6 +137,7 @@ def verify(page: Page, label: str, path: str) -> None:
     dialog = page.locator(".onboarding-dialog")
     dialog.wait_for()
     dialog.get_by_role("button", name="部署与运维").click()
+    dialog.get_by_role("button", name="运维作者").click()
     dialog.get_by_role("button", name="完成" if path.startswith("/articles") else "Continue").click()
     dialog.wait_for(state="hidden")
     page.locator(".resource-catalog-list > a").wait_for()

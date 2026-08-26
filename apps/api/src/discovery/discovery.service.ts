@@ -29,6 +29,7 @@ import {
 import { AuthenticatedUser } from "../auth/auth.types";
 import { parseArticleContent } from "../articles/article-resources";
 import { PrismaService } from "../prisma/prisma.service";
+import { SocialService } from "../social/social.service";
 import {
   CreateArticleCollectionDto,
   CreateArticleTopicDto,
@@ -196,7 +197,10 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
   );
   private digestTimer: NodeJS.Timeout | undefined;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly socialService: SocialService,
+  ) {}
 
   onModuleInit(): void {
     // The dedupe key makes this safe when multiple API replicas run the same interval.
@@ -256,21 +260,24 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
       where: { userId: user.id },
       select: { onboardingCompletedAt: true },
     });
-    if (preference?.onboardingCompletedAt) return { completed: true, topics: [] };
+    if (preference?.onboardingCompletedAt) return { completed: true, topics: [], authors: [] };
 
-    const topics = await this.prisma.articleTopic.findMany({
-      where: this.topicVisibleWhere(user),
-      orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }, { id: "desc" }],
-      take: 12,
-      select: {
-        id: true,
-        title: true,
-        slug: true,
-        description: true,
-        coverPath: true,
-        _count: { select: { items: true, subscribers: true } },
-      },
-    });
+    const [topics, authors] = await Promise.all([
+      this.prisma.articleTopic.findMany({
+        where: this.topicVisibleWhere(user),
+        orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }, { id: "desc" }],
+        take: 12,
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          description: true,
+          coverPath: true,
+          _count: { select: { items: true, subscribers: true } },
+        },
+      }),
+      this.listOnboardingAuthors(user),
+    ]);
     const subscribedIds = new Set((await this.prisma.articleTopicSubscription.findMany({
       where: { userId: user.id, topicId: { in: topics.map((topic) => topic.id) } },
       select: { topicId: true },
@@ -287,11 +294,15 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
         subscriberCount: topic._count.subscribers,
         subscribed: subscribedIds.has(topic.id),
       })),
+      authors,
     };
   }
 
-  async completeOnboarding(user: AuthenticatedUser, dto: CompleteOnboardingDto): Promise<{ completed: true; topicIds: number[] }> {
-    const topicIds = [...new Set(dto.topicIds)];
+  async completeOnboarding(user: AuthenticatedUser, dto: CompleteOnboardingDto): Promise<{ completed: true; topicIds: number[]; authorIds: number[] }> {
+    const topicIds = [...new Set(dto.topicIds ?? [])];
+    const authorIds = [...new Set(dto.authorIds ?? [])];
+    if (topicIds.length > 3) throw new BadRequestException("兴趣引导最多选择 3 个专题。");
+    if (authorIds.length > 6) throw new BadRequestException("兴趣引导最多选择 6 位创作者。");
     if (topicIds.length) {
       const availableTopics = await this.prisma.articleTopic.findMany({
         where: { id: { in: topicIds }, ...this.topicVisibleWhere(user) },
@@ -301,6 +312,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
         throw new BadRequestException("包含不存在或当前不可订阅的专题。");
       }
     }
+    if (authorIds.length) await this.socialService.subscribeMany(user, authorIds);
     const completedAt = new Date();
     await this.prisma.$transaction(async (transaction) => {
       if (topicIds.length) {
@@ -316,7 +328,79 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
         update: { onboardingCompletedAt: completedAt },
       });
     });
-    return { completed: true, topicIds };
+    return { completed: true, topicIds, authorIds };
+  }
+
+  private async listOnboardingAuthors(user: AuthenticatedUser): Promise<OnboardingResponse["authors"]> {
+    const categoryStats = await this.prisma.article.groupBy({
+      by: ["authorId", "category"],
+      where: {
+        authorId: { not: user.id },
+        status: ArticleStatus.published,
+        visibility: ArticleVisibility.public,
+        author: { status: UserStatus.active },
+      },
+      _count: { _all: true },
+      _sum: { viewCount: true, likeCount: true, favoriteCount: true, commentCount: true },
+      _max: { publishedAt: true },
+    });
+    const now = Date.now();
+    const candidates = new Map<number, { score: number; category: string; categoryScore: number }>();
+    for (const item of categoryStats) {
+      const articleCount = item._count._all;
+      const viewCount = item._sum.viewCount ?? 0;
+      const likeCount = item._sum.likeCount ?? 0;
+      const favoriteCount = item._sum.favoriteCount ?? 0;
+      const commentCount = item._sum.commentCount ?? 0;
+      const ageDays = item._max.publishedAt ? Math.max(0, (now - item._max.publishedAt.getTime()) / 86_400_000) : 365;
+      const engagement = Math.log2(viewCount + 1) * 1.8 + likeCount * 4 + favoriteCount * 5 + commentCount * 6;
+      const recency = Math.max(0, 28 - ageDays) * 1.1;
+      const categoryScore = Math.min(24, articleCount * 3) + engagement + recency;
+      const current = candidates.get(item.authorId) ?? { score: 0, category: "", categoryScore: Number.NEGATIVE_INFINITY };
+      current.score += categoryScore;
+      if (categoryScore > current.categoryScore || (categoryScore === current.categoryScore && item.category < current.category)) {
+        current.category = item.category.trim() || "未分类";
+        current.categoryScore = categoryScore;
+      }
+      candidates.set(item.authorId, current);
+    }
+    const candidateIds = [...candidates.entries()]
+      .sort(([, left], [, right]) => right.score - left.score)
+      .slice(0, 30)
+      .map(([authorId]) => authorId);
+    if (!candidateIds.length) return [];
+
+    const [authors, blockedFriendships, subscriptions] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { id: { in: candidateIds }, status: UserStatus.active },
+        select: discoveryArticleInclude.author.select,
+      }),
+      this.prisma.friendship.findMany({
+        where: {
+          status: FriendshipStatus.blocked,
+          OR: candidateIds.map((authorId) => ({
+            userOneId: Math.min(user.id, authorId),
+            userTwoId: Math.max(user.id, authorId),
+          })),
+        },
+        select: { userOneId: true, userTwoId: true },
+      }),
+      this.prisma.userSubscription.findMany({
+        where: { subscriberId: user.id, authorId: { in: candidateIds } },
+        select: { authorId: true },
+      }),
+    ]);
+    const blockedIds = new Set(blockedFriendships.map((friendship) => friendship.userOneId === user.id ? friendship.userTwoId : friendship.userOneId));
+    const authorsById = new Map(authors.map((author) => [author.id, author]));
+    const subscribedIds = new Set(subscriptions.map(({ authorId }) => authorId));
+    return candidateIds
+      .filter((authorId) => authorsById.has(authorId) && !blockedIds.has(authorId))
+      .slice(0, 6)
+      .map((authorId) => ({
+        ...this.toAuthor(authorsById.get(authorId)!),
+        topCategory: candidates.get(authorId)!.category,
+        subscribed: subscribedIds.has(authorId),
+      }));
   }
 
   async listResourceCatalog(

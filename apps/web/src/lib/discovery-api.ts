@@ -115,6 +115,7 @@ export interface ResourceCatalog {
 export interface OnboardingState {
   completed: boolean;
   topics: Array<Pick<ArticleTopic, "id" | "title" | "slug" | "description" | "coverPath" | "articleCount" | "subscriberCount" | "subscribed">>;
+  authors: Array<{ id: number; nickname: string; username: string; avatarUrl: string | null; topCategory: string; subscribed: boolean }>;
 }
 
 export interface ContentSubscriptions {
@@ -168,8 +169,8 @@ export function getOnboarding(accessToken: string) {
   return requestJson<OnboardingState>("/discovery/onboarding", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
-export function completeOnboarding(accessToken: string, topicIds: number[]) {
-  return requestJson<{ completed: true; topicIds: number[] }>("/discovery/onboarding", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ topicIds }) });
+export function completeOnboarding(accessToken: string, topicIds: number[], authorIds: number[]) {
+  return requestJson<{ completed: true; topicIds: number[]; authorIds: number[] }>("/discovery/onboarding", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ topicIds, authorIds }) });
 }
 
 export function listResourceCatalog(accessToken?: string | null, input: { q?: string; page?: number; pageSize?: number; sort?: "latest" | "popular" | "price" } = {}) {

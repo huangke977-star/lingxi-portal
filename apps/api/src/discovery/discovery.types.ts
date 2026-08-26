@@ -74,6 +74,14 @@ export interface OnboardingResponse {
     subscriberCount: number;
     subscribed: boolean;
   }>;
+  authors: Array<{
+    id: number;
+    nickname: string;
+    username: string;
+    avatarUrl: string | null;
+    topCategory: string;
+    subscribed: boolean;
+  }>;
 }
 
 export interface SubscriptionFeedResponse {

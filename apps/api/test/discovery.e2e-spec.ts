@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { AuthenticatedUser } from "../src/auth/auth.types";
 import { DiscoveryService } from "../src/discovery/discovery.service";
 import { PrismaService } from "../src/prisma/prisma.service";
+import { SocialService } from "../src/social/social.service";
 
 const user: AuthenticatedUser = {
   id: 7,
@@ -93,8 +94,8 @@ function collection(items = [article(1), article(2)]) {
   };
 }
 
-function createService(prisma: object) {
-  return new DiscoveryService(prisma as unknown as PrismaService);
+function createService(prisma: object, social: Pick<SocialService, "subscribeMany"> = { subscribeMany: jest.fn(async () => undefined) }) {
+  return new DiscoveryService(prisma as unknown as PrismaService, social as SocialService);
 }
 
 describe("DiscoveryService", () => {
@@ -115,6 +116,7 @@ describe("DiscoveryService", () => {
       articleTopicSubscription: {
         findMany: jest.fn(async () => []),
       },
+      article: { groupBy: jest.fn(async () => []) },
       $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
     };
     const service = createService(prisma);
@@ -123,7 +125,7 @@ describe("DiscoveryService", () => {
       completed: false,
       topics: [{ id: 19, title: "运维", articleCount: 4, subscriberCount: 2, subscribed: false }],
     });
-    await expect(service.completeOnboarding(user, { topicIds: [19] })).resolves.toEqual({ completed: true, topicIds: [19] });
+    await expect(service.completeOnboarding(user, { topicIds: [19], authorIds: [] })).resolves.toEqual({ completed: true, topicIds: [19], authorIds: [] });
     expect(upsertSubscription).toHaveBeenCalledWith(expect.objectContaining({
       where: { userId_topicId: { userId: user.id, topicId: 19 } },
     }));
@@ -131,6 +133,53 @@ describe("DiscoveryService", () => {
       where: { userId: user.id },
       update: { onboardingCompletedAt: expect.any(Date) },
     }));
+  });
+
+  it("recommends active public creators by aggregate engagement and batch-subscribes up to six", async () => {
+    const subscribeMany = jest.fn(async () => undefined);
+    const transaction = {
+      articleTopicSubscription: { upsert: jest.fn(async () => ({})) },
+      userGrowthPreference: { upsert: jest.fn(async () => ({})) },
+    };
+    const writer = { ...author, isAdministrator: false, role: { code: "qi_refining", name: "练气", level: 10 } };
+    const prisma = {
+      userGrowthPreference: { findUnique: jest.fn(async () => null) },
+      articleTopic: { findMany: jest.fn(async () => []) },
+      articleTopicSubscription: { findMany: jest.fn(async () => []) },
+      article: {
+        groupBy: jest.fn(async () => [{
+          authorId: writer.id,
+          category: "服务器",
+          _count: { _all: 6 },
+          _sum: { viewCount: 120, likeCount: 8, favoriteCount: 5, commentCount: 4 },
+          _max: { publishedAt: new Date("2026-08-25T08:00:00.000Z") },
+        }]),
+      },
+      user: { findMany: jest.fn(async () => [writer]) },
+      friendship: { findMany: jest.fn(async () => []) },
+      userSubscription: { findMany: jest.fn(async () => []) },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    };
+    const service = createService(prisma, { subscribeMany });
+
+    await expect(service.getOnboarding(user)).resolves.toMatchObject({
+      authors: [{ id: writer.id, nickname: writer.nickname, topCategory: "服务器", subscribed: false }],
+    });
+    await expect(service.completeOnboarding(user, { topicIds: [], authorIds: [writer.id] })).resolves.toEqual({
+      completed: true,
+      topicIds: [],
+      authorIds: [writer.id],
+    });
+    expect(subscribeMany).toHaveBeenCalledWith(user, [writer.id]);
+  });
+
+  it("enforces separate onboarding limits for three topics and six creators", async () => {
+    const service = createService({});
+
+    await expect(service.completeOnboarding(user, { topicIds: [1, 2, 3, 4], authorIds: [] }))
+      .rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.completeOnboarding(user, { topicIds: [], authorIds: [1, 2, 3, 4, 5, 6, 7] }))
+      .rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("lists only visible point-resource articles with their resource exchange count", async () => {

@@ -57,14 +57,14 @@ export default function ResourceCenterPage() {
   return <section className="page-shell articles-page resource-center-page">
     <ArticleCenterNav active="resources" isLoggedIn={Boolean(user)} user={user} />
     <div className="resource-catalog-toolbar">
+      {user ? <div className="resource-catalog-summary">
+        <span><Download aria-hidden="true" size={15} /><small>{phrase("已兑换", "Unlocked")}</small><b>{summary.purchasedBlocks}</b></span>
+        <span><ShoppingBag aria-hidden="true" size={15} /><small>{phrase("已售区域", "Sold sections")}</small><b>{summary.soldBlocks}</b></span>
+        <span><Coins aria-hidden="true" size={15} /><small>{phrase("待入账积分", "Pending points")}</small><b>{summary.pendingPoints}</b></span>
+      </div> : null}
       <label><Sparkles aria-hidden="true" size={16} /><input aria-label={phrase("搜索积分资源", "Search point resources")} onChange={(event) => setQuery(event.target.value)} placeholder={phrase("搜索资源、作者或分类", "Search resources, authors, or categories")} value={query} /></label>
       <GlassSelect ariaLabel={phrase("资源排序", "Resource sort")} onChange={setSort} options={sortOptions} value={sort} />
     </div>
-    {user ? <div className="resource-catalog-summary">
-      <span><Download aria-hidden="true" size={15} /><b>{summary.purchasedBlocks}</b><small>{phrase("已兑换", "Unlocked")}</small></span>
-      <span><ShoppingBag aria-hidden="true" size={15} /><b>{summary.soldBlocks}</b><small>{phrase("已售区域", "Sold sections")}</small></span>
-      <span><Coins aria-hidden="true" size={15} /><b>{summary.pendingPoints}</b><small>{phrase("待入账积分", "Pending points")}</small></span>
-    </div> : null}
     {isLoading ? <div className="article-empty-state">{phrase("正在读取积分资源。", "Loading point resources.")}</div> : catalog.items.length ? <div className="resource-catalog-list">
       {catalog.items.map((item) => <Link href={localizedPath(`/articles/${item.article.slug}`, locale)} key={item.article.id}>
         <span><strong>{item.article.title}</strong><small>{item.article.author.nickname} · {item.article.category || phrase("未分类", "Uncategorized")} · {formatArticleDate(item.article.publishedAt, locale)}</small></span>

@@ -376,6 +376,12 @@ export class SocialService {
     return { subscribed: false, subscriberCount: await this.prisma.userSubscription.count({ where: { authorId } }) };
   }
 
+  async subscribeMany(user: AuthenticatedUser, authorIds: number[]): Promise<void> {
+    for (const authorId of [...new Set(authorIds)]) {
+      await this.subscribe(user, authorId);
+    }
+  }
+
   async listFriendships(user: AuthenticatedUser): Promise<{
     friends: FriendshipResponse[];
     incoming: FriendshipResponse[];

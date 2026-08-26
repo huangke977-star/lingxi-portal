@@ -478,14 +478,14 @@ Goal: improve first-use discovery and resource conversion through reversible int
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P12-01 | First-run interest onboarding with visible topic selection, bulk subscription, and explicit skip | Completed |
+| P12-01 | First-run interest onboarding with up to three visible topics, six recommended creators, bulk subscription, and explicit skip | Completed |
 | P12-02 | Subscription-digest preference with access filtering and China-date idempotency | Completed |
 | P12-03 | Search fallback with trending queries, visible topics, and point resources when no direct result exists | Completed |
 | P12-04 | Points resource center with catalog, minimum price, redemption popularity, and personal redemption/pending summary | Completed |
 
 ### P12 Acceptance Record
 
-- First-run onboarding appears only for signed-in users who have not completed it. It supports selecting up to six visible topics, bulk subscription, explicit skip, and a non-dismissable backdrop.
+- First-run onboarding appears only for signed-in users who have not completed it. It supports up to three visible topics and six creators ranked by public article volume, views, comments, likes, favorites, and recent activity. Both selections support bulk subscription, explicit skip, and a non-dismissable backdrop.
 - The subscription-digest switch lives in message settings. In-app digests are deduplicated by China date and recheck current article/topic visibility and role access before delivery.
 - Empty search results offer trending queries, visible topics, and point-resource entry points. The resource center supports search, sorting, minimum price, redemption popularity, and personal redemption, sales, and pending summaries.
 - Resource content blocks automatically synchronize the article resource flag and minimum point cost. Prisma validation, all 287 API tests, API/Web lint and production builds, and P12 Playwright desktop/mobile checks passed.
