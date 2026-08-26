@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Bell, BookOpen, Clock3, Compass, ExternalLink, FileText, Flame, FolderOpen, Search, Trash2, UserRound, UsersRound, Wrench, X } from "lucide-react";
+import { Bell, BookOpen, Clock3, Coins, Compass, ExternalLink, FileText, Flame, FolderOpen, Search, Trash2, UserRound, UsersRound, Wrench, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useState } from "react";
@@ -13,6 +13,7 @@ import { AvatarManagementBadge } from "@/components/user-identity-badges";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
 import { clearSearchHistory, deleteSearchHistory, globalSearch, GlobalSearchResult, HotSearchItem, listHotSearches, listSearchHistory, recordSearch, SearchCategoryFilter, SearchHistoryItem, SearchSort } from "@/lib/search-api";
+import { listResourceCatalog, listTopics, type ArticleTopic, type ResourceCatalogItem } from "@/lib/discovery-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
 import { formatDate, localizedPath } from "@/lib/i18n";
 
@@ -141,11 +142,49 @@ function SearchResults({ activeTab, category, page, query, sort }: { activeTab: 
       {(activeTab === "all" || activeTab === "collections") && result.collections.total ? <SearchResultSection count={result.collections.total} icon={FolderOpen} resultLabel={phrase("条结果", "results")} title={phrase("合集", "Collections")}><div className="search-discovery-grid">{result.collections.items.map((collection) => <Link className="search-discovery-row" href={localizedPath(`/collections/${collection.id}`, locale)} key={collection.id}><span className="search-discovery-icon"><FolderOpen aria-hidden="true" size={20} /></span><span><strong>{collection.name}</strong><small>{phrase(`${collection.articleCount} 篇文章 · ${collection.subscriberCount} 人订阅 · ${collection.owner.nickname}`, `${collection.articleCount} articles · ${collection.subscriberCount} subscribers · ${collection.owner.nickname}`)}</small><p>{collection.description || phrase("暂无合集说明", "No collection description yet")}</p></span></Link>)}</div></SearchResultSection> : null}
       {(activeTab === "all" || activeTab === "groups") && result.groups.total ? <SearchResultSection count={result.groups.total} icon={UsersRound} resultLabel={phrase("条结果", "results")} title={phrase("群聊", "Groups")}><div className="search-discovery-grid">{result.groups.items.map((group) => <Link className="search-discovery-row" href={`${localizedPath("/messages", locale)}?conversation=${group.conversationId}`} key={group.id}><span className="search-discovery-icon group">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <UsersRound aria-hidden="true" size={20} />}</span><span><strong>{group.name}</strong><small>{phrase(`${group.memberCount} 位成员 · ${group.isMember ? "已加入" : group.joinMode === "approval" ? "可申请加入" : "仅限邀请"} · ${formatTime(group.updatedAt, locale)}`, `${group.memberCount} members · ${group.isMember ? "Joined" : group.joinMode === "approval" ? "Request to join" : "Invitation only"} · ${formatTime(group.updatedAt, locale)}`)}</small><p>{group.announcement || phrase("暂无群公告", "No group announcement yet")}</p></span></Link>)}</div></SearchResultSection> : null}
       {(activeTab === "all" || activeTab === "announcements") && result.announcements.total ? <SearchResultSection count={result.announcements.total} icon={Bell} resultLabel={phrase("条结果", "results")} title={phrase("站点公告", "Site announcements")}><div className="search-article-list">{result.announcements.items.map((announcement) => <Link className="search-article-row" href={localizedPath(`/announcements/${announcement.id}`, locale)} key={announcement.id}><span><strong>{announcement.title}</strong><small>{announcement.summary || phrase("打开查看公告详情", "Open to view announcement details")} · {formatTime(announcement.publishedAt, locale)}</small></span><b>{announcement.isPinned ? phrase("置顶", "Pinned") : ""}</b></Link>)}</div></SearchResultSection> : null}
-      {!total ? <div className="search-page-empty"><strong>{phrase("没有找到匹配内容", "No matching content")}</strong><span>{phrase("换一个关键词或分类再试试。", "Try another keyword or category.")}</span></div> : null}
+      {!total ? <SearchDiscoveryFallback accessToken={readAccessToken()} locale={locale} onSearch={openSearch} phrase={phrase} /> : null}
     </div> : null}
     {result && totalPages > 1 ? <nav aria-label={phrase("搜索结果分页", "Search results pagination")} className="admin-pagination search-pagination"><span>{phrase(`第 ${page} / ${totalPages} 页`, `Page ${page} of ${totalPages}`)}</span><div><button disabled={page <= 1} onClick={() => navigate({ page: page - 1 })} type="button">{phrase("上一页", "Previous")}</button><button disabled={page >= totalPages} onClick={() => navigate({ page: page + 1 })} type="button">{phrase("下一页", "Next")}</button></div></nav> : null}
     <AppToast message={error} onDismiss={() => setError("")} tone="error" />
   </section>;
+}
+
+function SearchDiscoveryFallback({
+  accessToken,
+  locale,
+  onSearch,
+  phrase,
+}: {
+  accessToken: string | null;
+  locale: "zh-CN" | "en-US";
+  onSearch: (keyword: string) => void;
+  phrase: (chinese: string, english: string) => string;
+}) {
+  const [hot, setHot] = useState<HotSearchItem[]>([]);
+  const [topics, setTopics] = useState<ArticleTopic[]>([]);
+  const [resources, setResources] = useState<ResourceCatalogItem[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      listHotSearches(6).catch(() => ({ items: [] })),
+      listTopics(accessToken, { pageSize: 4 }).catch(() => ({ items: [], total: 0, page: 1, pageSize: 4, totalPages: 1 })),
+      listResourceCatalog(accessToken, { pageSize: 3, sort: "popular" }).catch(() => ({ items: [], total: 0, page: 1, pageSize: 3, totalPages: 1 })),
+    ]).then(([hotResult, topicResult, resourceResult]) => {
+      if (!active) return;
+      setHot(hotResult.items);
+      setTopics(topicResult.items);
+      setResources(resourceResult.items);
+    });
+    return () => { active = false; };
+  }, [accessToken]);
+
+  return <div className="search-discovery-fallback">
+    <div className="search-page-empty"><strong>{phrase("没有找到匹配内容", "No matching content")}</strong><span>{phrase("可以从热门搜索、专题或积分资源继续浏览。", "Try trending searches, topics, or point resources instead.")}</span></div>
+    {hot.length ? <section><header><span><Flame aria-hidden="true" size={16} /><strong>{phrase("热门搜索", "Trending searches")}</strong></span></header><div className="search-fallback-tags">{hot.map((item) => <button key={item.keyword} onClick={() => onSearch(item.keyword)} type="button">{item.keyword}</button>)}</div></section> : null}
+    {topics.length ? <section><header><span><BookOpen aria-hidden="true" size={16} /><strong>{phrase("探索专题", "Explore topics")}</strong></span></header><div className="search-fallback-links">{topics.map((topic) => <Link href={localizedPath(`/topics/${topic.slug}`, locale)} key={topic.id}>{topic.title}<small>{phrase(`${topic.articleCount} 篇`, `${topic.articleCount} articles`)}</small></Link>)}</div></section> : null}
+    {resources.length ? <section><header><span><Coins aria-hidden="true" size={16} /><strong>{phrase("积分资源", "Point resources")}</strong></span><Link href={localizedPath("/articles/resources", locale)}>{phrase("查看全部", "View all")}</Link></header><div className="search-fallback-links">{resources.map((item) => <Link href={localizedPath(`/articles/${item.article.slug}`, locale)} key={item.article.id}>{item.article.title}<small><Coins aria-hidden="true" size={12} />{item.minimumPointCost}</small></Link>)}</div></section> : null}
+  </div>;
 }
 
 function EntrySection({ count, emptyDescription, entries, icon, resultLabel, title }: { count: number; emptyDescription: string; entries: GlobalSearchResult["navigation"]["items"]; icon: typeof Search; resultLabel: string; title: string }) {

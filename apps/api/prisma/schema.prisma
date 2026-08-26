@@ -549,6 +549,7 @@ model User {
   notifications              UserNotification[]              @relation("UserNotificationRecipient")
   notificationActions        UserNotification[]              @relation("UserNotificationActor")
   notificationChannelStates  UserNotificationChannelState[]
+  growthPreference           UserGrowthPreference?
   subscriptionsGiven         UserSubscription[]              @relation("UserSubscriptionSubscriber")
   subscriptionsReceived      UserSubscription[]              @relation("UserSubscriptionAuthor")
   subscriptionFeedReads      SubscriptionFeedRead[]
@@ -2248,11 +2249,22 @@ model UserNotificationChannelState {
   channel                     UserNotificationChannel
   hiddenThroughNotificationId Int                     @default(0) @map("hidden_through_notification_id")
   pushEnabled                 Boolean                 @default(true) @map("push_enabled")
+  digestEnabled               Boolean                 @default(true) @map("digest_enabled")
   createdAt                   DateTime                @default(now()) @map("created_at")
   updatedAt                   DateTime                @updatedAt @map("updated_at")
 
   @@id([userId, channel])
   @@map("user_notification_channel_states")
+}
+
+model UserGrowthPreference {
+  userId                Int       @id @map("user_id")
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  onboardingCompletedAt DateTime? @map("onboarding_completed_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@map("user_growth_preferences")
 }
 
 model SecurityConfiguration {

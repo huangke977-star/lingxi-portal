@@ -472,6 +472,24 @@ Goal: complete stability closeout, the points-resource loop, performance checks,
 - Operations aggregates continue to use China-time calendar days for anonymous topics, messages, message likes, and topic favorites. Added notification-created, notification-read, and notification-opened metrics with read/open rates. Each is counted by its own timestamp so unread notifications are never reported as conversion.
 - The operations page now shows notification creation, reading, opening, and the conversion summary; fixed Chinese and English labels are configured together.
 
+### Phase 12: Growth And Content Conversion
+
+Goal: improve first-use discovery and resource conversion through reversible interest selection, controlled subscription delivery, and a searchable points-resource catalog.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P12-01 | First-run interest onboarding with visible topic selection, bulk subscription, and explicit skip | Completed |
+| P12-02 | Subscription-digest preference with access filtering and China-date idempotency | Completed |
+| P12-03 | Search fallback with trending queries, visible topics, and point resources when no direct result exists | Completed |
+| P12-04 | Points resource center with catalog, minimum price, redemption popularity, and personal redemption/pending summary | Completed |
+
+### P12 Acceptance Record
+
+- First-run onboarding appears only for signed-in users who have not completed it. It supports selecting up to six visible topics, bulk subscription, explicit skip, and a non-dismissable backdrop.
+- The subscription-digest switch lives in message settings. In-app digests are deduplicated by China date and recheck current article/topic visibility and role access before delivery.
+- Empty search results offer trending queries, visible topics, and point-resource entry points. The resource center supports search, sorting, minimum price, redemption popularity, and personal redemption, sales, and pending summaries.
+- Resource content blocks automatically synchronize the article resource flag and minimum point cost. Prisma validation, all 287 API tests, API/Web lint and production builds, and P12 Playwright desktop/mobile checks passed.
+
 The fixed delivery order is remaining P7 work -> P8 home/dashboard/tools center -> P9 -> P10 -> P11. Each phase must be independently accepted, deployed, and recorded under this roadmap's definition of done.
 
 ## 14. Resume Procedure

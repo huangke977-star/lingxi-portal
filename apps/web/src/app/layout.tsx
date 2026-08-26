@@ -5,6 +5,7 @@ import { AuthSessionController } from "@/components/auth-session-controller";
 import { ChatDock } from "@/components/chat-dock";
 import { LanguageProvider } from "@/components/language-provider";
 import { PwaController } from "@/components/pwa-controller";
+import { OnboardingController } from "@/components/onboarding-controller";
 import { RouteBackButton } from "@/components/route-back-button";
 import { ScrollContainment } from "@/components/scroll-containment";
 import { ScrollToTop } from "@/components/scroll-to-top";
@@ -102,6 +103,7 @@ export default async function RootLayout({
         </Script>
         <LanguageProvider initialLocale={locale}>
           <AuthSessionController />
+          <OnboardingController />
           <PwaController />
           <ThemeController />
           <ScrollContainment />

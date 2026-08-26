@@ -577,7 +577,7 @@ export class ArticlesService {
     if (!title || !content) {
       throw new BadRequestException("文章标题和正文不能为空。");
     }
-    parseArticleContent(content);
+    const resource = this.resourceSummary(content);
 
     const visibility = dto.visibility ?? publishPolicy.defaultArticleVisibility;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
@@ -602,8 +602,7 @@ export class ArticlesService {
         status,
         publicationCount: status === ArticleStatus.published ? 1 : 0,
         publishedAt: status === ArticleStatus.published ? new Date() : null,
-        isPointResource: false,
-        pointCost: 0,
+        ...resource,
         ...buildSearchFields([title, dto.category?.trim() ?? "", tags]),
         allowedRoles: { create: roles.map((role) => ({ roleId: role.id })) },
       }, include: articleInclude });
@@ -625,7 +624,8 @@ export class ArticlesService {
     const title = dto.title?.trim() ?? "";
     const category = dto.category?.trim() ?? "";
     const tags = this.normalizeTags(dto.tags);
-    parseArticleContent(dto.content ?? "");
+    const content = dto.content ?? "";
+    const resource = this.resourceSummary(content);
     const visibility = dto.visibility ?? publishPolicy.defaultArticleVisibility;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
     const slug = await this.createUniqueSlug(title || "untitled-article");
@@ -636,14 +636,13 @@ export class ArticlesService {
           title,
           slug,
           summary: dto.summary?.trim() ?? "",
-          content: dto.content ?? "",
+          content,
           category,
           tags,
           titleColor: this.normalizeTitleColor(dto.titleColor),
           visibility,
           status: ArticleStatus.draft,
-          isPointResource: false,
-          pointCost: 0,
+          ...resource,
           ...buildSearchFields([title, category, tags]),
           allowedRoles: { create: roles.map((role) => ({ roleId: role.id })) },
         },
@@ -667,7 +666,7 @@ export class ArticlesService {
     }
     const title = dto.title === undefined ? existing.title : dto.title.trim();
     const content = dto.content === undefined ? existing.content : dto.content;
-    parseArticleContent(content);
+    const resource = this.resourceSummary(content);
     const category = dto.category === undefined ? existing.category : dto.category.trim();
     const tags = dto.tags === undefined ? existing.tags : this.normalizeTags(dto.tags);
     const visibility = dto.visibility ?? existing.visibility;
@@ -683,8 +682,7 @@ export class ArticlesService {
           tags,
           titleColor: dto.titleColor === undefined ? existing.titleColor : this.normalizeTitleColor(dto.titleColor),
           visibility,
-          isPointResource: false,
-          pointCost: 0,
+          ...resource,
           ...buildSearchFields([title, category, tags]),
           allowedRoles: {
             deleteMany: {},
@@ -746,6 +744,7 @@ export class ArticlesService {
     if (!version) throw new NotFoundException("文章版本不存在。");
     const roleCodes = version.roleCodes.split(",").filter(Boolean);
     const roles = await this.resolveRoles(version.visibility, roleCodes);
+    const resource = this.resourceSummary(version.content);
     const restoredStatus = existing.status === ArticleStatus.blocked ? ArticleStatus.blocked : ArticleStatus.draft;
     const article = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.article.update({
@@ -759,8 +758,7 @@ export class ArticlesService {
           titleColor: version.titleColor,
           visibility: version.visibility,
           status: restoredStatus,
-          isPointResource: false,
-          pointCost: 0,
+          ...resource,
           ...buildSearchFields([version.title, version.category, version.tags]),
           allowedRoles: {
             deleteMany: {},
@@ -794,7 +792,7 @@ export class ArticlesService {
     const category = dto.category === undefined ? existing.category : dto.category.trim();
     const tags = dto.tags === undefined ? existing.tags : this.normalizeTags(dto.tags);
     const content = dto.content === undefined ? existing.content : dto.content.trim();
-    parseArticleContent(content);
+    const resource = this.resourceSummary(content);
     if (status === ArticleStatus.published && !this.canManageContent(user)) {
       await this.contentModerationService.enforce({ source: "article", actorId: user.id, content: `${title}\n${content}`, contentRef: `article:${id}` });
     }
@@ -809,8 +807,7 @@ export class ArticlesService {
         visibility,
         status,
         publicationCount: isNewPublication ? { increment: 1 } : undefined,
-        isPointResource: false,
-        pointCost: 0,
+        ...resource,
         ...buildSearchFields([title, category, tags]),
         publishedAt:
           status === ArticleStatus.published
@@ -846,7 +843,7 @@ export class ArticlesService {
     if (!existing.title.trim() || !existing.content.trim()) {
       throw new BadRequestException("文章标题和正文不能为空。");
     }
-    parseArticleContent(existing.content);
+    const resource = this.resourceSummary(existing.content);
     if (!this.canManageContent(user)) {
       await this.contentModerationService.enforce({ source: "article", actorId: user.id, content: `${existing.title}\n${existing.content}`, contentRef: `article:${id}` });
     }
@@ -855,7 +852,7 @@ export class ArticlesService {
     const article = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.article.update({
         where: { id },
-        data: { status: ArticleStatus.published, publicationCount: isNewPublication ? { increment: 1 } : undefined, publishedAt: existing.publishedAt ?? new Date(), blockedReason: null },
+        data: { status: ArticleStatus.published, publicationCount: isNewPublication ? { increment: 1 } : undefined, publishedAt: existing.publishedAt ?? new Date(), blockedReason: null, ...resource },
         include: articleInclude,
       });
       await this.createVersionSnapshot(transaction, updated, user.id, isNewPublication ? ArticleVersionSource.publish : ArticleVersionSource.manual);
@@ -2381,6 +2378,15 @@ export class ArticlesService {
   private async createUniqueSlug(title: string): Promise<string> {
     const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70) || "article";
     return `${base}-${randomUUID().slice(0, 8)}`;
+  }
+
+  /** Keeps article search/filter metadata in step with the resource-block grammar. */
+  private resourceSummary(content: string): { isPointResource: boolean; pointCost: number } {
+    const blocks = parseArticleContent(content).blocks;
+    return {
+      isPointResource: blocks.length > 0,
+      pointCost: blocks.length ? Math.min(...blocks.map((block) => block.pointCost)) : 0,
+    };
   }
 
   private async recordView(articleId: number, userId: number | null, visitorKey: string): Promise<void> {

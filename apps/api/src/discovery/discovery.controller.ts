@@ -26,8 +26,10 @@ import { DiscoveryService, TOPIC_COVER_MAX_FILE_SIZE_BYTES } from "./discovery.s
 import {
   CreateArticleCollectionDto,
   CreateArticleTopicDto,
+  CompleteOnboardingDto,
   ListCollectionsQueryDto,
   ListDiscoveryQueryDto,
+  ListResourceCatalogQueryDto,
   ListSubscriptionFeedQueryDto,
   ReorderContentItemsDto,
   UpdateArticleCollectionDto,
@@ -97,6 +99,35 @@ export class DiscoveryController {
   @UseGuards(JwtAuthGuard)
   listRecommendations(@CurrentUser() user: AuthenticatedUser) {
     return this.discoveryService.listRecommendations(user);
+  }
+
+  @Get("onboarding")
+  @UseGuards(JwtAuthGuard)
+  getOnboarding(@CurrentUser() user: AuthenticatedUser) {
+    return this.discoveryService.getOnboarding(user);
+  }
+
+  @Post("onboarding")
+  @UseGuards(JwtAuthGuard)
+  completeOnboarding(@CurrentUser() user: AuthenticatedUser, @Body() dto: CompleteOnboardingDto) {
+    return this.discoveryService.completeOnboarding(user, dto);
+  }
+
+  @Get("resources")
+  listPublicResources(@Query() query: ListResourceCatalogQueryDto) {
+    return this.discoveryService.listResourceCatalog(query, null);
+  }
+
+  @Get("resources/visible")
+  @UseGuards(JwtAuthGuard)
+  listVisibleResources(@CurrentUser() user: AuthenticatedUser, @Query() query: ListResourceCatalogQueryDto) {
+    return this.discoveryService.listResourceCatalog(query, user);
+  }
+
+  @Get("resources/summary")
+  @UseGuards(JwtAuthGuard)
+  getResourceSummary(@CurrentUser() user: AuthenticatedUser) {
+    return this.discoveryService.getResourceCatalogSummary(user);
   }
 
   @Post("topics/:id/subscribe")

@@ -123,6 +123,22 @@ function createService(prisma: object) {
 }
 
 describe("SocialService", () => {
+  it("updates the subscription digest preference without resetting push delivery", async () => {
+    const upsert = jest.fn(async () => ({
+      channel: "subscription",
+      hiddenThroughNotificationId: 0,
+      pushEnabled: false,
+      digestEnabled: true,
+    }));
+    const service = createService({ userNotificationChannelState: { upsert } });
+
+    await expect(service.updateNotificationChannelSettings(user, "subscription", { digestEnabled: true }))
+      .resolves.toEqual({ channel: "subscription", hiddenThroughNotificationId: 0, pushEnabled: false, digestEnabled: true });
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: { digestEnabled: true },
+    }));
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -1058,7 +1074,7 @@ describe("SocialService", () => {
         findFirst: jest.fn(async () => ({ id: 49 })),
       },
       userNotificationChannelState: {
-        findMany: jest.fn(async () => [{ channel: "subscription", hiddenThroughNotificationId: 48, pushEnabled: true }]),
+        findMany: jest.fn(async () => [{ channel: "subscription", hiddenThroughNotificationId: 48, pushEnabled: true, digestEnabled: true }]),
       },
     });
 
@@ -1067,9 +1083,9 @@ describe("SocialService", () => {
       hasMore: false,
       hiddenChannels: [],
       channelStates: [
-        { channel: "system", hiddenThroughNotificationId: 0, pushEnabled: true },
-        { channel: "subscription", hiddenThroughNotificationId: 48, pushEnabled: true },
-        { channel: "interaction", hiddenThroughNotificationId: 0, pushEnabled: true },
+        { channel: "system", hiddenThroughNotificationId: 0, pushEnabled: true, digestEnabled: true },
+        { channel: "subscription", hiddenThroughNotificationId: 48, pushEnabled: true, digestEnabled: true },
+        { channel: "interaction", hiddenThroughNotificationId: 0, pushEnabled: true, digestEnabled: true },
       ],
     });
   });

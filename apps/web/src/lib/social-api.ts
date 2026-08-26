@@ -219,6 +219,7 @@ export interface NotificationChannelState {
   channel: NotificationChannel;
   hiddenThroughNotificationId: number;
   pushEnabled: boolean;
+  digestEnabled: boolean;
 }
 
 export interface SocialNotification {
@@ -396,7 +397,7 @@ export function hideNotificationChannel(accessToken: string, channel: Notificati
 export function updateNotificationChannelSettings(
   accessToken: string,
   channel: NotificationChannel,
-  input: { pushEnabled: boolean },
+  input: { pushEnabled?: boolean; digestEnabled?: boolean },
 ): Promise<NotificationChannelState> {
   return requestJson(`/social/notification-channels/${channel}/settings`, {
     method: "PATCH",

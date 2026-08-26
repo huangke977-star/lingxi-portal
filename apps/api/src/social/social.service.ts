@@ -1751,11 +1751,14 @@ export class SocialService {
     dto: UpdateNotificationChannelSettingsDto,
   ): Promise<NotificationChannelStateResponse> {
     const channel = this.normalizeNotificationChannel(rawChannel);
+    if (dto.pushEnabled === undefined && dto.digestEnabled === undefined) {
+      throw new BadRequestException("至少需要更新一项通知设置。");
+    }
     const state = await this.prisma.userNotificationChannelState.upsert({
       where: { userId_channel: { userId: user.id, channel } },
-      create: { userId: user.id, channel, pushEnabled: dto.pushEnabled },
-      update: { pushEnabled: dto.pushEnabled },
-      select: { channel: true, hiddenThroughNotificationId: true, pushEnabled: true },
+      create: { userId: user.id, channel, ...(dto.pushEnabled === undefined ? {} : { pushEnabled: dto.pushEnabled }), ...(dto.digestEnabled === undefined ? {} : { digestEnabled: dto.digestEnabled }) },
+      update: { ...(dto.pushEnabled === undefined ? {} : { pushEnabled: dto.pushEnabled }), ...(dto.digestEnabled === undefined ? {} : { digestEnabled: dto.digestEnabled }) },
+      select: { channel: true, hiddenThroughNotificationId: true, pushEnabled: true, digestEnabled: true },
     });
     return this.toNotificationChannelState(state);
   }
@@ -1789,7 +1792,7 @@ export class SocialService {
   private async listNotificationChannelStates(userId: number): Promise<NotificationChannelStateResponse[]> {
     const states = await this.prisma.userNotificationChannelState.findMany({
       where: { userId },
-      select: { channel: true, hiddenThroughNotificationId: true, pushEnabled: true },
+      select: { channel: true, hiddenThroughNotificationId: true, pushEnabled: true, digestEnabled: true },
     });
     const byChannel = new Map(states.map((state) => [state.channel, state]));
     return Object.values(UserNotificationChannel).map((channel) =>
@@ -1797,6 +1800,7 @@ export class SocialService {
         channel,
         hiddenThroughNotificationId: 0,
         pushEnabled: true,
+        digestEnabled: true,
       }),
     );
   }
@@ -2446,11 +2450,13 @@ export class SocialService {
     channel: UserNotificationChannel;
     hiddenThroughNotificationId: number;
     pushEnabled: boolean;
+    digestEnabled?: boolean;
   }): NotificationChannelStateResponse {
     return {
       channel: state.channel,
       hiddenThroughNotificationId: state.hiddenThroughNotificationId,
       pushEnabled: state.pushEnabled,
+      digestEnabled: state.digestEnabled ?? true,
     };
   }
 }

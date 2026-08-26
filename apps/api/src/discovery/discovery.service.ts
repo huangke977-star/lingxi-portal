@@ -3,6 +3,8 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
 } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { access, mkdir, unlink, writeFile } from "node:fs/promises";
@@ -20,15 +22,20 @@ import {
   PortalVisibility,
   Prisma,
   ProfileAccessLevel,
+  UserNotificationChannel,
+  UserNotificationType,
   UserStatus,
 } from "../generated/prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
+import { parseArticleContent } from "../articles/article-resources";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   CreateArticleCollectionDto,
   CreateArticleTopicDto,
+  CompleteOnboardingDto,
   ListCollectionsQueryDto,
   ListDiscoveryQueryDto,
+  ListResourceCatalogQueryDto,
   ListSubscriptionFeedQueryDto,
   ReorderContentItemsDto,
   UpdateArticleCollectionDto,
@@ -41,8 +48,11 @@ import {
   DiscoveryArticleResponse,
   DiscoveryAuthorResponse,
   DiscoveryRecommendationsResponse,
+  OnboardingResponse,
   ProfileSettingsResponse,
   ProfileShowcaseResponse,
+  ResourceCatalogResponse,
+  ResourceCatalogSummaryResponse,
   SubscriptionFeedResponse,
   UploadedCollectionCover,
   UploadedTopicCover,
@@ -126,6 +136,15 @@ type DiscoveryArticleRecord = Prisma.ArticleGetPayload<{
   include: typeof discoveryArticleInclude;
 }>;
 
+const resourceCatalogInclude = {
+  ...discoveryArticleInclude,
+  _count: { select: { resourceExchanges: true } },
+} satisfies Prisma.ArticleInclude;
+
+type ResourceCatalogArticleRecord = Prisma.ArticleGetPayload<{
+  include: typeof resourceCatalogInclude;
+}>;
+
 const articleCollectionInclude = {
   owner: {
     select: {
@@ -166,7 +185,7 @@ type ArticleTopicRecord = Prisma.ArticleTopicGetPayload<{
 }>;
 
 @Injectable()
-export class DiscoveryService {
+export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
   private readonly topicCoverDirectory = resolve(
     process.env.ARTICLE_UPLOAD_DIR ?? join(process.cwd(), "uploads", "articles"),
     "topic-covers",
@@ -175,8 +194,19 @@ export class DiscoveryService {
     process.env.ARTICLE_UPLOAD_DIR ?? join(process.cwd(), "uploads", "articles"),
     "collection-covers",
   );
+  private digestTimer: NodeJS.Timeout | undefined;
 
   constructor(private readonly prisma: PrismaService) {}
+
+  onModuleInit(): void {
+    // The dedupe key makes this safe when multiple API replicas run the same interval.
+    this.digestTimer = setInterval(() => void this.dispatchSubscriptionDigests().catch(() => undefined), 30 * 60 * 1000);
+    void this.dispatchSubscriptionDigests().catch(() => undefined);
+  }
+
+  onModuleDestroy(): void {
+    if (this.digestTimer) clearInterval(this.digestTimer);
+  }
 
   async listRecommendations(user: AuthenticatedUser): Promise<DiscoveryRecommendationsResponse> {
     const topicWhere: Prisma.ArticleTopicWhereInput = { ...this.topicVisibleWhere(user), subscribers: { none: { userId: user.id } } };
@@ -219,6 +249,138 @@ export class DiscoveryService {
       collections: collections.map((collection) => ({ id: collection.id, name: collection.name, description: collection.description, articleCount: collection._count.items, subscriberCount: collection._count.subscribers, subscribed: false, owner: this.toAuthor(collection.owner), updatedAt: collection.updatedAt.toISOString() })),
       groups: groups.map((group) => ({ id: group.id, conversationId: group.conversationId, name: group.name, avatarUrl: group.avatarStoredName ? `/social/groups/${group.id}/avatar` : group.avatarUrl, announcement: group.announcement, memberCount: group._count.members, joinMode: group.joinMode, isMember: Boolean(group.members.length), updatedAt: group.updatedAt.toISOString() })),
     };
+  }
+
+  async getOnboarding(user: AuthenticatedUser): Promise<OnboardingResponse> {
+    const preference = await this.prisma.userGrowthPreference.findUnique({
+      where: { userId: user.id },
+      select: { onboardingCompletedAt: true },
+    });
+    if (preference?.onboardingCompletedAt) return { completed: true, topics: [] };
+
+    const topics = await this.prisma.articleTopic.findMany({
+      where: this.topicVisibleWhere(user),
+      orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }, { id: "desc" }],
+      take: 12,
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        description: true,
+        coverPath: true,
+        _count: { select: { items: true, subscribers: true } },
+      },
+    });
+    const subscribedIds = new Set((await this.prisma.articleTopicSubscription.findMany({
+      where: { userId: user.id, topicId: { in: topics.map((topic) => topic.id) } },
+      select: { topicId: true },
+    })).map(({ topicId }) => topicId));
+    return {
+      completed: false,
+      topics: topics.map((topic) => ({
+        id: topic.id,
+        title: topic.title,
+        slug: topic.slug,
+        description: topic.description,
+        coverPath: topic.coverPath,
+        articleCount: topic._count.items,
+        subscriberCount: topic._count.subscribers,
+        subscribed: subscribedIds.has(topic.id),
+      })),
+    };
+  }
+
+  async completeOnboarding(user: AuthenticatedUser, dto: CompleteOnboardingDto): Promise<{ completed: true; topicIds: number[] }> {
+    const topicIds = [...new Set(dto.topicIds)];
+    if (topicIds.length) {
+      const availableTopics = await this.prisma.articleTopic.findMany({
+        where: { id: { in: topicIds }, ...this.topicVisibleWhere(user) },
+        select: { id: true },
+      });
+      if (availableTopics.length !== topicIds.length) {
+        throw new BadRequestException("包含不存在或当前不可订阅的专题。");
+      }
+    }
+    const completedAt = new Date();
+    await this.prisma.$transaction(async (transaction) => {
+      if (topicIds.length) {
+        await Promise.all(topicIds.map((topicId) => transaction.articleTopicSubscription.upsert({
+          where: { userId_topicId: { userId: user.id, topicId } },
+          create: { userId: user.id, topicId },
+          update: {},
+        })));
+      }
+      await transaction.userGrowthPreference.upsert({
+        where: { userId: user.id },
+        create: { userId: user.id, onboardingCompletedAt: completedAt },
+        update: { onboardingCompletedAt: completedAt },
+      });
+    });
+    return { completed: true, topicIds };
+  }
+
+  async listResourceCatalog(
+    query: ListResourceCatalogQueryDto,
+    viewer: AuthenticatedUser | null,
+  ): Promise<ResourceCatalogResponse> {
+    const keyword = query.q.trim();
+    const where: Prisma.ArticleWhereInput = {
+      AND: [
+        this.articleVisibleWhere(viewer),
+        { isPointResource: true },
+        ...(keyword ? [{
+          OR: [
+            { title: { contains: keyword } },
+            { summary: { contains: keyword } },
+            { category: { contains: keyword } },
+            { tags: { contains: keyword } },
+            { author: { is: { nickname: { contains: keyword } } } },
+            { author: { is: { username: { contains: keyword } } } },
+          ],
+        }] : []),
+      ],
+    };
+    const total = await this.prisma.article.count({ where });
+    const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+    const page = Math.min(query.page, totalPages);
+    const records = await this.prisma.article.findMany({
+      where,
+      orderBy: query.sort === "price"
+        ? [{ pointCost: "asc" }, { publishedAt: "desc" }, { id: "desc" }]
+        : query.sort === "popular"
+          ? [{ likeCount: "desc" }, { favoriteCount: "desc" }, { commentCount: "desc" }, { viewCount: "desc" }, { publishedAt: "desc" }, { id: "desc" }]
+          : [{ publishedAt: "desc" }, { id: "desc" }],
+      skip: (page - 1) * query.pageSize,
+      take: query.pageSize,
+      include: resourceCatalogInclude,
+    });
+    return {
+      items: records.map((article: ResourceCatalogArticleRecord) => {
+        const blocks = this.resourceBlocks(article.content);
+        return {
+          article: this.toArticle(article, viewer),
+          minimumPointCost: Math.min(...blocks.map((block) => block.pointCost)),
+          blockCount: blocks.length,
+          exchangeCount: article._count.resourceExchanges,
+        };
+      }),
+      total,
+      page,
+      pageSize: query.pageSize,
+      totalPages,
+    };
+  }
+
+  async getResourceCatalogSummary(user: AuthenticatedUser): Promise<ResourceCatalogSummaryResponse> {
+    const [purchasedBlocks, soldBlocks, pending] = await Promise.all([
+      this.prisma.articleResourceExchange.count({ where: { buyerId: user.id } }),
+      this.prisma.articleResourceExchange.count({ where: { authorId: user.id } }),
+      this.prisma.articleResourceExchange.aggregate({
+        where: { authorId: user.id, sellerSettledAt: null },
+        _sum: { pointCost: true },
+      }),
+    ]);
+    return { purchasedBlocks, soldBlocks, pendingPoints: pending._sum.pointCost ?? 0 };
   }
 
   async subscribeTopic(user: AuthenticatedUser, topicId: number) {
@@ -1466,6 +1628,112 @@ export class DiscoveryService {
       slug = `${base.slice(0, 108)}-${attempt++}`;
     }
     return slug;
+  }
+
+  private resourceBlocks(content: string) {
+    return parseArticleContent(content).blocks;
+  }
+
+  private async dispatchSubscriptionDigests(): Promise<void> {
+    const now = new Date();
+    const china = this.chinaDateTimeParts(now);
+    if (china.hour < 9) return;
+    const dayKey = `${china.year}-${String(china.month).padStart(2, "0")}-${String(china.day).padStart(2, "0")}`;
+    const startedAfter = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const subscriptions = await this.prisma.userSubscription.findMany({
+      where: {
+        notifyNewArticles: true,
+        subscriber: { status: UserStatus.active },
+      },
+      select: {
+        subscriberId: true,
+        authorId: true,
+        subscriber: { select: { role: { select: { code: true } } } },
+      },
+    });
+    if (!subscriptions.length) return;
+
+    const authorIds = [...new Set(subscriptions.map(({ authorId }) => authorId))];
+    const subscriberIds = [...new Set(subscriptions.map(({ subscriberId }) => subscriberId))];
+    const [articles, disabledStates] = await Promise.all([
+      this.prisma.article.findMany({
+        where: {
+          authorId: { in: authorIds },
+          status: ArticleStatus.published,
+          visibility: { not: ArticleVisibility.private },
+          publishedAt: { gte: startedAfter, lte: now },
+        },
+        orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          authorId: true,
+          title: true,
+          slug: true,
+          visibility: true,
+          allowedRoles: { select: { role: { select: { code: true } } } },
+        },
+      }),
+      this.prisma.userNotificationChannelState.findMany({
+        where: {
+          userId: { in: subscriberIds },
+          channel: UserNotificationChannel.subscription,
+          digestEnabled: false,
+        },
+        select: { userId: true },
+      }),
+    ]);
+    if (!articles.length) return;
+    const digestDisabledUserIds = new Set(disabledStates.map(({ userId }) => userId));
+    const byAuthor = new Map<number, typeof articles>();
+    articles.forEach((article) => {
+      const items = byAuthor.get(article.authorId) ?? [];
+      items.push(article);
+      byAuthor.set(article.authorId, items);
+    });
+    const userArticles = new Map<number, typeof articles>();
+    subscriptions.forEach((subscription) => {
+      if (digestDisabledUserIds.has(subscription.subscriberId)) return;
+      const visible = (byAuthor.get(subscription.authorId) ?? []).filter((article) => (
+        article.visibility !== ArticleVisibility.role_restricted ||
+        article.allowedRoles.some(({ role }) => role.code === subscription.subscriber.role.code)
+      ));
+      if (!visible.length) return;
+      const items = userArticles.get(subscription.subscriberId) ?? [];
+      const known = new Set(items.map(({ id }) => id));
+      visible.forEach((article) => { if (!known.has(article.id)) items.push(article); });
+      userArticles.set(subscription.subscriberId, items);
+    });
+    const data = [...userArticles.entries()].map(([userId, items]) => {
+      const titles = items.slice(0, 3).map(({ title }) => `《${title}》`);
+      const englishTitles = items.slice(0, 3).map(({ title }) => `"${title}"`);
+      const tail = items.length > titles.length ? ` 等 ${items.length} 篇` : "";
+      const englishTail = items.length > englishTitles.length ? ` and ${items.length - englishTitles.length} more` : "";
+      return {
+        userId,
+        type: UserNotificationType.subscription_published,
+        channel: UserNotificationChannel.subscription,
+        title: "订阅日报",
+        body: `你订阅的作者发布了 ${titles.join("、")}${tail}。`,
+        bodyEn: `New posts from authors you follow: ${englishTitles.join(", ")}${englishTail}.`,
+        actionUrl: "/articles/subscriptions",
+        articleId: items[0]?.id,
+        dedupeKey: `subscription-digest:${dayKey}:${userId}`,
+      };
+    });
+    if (data.length) await this.prisma.userNotification.createMany({ data, skipDuplicates: true });
+  }
+
+  private chinaDateTimeParts(value: Date): { year: number; month: number; day: number; hour: number } {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(value);
+    const number = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value ?? 0);
+    return { year: number("year"), month: number("month"), day: number("day"), hour: number("hour") };
   }
 
   private canManage(user: AuthenticatedUser | null): boolean {

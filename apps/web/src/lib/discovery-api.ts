@@ -97,6 +97,26 @@ export interface DiscoveryRecommendations {
   groups: Array<{ id: number; conversationId: number; name: string; avatarUrl: string | null; announcement: string; memberCount: number; joinMode: "approval" | "invite_only"; isMember: boolean; updatedAt: string }>;
 }
 
+export interface ResourceCatalogItem {
+  article: DiscoveryArticle;
+  minimumPointCost: number;
+  blockCount: number;
+  exchangeCount: number;
+}
+
+export interface ResourceCatalog {
+  items: ResourceCatalogItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface OnboardingState {
+  completed: boolean;
+  topics: Array<Pick<ArticleTopic, "id" | "title" | "slug" | "description" | "coverPath" | "articleCount" | "subscriberCount" | "subscribed">>;
+}
+
 export interface ContentSubscriptions {
   topics: Array<{ id: number; title: string; slug: string; description: string; coverPath: string | null; articleCount: number; subscriberCount: number; subscribedAt: string }>;
   collections: Array<{ id: number; name: string; description: string; owner: ArticleAuthor; articleCount: number; subscriberCount: number; subscribedAt: string }>;
@@ -142,6 +162,23 @@ export function listMyCollections(accessToken: string) {
 
 export function listDiscoveryRecommendations(accessToken: string) {
   return requestJson<DiscoveryRecommendations>("/discovery/recommendations", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function getOnboarding(accessToken: string) {
+  return requestJson<OnboardingState>("/discovery/onboarding", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function completeOnboarding(accessToken: string, topicIds: number[]) {
+  return requestJson<{ completed: true; topicIds: number[] }>("/discovery/onboarding", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ topicIds }) });
+}
+
+export function listResourceCatalog(accessToken?: string | null, input: { q?: string; page?: number; pageSize?: number; sort?: "latest" | "popular" | "price" } = {}) {
+  const path = accessToken ? "/discovery/resources/visible" : "/discovery/resources";
+  return requestJson<ResourceCatalog>(`${path}${pageQuery(input)}`, { cache: "no-store", headers: accessToken ? authHeaders(accessToken) : undefined });
+}
+
+export function getResourceCatalogSummary(accessToken: string) {
+  return requestJson<{ purchasedBlocks: number; soldBlocks: number; pendingPoints: number }>("/discovery/resources/summary", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
 export function subscribeTopic(accessToken: string, id: number) {

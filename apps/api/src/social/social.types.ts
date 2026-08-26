@@ -297,4 +297,5 @@ export interface NotificationChannelStateResponse {
   channel: "system" | "subscription" | "interaction";
   hiddenThroughNotificationId: number;
   pushEnabled: boolean;
+  digestEnabled: boolean;
 }

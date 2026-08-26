@@ -126,6 +126,16 @@ type ExchangeCreateArgs = {
 };
 
 describe("article resource blocks", () => {
+  it("derives the resource flag and lowest exchange cost from resource-block content", () => {
+    const service = createService({});
+    const summary = (service as unknown as {
+      resourceSummary: (content: string) => { isPointResource: boolean; pointCost: number };
+    }).resourceSummary(sourceContent);
+    expect(summary).toEqual({ isPointResource: true, pointCost: 5 });
+    expect((service as unknown as { resourceSummary: (content: string) => { isPointResource: boolean; pointCost: number } }).resourceSummary("公开内容"))
+      .toEqual({ isPointResource: false, pointCost: 0 });
+  });
+
   it("does not return locked resource bodies to a visitor", async () => {
     const article = resourceArticle();
     const prisma = {

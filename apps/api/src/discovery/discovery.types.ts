@@ -41,6 +41,41 @@ export interface DiscoveryArticleResponse {
   topics: DiscoveryTaxonomyLink[];
 }
 
+export interface ResourceCatalogItemResponse {
+  article: DiscoveryArticleResponse;
+  minimumPointCost: number;
+  blockCount: number;
+  exchangeCount: number;
+}
+
+export interface ResourceCatalogResponse {
+  items: ResourceCatalogItemResponse[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface ResourceCatalogSummaryResponse {
+  purchasedBlocks: number;
+  soldBlocks: number;
+  pendingPoints: number;
+}
+
+export interface OnboardingResponse {
+  completed: boolean;
+  topics: Array<{
+    id: number;
+    title: string;
+    slug: string;
+    description: string;
+    coverPath: string | null;
+    articleCount: number;
+    subscriberCount: number;
+    subscribed: boolean;
+  }>;
+}
+
 export interface SubscriptionFeedResponse {
   items: Array<{ article: DiscoveryArticleResponse; readAt: string | null }>;
   total: number;

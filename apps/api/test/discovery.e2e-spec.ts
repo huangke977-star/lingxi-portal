@@ -98,6 +98,95 @@ function createService(prisma: object) {
 }
 
 describe("DiscoveryService", () => {
+  it("shows active visible topics during first-run onboarding and persists the selected subscriptions", async () => {
+    const upsertSubscription = jest.fn(async () => ({}));
+    const upsertPreference = jest.fn(async () => ({}));
+    const transaction = {
+      articleTopicSubscription: { upsert: upsertSubscription },
+      userGrowthPreference: { upsert: upsertPreference },
+    };
+    const prisma = {
+      userGrowthPreference: { findUnique: jest.fn(async () => null) },
+      articleTopic: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ id: 19, title: "运维", slug: "operations", description: "", coverPath: null, _count: { items: 4, subscribers: 2 } }])
+          .mockResolvedValueOnce([{ id: 19 }]),
+      },
+      articleTopicSubscription: {
+        findMany: jest.fn(async () => []),
+      },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    };
+    const service = createService(prisma);
+
+    await expect(service.getOnboarding(user)).resolves.toMatchObject({
+      completed: false,
+      topics: [{ id: 19, title: "运维", articleCount: 4, subscriberCount: 2, subscribed: false }],
+    });
+    await expect(service.completeOnboarding(user, { topicIds: [19] })).resolves.toEqual({ completed: true, topicIds: [19] });
+    expect(upsertSubscription).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId_topicId: { userId: user.id, topicId: 19 } },
+    }));
+    expect(upsertPreference).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: user.id },
+      update: { onboardingCompletedAt: expect.any(Date) },
+    }));
+  });
+
+  it("lists only visible point-resource articles with their resource exchange count", async () => {
+    const resource = {
+      ...article(1),
+      content: "公开内容\n:::resource{points=5}\n受保护内容\n:::",
+      isPointResource: true,
+      pointCost: 5,
+      _count: { resourceExchanges: 3 },
+    };
+    const prisma = {
+      article: {
+        count: jest.fn(async () => 1),
+        findMany: jest.fn(async () => [resource]),
+      },
+    };
+
+    await expect(createService(prisma).listResourceCatalog({ page: 1, pageSize: 12, q: "", sort: "latest" }, user)).resolves.toMatchObject({
+      total: 1,
+      items: [{ minimumPointCost: 5, blockCount: 1, exchangeCount: 3, article: { id: resource.id } }],
+    });
+    expect(prisma.article.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ AND: expect.arrayContaining([{ isPointResource: true }]) }),
+    }));
+  });
+
+  it("creates at most one readable subscription digest per user and China date", async () => {
+    const createMany = jest.fn(async () => ({ count: 1 }));
+    const prisma = {
+      userSubscription: {
+        findMany: jest.fn(async () => [{ subscriberId: user.id, authorId: author.id, subscriber: { role: user.role } }]),
+      },
+      article: {
+        findMany: jest.fn(async () => [{ id: 88, authorId: author.id, title: "日报文章", slug: "digest-article", visibility: ArticleVisibility.public, allowedRoles: [] }]),
+      },
+      userNotificationChannelState: { findMany: jest.fn(async () => []) },
+      userNotification: { createMany },
+    };
+    const service = createService(prisma);
+    const internal = service as unknown as {
+      chinaDateTimeParts: (value: Date) => { year: number; month: number; day: number; hour: number };
+      dispatchSubscriptionDigests: () => Promise<void>;
+    };
+    internal.chinaDateTimeParts = () => ({ year: 2026, month: 8, day: 26, hour: 9 });
+
+    await internal.dispatchSubscriptionDigests();
+    expect(createMany).toHaveBeenCalledWith(expect.objectContaining({
+      skipDuplicates: true,
+      data: [expect.objectContaining({
+        userId: user.id,
+        dedupeKey: "subscription-digest:2026-08-26:7",
+        actionUrl: "/articles/subscriptions",
+      })],
+    }));
+  });
+
   it("lists the current user's visible topic and collection subscriptions", async () => {
     const subscribedAt = new Date("2026-08-12T09:30:00.000Z");
     const prisma = {

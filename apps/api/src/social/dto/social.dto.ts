@@ -119,8 +119,13 @@ export class UpdateConversationSettingsDto {
 }
 
 export class UpdateNotificationChannelSettingsDto {
+  @IsOptional()
   @IsBoolean()
-  pushEnabled!: boolean;
+  pushEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  digestEnabled?: boolean;
 }
 
 export class CreateChatGroupDto {

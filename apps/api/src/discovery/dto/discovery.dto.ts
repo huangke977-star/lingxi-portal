@@ -39,6 +39,27 @@ export class ListSubscriptionFeedQueryDto extends ListDiscoveryQueryDto {
   sort: "latest" | "unread" | "popular" = "latest";
 }
 
+export class CompleteOnboardingDto {
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(6)
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  topicIds: number[] = [];
+}
+
+export class ListResourceCatalogQueryDto extends ListDiscoveryQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  q = "";
+
+  @IsOptional()
+  @IsIn(["latest", "popular", "price"])
+  sort: "latest" | "popular" | "price" = "latest";
+}
+
 export class ListCollectionsQueryDto extends ListDiscoveryQueryDto {
   @IsOptional()
   @IsString()

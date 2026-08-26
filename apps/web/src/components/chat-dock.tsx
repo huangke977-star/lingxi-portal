@@ -1394,6 +1394,23 @@ export function ChatDock() {
     }
   }
 
+  async function toggleSubscriptionDigest(digestEnabled: boolean) {
+    const token = readAccessToken();
+    if (!token) return;
+    setMessageSettingsBusyKey("digest:subscription");
+    try {
+      const state = await updateNotificationChannelSettings(token, "subscription", { digestEnabled });
+      setNotificationChannelStates((current) => [state, ...current.filter((item) => item.channel !== "subscription")]);
+      setNotice(digestEnabled
+        ? phrase("已开启订阅日报。", "Subscription digest enabled.")
+        : phrase("已关闭订阅日报。", "Subscription digest disabled."));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("订阅日报设置失败。", "Could not update subscription digest."));
+    } finally {
+      setMessageSettingsBusyKey("");
+    }
+  }
+
   async function toggleBrowserPush() {
     const token = readAccessToken();
     if (!token || messageSettingsBusyKey) return;
@@ -1421,7 +1438,7 @@ export function ChatDock() {
           updateConversationSettings(token, conversation.id, { muted: false })
         )),
         Promise.all(notificationChannels.map((config) =>
-          updateNotificationChannelSettings(token, config.channel, { pushEnabled: true })
+          updateNotificationChannelSettings(token, config.channel, { pushEnabled: true, digestEnabled: true })
         )),
       ]);
       const conversationMap = new Map(conversationResults.map((conversation) => [conversation.id, conversation]));
@@ -2142,6 +2159,23 @@ export function ChatDock() {
                 <i className={pushEnabled ? "active" : ""}>{busy ? <LoaderCircle aria-hidden="true" className="spin" size={13} /> : null}</i>
               </button>;
             })}
+          </div>
+          <div className="chat-message-settings-section">
+            <span className="chat-message-settings-label">{phrase("订阅日报", "Subscription digest")}</span>
+            {(() => {
+              const digestEnabled = notificationChannelStateMap.get("subscription")?.digestEnabled ?? true;
+              const busy = messageSettingsBusyKey === "digest:subscription";
+              return <button
+                aria-pressed={digestEnabled}
+                className="chat-message-setting-row"
+                disabled={Boolean(messageSettingsBusyKey)}
+                onClick={() => void toggleSubscriptionDigest(!digestEnabled)}
+                type="button"
+              >
+                <span><strong>{phrase("每日订阅汇总", "Daily subscription summary")}</strong><small>{digestEnabled ? phrase("每天汇总关注作者的新文章", "A daily summary of new posts from authors you follow") : phrase("已暂停每日订阅汇总", "Daily subscription summaries are paused")}</small></span>
+                <i className={digestEnabled ? "active" : ""}>{busy ? <LoaderCircle aria-hidden="true" className="spin" size={13} /> : null}</i>
+              </button>;
+            })()}
           </div>
           <div className="chat-message-settings-section">
             <span className="chat-message-settings-label">{phrase("免打扰会话", "Muted conversations")}</span>
