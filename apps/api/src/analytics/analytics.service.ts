@@ -66,6 +66,11 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
         notifications: item?.notifications ?? 0,
         notificationReads: item?.notificationReads ?? 0,
         notificationOpens: item?.notificationOpens ?? 0,
+        onboardingCompleted: item?.onboardingCompleted ?? 0,
+        resourceExchanges: item?.resourceExchanges ?? 0,
+        resourcePointsSpent: item?.resourcePointsSpent ?? 0,
+        resourcePointsPending: item?.resourcePointsPending ?? 0,
+        resourcePointsSettled: item?.resourcePointsSettled ?? 0,
       };
     });
     const summary = trend.reduce<Omit<AnalyticsTrendPoint, "date">>((total, point) => ({
@@ -89,7 +94,12 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       notifications: total.notifications + point.notifications,
       notificationReads: total.notificationReads + point.notificationReads,
       notificationOpens: total.notificationOpens + point.notificationOpens,
-    }), { newUsers: 0, activeUsers: 0, articles: 0, comments: 0, messages: 0, views: 0, likes: 0, favorites: 0, subscriptions: 0, reports: 0, disabledUsers: 0, loginRisks: 0, failedJobs: 0, anonymousTopics: 0, anonymousMessages: 0, anonymousLikes: 0, anonymousFavorites: 0, notifications: 0, notificationReads: 0, notificationOpens: 0 });
+      onboardingCompleted: total.onboardingCompleted + point.onboardingCompleted,
+      resourceExchanges: total.resourceExchanges + point.resourceExchanges,
+      resourcePointsSpent: total.resourcePointsSpent + point.resourcePointsSpent,
+      resourcePointsPending: total.resourcePointsPending + point.resourcePointsPending,
+      resourcePointsSettled: total.resourcePointsSettled + point.resourcePointsSettled,
+    }), { newUsers: 0, activeUsers: 0, articles: 0, comments: 0, messages: 0, views: 0, likes: 0, favorites: 0, subscriptions: 0, reports: 0, disabledUsers: 0, loginRisks: 0, failedJobs: 0, anonymousTopics: 0, anonymousMessages: 0, anonymousLikes: 0, anonymousFavorites: 0, notifications: 0, notificationReads: 0, notificationOpens: 0, onboardingCompleted: 0, resourceExchanges: 0, resourcePointsSpent: 0, resourcePointsPending: 0, resourcePointsSettled: 0 });
     const rankings = Object.fromEntries(rankingCategories.map((category) => {
       const byEntity = new Map<string, AnalyticsRankingItem>();
       for (const row of rankingRows) {
@@ -121,6 +131,10 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       notificationConversion: {
         readRate: this.rate(summary.notificationReads, summary.notifications),
         openRate: this.rate(summary.notificationOpens, summary.notifications),
+      },
+      onboardingConversion: {
+        completed: summary.onboardingCompleted,
+        completionRate: this.rate(summary.onboardingCompleted, summary.newUsers),
       },
       trend,
       rankings: {
@@ -195,8 +209,9 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
   private async aggregateDate(dateKey: string): Promise<void> {
     const { start, end } = this.utcBounds(dateKey);
     const count = (table: Prisma.Sql, column: Prisma.Sql = Prisma.sql`created_at`) => this.count(Prisma.sql`SELECT COUNT(*) AS value FROM ${table} WHERE ${column} >= ${start} AND ${column} < ${end}`);
+    const sum = (table: Prisma.Sql, column: Prisma.Sql, dateColumn: Prisma.Sql = Prisma.sql`created_at`) => this.count(Prisma.sql`SELECT COALESCE(SUM(${column}), 0) AS value FROM ${table} WHERE ${dateColumn} >= ${start} AND ${dateColumn} < ${end}`);
     // Anonymous interaction metrics follow the existing net-relation definition used by article likes and favorites.
-    const [newUsers, articles, comments, messages, views, likes, favorites, subscriptions, articleReports, groupReports, disabledUsers, loginRisks, failedMailJobs, failedStorageJobs, failedMediaJobs, failedOperationJobs, anonymousTopics, anonymousMessages, anonymousLikes, anonymousFavorites, notifications, notificationReads, notificationOpens, activeRows] = await Promise.all([
+    const [newUsers, articles, comments, messages, views, likes, favorites, subscriptions, articleReports, groupReports, disabledUsers, loginRisks, failedMailJobs, failedStorageJobs, failedMediaJobs, failedOperationJobs, anonymousTopics, anonymousMessages, anonymousLikes, anonymousFavorites, notifications, notificationReads, notificationOpens, onboardingCompleted, resourceExchanges, resourcePointsSpent, resourcePointsSettled, activeRows] = await Promise.all([
       count(Prisma.raw("users")),
       count(Prisma.raw("articles"), Prisma.sql`published_at`),
       count(Prisma.raw("article_comments")),
@@ -220,6 +235,10 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       count(Prisma.raw("user_notifications")),
       count(Prisma.raw("user_notifications"), Prisma.sql`read_at`),
       count(Prisma.raw("user_notifications"), Prisma.sql`opened_at`),
+      count(Prisma.raw("user_growth_preferences"), Prisma.sql`onboarding_completed_at`),
+      count(Prisma.raw("article_resource_exchanges")),
+      sum(Prisma.raw("article_resource_exchanges"), Prisma.sql`point_cost`),
+      sum(Prisma.raw("article_resource_exchanges"), Prisma.sql`point_cost`, Prisma.sql`seller_settled_at`),
       this.prisma.$queryRaw<CountRow[]>(Prisma.sql`
         SELECT COUNT(DISTINCT user_id) AS value FROM (
           SELECT id AS user_id FROM users WHERE last_login_at >= ${start} AND last_login_at < ${end}
@@ -252,6 +271,12 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       notifications,
       notificationReads,
       notificationOpens,
+      onboardingCompleted,
+      resourceExchanges,
+      resourcePointsSpent,
+      // Every new exchange becomes the author's pending income for 72 hours.
+      resourcePointsPending: resourcePointsSpent,
+      resourcePointsSettled,
       generatedAt: new Date(),
     };
     await this.prisma.dailyOperationMetric.upsert({ where: { metricDate }, create: { metricDate, ...data }, update: data });
@@ -388,6 +413,11 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       { key: "notifications", label: "通知创建", definition: "当天创建的站内通知数量。" },
       { key: "notificationReads", label: "通知已读", definition: "当天被标记为已读的站内通知数量。" },
       { key: "notificationOpens", label: "通知打开", definition: "当天打开并进入关联内容的站内通知数量。" },
+      { key: "onboardingCompleted", label: "兴趣指引完成", definition: "当天提交兴趣专题和作者选择的账号数量。" },
+      { key: "resourceExchanges", label: "资源兑换", definition: "当天完成的文章资源区域兑换次数。" },
+      { key: "resourcePointsSpent", label: "资源兑换积分", definition: "当天用户兑换文章资源实际扣除的积分总数。" },
+      { key: "resourcePointsPending", label: "资源待入账积分", definition: "当天新产生、将在 72 小时后向作者入账的资源收益积分。" },
+      { key: "resourcePointsSettled", label: "资源已到账积分", definition: "当天完成 72 小时结算并入账给作者的资源收益积分。" },
     ];
   }
 

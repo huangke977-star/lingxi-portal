@@ -6,6 +6,10 @@ import {
   Bell,
   Bookmark,
   CheckCheck,
+  CheckCircle2,
+  Clock3,
+  Coins,
+  Compass,
   Eye,
   FileText,
   Flag,
@@ -17,6 +21,7 @@ import {
   RefreshCw,
   Rss,
   ShieldAlert,
+  ShoppingBag,
   ThumbsUp,
   Users,
 } from "lucide-react";
@@ -63,6 +68,11 @@ const metrics: Array<{ key: SeriesKey; label: readonly [string, string]; icon: t
   { key: "notifications", label: ["通知创建", "Notifications created"], icon: Bell },
   { key: "notificationReads", label: ["通知已读", "Notifications read"], icon: CheckCheck },
   { key: "notificationOpens", label: ["通知打开", "Notifications opened"], icon: MousePointerClick },
+  { key: "onboardingCompleted", label: ["兴趣指引完成", "Interest onboarding completed"], icon: Compass },
+  { key: "resourceExchanges", label: ["资源兑换", "Resource unlocks"], icon: ShoppingBag },
+  { key: "resourcePointsSpent", label: ["资源兑换积分", "Resource points spent"], icon: Coins },
+  { key: "resourcePointsPending", label: ["资源待入账积分", "Pending resource points"], icon: Clock3 },
+  { key: "resourcePointsSettled", label: ["资源已到账积分", "Settled resource points"], icon: CheckCircle2 },
 ];
 
 export default function AdminAnalyticsPage() {
@@ -139,13 +149,15 @@ export default function AdminAnalyticsPage() {
       <section className="analytics-conversion" aria-label={phrase("通知转化统计", "Notification conversion") }>
         <div><Bell aria-hidden="true" size={16} /><span><small>{phrase("通知已读率", "Read rate")}</small><strong>{data.notificationConversion.readRate.toLocaleString(locale)}%</strong></span></div>
         <div><MousePointerClick aria-hidden="true" size={16} /><span><small>{phrase("通知打开率", "Open rate")}</small><strong>{data.notificationConversion.openRate.toLocaleString(locale)}%</strong></span></div>
-        <p>{phrase("按通知创建、已读和打开时间分别统计，避免把未读通知误判为已转化。", "Created, read, and opened timestamps are counted independently so unread notifications are not treated as converted.")}</p>
+        <div><Compass aria-hidden="true" size={16} /><span><small>{phrase("兴趣指引完成率", "Interest onboarding completion")}</small><strong>{data.onboardingConversion.completionRate.toLocaleString(locale)}%</strong></span></div>
+        <p>{phrase(`兴趣指引本期完成 ${data.onboardingConversion.completed.toLocaleString(locale)} 次；完成率按本期完成次数与新增用户数计算。`, `${data.onboardingConversion.completed.toLocaleString(locale)} interest-onboarding completions in this period; completion rate is calculated against new users in the same period.`)}</p>
       </section>
       <div className="analytics-charts">
         <TrendChart data={data.trend} series={[{ key: "newUsers", label: phrase("新增", "New"), color: "#4b78d1" }, { key: "activeUsers", label: phrase("活跃", "Active"), color: "#2f9378" }, { key: "articles", label: phrase("文章", "Articles"), color: "#a46cbd" }]} title={phrase("用户与内容", "Users and content")} />
         <TrendChart data={data.trend} series={[{ key: "comments", label: phrase("评论", "Comments"), color: "#4f86a8" }, { key: "messages", label: phrase("消息", "Messages"), color: "#7359a8" }, { key: "views", label: phrase("阅读", "Views"), color: "#2f9378" }]} title={phrase("访问与交流", "Visits and discussion")} />
         <TrendChart data={data.trend} series={[{ key: "reports", label: phrase("举报", "Reports"), color: "#d15f79" }, { key: "loginRisks", label: phrase("风险", "Risks"), color: "#c07b31" }, { key: "failedJobs", label: phrase("异常任务", "Failed jobs"), color: "#8d5961" }]} title={phrase("风险与异常", "Risks and issues")} />
         <TrendChart data={data.trend} series={[{ key: "anonymousTopics", label: phrase("话题", "Topics"), color: "#3f7f9b" }, { key: "anonymousMessages", label: phrase("发言", "Messages"), color: "#6d75b8" }, { key: "anonymousLikes", label: phrase("点评获赞", "Message likes"), color: "#b15c76" }, { key: "anonymousFavorites", label: phrase("话题喜欢", "Topic favorites"), color: "#c08338" }]} title={phrase("匿名话题", "Anonymous topics")} />
+        <TrendChart data={data.trend} series={[{ key: "resourceExchanges", label: phrase("兑换", "Unlocks"), color: "#497f9a" }, { key: "resourcePointsSpent", label: phrase("兑换积分", "Points spent"), color: "#b56b46" }, { key: "resourcePointsSettled", label: phrase("到账积分", "Settled points"), color: "#37876d" }]} title={phrase("资源交易", "Resource exchange")} />
       </div>
       <div className="analytics-rankings">
         <Ranking category="author" title={phrase("热门作者", "Popular authors")} items={data.rankings.authors} kind="author" />

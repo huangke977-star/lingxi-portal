@@ -2151,6 +2151,11 @@ model DailyOperationMetric {
   notifications      Int      @default(0)
   notificationReads  Int      @default(0) @map("notification_reads")
   notificationOpens  Int      @default(0) @map("notification_opens")
+  onboardingCompleted Int     @default(0) @map("onboarding_completed")
+  resourceExchanges  Int      @default(0) @map("resource_exchanges")
+  resourcePointsSpent Int     @default(0) @map("resource_points_spent")
+  resourcePointsPending Int   @default(0) @map("resource_points_pending")
+  resourcePointsSettled Int   @default(0) @map("resource_points_settled")
   generatedAt        DateTime @default(now()) @map("generated_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 

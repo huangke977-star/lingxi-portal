@@ -2,8 +2,15 @@
 
 import Link from "next/link";
 import {
+  Bookmark,
+  CheckCircle2,
+  Clock3,
+  Coins,
   Edit3,
+  Eye,
   ExternalLink,
+  Heart,
+  MessageCircle,
   RotateCcw,
   Search,
   Trash2,
@@ -18,11 +25,13 @@ import { AppToast } from "@/components/app-toast";
 import { useLanguage } from "@/components/language-provider";
 import {
   ArticleList,
+  ArticleMineDashboard,
   ArticleMineSummary,
   ArticleStatus,
   Article,
   deleteArticle,
   createArticleAppeal,
+  getMyArticleDashboard,
   getMyArticleSummary,
   listMyArticles,
   permanentlyDeleteArticle,
@@ -42,6 +51,16 @@ const emptySummary: ArticleMineSummary = {
   unpublished: 0,
   blocked: 0,
   deleted: 0,
+};
+const emptyDashboard: ArticleMineDashboard = {
+  views: 0,
+  likes: 0,
+  comments: 0,
+  favorites: 0,
+  resourceExchanges: 0,
+  pendingPoints: 0,
+  settledPoints: 0,
+  recentResourceIncome: [],
 };
 
 const emptyList: ArticleList = { items: [], total: 0, page: 1, pageSize: 12, totalPages: 1 };
@@ -66,6 +85,7 @@ function MyArticlesContent() {
   const [searchInput, setSearchInput] = useState(querySearch);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [summary, setSummary] = useState<ArticleMineSummary>(emptySummary);
+  const [dashboard, setDashboard] = useState<ArticleMineDashboard>(emptyDashboard);
   const [list, setList] = useState<ArticleList>(emptyList);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -89,9 +109,10 @@ function MyArticlesContent() {
   }
 
   async function load(token: string) {
-    const [currentUser, currentSummary, currentList] = await Promise.all([
+    const [currentUser, currentSummary, currentDashboard, currentList] = await Promise.all([
       getMe(token),
       getMyArticleSummary(token),
+      getMyArticleDashboard(token),
       listMyArticles(token, {
         page: 1,
         pageSize: 12,
@@ -101,6 +122,7 @@ function MyArticlesContent() {
     ]);
     setUser(currentUser);
     setSummary(currentSummary);
+    setDashboard(currentDashboard);
     setList(currentList);
   }
 
@@ -181,6 +203,24 @@ function MyArticlesContent() {
   return (
     <section className="page-shell articles-page my-articles-page">
       <ArticleCenterNav active="mine" isLoggedIn user={user} />
+
+      <section aria-label={phrase("创作者数据", "Creator dashboard")} className="article-creator-dashboard">
+        <div className="article-creator-metrics">
+          {[
+            { icon: Eye, label: phrase("文章阅读", "Article views"), value: dashboard.views },
+            { icon: Heart, label: phrase("获得点赞", "Likes received"), value: dashboard.likes },
+            { icon: MessageCircle, label: phrase("收到评论", "Comments received"), value: dashboard.comments },
+            { icon: Bookmark, label: phrase("被收藏", "Favorites received"), value: dashboard.favorites },
+            { icon: Coins, label: phrase("资源兑换", "Resource unlocks"), value: dashboard.resourceExchanges },
+            { icon: Clock3, label: phrase("待入账积分", "Pending points"), value: dashboard.pendingPoints },
+            { icon: CheckCircle2, label: phrase("已到账积分", "Settled points"), value: dashboard.settledPoints },
+          ].map(({ icon: Icon, label, value }) => <div key={label}><Icon aria-hidden="true" size={16} /><span><small>{label}</small><strong>{value.toLocaleString(locale)}</strong></span></div>)}
+        </div>
+        <div className="article-resource-income">
+          <header><span><Coins aria-hidden="true" size={15} /><strong>{phrase("资源收益明细", "Resource income")}</strong></span><Link href={localizedPath("/profile/points", locale)}>{phrase("全部积分记录", "All point activity")}</Link></header>
+          {dashboard.recentResourceIncome.length ? <div>{dashboard.recentResourceIncome.map((income) => <Link href={localizedPath(`/articles/${income.article.slug}`, locale)} key={income.id}><span><strong>{income.article.title}</strong><small>{phrase(`兑换于 ${formatArticleDate(income.createdAt, locale)}`, `Unlocked ${formatArticleDate(income.createdAt, locale)}`)}</small></span><span><b><Coins aria-hidden="true" size={13} />{income.pointCost}</b><small className={income.settledAt ? "settled" : "pending"}>{income.settledAt ? phrase(`已于 ${formatArticleDate(income.settledAt, locale)}到账`, `Settled ${formatArticleDate(income.settledAt, locale)}`) : phrase(`预计 ${formatArticleDate(income.availableAt, locale)}到账`, `Expected ${formatArticleDate(income.availableAt, locale)}`)}</small></span></Link>)}</div> : <p>{phrase("资源兑换后会在这里显示作者收益和到账状态。", "Resource unlocks will show their income and settlement status here.")}</p>}
+        </div>
+      </section>
 
       <div className="article-mine-toolbar">
         <nav aria-label={phrase("文章状态", "Article status")} className="article-status-tabs article-center-secondary-tabs">

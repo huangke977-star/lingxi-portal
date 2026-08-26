@@ -301,6 +301,53 @@ describe("ArticlesService article center extensions", () => {
     });
   });
 
+  it("aggregates creator interaction and resource income for the dashboard", async () => {
+    const createdAt = new Date("2026-08-20T03:00:00.000Z");
+    const availableAt = new Date("2026-08-23T03:00:00.000Z");
+    const settledAt = new Date("2026-08-23T03:04:00.000Z");
+    const prisma = {
+      article: {
+        aggregate: jest.fn(async () => ({ _sum: { viewCount: 31, likeCount: 9, commentCount: 6, favoriteCount: 4 } })),
+      },
+      articleResourceExchange: {
+        count: jest.fn(async () => 3),
+        aggregate: jest.fn(async (input: { where: { sellerSettledAt: unknown } }) => (
+          input.where.sellerSettledAt === null ? { _sum: { pointCost: 12 } } : { _sum: { pointCost: 8 } }
+        )),
+        findMany: jest.fn(async () => [{
+          id: 8,
+          pointCost: 8,
+          createdAt,
+          sellerAvailableAt: availableAt,
+          sellerSettledAt: settledAt,
+          article: { id: 12, title: "服务器经验", slug: "server-notes-12345678" },
+        }]),
+      },
+    };
+    const service = createService(prisma);
+
+    await expect(service.getMineDashboard(user)).resolves.toEqual({
+      views: 31,
+      likes: 9,
+      comments: 6,
+      favorites: 4,
+      resourceExchanges: 3,
+      pendingPoints: 12,
+      settledPoints: 8,
+      recentResourceIncome: [{
+        id: 8,
+        article: { id: 12, title: "服务器经验", slug: "server-notes-12345678" },
+        pointCost: 8,
+        createdAt: createdAt.toISOString(),
+        availableAt: availableAt.toISOString(),
+        settledAt: settledAt.toISOString(),
+      }],
+    });
+    expect(prisma.article.aggregate).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ authorId: user.id, status: { not: ArticleStatus.deleted } }),
+    }));
+  });
+
   it("returns all article-center tab counts in one summary", async () => {
     const prisma = createPrismaMock();
     prisma.article.count

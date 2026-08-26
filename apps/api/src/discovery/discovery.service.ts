@@ -872,22 +872,29 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
   }
 
   async listSubscriptionSettings(user: AuthenticatedUser) {
-    const items = await this.prisma.userSubscription.findMany({
-      where: { subscriberId: user.id },
-      orderBy: [{ createdAt: "desc" }],
-      select: {
-        authorId: true,
-        notifyNewArticles: true,
-        createdAt: true,
-        author: { select: discoveryArticleInclude.author.select },
-      },
-    });
+    const [items, channelState] = await Promise.all([
+      this.prisma.userSubscription.findMany({
+        where: { subscriberId: user.id },
+        orderBy: [{ createdAt: "desc" }],
+        select: {
+          authorId: true,
+          notifyNewArticles: true,
+          createdAt: true,
+          author: { select: discoveryArticleInclude.author.select },
+        },
+      }),
+      this.prisma.userNotificationChannelState.findUnique({
+        where: { userId_channel: { userId: user.id, channel: UserNotificationChannel.subscription } },
+        select: { digestEnabled: true },
+      }),
+    ]);
     return {
       items: items.map((item) => ({
         author: this.toAuthor(item.author),
         notifyNewArticles: item.notifyNewArticles,
         subscribedAt: item.createdAt.toISOString(),
       })),
+      digestEnabled: channelState?.digestEnabled ?? true,
     };
   }
 

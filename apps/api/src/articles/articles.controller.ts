@@ -92,6 +92,12 @@ export class ArticlesController {
     return this.articlesService.getMineSummary(user);
   }
 
+  @Get("mine/dashboard")
+  @UseGuards(JwtAuthGuard)
+  getMineDashboard(@CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.getMineDashboard(user);
+  }
+
   @Get("mine/reports")
   @UseGuards(JwtAuthGuard)
   listMyArticleReports(@CurrentUser() user: AuthenticatedUser) {

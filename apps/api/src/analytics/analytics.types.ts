@@ -20,6 +20,11 @@ export interface AnalyticsTrendPoint {
   notifications: number;
   notificationReads: number;
   notificationOpens: number;
+  onboardingCompleted: number;
+  resourceExchanges: number;
+  resourcePointsSpent: number;
+  resourcePointsPending: number;
+  resourcePointsSettled: number;
 }
 export interface AnalyticsRankingItem {
   key: string;
@@ -37,6 +42,10 @@ export interface AdminAnalyticsResponse {
   notificationConversion: {
     readRate: number;
     openRate: number;
+  };
+  onboardingConversion: {
+    completed: number;
+    completionRate: number;
   };
   trend: AnalyticsTrendPoint[];
   rankings: {

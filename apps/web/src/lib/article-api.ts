@@ -132,6 +132,24 @@ export interface ArticleMineSummary {
   deleted: number;
 }
 
+export interface ArticleMineDashboard {
+  views: number;
+  likes: number;
+  comments: number;
+  favorites: number;
+  resourceExchanges: number;
+  pendingPoints: number;
+  settledPoints: number;
+  recentResourceIncome: Array<{
+    id: number;
+    article: { id: number; title: string; slug: string };
+    pointCost: number;
+    createdAt: string;
+    availableAt: string;
+    settledAt: string | null;
+  }>;
+}
+
 export interface ArticleCenterSummary {
   discover: number;
   subscriptions: number;
@@ -237,6 +255,13 @@ export function listMyArticles(accessToken: string, query?: Parameters<typeof li
 
 export function getMyArticleSummary(accessToken: string): Promise<ArticleMineSummary> {
   return requestJson<ArticleMineSummary>("/articles/mine/summary", {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+}
+
+export function getMyArticleDashboard(accessToken: string): Promise<ArticleMineDashboard> {
+  return requestJson<ArticleMineDashboard>("/articles/mine/dashboard", {
     cache: "no-store",
     headers: authHeaders(accessToken),
   });

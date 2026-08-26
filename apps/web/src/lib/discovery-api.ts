@@ -128,6 +128,11 @@ export interface ContentSubscriptions {
   collections: Array<{ id: number; name: string; description: string; owner: ArticleAuthor; articleCount: number; subscriberCount: number; subscribedAt: string }>;
 }
 
+export interface SubscriptionSettings {
+  items: Array<{ author: ArticleAuthor; notifyNewArticles: boolean; subscribedAt: string }>;
+  digestEnabled: boolean;
+}
+
 const authHeaders = (accessToken: string) => ({ Authorization: `Bearer ${accessToken}` });
 
 function pageQuery(input: { page?: number; pageSize?: number; q?: string; sort?: string; batch?: number } = {}) {
@@ -151,7 +156,7 @@ export function markAllSubscriptionFeedRead(accessToken: string) {
 }
 
 export function listSubscriptionSettings(accessToken: string) {
-  return requestJson<{ items: Array<{ author: ArticleAuthor; notifyNewArticles: boolean; subscribedAt: string }> }>("/discovery/subscriptions/settings", { cache: "no-store", headers: authHeaders(accessToken) });
+  return requestJson<SubscriptionSettings>("/discovery/subscriptions/settings", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
 export function listContentSubscriptions(accessToken: string) {

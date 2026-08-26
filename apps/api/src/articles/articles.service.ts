@@ -61,6 +61,7 @@ import {
   ArticleCommentsResponse,
   ArticleInteractionResponse,
   ArticleListResponse,
+  ArticleMineDashboardResponse,
   ArticleMineSummaryResponse,
   ArticleResponse,
   ArticleReadLaterResponse,
@@ -487,6 +488,58 @@ export class ArticlesService {
       summary.total += count;
     }
     return summary;
+  }
+
+  async getMineDashboard(user: AuthenticatedUser): Promise<ArticleMineDashboardResponse> {
+    const articleWhere: Prisma.ArticleWhereInput = {
+      authorId: user.id,
+      status: { not: ArticleStatus.deleted },
+    };
+    const [articleTotals, resourceExchanges, pending, settled, recentResourceIncome] = await Promise.all([
+      this.prisma.article.aggregate({
+        where: articleWhere,
+        _sum: { viewCount: true, likeCount: true, commentCount: true, favoriteCount: true },
+      }),
+      this.prisma.articleResourceExchange.count({ where: { authorId: user.id } }),
+      this.prisma.articleResourceExchange.aggregate({
+        where: { authorId: user.id, sellerSettledAt: null },
+        _sum: { pointCost: true },
+      }),
+      this.prisma.articleResourceExchange.aggregate({
+        where: { authorId: user.id, sellerSettledAt: { not: null } },
+        _sum: { pointCost: true },
+      }),
+      this.prisma.articleResourceExchange.findMany({
+        where: { authorId: user.id },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 8,
+        select: {
+          id: true,
+          pointCost: true,
+          createdAt: true,
+          sellerAvailableAt: true,
+          sellerSettledAt: true,
+          article: { select: { id: true, title: true, slug: true } },
+        },
+      }),
+    ]);
+    return {
+      views: articleTotals._sum.viewCount ?? 0,
+      likes: articleTotals._sum.likeCount ?? 0,
+      comments: articleTotals._sum.commentCount ?? 0,
+      favorites: articleTotals._sum.favoriteCount ?? 0,
+      resourceExchanges,
+      pendingPoints: pending._sum.pointCost ?? 0,
+      settledPoints: settled._sum.pointCost ?? 0,
+      recentResourceIncome: recentResourceIncome.map((item) => ({
+        id: item.id,
+        article: item.article,
+        pointCost: item.pointCost,
+        createdAt: item.createdAt.toISOString(),
+        availableAt: item.sellerAvailableAt.toISOString(),
+        settledAt: item.sellerSettledAt?.toISOString() ?? null,
+      })),
+    };
   }
 
   async getMineById(id: number, user: AuthenticatedUser): Promise<ArticleResponse> {

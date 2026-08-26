@@ -62,6 +62,11 @@ const analyticsDefinitions: Record<string, LocalizedPair> = {
   notifications: ["通知创建", "Notifications created"],
   notificationReads: ["通知已读", "Notifications read"],
   notificationOpens: ["通知打开", "Notifications opened"],
+  onboardingCompleted: ["兴趣指引完成", "Interest onboarding completed"],
+  resourceExchanges: ["资源兑换", "Resource unlocks"],
+  resourcePointsSpent: ["资源兑换积分", "Resource points spent"],
+  resourcePointsPending: ["资源待入账积分", "Pending resource points"],
+  resourcePointsSettled: ["资源已到账积分", "Settled resource points"],
 };
 
 const analyticsDefinitionDetails: Record<string, LocalizedPair> = {
@@ -85,6 +90,11 @@ const analyticsDefinitionDetails: Record<string, LocalizedPair> = {
   notifications: ["当天创建的站内通知数量。", "In-app notifications created that day."],
   notificationReads: ["当天被标记为已读的站内通知数量。", "In-app notifications marked read that day."],
   notificationOpens: ["当天打开并进入关联内容的站内通知数量。", "In-app notifications opened to their linked content that day."],
+  onboardingCompleted: ["当天提交兴趣专题和作者选择的账号数量。", "Accounts that completed topic and author selection that day."],
+  resourceExchanges: ["当天完成的文章资源区域兑换次数。", "Article resource sections unlocked that day."],
+  resourcePointsSpent: ["当天用户兑换文章资源实际扣除的积分总数。", "Points deducted for article resource unlocks that day."],
+  resourcePointsPending: ["当天新产生、将在 72 小时后向作者入账的资源收益积分。", "New resource income created that day and due to settle to authors after 72 hours."],
+  resourcePointsSettled: ["当天完成 72 小时结算并入账给作者的资源收益积分。", "Resource income settled to authors after the 72-hour hold that day."],
 };
 
 const storageCategories: Record<string, LocalizedPair> = {

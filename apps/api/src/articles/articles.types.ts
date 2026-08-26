@@ -173,6 +173,24 @@ export interface ArticleMineSummaryResponse {
   deleted: number;
 }
 
+export interface ArticleMineDashboardResponse {
+  views: number;
+  likes: number;
+  comments: number;
+  favorites: number;
+  resourceExchanges: number;
+  pendingPoints: number;
+  settledPoints: number;
+  recentResourceIncome: Array<{
+    id: number;
+    article: { id: number; title: string; slug: string };
+    pointCost: number;
+    createdAt: string;
+    availableAt: string;
+    settledAt: string | null;
+  }>;
+}
+
 export interface ArticleCenterSummaryResponse {
   discover: number;
   subscriptions: number;
