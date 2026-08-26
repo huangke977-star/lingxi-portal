@@ -19,6 +19,7 @@ import {
   ArticleVisibility,
   PortalVisibility,
   Prisma,
+  RecommendationTargetType,
   UserNotificationChannel,
   UserNotificationType,
 } from "../generated/prisma/client";
@@ -1943,8 +1944,32 @@ export class ArticlesService {
     query: ListArticlesQueryDto,
     user: AuthenticatedUser | null,
   ): Promise<ArticleListResponse> {
-    const where = this.buildWhere(query, user, false, false);
-    const cacheKey = this.recommendationCacheKey(query, user);
+    const baseWhere = this.buildWhere(query, user, false, false);
+    const feedback = user ? await this.prisma.recommendationFeedback.findMany({
+      where: { userId: user.id },
+      select: { targetType: true, targetId: true, updatedAt: true },
+    }) : [];
+    const feedbackIds = (targetType: RecommendationTargetType) => feedback
+      .filter((record) => record.targetType === targetType)
+      .map((record) => record.targetId);
+    const ignoredArticleIds = feedbackIds(RecommendationTargetType.article);
+    const ignoredAuthorIds = feedbackIds(RecommendationTargetType.author);
+    const ignoredTopicIds = feedbackIds(RecommendationTargetType.topic);
+    const ignoredCollectionIds = feedbackIds(RecommendationTargetType.collection);
+    const exclusions: Prisma.ArticleWhereInput[] = [
+      ...(ignoredArticleIds.length ? [{ id: { notIn: ignoredArticleIds } }] : []),
+      ...(ignoredAuthorIds.length ? [{ authorId: { notIn: ignoredAuthorIds } }] : []),
+      ...(ignoredTopicIds.length ? [{ topicItems: { none: { topicId: { in: ignoredTopicIds } } } }] : []),
+      ...(ignoredCollectionIds.length ? [{ collectionItems: { none: { collectionId: { in: ignoredCollectionIds } } } }] : []),
+    ];
+    const where: Prisma.ArticleWhereInput = exclusions.length
+      ? { AND: [baseWhere, ...exclusions] }
+      : baseWhere;
+    const feedbackVersion = feedback
+      .map((record) => `${record.targetType}:${record.targetId}:${record.updatedAt.getTime()}`)
+      .sort()
+      .join("|");
+    const cacheKey = this.recommendationCacheKey(query, user, feedbackVersion);
     let rankedIds: number[] | null = null;
     try {
       const cached = await this.redis.get(cacheKey);
@@ -2125,13 +2150,18 @@ export class ArticlesService {
     return engagement + recency + category + tags + subscription + (candidate.isPinned ? 6 : 0) - seenPenalty;
   }
 
-  private recommendationCacheKey(query: ListArticlesQueryDto, user: AuthenticatedUser | null): string {
+  private recommendationCacheKey(
+    query: ListArticlesQueryDto,
+    user: AuthenticatedUser | null,
+    feedbackVersion = "",
+  ): string {
     const context = JSON.stringify({
       userId: user?.id ?? 0,
       role: user?.role.code ?? "public",
       superAdmin: user?.isSuperAdmin ?? false,
       search: query.search?.trim() ?? "",
       category: query.category?.trim() ?? "",
+      feedbackVersion,
     });
     return `articles:recommendations:${createHash("sha256").update(context).digest("hex").slice(0, 24)}`;
   }

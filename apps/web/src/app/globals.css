@@ -8662,6 +8662,9 @@ a.entry-item:hover {
 .discovery-recommendations > header > span { display: inline-flex; align-items: center; gap: 6px; }
 .discovery-recommendations > header strong { font-size: 0.86rem; }
 .discovery-recommendations > header small { color: var(--muted); font-size: 0.68rem; }
+.discovery-recommendations-refresh { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--accent-strong); cursor: pointer; }
+.discovery-recommendations-refresh:hover:not(:disabled) { background: var(--accent-soft); }
+.discovery-recommendations-refresh:disabled { cursor: default; opacity: 0.55; }
 .discovery-recommendation-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .discovery-recommendation-columns > div { display: grid; align-content: start; gap: 5px; min-width: 0; }
 .discovery-recommendation-columns h2 { display: inline-flex; align-items: center; gap: 5px; margin: 0 0 2px; color: var(--muted); font-size: 0.7rem; font-weight: 650; }
@@ -8678,6 +8681,8 @@ a.entry-item:hover {
 .discovery-recommendation-columns article button.discovery-recommendation-action { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: transparent; padding: 0; }
 .discovery-recommendation-columns article button.discovery-recommendation-action:hover,
 .discovery-recommendation-columns article button.discovery-recommendation-action[aria-pressed="true"] { background: var(--accent-soft); }
+.discovery-recommendation-actions { display: inline-flex; align-items: center; gap: 1px; }
+.discovery-recommendation-columns article button.discovery-recommendation-action:disabled { cursor: default; opacity: 0.55; }
 .discovery-recommendation-columns article em { color: var(--muted); font-size: 0.62rem; font-style: normal; white-space: nowrap; }
 
 @media (max-width: 760px) {
@@ -8743,6 +8748,23 @@ a.entry-item:hover {
 
 .article-card-main,
 .article-card-aside { pointer-events: none; }
+
+.article-card-aside .article-recommendation-feedback {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.article-card-aside .article-recommendation-feedback:hover { background: var(--accent-soft); color: var(--accent-strong); }
 
 .article-card .comment-avatar-button {
   position: relative;

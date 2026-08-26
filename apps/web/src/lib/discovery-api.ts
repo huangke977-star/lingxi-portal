@@ -95,7 +95,12 @@ export interface DiscoveryRecommendations {
   topics: Array<{ id: number; title: string; slug: string; description: string; coverPath: string | null; articleCount: number; subscriberCount: number; subscribed: boolean; updatedAt: string }>;
   collections: Array<{ id: number; name: string; description: string; articleCount: number; subscriberCount: number; subscribed: boolean; owner: ArticleAuthor; updatedAt: string }>;
   groups: Array<{ id: number; conversationId: number; name: string; avatarUrl: string | null; announcement: string; memberCount: number; joinMode: "approval" | "invite_only"; isMember: boolean; updatedAt: string }>;
+  authors: Array<ArticleAuthor & { topCategory: string; articleCount: number; engagementCount: number; subscribed: boolean }>;
+  batch: number;
+  hasMore: boolean;
 }
+
+export type RecommendationTargetType = "article" | "topic" | "collection" | "author" | "group";
 
 export interface ResourceCatalogItem {
   article: DiscoveryArticle;
@@ -125,7 +130,7 @@ export interface ContentSubscriptions {
 
 const authHeaders = (accessToken: string) => ({ Authorization: `Bearer ${accessToken}` });
 
-function pageQuery(input: { page?: number; pageSize?: number; q?: string; sort?: string } = {}) {
+function pageQuery(input: { page?: number; pageSize?: number; q?: string; sort?: string; batch?: number } = {}) {
   const params = new URLSearchParams();
   Object.entries(input).forEach(([key, value]) => {
     if (value !== undefined) params.set(key, String(value));
@@ -161,8 +166,23 @@ export function listMyCollections(accessToken: string) {
   return requestJson<{ items: ArticleCollection[] }>("/discovery/collections/mine", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
-export function listDiscoveryRecommendations(accessToken: string) {
-  return requestJson<DiscoveryRecommendations>("/discovery/recommendations", { cache: "no-store", headers: authHeaders(accessToken) });
+export function listDiscoveryRecommendations(accessToken: string, batch = 0) {
+  return requestJson<DiscoveryRecommendations>(`/discovery/recommendations${pageQuery({ batch })}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function markRecommendationNotInterested(accessToken: string, targetType: RecommendationTargetType, targetId: number) {
+  return requestJson<{ hidden: true; targetType: RecommendationTargetType; targetId: number }>("/discovery/recommendations/feedback", {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ targetType, targetId }),
+  });
+}
+
+export function removeRecommendationFeedback(accessToken: string, targetType: RecommendationTargetType, targetId: number) {
+  return requestJson<{ hidden: false; targetType: RecommendationTargetType; targetId: number }>(`/discovery/recommendations/feedback/${targetType}/${targetId}`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+  });
 }
 
 export function getOnboarding(accessToken: string) {

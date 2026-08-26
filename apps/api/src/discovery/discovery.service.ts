@@ -21,6 +21,7 @@ import {
   GroupInvitationPolicy,
   PortalVisibility,
   Prisma,
+  RecommendationTargetType,
   ProfileAccessLevel,
   UserNotificationChannel,
   UserNotificationType,
@@ -36,8 +37,10 @@ import {
   CompleteOnboardingDto,
   ListCollectionsQueryDto,
   ListDiscoveryQueryDto,
+  ListRecommendationsQueryDto,
   ListResourceCatalogQueryDto,
   ListSubscriptionFeedQueryDto,
+  RecommendationFeedbackDto,
   ReorderContentItemsDto,
   UpdateArticleCollectionDto,
   UpdateArticleTopicDto,
@@ -212,19 +215,36 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
     if (this.digestTimer) clearInterval(this.digestTimer);
   }
 
-  async listRecommendations(user: AuthenticatedUser): Promise<DiscoveryRecommendationsResponse> {
-    const topicWhere: Prisma.ArticleTopicWhereInput = { ...this.topicVisibleWhere(user), subscribers: { none: { userId: user.id } } };
+  async listRecommendations(
+    user: AuthenticatedUser,
+    query: ListRecommendationsQueryDto = { batch: 0 },
+  ): Promise<DiscoveryRecommendationsResponse> {
+    const batch = query.batch ?? 0;
+    const feedback = await this.listRecommendationFeedback(user.id);
+    const topicWhere: Prisma.ArticleTopicWhereInput = {
+      AND: [
+        this.topicVisibleWhere(user),
+        { subscribers: { none: { userId: user.id } } },
+        ...(feedback.topicIds.size ? [{ id: { notIn: [...feedback.topicIds] } }] : []),
+      ],
+    };
     const collectionWhere: Prisma.ArticleCollectionWhereInput = {
-      AND: [this.collectionVisibleWhere(user), { ownerId: { not: user.id } }, { subscribers: { none: { userId: user.id } } }],
+      AND: [
+        this.collectionVisibleWhere(user),
+        { ownerId: { not: user.id } },
+        { subscribers: { none: { userId: user.id } } },
+        ...(feedback.collectionIds.size ? [{ id: { notIn: [...feedback.collectionIds] } }] : []),
+        ...(feedback.authorIds.size ? [{ ownerId: { notIn: [...feedback.authorIds] } }] : []),
+      ],
     };
     const now = new Date();
-    const [topics, collections, groups] = await Promise.all([
+    const [topics, collections, groups, authors] = await Promise.all([
       this.prisma.articleTopic.findMany({
-        where: topicWhere, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: 8,
+        where: topicWhere, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], skip: batch * 3, take: 4,
         select: { id: true, title: true, slug: true, description: true, coverPath: true, updatedAt: true, _count: { select: { items: true, subscribers: true } } },
       }),
       this.prisma.articleCollection.findMany({
-        where: collectionWhere, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: 8,
+        where: collectionWhere, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], skip: batch * 3, take: 4,
         select: {
           id: true, name: true, description: true, updatedAt: true,
           _count: { select: { items: true, subscribers: true } },
@@ -239,20 +259,210 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
           OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
           members: { none: { userId: user.id, status: { in: [ChatGroupMemberStatus.active, ChatGroupMemberStatus.blocked] } } },
           joinMode: "approval",
+          ...(feedback.groupIds.size ? { id: { notIn: [...feedback.groupIds] } } : {}),
         },
-        orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: 8,
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }], skip: batch * 3, take: 4,
         select: {
           id: true, conversationId: true, name: true, announcement: true, avatarUrl: true, avatarStoredName: true, joinMode: true, updatedAt: true,
           members: { where: { userId: user.id, status: ChatGroupMemberStatus.active }, select: { userId: true }, take: 1 },
           _count: { select: { members: { where: { status: ChatGroupMemberStatus.active } } } },
         },
       }),
+      this.listRecommendedAuthors(user, feedback.authorIds, batch),
     ]);
     return {
       topics: topics.map((topic) => ({ id: topic.id, title: topic.title, slug: topic.slug, description: topic.description, coverPath: topic.coverPath, articleCount: topic._count.items, subscriberCount: topic._count.subscribers, subscribed: false, updatedAt: topic.updatedAt.toISOString() })),
       collections: collections.map((collection) => ({ id: collection.id, name: collection.name, description: collection.description, articleCount: collection._count.items, subscriberCount: collection._count.subscribers, subscribed: false, owner: this.toAuthor(collection.owner), updatedAt: collection.updatedAt.toISOString() })),
       groups: groups.map((group) => ({ id: group.id, conversationId: group.conversationId, name: group.name, avatarUrl: group.avatarStoredName ? `/social/groups/${group.id}/avatar` : group.avatarUrl, announcement: group.announcement, memberCount: group._count.members, joinMode: group.joinMode, isMember: Boolean(group.members.length), updatedAt: group.updatedAt.toISOString() })),
+      authors,
+      batch,
+      hasMore: topics.length === 4 || collections.length === 4 || groups.length === 4 || authors.length === 4,
     };
+  }
+
+  async recordRecommendationFeedback(user: AuthenticatedUser, dto: RecommendationFeedbackDto) {
+    const targetType = this.recommendationTargetType(dto.targetType);
+    await this.assertRecommendationTarget(user, targetType, dto.targetId);
+    await this.prisma.recommendationFeedback.upsert({
+      where: { userId_targetType_targetId: { userId: user.id, targetType, targetId: dto.targetId } },
+      create: { userId: user.id, targetType, targetId: dto.targetId },
+      update: {},
+    });
+    return { hidden: true, targetType: dto.targetType, targetId: dto.targetId };
+  }
+
+  async removeRecommendationFeedback(
+    user: AuthenticatedUser,
+    targetTypeValue: RecommendationFeedbackDto["targetType"],
+    targetId: number,
+  ) {
+    const targetType = this.recommendationTargetType(targetTypeValue);
+    await this.prisma.recommendationFeedback.deleteMany({
+      where: { userId: user.id, targetType, targetId },
+    });
+    return { hidden: false, targetType: targetTypeValue, targetId };
+  }
+
+  private async listRecommendationFeedback(userId: number) {
+    const records = await this.prisma.recommendationFeedback.findMany({
+      where: { userId },
+      select: { targetType: true, targetId: true },
+    });
+    const idsFor = (targetType: RecommendationTargetType) => new Set(
+      records.filter((record) => record.targetType === targetType).map((record) => record.targetId),
+    );
+    return {
+      articleIds: idsFor(RecommendationTargetType.article),
+      topicIds: idsFor(RecommendationTargetType.topic),
+      collectionIds: idsFor(RecommendationTargetType.collection),
+      authorIds: idsFor(RecommendationTargetType.author),
+      groupIds: idsFor(RecommendationTargetType.group),
+    };
+  }
+
+  private recommendationTargetType(value: RecommendationFeedbackDto["targetType"]): RecommendationTargetType {
+    const values: Record<RecommendationFeedbackDto["targetType"], RecommendationTargetType> = {
+      article: RecommendationTargetType.article,
+      topic: RecommendationTargetType.topic,
+      collection: RecommendationTargetType.collection,
+      author: RecommendationTargetType.author,
+      group: RecommendationTargetType.group,
+    };
+    const targetType = values[value];
+    if (!targetType) throw new BadRequestException("推荐反馈类型无效。");
+    return targetType;
+  }
+
+  private async assertRecommendationTarget(
+    user: AuthenticatedUser,
+    targetType: RecommendationTargetType,
+    targetId: number,
+  ): Promise<void> {
+    if (targetType === RecommendationTargetType.article) {
+      const target = await this.prisma.article.findFirst({
+        where: { id: targetId, ...this.articleVisibleWhere(user) },
+        select: { id: true },
+      });
+      if (target) return;
+    } else if (targetType === RecommendationTargetType.topic) {
+      const target = await this.prisma.articleTopic.findFirst({
+        where: { id: targetId, ...this.topicVisibleWhere(user) },
+        select: { id: true },
+      });
+      if (target) return;
+    } else if (targetType === RecommendationTargetType.collection) {
+      const target = await this.prisma.articleCollection.findFirst({
+        where: { id: targetId, ...this.collectionVisibleWhere(user) },
+        select: { id: true },
+      });
+      if (target) return;
+    } else if (targetType === RecommendationTargetType.author) {
+      if (targetId === user.id) throw new NotFoundException("推荐内容不存在或当前不可见。");
+      const target = await this.prisma.user.findFirst({
+        where: { id: targetId, status: UserStatus.active },
+        select: { id: true },
+      });
+      if (target) return;
+    } else {
+      const target = await this.prisma.chatGroup.findFirst({
+        where: {
+          id: targetId,
+          status: ChatGroupStatus.active,
+          isBanned: false,
+          temporary: false,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+        select: { id: true },
+      });
+      if (target) return;
+    }
+    throw new NotFoundException("推荐内容不存在或当前不可见。");
+  }
+
+  private async listRecommendedAuthors(
+    user: AuthenticatedUser,
+    excludedAuthorIds: Set<number>,
+    batch: number,
+  ): Promise<DiscoveryRecommendationsResponse["authors"]> {
+    const categoryStats = await this.prisma.article.groupBy({
+      by: ["authorId", "category"],
+      where: {
+        authorId: { notIn: [user.id, ...excludedAuthorIds] },
+        status: ArticleStatus.published,
+        visibility: ArticleVisibility.public,
+        author: { status: UserStatus.active },
+      },
+      _count: { _all: true },
+      _sum: { viewCount: true, likeCount: true, favoriteCount: true, commentCount: true },
+      _max: { publishedAt: true },
+    });
+    const now = Date.now();
+    const candidates = new Map<number, { score: number; category: string; categoryScore: number; articleCount: number; engagementCount: number }>();
+    for (const item of categoryStats) {
+      const articleCount = item._count._all;
+      const viewCount = item._sum.viewCount ?? 0;
+      const likeCount = item._sum.likeCount ?? 0;
+      const favoriteCount = item._sum.favoriteCount ?? 0;
+      const commentCount = item._sum.commentCount ?? 0;
+      const ageDays = item._max.publishedAt ? Math.max(0, (now - item._max.publishedAt.getTime()) / 86_400_000) : 365;
+      const engagement = Math.log2(viewCount + 1) * 1.8 + likeCount * 4 + favoriteCount * 5 + commentCount * 6;
+      const recency = Math.max(0, 28 - ageDays) * 1.1;
+      const categoryScore = Math.min(24, articleCount * 3) + engagement + recency;
+      const current = candidates.get(item.authorId) ?? {
+        score: 0,
+        category: "",
+        categoryScore: Number.NEGATIVE_INFINITY,
+        articleCount: 0,
+        engagementCount: 0,
+      };
+      current.score += categoryScore;
+      current.articleCount += articleCount;
+      current.engagementCount += viewCount + likeCount + favoriteCount + commentCount;
+      if (categoryScore > current.categoryScore || (categoryScore === current.categoryScore && item.category < current.category)) {
+        current.category = item.category.trim() || "未分类";
+        current.categoryScore = categoryScore;
+      }
+      candidates.set(item.authorId, current);
+    }
+    const rankedIds = [...candidates.entries()]
+      .sort(([, left], [, right]) => right.score - left.score)
+      .map(([authorId]) => authorId);
+    const candidateIds = rankedIds.slice(batch * 3, batch * 3 + 12);
+    if (!candidateIds.length) return [];
+
+    const [authors, blockedFriendships, subscriptions] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { id: { in: candidateIds }, status: UserStatus.active },
+        select: discoveryArticleInclude.author.select,
+      }),
+      this.prisma.friendship.findMany({
+        where: {
+          status: FriendshipStatus.blocked,
+          OR: candidateIds.map((authorId) => ({
+            userOneId: Math.min(user.id, authorId),
+            userTwoId: Math.max(user.id, authorId),
+          })),
+        },
+        select: { userOneId: true, userTwoId: true },
+      }),
+      this.prisma.userSubscription.findMany({
+        where: { subscriberId: user.id, authorId: { in: candidateIds } },
+        select: { authorId: true },
+      }),
+    ]);
+    const blockedIds = new Set(blockedFriendships.map((friendship) => friendship.userOneId === user.id ? friendship.userTwoId : friendship.userOneId));
+    const subscribedIds = new Set(subscriptions.map(({ authorId }) => authorId));
+    const authorsById = new Map(authors.map((author) => [author.id, author]));
+    return candidateIds
+      .filter((authorId) => authorsById.has(authorId) && !blockedIds.has(authorId) && !subscribedIds.has(authorId))
+      .slice(0, 4)
+      .map((authorId) => ({
+        ...this.toAuthor(authorsById.get(authorId)!),
+        topCategory: candidates.get(authorId)!.category,
+        articleCount: candidates.get(authorId)!.articleCount,
+        engagementCount: candidates.get(authorId)!.engagementCount,
+        subscribed: false,
+      }));
   }
 
   async getOnboarding(user: AuthenticatedUser): Promise<OnboardingResponse> {

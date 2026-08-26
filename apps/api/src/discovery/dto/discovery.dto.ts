@@ -57,6 +57,25 @@ export class CompleteOnboardingDto {
   authorIds: number[] = [];
 }
 
+export class ListRecommendationsQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(20)
+  batch = 0;
+}
+
+export class RecommendationFeedbackDto {
+  @IsIn(["article", "topic", "collection", "author", "group"])
+  targetType!: "article" | "topic" | "collection" | "author" | "group";
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  targetId!: number;
+}
+
 export class ListResourceCatalogQueryDto extends ListDiscoveryQueryDto {
   @IsOptional()
   @IsString()

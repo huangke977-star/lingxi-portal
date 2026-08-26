@@ -344,15 +344,22 @@ describe("DiscoveryService", () => {
       articleTopic: { findMany: jest.fn(async () => []) },
       articleCollection: { findMany: jest.fn(async () => []) },
       chatGroup: { findMany: jest.fn(async () => []) },
+      recommendationFeedback: { findMany: jest.fn(async () => []) },
+      article: { groupBy: jest.fn(async () => []) },
     };
 
     await expect(createService(prisma).listRecommendations(user)).resolves.toEqual({
       topics: [],
       collections: [],
       groups: [],
+      authors: [],
+      batch: 0,
+      hasMore: false,
     });
     expect(prisma.articleTopic.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ subscribers: { none: { userId: user.id } } }),
+      where: expect.objectContaining({
+        AND: expect.arrayContaining([{ subscribers: { none: { userId: user.id } } }]),
+      }),
     }));
     expect(prisma.articleCollection.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
@@ -369,6 +376,24 @@ describe("DiscoveryService", () => {
         },
       }),
     }));
+  });
+
+  it("records a not-interested recommendation once the target is visible", async () => {
+    const upsert = jest.fn(async () => ({}));
+    const prisma = {
+      article: { findFirst: jest.fn(async () => ({ id: 18 })) },
+      recommendationFeedback: { upsert },
+    };
+
+    await expect(createService(prisma).recordRecommendationFeedback(user, {
+      targetType: "article",
+      targetId: 18,
+    })).resolves.toEqual({ hidden: true, targetType: "article", targetId: 18 });
+    expect(upsert).toHaveBeenCalledWith({
+      where: { userId_targetType_targetId: { userId: user.id, targetType: "article", targetId: 18 } },
+      create: { userId: user.id, targetType: "article", targetId: 18 },
+      update: {},
+    });
   });
 
   it("requires collection ordering to contain every current article exactly once", async () => {

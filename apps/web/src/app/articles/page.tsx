@@ -1,12 +1,12 @@
 "use client";
 
-import { ArrowRight, BookOpen, FolderOpen, Rss, Search, SlidersHorizontal, UserPlus, UsersRound, X } from "lucide-react";
+import { ArrowRight, BookOpen, EyeOff, FolderOpen, RefreshCw, Rss, Search, SlidersHorizontal, UserPlus, UserRound, UsersRound, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
-import { ArticleCard } from "@/components/article-ui";
+import { ArticleCard, displayArticleTaxonomy } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import { useLanguage } from "@/components/language-provider";
 import { GlassSelect } from "@/components/glass-select";
@@ -18,8 +18,8 @@ import {
 } from "@/lib/article-api";
 import { AuthUser, getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
-import { listDiscoveryRecommendations, subscribeCollection, subscribeTopic, unsubscribeCollection, unsubscribeTopic, type DiscoveryRecommendations } from "@/lib/discovery-api";
-import { requestChatGroupJoin } from "@/lib/social-api";
+import { listDiscoveryRecommendations, markRecommendationNotInterested, subscribeCollection, subscribeTopic, unsubscribeCollection, unsubscribeTopic, type DiscoveryRecommendations, type RecommendationTargetType } from "@/lib/discovery-api";
+import { requestChatGroupJoin, subscribeToAuthor, unsubscribeFromAuthor } from "@/lib/social-api";
 import { localizedPath } from "@/lib/i18n";
 
 type DiscoverFeed = "recommended" | "latest" | "popular";
@@ -47,6 +47,8 @@ function ArticlesContent() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [recommendations, setRecommendations] = useState<DiscoveryRecommendations | null>(null);
+  const [isRefreshingRecommendations, setIsRefreshingRecommendations] = useState(false);
+  const [isRecommendationFeedbackSubmitting, setIsRecommendationFeedbackSubmitting] = useState(false);
   const [joinRequestTarget, setJoinRequestTarget] = useState<DiscoveryRecommendations["groups"][number] | null>(null);
   const [joinRequestNote, setJoinRequestNote] = useState("");
   const [isComposing, setIsComposing] = useState(false);
@@ -143,6 +145,58 @@ function ArticlesContent() {
     } catch (actionError) { setError(actionError instanceof Error ? actionError.message : phrase("合集订阅失败。", "Could not update the collection subscription.")); }
   }
 
+  async function toggleAuthor(id: number, subscribed: boolean) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      const result = subscribed ? await unsubscribeFromAuthor(token, id) : await subscribeToAuthor(token, id);
+      setRecommendations((current) => current ? { ...current, authors: current.authors.map((item) => item.id === id ? { ...item, subscribed: result.subscribed } : item) } : current);
+    } catch (actionError) { setError(actionError instanceof Error ? actionError.message : phrase("作者订阅失败。", "Could not update the author subscription.")); }
+  }
+
+  async function refreshRecommendations() {
+    const token = readAccessToken();
+    if (!token || isRefreshingRecommendations) return;
+    setIsRefreshingRecommendations(true);
+    setError("");
+    try {
+      const nextBatch = recommendations?.hasMore ? recommendations.batch + 1 : 0;
+      setRecommendations(await listDiscoveryRecommendations(token, nextBatch));
+    } catch (actionError) { setError(actionError instanceof Error ? actionError.message : phrase("推荐刷新失败。", "Could not refresh recommendations.")); }
+    finally { setIsRefreshingRecommendations(false); }
+  }
+
+  async function markNotInterested(targetType: RecommendationTargetType, targetId: number) {
+    const token = readAccessToken();
+    if (!token || isRecommendationFeedbackSubmitting) return;
+    setIsRecommendationFeedbackSubmitting(true);
+    setError("");
+    try {
+      await markRecommendationNotInterested(token, targetType, targetId);
+      setRecommendations((current) => current ? {
+        ...current,
+        topics: targetType === "topic" ? current.topics.filter((item) => item.id !== targetId) : current.topics,
+        collections: targetType === "collection" ? current.collections.filter((item) => item.id !== targetId) : current.collections.filter((item) => targetType !== "author" || item.owner.id !== targetId),
+        authors: targetType === "author" ? current.authors.filter((item) => item.id !== targetId) : current.authors,
+        groups: targetType === "group" ? current.groups.filter((item) => item.id !== targetId) : current.groups,
+      } : current);
+      if (targetType === "article" || targetType === "author" || targetType === "topic" || targetType === "collection") {
+        setList((current) => {
+          const items = current.items.filter((article) => targetType === "article"
+            ? article.id !== targetId
+            : targetType === "author"
+              ? article.author.id !== targetId
+              : targetType === "topic"
+                ? !article.topics.some((topic) => topic.id === targetId)
+                : !article.collections.some((collection) => collection.id === targetId));
+          return { ...current, items, total: Math.max(0, current.total - (current.items.length - items.length)) };
+        });
+      }
+      setNotice(phrase("已减少类似推荐。", "Similar recommendations will appear less often."));
+    } catch (actionError) { setError(actionError instanceof Error ? actionError.message : phrase("反馈保存失败。", "Could not save recommendation feedback.")); }
+    finally { setIsRecommendationFeedbackSubmitting(false); }
+  }
+
   async function joinRecommendedGroup() {
     const token = readAccessToken();
     if (!token || !joinRequestTarget || isJoinRequestSubmitting) return;
@@ -199,11 +253,11 @@ function ArticlesContent() {
             <div className="article-order-select"><SlidersHorizontal aria-hidden="true" size={16} /><GlassSelect ariaLabel={t("discover.articleSort")} onChange={(value) => replaceQuery({ order: value })} options={articleOrderOptions} value={order} /></div>
           </div>
           {isLoading ? <div className="article-empty-state">{t("discover.loading")}</div>
-            : list.items.length ? <div className="article-feed-list">{list.items.map((article) => <ArticleCard article={article} key={article.id} />)}</div>
+            : list.items.length ? <div className="article-feed-list">{list.items.map((article) => <ArticleCard article={article} key={article.id} onNotInterested={feed === "recommended" && isLoggedIn ? () => void markNotInterested("article", article.id) : undefined} />)}</div>
               : <div className="article-empty-state"><strong>{t("discover.notFound")}</strong><span>{querySearch ? t("discover.tryAnother") : t("discover.noContent")}</span></div>}
           {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
         </div>
-        {recommendations ? <DiscoveryRecommendationsPanel recommendations={recommendations} onJoinGroup={(group) => { setError(""); setJoinRequestTarget(group); setJoinRequestNote(""); }} onToggleCollection={toggleCollection} onToggleTopic={toggleTopic} /> : null}
+        {recommendations ? <DiscoveryRecommendationsPanel isFeedbackSubmitting={isRecommendationFeedbackSubmitting} isRefreshing={isRefreshingRecommendations} onFeedback={markNotInterested} onJoinGroup={(group) => { setError(""); setJoinRequestTarget(group); setJoinRequestNote(""); }} onRefresh={() => void refreshRecommendations()} onToggleAuthor={toggleAuthor} onToggleCollection={toggleCollection} onToggleTopic={toggleTopic} recommendations={recommendations} /> : null}
       </div>
       {joinRequestTarget ? <RequestComposerDialog icon={<UsersRound aria-hidden="true" size={18} />} isSubmitting={isJoinRequestSubmitting} label={phrase("申请说明", "Request note")} maxLength={200} onChange={setJoinRequestNote} onClose={() => { setJoinRequestTarget(null); setJoinRequestNote(""); }} onSubmit={() => void joinRecommendedGroup()} placeholder={phrase("向群管理员说明来意，可不填", "Introduce yourself to the group managers. Optional.")} submitLabel={phrase("提交入群申请", "Send join request")} title={phrase("申请加入群聊", "Request to join group")} value={joinRequestNote}><div className="request-composer-group-target"><span className="discovery-recommendation-icon group">{joinRequestTarget.avatarUrl ? <img alt="" src={resolveApiUrl(joinRequestTarget.avatarUrl)} /> : <UsersRound aria-hidden="true" size={20} />}</span><span><strong>{joinRequestTarget.name}</strong><small>{phrase(`${joinRequestTarget.memberCount} 位成员`, `${joinRequestTarget.memberCount} members`)}</small></span></div></RequestComposerDialog> : null}
       <AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
@@ -211,12 +265,34 @@ function ArticlesContent() {
   );
 }
 
-function DiscoveryRecommendationsPanel({ recommendations, onJoinGroup, onToggleCollection, onToggleTopic }: { recommendations: DiscoveryRecommendations; onJoinGroup: (group: DiscoveryRecommendations["groups"][number]) => void; onToggleCollection: (id: number, subscribed: boolean) => void; onToggleTopic: (id: number, subscribed: boolean) => void }) {
+function DiscoveryRecommendationsPanel({
+  recommendations,
+  isRefreshing,
+  isFeedbackSubmitting,
+  onFeedback,
+  onJoinGroup,
+  onRefresh,
+  onToggleAuthor,
+  onToggleCollection,
+  onToggleTopic,
+}: {
+  recommendations: DiscoveryRecommendations;
+  isRefreshing: boolean;
+  isFeedbackSubmitting: boolean;
+  onFeedback: (targetType: RecommendationTargetType, targetId: number) => void;
+  onJoinGroup: (group: DiscoveryRecommendations["groups"][number]) => void;
+  onRefresh: () => void;
+  onToggleAuthor: (id: number, subscribed: boolean) => void;
+  onToggleCollection: (id: number, subscribed: boolean) => void;
+  onToggleTopic: (id: number, subscribed: boolean) => void;
+}) {
   const { locale, phrase, t } = useLanguage();
-  return <aside className="discovery-recommendations"><header><span><ArrowRight aria-hidden="true" size={17} /><strong>{t("discover.forYou")}</strong></span></header><div className="discovery-recommendation-columns">
-    <div><h2><BookOpen aria-hidden="true" size={15} />{t("discover.topics")}</h2>{recommendations.topics.slice(0, 3).map((topic) => <article key={topic.id}><Link href={localizedPath(`/topics/${topic.slug}`, locale)}><span className="discovery-recommendation-icon">{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <BookOpen aria-hidden="true" size={17} />}</span><span><strong>{topic.title}</strong><small>{t("home.articleCount", { count: topic.articleCount })} · {phrase(`${topic.subscriberCount} 人订阅`, `${topic.subscriberCount} subscribers`)}</small></span></Link><button aria-label={`${topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} ${topic.title}`} aria-pressed={topic.subscribed} className="discovery-recommendation-action" onClick={() => onToggleTopic(topic.id, topic.subscribed)} title={topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={15} /></button></article>)}{!recommendations.topics.length ? <p>{t("discover.noTopics")}</p> : null}</div>
-    <div><h2><FolderOpen aria-hidden="true" size={15} />{t("discover.collections")}</h2>{recommendations.collections.slice(0, 3).map((collection) => <article key={collection.id}><Link href={localizedPath(`/collections/${collection.id}`, locale)}><span className="discovery-recommendation-icon"><FolderOpen aria-hidden="true" size={17} /></span><span><strong>{collection.name}</strong><small>{t("home.articleCount", { count: collection.articleCount })} · {collection.owner.nickname}</small></span></Link><button aria-label={`${collection.subscribed ? t("common.unsubscribe") : t("common.subscribe")} ${collection.name}`} aria-pressed={collection.subscribed} className="discovery-recommendation-action" onClick={() => onToggleCollection(collection.id, collection.subscribed)} title={collection.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={15} /></button></article>)}{!recommendations.collections.length ? <p>{t("discover.noCollections")}</p> : null}</div>
-    <div><h2><UsersRound aria-hidden="true" size={15} />{t("discover.activeGroups")}</h2>{recommendations.groups.slice(0, 3).map((group) => <article key={group.id}><span className="discovery-recommendation-copy"><span className="discovery-recommendation-icon group">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <UsersRound aria-hidden="true" size={17} />}</span><span><strong>{group.name}</strong><small>{phrase(`${group.memberCount} 位成员`, `${group.memberCount} members`)} · {group.announcement || "-"}</small></span></span>{group.isMember ? <em>{t("discover.joined")}</em> : <button aria-label={`${t("discover.applyToJoin")} ${group.name}`} className="discovery-recommendation-action" onClick={() => onJoinGroup(group)} title={t("discover.applyToJoin")} type="button"><UserPlus aria-hidden="true" size={15} /></button>}</article>)}{!recommendations.groups.length ? <p>{t("discover.noGroups")}</p> : null}</div>
+  const feedbackButton = (targetType: RecommendationTargetType, targetId: number, label: string) => <button aria-label={`${t("discover.notInterested")} ${label}`} className="discovery-recommendation-action" disabled={isFeedbackSubmitting} onClick={() => onFeedback(targetType, targetId)} title={t("discover.notInterested")} type="button"><EyeOff aria-hidden="true" size={15} /></button>;
+  return <aside className="discovery-recommendations"><header><span><ArrowRight aria-hidden="true" size={17} /><strong>{t("discover.forYou")}</strong></span><button aria-label={t("discover.refreshRecommendations")} className="discovery-recommendations-refresh" disabled={isRefreshing} onClick={onRefresh} title={t("discover.refreshRecommendations")} type="button"><RefreshCw aria-hidden="true" className={isRefreshing ? "spinning" : undefined} size={15} /></button></header><div className="discovery-recommendation-columns">
+    <div><h2><BookOpen aria-hidden="true" size={15} />{t("discover.topics")}</h2>{recommendations.topics.slice(0, 3).map((topic) => <article key={topic.id}><Link href={localizedPath(`/topics/${topic.slug}`, locale)}><span className="discovery-recommendation-icon">{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <BookOpen aria-hidden="true" size={17} />}</span><span><strong>{topic.title}</strong><small>{t("home.articleCount", { count: topic.articleCount })} · {phrase(`${topic.subscriberCount} 人订阅`, `${topic.subscriberCount} subscribers`)}</small></span></Link><span className="discovery-recommendation-actions"><button aria-label={`${topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} ${topic.title}`} aria-pressed={topic.subscribed} className="discovery-recommendation-action" onClick={() => onToggleTopic(topic.id, topic.subscribed)} title={topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={15} /></button>{feedbackButton("topic", topic.id, topic.title)}</span></article>)}{!recommendations.topics.length ? <p>{t("discover.noTopics")}</p> : null}</div>
+    <div><h2><FolderOpen aria-hidden="true" size={15} />{t("discover.collections")}</h2>{recommendations.collections.slice(0, 3).map((collection) => <article key={collection.id}><Link href={localizedPath(`/collections/${collection.id}`, locale)}><span className="discovery-recommendation-icon"><FolderOpen aria-hidden="true" size={17} /></span><span><strong>{collection.name}</strong><small>{t("home.articleCount", { count: collection.articleCount })} · {collection.owner.nickname}</small></span></Link><span className="discovery-recommendation-actions"><button aria-label={`${collection.subscribed ? t("common.unsubscribe") : t("common.subscribe")} ${collection.name}`} aria-pressed={collection.subscribed} className="discovery-recommendation-action" onClick={() => onToggleCollection(collection.id, collection.subscribed)} title={collection.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={15} /></button>{feedbackButton("collection", collection.id, collection.name)}</span></article>)}{!recommendations.collections.length ? <p>{t("discover.noCollections")}</p> : null}</div>
+    <div><h2><UserRound aria-hidden="true" size={15} />{t("discover.authors")}</h2>{recommendations.authors.slice(0, 3).map((author) => <article key={author.id}><Link href={localizedPath(`/users/${encodeURIComponent(author.username)}`, locale)}><span className="discovery-recommendation-icon group">{author.avatarUrl ? <img alt="" src={resolveApiUrl(author.avatarUrl)} /> : <UserRound aria-hidden="true" size={17} />}</span><span><strong>{author.nickname}</strong><small>{displayArticleTaxonomy(author.topCategory, locale)} · {t("home.articleCount", { count: author.articleCount })}</small></span></Link><span className="discovery-recommendation-actions"><button aria-label={`${author.subscribed ? t("common.unsubscribe") : t("common.subscribe")} ${author.nickname}`} aria-pressed={author.subscribed} className="discovery-recommendation-action" onClick={() => onToggleAuthor(author.id, author.subscribed)} title={author.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={15} /></button>{feedbackButton("author", author.id, author.nickname)}</span></article>)}{!recommendations.authors.length ? <p>{t("discover.noAuthors")}</p> : null}</div>
+    <div><h2><UsersRound aria-hidden="true" size={15} />{t("discover.activeGroups")}</h2>{recommendations.groups.slice(0, 3).map((group) => <article key={group.id}><span className="discovery-recommendation-copy"><span className="discovery-recommendation-icon group">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <UsersRound aria-hidden="true" size={17} />}</span><span><strong>{group.name}</strong><small>{phrase(`${group.memberCount} 位成员`, `${group.memberCount} members`)} · {group.announcement || "-"}</small></span></span><span className="discovery-recommendation-actions">{group.isMember ? <em>{t("discover.joined")}</em> : <button aria-label={`${t("discover.applyToJoin")} ${group.name}`} className="discovery-recommendation-action" onClick={() => onJoinGroup(group)} title={t("discover.applyToJoin")} type="button"><UserPlus aria-hidden="true" size={15} /></button>}{feedbackButton("group", group.id, group.name)}</span></article>)}{!recommendations.groups.length ? <p>{t("discover.noGroups")}</p> : null}</div>
   </div></aside>;
 }
 

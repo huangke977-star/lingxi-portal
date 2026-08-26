@@ -29,8 +29,10 @@ import {
   CompleteOnboardingDto,
   ListCollectionsQueryDto,
   ListDiscoveryQueryDto,
+  ListRecommendationsQueryDto,
   ListResourceCatalogQueryDto,
   ListSubscriptionFeedQueryDto,
+  RecommendationFeedbackDto,
   ReorderContentItemsDto,
   UpdateArticleCollectionDto,
   UpdateArticleTopicDto,
@@ -97,8 +99,24 @@ export class DiscoveryController {
 
   @Get("recommendations")
   @UseGuards(JwtAuthGuard)
-  listRecommendations(@CurrentUser() user: AuthenticatedUser) {
-    return this.discoveryService.listRecommendations(user);
+  listRecommendations(@CurrentUser() user: AuthenticatedUser, @Query() query: ListRecommendationsQueryDto) {
+    return this.discoveryService.listRecommendations(user, query);
+  }
+
+  @Post("recommendations/feedback")
+  @UseGuards(JwtAuthGuard)
+  recordRecommendationFeedback(@CurrentUser() user: AuthenticatedUser, @Body() dto: RecommendationFeedbackDto) {
+    return this.discoveryService.recordRecommendationFeedback(user, dto);
+  }
+
+  @Delete("recommendations/feedback/:targetType/:targetId")
+  @UseGuards(JwtAuthGuard)
+  removeRecommendationFeedback(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("targetType") targetType: RecommendationFeedbackDto["targetType"],
+    @Param("targetId", ParseIntPipe) targetId: number,
+  ) {
+    return this.discoveryService.removeRecommendationFeedback(user, targetType, targetId);
   }
 
   @Get("onboarding")

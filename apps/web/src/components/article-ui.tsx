@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { Bookmark, Coins, Eye, Heart, LockKeyhole, MessageCircle, Pin } from "lucide-react";
+import { Bookmark, Coins, Eye, EyeOff, Heart, LockKeyhole, MessageCircle, Pin } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
@@ -138,11 +138,13 @@ export function ArticleCard({
   href,
   metaAccessory,
   taxonomyPlacement = "meta",
+  onNotInterested,
 }: {
   article: Article;
   href?: string;
   metaAccessory?: ReactNode;
   taxonomyPlacement?: "meta" | "after-stats";
+  onNotInterested?: (article: Article) => void;
 }) {
   const { locale, t } = useLanguage();
   return (
@@ -161,6 +163,7 @@ export function ArticleCard({
       <div className="article-card-aside">
         <RecentCommenters article={article} />
         <ArticleStats article={article} compact />
+        {onNotInterested ? <button aria-label={t("discover.notInterested")} className="article-recommendation-feedback" onClick={() => onNotInterested(article)} title={t("discover.notInterested")} type="button"><EyeOff aria-hidden="true" size={15} /></button> : null}
         {taxonomyPlacement === "after-stats" ? <ArticleTaxonomy article={article} /> : null}
       </div>
     </article>

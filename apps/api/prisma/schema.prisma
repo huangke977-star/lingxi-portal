@@ -45,6 +45,14 @@ enum ArticleVisibility {
   private
 }
 
+enum RecommendationTargetType {
+  article
+  topic
+  collection
+  author
+  group
+}
+
 enum ArticleVersionSource {
   autosave
   manual
@@ -591,6 +599,7 @@ model User {
   feedbackSubmitted          UserFeedback[]                  @relation("UserFeedbackSubmitter")
   feedbackReviewed           UserFeedback[]                  @relation("UserFeedbackReviewer")
   feedbackReplies            UserFeedbackReply[]             @relation("UserFeedbackReplyAuthor")
+  recommendationFeedback     RecommendationFeedback[]
 
   @@index([roleId])
   @@index([createdAt])
@@ -2265,6 +2274,21 @@ model UserGrowthPreference {
   updatedAt             DateTime  @updatedAt @map("updated_at")
 
   @@map("user_growth_preferences")
+}
+
+model RecommendationFeedback {
+  id         Int                      @id @default(autoincrement())
+  userId     Int                      @map("user_id")
+  user       User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetType RecommendationTargetType @map("target_type")
+  targetId   Int                      @map("target_id")
+  createdAt  DateTime                 @default(now()) @map("created_at")
+  updatedAt  DateTime                 @updatedAt @map("updated_at")
+
+  @@unique([userId, targetType, targetId])
+  @@index([targetType, targetId])
+  @@index([userId, createdAt])
+  @@map("recommendation_feedback")
 }
 
 model SecurityConfiguration {

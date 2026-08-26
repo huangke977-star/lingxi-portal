@@ -139,10 +139,20 @@ export interface DiscoveryGroupRecommendation {
   updatedAt: string;
 }
 
+export interface DiscoveryAuthorRecommendation extends DiscoveryAuthorResponse {
+  topCategory: string;
+  articleCount: number;
+  engagementCount: number;
+  subscribed: boolean;
+}
+
 export interface DiscoveryRecommendationsResponse {
   topics: Array<{ id: number; title: string; slug: string; description: string; coverPath: string | null; articleCount: number; subscriberCount: number; subscribed: boolean; updatedAt: string }>;
   collections: Array<{ id: number; name: string; description: string; articleCount: number; subscriberCount: number; subscribed: boolean; owner: DiscoveryAuthorResponse; updatedAt: string }>;
   groups: DiscoveryGroupRecommendation[];
+  authors: DiscoveryAuthorRecommendation[];
+  batch: number;
+  hasMore: boolean;
 }
 
 export interface ProfileSettingsResponse {
