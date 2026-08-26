@@ -19,6 +19,9 @@ export interface AnalyticsTrendPoint {
   anonymousMessages: number;
   anonymousLikes: number;
   anonymousFavorites: number;
+  notifications: number;
+  notificationReads: number;
+  notificationOpens: number;
 }
 
 export interface AnalyticsRankingItem {
@@ -34,6 +37,10 @@ export interface AdminAnalytics {
   generatedAt: string;
   latestAggregateAt: string | null;
   summary: Omit<AnalyticsTrendPoint, "date">;
+  notificationConversion: {
+    readRate: number;
+    openRate: number;
+  };
   trend: AnalyticsTrendPoint[];
   rankings: {
     authors: AnalyticsRankingItem[];

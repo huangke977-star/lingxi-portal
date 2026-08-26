@@ -59,6 +59,9 @@ const analyticsDefinitions: Record<string, LocalizedPair> = {
   anonymousMessages: ["匿名发言", "Anonymous messages"],
   anonymousLikes: ["点评获赞", "Message likes"],
   anonymousFavorites: ["话题喜欢", "Topic favorites"],
+  notifications: ["通知创建", "Notifications created"],
+  notificationReads: ["通知已读", "Notifications read"],
+  notificationOpens: ["通知打开", "Notifications opened"],
 };
 
 const analyticsDefinitionDetails: Record<string, LocalizedPair> = {
@@ -79,6 +82,9 @@ const analyticsDefinitionDetails: Record<string, LocalizedPair> = {
   anonymousMessages: ["当天在匿名话题中发送的点评数量。", "Messages posted in anonymous topics that day."],
   anonymousLikes: ["当天新增且当前仍有效的匿名点评点赞记录数量。", "Anonymous message likes added that day and still active."],
   anonymousFavorites: ["当天新增且当前仍有效的话题喜欢记录数量。", "Topic favorites added that day and still active."],
+  notifications: ["当天创建的站内通知数量。", "In-app notifications created that day."],
+  notificationReads: ["当天被标记为已读的站内通知数量。", "In-app notifications marked read that day."],
+  notificationOpens: ["当天打开并进入关联内容的站内通知数量。", "In-app notifications opened to their linked content that day."],
 };
 
 const storageCategories: Record<string, LocalizedPair> = {

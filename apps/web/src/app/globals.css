@@ -6867,6 +6867,13 @@ a.entry-item:hover {
 .analytics-metrics article > span { display: grid; min-width: 0; gap: 1px; }
 .analytics-metrics small { overflow: hidden; color: var(--muted); font-size: 0.64rem; text-overflow: ellipsis; white-space: nowrap; }
 .analytics-metrics strong { font-size: 1rem; }
+.analytics-conversion { display: grid; grid-template-columns: repeat(2, minmax(150px, max-content)) minmax(0, 1fr); align-items: center; gap: 10px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 82%, var(--accent-soft)); box-shadow: var(--panel-shadow); padding: 10px 12px; }
+.analytics-conversion > div { display: inline-flex; min-width: 0; align-items: center; gap: 7px; }
+.analytics-conversion > div > svg { flex: 0 0 auto; color: var(--accent-strong); }
+.analytics-conversion > div > span { display: grid; gap: 1px; }
+.analytics-conversion small { color: var(--muted); font-size: 0.65rem; }
+.analytics-conversion strong { font-size: 0.95rem; }
+.analytics-conversion p { margin: 0; color: var(--muted); font-size: 0.68rem; line-height: 1.45; }
 .analytics-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .analytics-chart { display: grid; min-width: 0; gap: 9px; border-radius: 8px; background: var(--panel); box-shadow: var(--panel-shadow); padding: 14px; }
 .analytics-chart > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -6892,6 +6899,8 @@ a.entry-item:hover {
 
 @media (max-width: 1100px) {
   .analytics-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .analytics-conversion { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analytics-conversion p { grid-column: 1 / -1; }
   .analytics-charts { grid-template-columns: 1fr; }
   .public-user-overview { grid-template-columns: 1fr; }
   .public-user-stats { grid-template-columns: repeat(6, minmax(76px, 1fr)); }
@@ -6919,6 +6928,7 @@ a.entry-item:hover {
   .public-user-stats { grid-template-columns: 1fr 1fr; }
   .analytics-metrics { grid-template-columns: 1fr 1fr; gap: 6px; }
   .analytics-metrics article { padding: 9px; }
+  .analytics-conversion { grid-template-columns: 1fr 1fr; gap: 8px; }
   .analytics-chart-canvas,
   .analytics-chart svg { min-height: 220px; }
 }

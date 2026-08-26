@@ -437,11 +437,14 @@ Goal: reduce manual review pressure while retaining a complete handling record a
 
 ### Phase 11: Product Stability Closeout
 
-Goal: close the recent chat-menu, personal-report, and profile-layout work with repeatable desktop and mobile regression checks.
+Goal: complete stability closeout, the points-resource loop, performance checks, and operations recommendations with repeatable desktop, mobile, and production verification.
 
 | ID | Scope | Status |
 | --- | --- | --- |
 | P11-01 | Add desktop/mobile regression coverage for the chat menu, personal reports, and key profile layout order | Completed |
+| P11-02 | Close the points, experience, and article-resource loop: pending earnings, 72-hour settlement, duplicate redemption protection, and resource article experience | Completed |
+| P11-03 | Performance checks for first load, pagination, recommendation caching, scheduled work, and media assets | Completed |
+| P11-04 | Improve operations and recommendations with recommendation coverage, anonymous-topic metrics, and notification conversion metrics | Completed |
 
 ### P11-01 Acceptance Record
 
@@ -449,6 +452,25 @@ Goal: close the recent chat-menu, personal-report, and profile-layout work with 
 - Verified the personal-report title/source/time first row, full-width detail second row, and long-detail ellipsis with a borderless frosted tooltip showing the complete text on both desktop and mobile viewports.
 - Verified that expanding signed-in devices places the `Signed-in devices` section before `Growth and points` on the profile page in both tested viewports.
 - The two Playwright viewports passed; Web lint passed with the existing 23 warnings, and TypeScript, production build, and `git diff --check` passed.
+
+### P11-02 Acceptance Record
+
+- Retained the existing experience and points rules for reading, commenting, publishing, receiving likes and subscriptions, and accepted reports. Resource blocks continue to use `:::resource{points=N}` with the closing `:::` marker; the buyer pays once and permanently unlocks that block.
+- Author resource earnings are written to an immutable pending ledger with `availableAt` set 72 hours after redemption. Conditional claiming in the scheduled settlement prevents double crediting across repeated timers or instances and writes the settlement time back to the exchange record.
+- A database unique key protects the user/article/resource-block tuple. A concurrent duplicate maps to a stable business error before a second buyer deduction or seller earning can be created.
+- Added and passed tests for duplicate resource protection, 72-hour settlement, concurrent settlement claiming, and operations metrics.
+
+### P11-03 Acceptance Record
+
+- Kept the existing article/topic/collection pagination, five-minute Redis recommendation cache, background aggregation, immutable media cache headers, and one-job backup/scan limits so home and operations pages do not read full relationship sets.
+- Added `scripts/p11-browser-smoke.py`. It uses read-only Chromium checks for Chinese and English home, discovery, topic, and collection pages: initial loading time, HTTP 500 responses, browser exceptions, console errors, failed images, and mobile horizontal overflow. The default budget is 12 seconds and `LINGXI_MAX_PAGE_LOAD_MS` can override it.
+- A local production build passed all 16 public-page checks across 1440x900 and 390x844 viewports, with initial document loading between 40ms and 371ms.
+
+### P11-04 Acceptance Record
+
+- Retained personalized article recommendations plus topic, collection, and active-group recommendations. Ranking uses reading, likes, favorites, read-later activity, subscribed authors, engagement, recency, and pin state; cached IDs are rechecked against current visibility before rendering.
+- Operations aggregates continue to use China-time calendar days for anonymous topics, messages, message likes, and topic favorites. Added notification-created, notification-read, and notification-opened metrics with read/open rates. Each is counted by its own timestamp so unread notifications are never reported as conversion.
+- The operations page now shows notification creation, reading, opening, and the conversion summary; fixed Chinese and English labels are configured together.
 
 The fixed delivery order is remaining P7 work -> P8 home/dashboard/tools center -> P9 -> P10 -> P11. Each phase must be independently accepted, deployed, and recorded under this roadmap's definition of done.
 

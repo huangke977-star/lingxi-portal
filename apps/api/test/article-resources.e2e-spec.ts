@@ -1,4 +1,4 @@
-import { ArticleStatus, ArticleVisibility } from "../src/generated/prisma/client";
+import { ArticleStatus, ArticleVisibility, Prisma } from "../src/generated/prisma/client";
 import { ArticlesService } from "../src/articles/articles.service";
 import { AuthenticatedUser } from "../src/auth/auth.types";
 import { parseArticleContent } from "../src/articles/article-resources";
@@ -240,6 +240,30 @@ describe("article resource blocks", () => {
     expect(response.contentSegments.find((segment) => segment.type === "resource" && segment.key === secondBlock.key))
       .toMatchObject({ type: "resource", key: secondBlock.key, unlocked: true, content: secondBlock.content });
     expect(createExchange).not.toHaveBeenCalled();
+    expect(transferResourcePoints).not.toHaveBeenCalled();
+  });
+
+  it("turns a concurrent duplicate exchange into a stable business error", async () => {
+    const article = resourceArticle();
+    const duplicate = new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "test",
+    });
+    const transferResourcePoints = jest.fn(async () => undefined);
+    const prisma = {
+      article: { findUnique: jest.fn(async () => article) },
+      ...readerStateDelegates([]),
+      $transaction: jest.fn(async (callback: (transaction: object) => Promise<void>) => callback({
+        articleResourceExchange: {
+          findUnique: jest.fn(async () => null),
+          create: jest.fn(async () => { throw duplicate; }),
+        },
+      })),
+    };
+    const service = createService(prisma, { transferResourcePoints });
+
+    await expect(service.redeemResource(article.id, viewer, { blockKey: firstBlock.key }))
+      .rejects.toThrow("该资源已经兑换，无需重复支付。");
     expect(transferResourcePoints).not.toHaveBeenCalled();
   });
 

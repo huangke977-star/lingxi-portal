@@ -86,12 +86,27 @@ const siteSettingsService = {
       commentReportHandled: "你对《{article}》中评论的举报已{result}。",
       commentAuthorModerated: "你在《{article}》中的评论已被{result}。",
     },
+    templatesEn: {
+      articleLiked: "{actor} liked {article}.",
+      articleFavorited: "{actor} favorited {article}.",
+      articleCommented: "{actor} commented on {article}.",
+      commentReplied: "{actor} replied to your comment on {article}.",
+      authorSubscribed: "{actor} subscribed to you.",
+      subscriptionPublished: "{author} published {article}.",
+      friendRequest: "{actor} sent you a friend request.",
+      commentReportHandled: "Your report of a comment on {article} was {result}.",
+      commentAuthorModerated: "Your comment on {article} was {result}.",
+    },
   })),
   renderTemplate: jest.fn((template: string, variables: Record<string, string | number | null | undefined>) => {
     return Object.entries(variables).reduce((current, [key, value]) => {
       return current.replaceAll(`{${key}}`, String(value ?? ""));
     }, template);
   }),
+  renderNotificationTemplate: jest.fn((settings: { templates: Record<string, string>; templatesEn: Record<string, string> }, name: string, variables: Record<string, string | number | null | undefined>, englishVariables = variables) => ({
+    body: Object.entries(variables).reduce((current, [key, value]) => current.replaceAll(`{${key}}`, String(value ?? "")), settings.templates[name] ?? ""),
+    bodyEn: Object.entries(englishVariables).reduce((current, [key, value]) => current.replaceAll(`{${key}}`, String(value ?? "")), settings.templatesEn[name] ?? ""),
+  })),
 };
 
 const reputationService = {

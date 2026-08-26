@@ -30,6 +30,9 @@ describe("admin analytics", () => {
           anonymousMessages: 6,
           anonymousLikes: 4,
           anonymousFavorites: 3,
+          notifications: 20,
+          notificationReads: 12,
+          notificationOpens: 8,
         }]),
       },
       dailyOperationRanking: {
@@ -70,7 +73,11 @@ describe("admin analytics", () => {
       anonymousMessages: 6,
       anonymousLikes: 4,
       anonymousFavorites: 3,
+      notifications: 20,
+      notificationReads: 12,
+      notificationOpens: 8,
     });
+    expect(result.notificationConversion).toEqual({ readRate: 60, openRate: 40 });
     expect(result.latestAggregateAt).toBe(generatedAt.toISOString());
     expect(result.rankings.authors).toEqual([expect.objectContaining({ key: "7", score: 30 })]);
     expect(result.rankings.searches).toEqual([expect.objectContaining({ key: "redis", score: 8 })]);
@@ -90,6 +97,9 @@ describe("admin analytics", () => {
       "loginRisks",
       "messages",
       "newUsers",
+      "notificationOpens",
+      "notificationReads",
+      "notifications",
       "reports",
       "subscriptions",
       "views",

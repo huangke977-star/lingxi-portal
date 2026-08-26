@@ -63,6 +63,9 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
         anonymousMessages: item?.anonymousMessages ?? 0,
         anonymousLikes: item?.anonymousLikes ?? 0,
         anonymousFavorites: item?.anonymousFavorites ?? 0,
+        notifications: item?.notifications ?? 0,
+        notificationReads: item?.notificationReads ?? 0,
+        notificationOpens: item?.notificationOpens ?? 0,
       };
     });
     const summary = trend.reduce<Omit<AnalyticsTrendPoint, "date">>((total, point) => ({
@@ -83,7 +86,10 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       anonymousMessages: total.anonymousMessages + point.anonymousMessages,
       anonymousLikes: total.anonymousLikes + point.anonymousLikes,
       anonymousFavorites: total.anonymousFavorites + point.anonymousFavorites,
-    }), { newUsers: 0, activeUsers: 0, articles: 0, comments: 0, messages: 0, views: 0, likes: 0, favorites: 0, subscriptions: 0, reports: 0, disabledUsers: 0, loginRisks: 0, failedJobs: 0, anonymousTopics: 0, anonymousMessages: 0, anonymousLikes: 0, anonymousFavorites: 0 });
+      notifications: total.notifications + point.notifications,
+      notificationReads: total.notificationReads + point.notificationReads,
+      notificationOpens: total.notificationOpens + point.notificationOpens,
+    }), { newUsers: 0, activeUsers: 0, articles: 0, comments: 0, messages: 0, views: 0, likes: 0, favorites: 0, subscriptions: 0, reports: 0, disabledUsers: 0, loginRisks: 0, failedJobs: 0, anonymousTopics: 0, anonymousMessages: 0, anonymousLikes: 0, anonymousFavorites: 0, notifications: 0, notificationReads: 0, notificationOpens: 0 });
     const rankings = Object.fromEntries(rankingCategories.map((category) => {
       const byEntity = new Map<string, AnalyticsRankingItem>();
       for (const row of rankingRows) {
@@ -112,6 +118,10 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       generatedAt: new Date().toISOString(),
       latestAggregateAt: metrics.at(-1)?.generatedAt.toISOString() ?? null,
       summary,
+      notificationConversion: {
+        readRate: this.rate(summary.notificationReads, summary.notifications),
+        openRate: this.rate(summary.notificationOpens, summary.notifications),
+      },
       trend,
       rankings: {
         authors: rankings.author,
@@ -186,7 +196,7 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
     const { start, end } = this.utcBounds(dateKey);
     const count = (table: Prisma.Sql, column: Prisma.Sql = Prisma.sql`created_at`) => this.count(Prisma.sql`SELECT COUNT(*) AS value FROM ${table} WHERE ${column} >= ${start} AND ${column} < ${end}`);
     // Anonymous interaction metrics follow the existing net-relation definition used by article likes and favorites.
-    const [newUsers, articles, comments, messages, views, likes, favorites, subscriptions, articleReports, groupReports, disabledUsers, loginRisks, failedMailJobs, failedStorageJobs, failedMediaJobs, failedOperationJobs, anonymousTopics, anonymousMessages, anonymousLikes, anonymousFavorites, activeRows] = await Promise.all([
+    const [newUsers, articles, comments, messages, views, likes, favorites, subscriptions, articleReports, groupReports, disabledUsers, loginRisks, failedMailJobs, failedStorageJobs, failedMediaJobs, failedOperationJobs, anonymousTopics, anonymousMessages, anonymousLikes, anonymousFavorites, notifications, notificationReads, notificationOpens, activeRows] = await Promise.all([
       count(Prisma.raw("users")),
       count(Prisma.raw("articles"), Prisma.sql`published_at`),
       count(Prisma.raw("article_comments")),
@@ -207,6 +217,9 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       count(Prisma.raw("anonymous_topic_messages")),
       this.count(Prisma.sql`SELECT COUNT(*) AS value FROM anonymous_topic_reactions WHERE value = 'up' AND created_at >= ${start} AND created_at < ${end}`),
       count(Prisma.raw("anonymous_topic_favorites")),
+      count(Prisma.raw("user_notifications")),
+      count(Prisma.raw("user_notifications"), Prisma.sql`read_at`),
+      count(Prisma.raw("user_notifications"), Prisma.sql`opened_at`),
       this.prisma.$queryRaw<CountRow[]>(Prisma.sql`
         SELECT COUNT(DISTINCT user_id) AS value FROM (
           SELECT id AS user_id FROM users WHERE last_login_at >= ${start} AND last_login_at < ${end}
@@ -236,6 +249,9 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       anonymousMessages,
       anonymousLikes,
       anonymousFavorites,
+      notifications,
+      notificationReads,
+      notificationOpens,
       generatedAt: new Date(),
     };
     await this.prisma.dailyOperationMetric.upsert({ where: { metricDate }, create: { metricDate, ...data }, update: data });
@@ -369,7 +385,14 @@ export class AnalyticsService implements OnModuleInit, OnModuleDestroy {
       { key: "anonymousMessages", label: "匿名发言", definition: "当天在匿名话题中发送的点评数量。" },
       { key: "anonymousLikes", label: "点评获赞", definition: "当天新增且当前仍有效的匿名点评点赞记录数量。" },
       { key: "anonymousFavorites", label: "话题喜欢", definition: "当天新增且当前仍有效的话题喜欢记录数量。" },
+      { key: "notifications", label: "通知创建", definition: "当天创建的站内通知数量。" },
+      { key: "notificationReads", label: "通知已读", definition: "当天被标记为已读的站内通知数量。" },
+      { key: "notificationOpens", label: "通知打开", definition: "当天打开并进入关联内容的站内通知数量。" },
     ];
+  }
+
+  private rate(value: number, total: number): number {
+    return total > 0 ? Math.round((value / total) * 1000) / 10 : 0;
   }
 
   private dateRange(range: number): string[] {

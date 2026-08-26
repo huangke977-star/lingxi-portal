@@ -2138,6 +2138,9 @@ model DailyOperationMetric {
   anonymousMessages  Int      @default(0) @map("anonymous_messages")
   anonymousLikes     Int      @default(0) @map("anonymous_likes")
   anonymousFavorites Int      @default(0) @map("anonymous_favorites")
+  notifications      Int      @default(0)
+  notificationReads  Int      @default(0) @map("notification_reads")
+  notificationOpens  Int      @default(0) @map("notification_opens")
   generatedAt        DateTime @default(now()) @map("generated_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 

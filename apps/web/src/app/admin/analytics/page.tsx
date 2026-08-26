@@ -3,7 +3,9 @@
 import {
   Activity,
   Ban,
+  Bell,
   Bookmark,
+  CheckCheck,
   Eye,
   FileText,
   Flag,
@@ -11,6 +13,7 @@ import {
   LoaderCircle,
   MessageCircle,
   MessagesSquare,
+  MousePointerClick,
   RefreshCw,
   Rss,
   ShieldAlert,
@@ -57,6 +60,9 @@ const metrics: Array<{ key: SeriesKey; label: readonly [string, string]; icon: t
   { key: "anonymousMessages", label: ["匿名发言", "Anonymous messages"], icon: MessageCircle },
   { key: "anonymousLikes", label: ["点评获赞", "Message likes"], icon: ThumbsUp },
   { key: "anonymousFavorites", label: ["话题喜欢", "Topic favorites"], icon: Heart },
+  { key: "notifications", label: ["通知创建", "Notifications created"], icon: Bell },
+  { key: "notificationReads", label: ["通知已读", "Notifications read"], icon: CheckCheck },
+  { key: "notificationOpens", label: ["通知打开", "Notifications opened"], icon: MousePointerClick },
 ];
 
 export default function AdminAnalyticsPage() {
@@ -130,6 +136,11 @@ export default function AdminAnalyticsPage() {
       </div>} />
     {isLoading ? <div className="article-empty-state"><LoaderCircle aria-hidden="true" className="spin" size={22} />{phrase("正在读取聚合数据。", "Loading aggregated analytics.")}</div> : data ? <>
       <div className="analytics-metrics">{metrics.map(({ key, label, icon: Icon }) => <article className={key === "failedJobs" || key === "loginRisks" || key === "reports" ? "warning" : undefined} key={key}><Icon aria-hidden="true" size={17} /><span><small>{label[locale === "en-US" ? 1 : 0]}</small><strong>{data.summary[key].toLocaleString(locale)}</strong></span></article>)}</div>
+      <section className="analytics-conversion" aria-label={phrase("通知转化统计", "Notification conversion") }>
+        <div><Bell aria-hidden="true" size={16} /><span><small>{phrase("通知已读率", "Read rate")}</small><strong>{data.notificationConversion.readRate.toLocaleString(locale)}%</strong></span></div>
+        <div><MousePointerClick aria-hidden="true" size={16} /><span><small>{phrase("通知打开率", "Open rate")}</small><strong>{data.notificationConversion.openRate.toLocaleString(locale)}%</strong></span></div>
+        <p>{phrase("按通知创建、已读和打开时间分别统计，避免把未读通知误判为已转化。", "Created, read, and opened timestamps are counted independently so unread notifications are not treated as converted.")}</p>
+      </section>
       <div className="analytics-charts">
         <TrendChart data={data.trend} series={[{ key: "newUsers", label: phrase("新增", "New"), color: "#4b78d1" }, { key: "activeUsers", label: phrase("活跃", "Active"), color: "#2f9378" }, { key: "articles", label: phrase("文章", "Articles"), color: "#a46cbd" }]} title={phrase("用户与内容", "Users and content")} />
         <TrendChart data={data.trend} series={[{ key: "comments", label: phrase("评论", "Comments"), color: "#4f86a8" }, { key: "messages", label: phrase("消息", "Messages"), color: "#7359a8" }, { key: "views", label: phrase("阅读", "Views"), color: "#2f9378" }]} title={phrase("访问与交流", "Visits and discussion")} />

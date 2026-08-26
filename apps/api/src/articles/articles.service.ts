@@ -1073,30 +1073,37 @@ export class ArticlesService {
     const block = parsed.blocks.find((candidate) => candidate.key === dto.blockKey);
     if (!block) throw new BadRequestException("资源区域不存在或已经更新，请刷新文章后重试。");
     if (article.authorId !== user.id && !this.canManageContent(user)) {
-      await this.prisma.$transaction(async (transaction) => {
-        const existing = await transaction.articleResourceExchange.findUnique({
-          where: { articleId_buyerId_blockKey: { articleId: id, buyerId: user.id, blockKey: block.key } },
-          select: { id: true },
-        });
-        if (existing) return;
-        await transaction.articleResourceExchange.create({
-          data: {
-            articleId: id,
+      try {
+        await this.prisma.$transaction(async (transaction) => {
+          const existing = await transaction.articleResourceExchange.findUnique({
+            where: { articleId_buyerId_blockKey: { articleId: id, buyerId: user.id, blockKey: block.key } },
+            select: { id: true },
+          });
+          if (existing) return;
+          await transaction.articleResourceExchange.create({
+            data: {
+              articleId: id,
+              buyerId: user.id,
+              authorId: article.authorId,
+              blockKey: block.key,
+              pointCost: block.pointCost,
+              sellerAvailableAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+            },
+          });
+          await this.reputationService.transferResourcePoints(transaction, {
             buyerId: user.id,
             authorId: article.authorId,
+            articleId: id,
             blockKey: block.key,
             pointCost: block.pointCost,
-            sellerAvailableAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
-          },
+          });
         });
-        await this.reputationService.transferResourcePoints(transaction, {
-          buyerId: user.id,
-          authorId: article.authorId,
-          articleId: id,
-          blockKey: block.key,
-          pointCost: block.pointCost,
-        });
-      });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          throw new BadRequestException("该资源已经兑换，无需重复支付。");
+        }
+        throw error;
+      }
     }
     const [refreshed, readerState] = await Promise.all([
       this.getArticleOrThrow(id),

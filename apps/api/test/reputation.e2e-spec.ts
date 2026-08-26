@@ -213,4 +213,63 @@ describe("ReputationService", () => {
       }),
     });
   });
+
+  it("settles an eligible author earning once and marks the exchange available", async () => {
+    const settledAt = new Date("2026-08-26T01:00:00.000Z");
+    const updateLedger = jest
+      .fn()
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ id: 31 });
+    const transaction = {
+      userReputationLedger: { updateMany: updateLedger, update: updateLedger },
+      user: { update: jest.fn(async () => ({ points: 42 })) },
+      articleResourceExchange: { updateMany: jest.fn(async () => ({ count: 1 })) },
+    };
+    const prisma = {
+      userReputationLedger: {
+        findMany: jest.fn(async () => [{
+          id: 31,
+          userId: 8,
+          pendingPointDelta: 10,
+          metadata: { articleId: 12, buyerId: 7, blockKey: "resource-1-test" },
+        }]),
+      },
+      $transaction: jest.fn(async (callback: (transaction: object) => Promise<void>) => callback(transaction)),
+    };
+    const service = new ReputationService(prisma as unknown as PrismaService);
+
+    await expect(service.settlePendingPoints()).resolves.toBe(1);
+    expect(transaction.user.update).toHaveBeenCalledWith({
+      where: { id: 8 },
+      data: { points: { increment: 10 } },
+      select: { points: true },
+    });
+    expect(transaction.userReputationLedger.update).toHaveBeenCalledWith({
+      where: { id: 31 },
+      data: { pointDelta: 10, pendingPointDelta: 0, pointsAfter: 42 },
+    });
+    expect(transaction.articleResourceExchange.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: { sellerSettledAt: expect.any(Date) },
+    }));
+    void settledAt;
+  });
+
+  it("does not credit an earning claimed by another settlement worker", async () => {
+    const transaction = {
+      userReputationLedger: { updateMany: jest.fn(async () => ({ count: 0 })) },
+      user: { update: jest.fn() },
+      articleResourceExchange: { updateMany: jest.fn() },
+    };
+    const prisma = {
+      userReputationLedger: {
+        findMany: jest.fn(async () => [{ id: 31, userId: 8, pendingPointDelta: 10, metadata: {} }]),
+      },
+      $transaction: jest.fn(async (callback: (transaction: object) => Promise<void>) => callback(transaction)),
+    };
+    const service = new ReputationService(prisma as unknown as PrismaService);
+
+    await expect(service.settlePendingPoints()).resolves.toBe(0);
+    expect(transaction.user.update).not.toHaveBeenCalled();
+    expect(transaction.articleResourceExchange.updateMany).not.toHaveBeenCalled();
+  });
 });
