@@ -27,7 +27,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AppToast } from "@/components/app-toast";
 import { AdminPageHeader } from "@/components/admin-page-header";
 import { useLanguage } from "@/components/language-provider";
@@ -145,13 +146,11 @@ export default function AdminAnalyticsPage() {
         <button aria-label={phrase("重新补算运营数据", "Rebuild operations analytics")} className="analytics-rebuild" disabled={isLoading || isRebuilding} onClick={() => void rebuild()} title={phrase(`补算最近 ${range} 天`, `Rebuild the last ${range} days`)} type="button">{isRebuilding ? <LoaderCircle aria-hidden="true" className="spin" size={16} /> : <RefreshCw aria-hidden="true" size={16} />}</button>
       </div>} />
     {isLoading ? <div className="article-empty-state"><LoaderCircle aria-hidden="true" className="spin" size={22} />{phrase("正在读取聚合数据。", "Loading aggregated analytics.")}</div> : data ? <>
-      <div className="analytics-metrics">{metrics.map(({ key, label, icon: Icon }) => <article className={key === "failedJobs" || key === "loginRisks" || key === "reports" ? "warning" : undefined} key={key}><Icon aria-hidden="true" size={17} /><span><small>{label[locale === "en-US" ? 1 : 0]}</small><strong>{data.summary[key].toLocaleString(locale)}</strong></span></article>)}</div>
-      <section className="analytics-conversion" aria-label={phrase("通知转化统计", "Notification conversion") }>
-        <div><Bell aria-hidden="true" size={16} /><span><small>{phrase("通知已读率", "Read rate")}</small><strong>{data.notificationConversion.readRate.toLocaleString(locale)}%</strong></span></div>
-        <div><MousePointerClick aria-hidden="true" size={16} /><span><small>{phrase("通知打开率", "Open rate")}</small><strong>{data.notificationConversion.openRate.toLocaleString(locale)}%</strong></span></div>
-        <div><Compass aria-hidden="true" size={16} /><span><small>{phrase("兴趣指引完成率", "Interest onboarding completion")}</small><strong>{data.onboardingConversion.completionRate.toLocaleString(locale)}%</strong></span></div>
-        <p>{phrase(`兴趣指引本期完成 ${data.onboardingConversion.completed.toLocaleString(locale)} 次；完成率按本期完成次数与新增用户数计算。`, `${data.onboardingConversion.completed.toLocaleString(locale)} interest-onboarding completions in this period; completion rate is calculated against new users in the same period.`)}</p>
-      </section>
+      <div className="analytics-metrics">{metrics.map(({ key, label, icon: Icon }) => <article className={key === "failedJobs" || key === "loginRisks" || key === "reports" ? "warning" : undefined} key={key}><Icon aria-hidden="true" size={17} /><span><small>{label[locale === "en-US" ? 1 : 0]}</small><strong>{data.summary[key].toLocaleString(locale)}</strong></span></article>)}
+        <AnalyticsConversionMetric description={phrase("已读率 = 本期已读通知数 / 本期创建通知数。", "Read rate = notifications read in the period / notifications created in the period.")} icon={Bell} label={phrase("通知已读率", "Notification read rate")} value={`${data.notificationConversion.readRate.toLocaleString(locale)}%`} />
+        <AnalyticsConversionMetric description={phrase("打开率 = 本期打开通知数 / 本期创建通知数。", "Open rate = notifications opened in the period / notifications created in the period.")} icon={MousePointerClick} label={phrase("通知打开率", "Notification open rate")} value={`${data.notificationConversion.openRate.toLocaleString(locale)}%`} />
+        <AnalyticsConversionMetric description={phrase(`完成率 = 本期完成兴趣指引 ${data.onboardingConversion.completed.toLocaleString(locale)} 次 / 本期新增用户数。`, `${data.onboardingConversion.completed.toLocaleString(locale)} interest onboarding completions in the period / new users in the period.`)} icon={Compass} label={phrase("兴趣指引完成率", "Interest onboarding completion")} value={`${data.onboardingConversion.completionRate.toLocaleString(locale)}%`} />
+      </div>
       <div className="analytics-charts">
         <TrendChart data={data.trend} series={[{ key: "newUsers", label: phrase("新增", "New"), color: "#4b78d1" }, { key: "activeUsers", label: phrase("活跃", "Active"), color: "#2f9378" }, { key: "articles", label: phrase("文章", "Articles"), color: "#a46cbd" }]} title={phrase("用户与内容", "Users and content")} />
         <TrendChart data={data.trend} series={[{ key: "comments", label: phrase("评论", "Comments"), color: "#4f86a8" }, { key: "messages", label: phrase("消息", "Messages"), color: "#7359a8" }, { key: "views", label: phrase("阅读", "Views"), color: "#2f9378" }]} title={phrase("访问与交流", "Visits and discussion")} />
@@ -181,6 +180,30 @@ function Ranking({ category, items, kind, title }: { category: "author" | "artic
     if (kind === "article" && slug) return <li key={item.key}><Link href={localizedPath(`/articles/${slug}`, locale)}>{content}</Link></li>;
     return <li key={item.key}><div>{content}</div></li>;
   })}</ol></section>;
+}
+
+function AnalyticsConversionMetric({ description, icon: Icon, label, value }: { description: string; icon: typeof Activity; label: string; value: string }) {
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ left: 0, top: 0 });
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!pointer || !tooltipRef.current) return;
+    const tooltip = tooltipRef.current.getBoundingClientRect();
+    const margin = 12;
+    const gap = 10;
+    const aboveTop = pointer.y - tooltip.height - gap;
+    const belowTop = pointer.y + gap;
+    const top = aboveTop >= margin
+      ? aboveTop
+      : belowTop + tooltip.height <= window.innerHeight - margin
+        ? belowTop
+        : Math.max(margin, Math.min(aboveTop, window.innerHeight - tooltip.height - margin));
+    const left = Math.max(margin, Math.min(pointer.x - tooltip.width / 2, window.innerWidth - tooltip.width - margin));
+    setTooltipPosition({ left, top });
+  }, [pointer]);
+
+  return <article className="analytics-conversion-metric" onBlur={() => setPointer(null)} onFocus={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setPointer({ x: rect.left + rect.width / 2, y: rect.top }); }} onMouseEnter={(event) => setPointer({ x: event.clientX, y: event.clientY })} onMouseLeave={() => setPointer(null)} onMouseMove={(event) => setPointer({ x: event.clientX, y: event.clientY })} tabIndex={0}><Icon aria-hidden="true" size={17} /><span><small>{label}</small><strong>{value}</strong></span>{pointer && typeof document !== "undefined" ? createPortal(<div className="analytics-metric-tooltip my-report-detail-tooltip" ref={tooltipRef} role="tooltip" style={{ left: tooltipPosition.left, top: tooltipPosition.top }}>{description}</div>, document.body) : null}</article>;
 }
 
 // The SVG chart uses a fixed coordinate system so changing browser width does not change data scaling.

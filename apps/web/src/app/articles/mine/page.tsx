@@ -4,6 +4,8 @@ import Link from "next/link";
 import {
   Bookmark,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   Coins,
   Edit3,
@@ -95,6 +97,7 @@ function MyArticlesContent() {
   const [appealReason, setAppealReason] = useState("");
   const [isAppealSaving, setIsAppealSaving] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
+  const [isCreatorDashboardOpen, setIsCreatorDashboardOpen] = useState(false);
 
   function replaceQuery(next: { status?: "all" | ArticleStatus; q?: string }) {
     const params = new URLSearchParams(searchParams.toString());
@@ -203,25 +206,30 @@ function MyArticlesContent() {
   return (
     <section className="page-shell articles-page my-articles-page">
       <ArticleCenterNav active="mine" isLoggedIn user={user} />
-
-      <section aria-label={phrase("创作者数据", "Creator dashboard")} className="article-creator-dashboard">
-        <div className="article-creator-metrics">
-          {[
-            { icon: Eye, label: phrase("文章阅读", "Article views"), value: dashboard.views },
-            { icon: Heart, label: phrase("获得点赞", "Likes received"), value: dashboard.likes },
-            { icon: MessageCircle, label: phrase("收到评论", "Comments received"), value: dashboard.comments },
-            { icon: Bookmark, label: phrase("被收藏", "Favorites received"), value: dashboard.favorites },
-            { icon: Coins, label: phrase("资源兑换", "Resource unlocks"), value: dashboard.resourceExchanges },
-            { icon: Clock3, label: phrase("待入账积分", "Pending points"), value: dashboard.pendingPoints },
-            { icon: CheckCircle2, label: phrase("已到账积分", "Settled points"), value: dashboard.settledPoints },
-          ].map(({ icon: Icon, label, value }) => <div key={label}><Icon aria-hidden="true" size={16} /><span><small>{label}</small><strong>{value.toLocaleString(locale)}</strong></span></div>)}
-        </div>
-        <div className="article-resource-income">
-          <header><span><Coins aria-hidden="true" size={15} /><strong>{phrase("资源收益明细", "Resource income")}</strong></span><Link href={localizedPath("/profile/points", locale)}>{phrase("全部积分记录", "All point activity")}</Link></header>
-          {dashboard.recentResourceIncome.length ? <div>{dashboard.recentResourceIncome.map((income) => <Link href={localizedPath(`/articles/${income.article.slug}`, locale)} key={income.id}><span><strong>{income.article.title}</strong><small>{phrase(`兑换于 ${formatArticleDate(income.createdAt, locale)}`, `Unlocked ${formatArticleDate(income.createdAt, locale)}`)}</small></span><span><b><Coins aria-hidden="true" size={13} />{income.pointCost}</b><small className={income.settledAt ? "settled" : "pending"}>{income.settledAt ? phrase(`已于 ${formatArticleDate(income.settledAt, locale)}到账`, `Settled ${formatArticleDate(income.settledAt, locale)}`) : phrase(`预计 ${formatArticleDate(income.availableAt, locale)}到账`, `Expected ${formatArticleDate(income.availableAt, locale)}`)}</small></span></Link>)}</div> : <p>{phrase("资源兑换后会在这里显示作者收益和到账状态。", "Resource unlocks will show their income and settlement status here.")}</p>}
-        </div>
-      </section>
-
+      <div className="article-mine-layout">
+        <aside className={`article-mine-sidebar${isCreatorDashboardOpen ? " is-open" : ""}`}>
+          <button aria-expanded={isCreatorDashboardOpen} className="side-panel-mobile-toggle" onClick={() => setIsCreatorDashboardOpen((current) => !current)} type="button">
+            <span>{phrase("创作数据", "Creator data")}</span>{isCreatorDashboardOpen ? <ChevronUp aria-hidden="true" size={15} /> : <ChevronDown aria-hidden="true" size={15} />}
+          </button>
+          <section aria-label={phrase("创作者数据", "Creator dashboard")} className="article-creator-dashboard">
+            <div className="article-creator-metrics">
+              {[
+                { icon: Eye, label: phrase("文章阅读", "Article views"), value: dashboard.views },
+                { icon: Heart, label: phrase("获得点赞", "Likes received"), value: dashboard.likes },
+                { icon: MessageCircle, label: phrase("收到评论", "Comments received"), value: dashboard.comments },
+                { icon: Bookmark, label: phrase("被收藏", "Favorites received"), value: dashboard.favorites },
+                { icon: Coins, label: phrase("资源兑换", "Resource unlocks"), value: dashboard.resourceExchanges },
+                { icon: Clock3, label: phrase("待入账积分", "Pending points"), value: dashboard.pendingPoints },
+                { icon: CheckCircle2, label: phrase("已到账积分", "Settled points"), value: dashboard.settledPoints },
+              ].map(({ icon: Icon, label, value }) => <div key={label}><Icon aria-hidden="true" size={16} /><span><small>{label}</small><strong>{value.toLocaleString(locale)}</strong></span></div>)}
+            </div>
+            <div className="article-resource-income">
+              <header><span><Coins aria-hidden="true" size={15} /><strong>{phrase("资源收益明细", "Resource income")}</strong></span><Link href={localizedPath("/profile/points", locale)}>{phrase("全部积分记录", "All point activity")}</Link></header>
+              {dashboard.recentResourceIncome.length ? <div>{dashboard.recentResourceIncome.map((income) => <Link href={localizedPath(`/articles/${income.article.slug}`, locale)} key={income.id}><span><strong>{income.article.title}</strong><small>{phrase(`兑换于 ${formatArticleDate(income.createdAt, locale)}`, `Unlocked ${formatArticleDate(income.createdAt, locale)}`)}</small></span><span><b><Coins aria-hidden="true" size={13} />{income.pointCost}</b><small className={income.settledAt ? "settled" : "pending"}>{income.settledAt ? phrase(`已于 ${formatArticleDate(income.settledAt, locale)}到账`, `Settled ${formatArticleDate(income.settledAt, locale)}`) : phrase(`预计 ${formatArticleDate(income.availableAt, locale)}到账`, `Expected ${formatArticleDate(income.availableAt, locale)}`)}</small></span></Link>)}</div> : <p>{phrase("资源兑换后会在这里显示作者收益和到账状态。", "Resource unlocks will show their income and settlement status here.")}</p>}
+            </div>
+          </section>
+        </aside>
+        <div className="article-mine-main">
       <div className="article-mine-toolbar">
         <nav aria-label={phrase("文章状态", "Article status")} className="article-status-tabs article-center-secondary-tabs">
           {statusValues.map((value) => (
@@ -276,6 +284,8 @@ function MyArticlesContent() {
       ) : <div className="article-empty-state"><strong>{phrase("这里还没有文章", "No articles yet")}</strong><span>{querySearch ? phrase("换一个关键词试试。", "Try another keyword.") : status === "deleted" ? phrase("回收站目前是空的。", "The recycle bin is empty.") : phrase("点击右上角“写文章”开始创作。", "Use Write article in the upper-right corner to start creating.")}</span></div>}
 
       {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
+        </div>
+      </div>
       {appealArticle ? <div className="modal-backdrop article-appeal-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !isAppealSaving) setAppealArticle(null); }}><form className="article-appeal-modal" onSubmit={async (event) => { event.preventDefault(); const token = readAccessToken(); if (!token || !appealReason.trim()) return; setIsAppealSaving(true); try { await createArticleAppeal(token, appealArticle.id, appealReason.trim()); setAppealArticle(null); setNotice(phrase("申诉已提交，等待管理员处理。", "Appeal submitted. Awaiting administrator review.")); } catch (appealError) { setError(appealError instanceof Error ? appealError.message : phrase("申诉提交失败。", "Could not submit the appeal.")); } finally { setIsAppealSaving(false); } }}><header><strong>{phrase("申诉文章", "Appeal article")}</strong><button aria-label={phrase("关闭", "Close")} onClick={() => setAppealArticle(null)} type="button"><X size={17} /></button></header><p>{phrase(`《${appealArticle.title}》当前处于受限状态，修改内容后可以提交申诉。`, `“${appealArticle.title}” is currently restricted. You can submit an appeal after revising it.`)}</p><textarea autoFocus maxLength={1000} onChange={(event) => setAppealReason(event.target.value)} placeholder={phrase("请填写申诉理由和你已做的修改", "Describe your appeal and changes made")} required rows={7} value={appealReason} /><footer><button className="button" disabled={isAppealSaving} type="submit">{isAppealSaving ? phrase("提交中", "Submitting") : phrase("提交申诉", "Submit appeal")}</button></footer></form></div> : null}
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>

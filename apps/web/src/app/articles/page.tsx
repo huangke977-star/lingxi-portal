@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, BookOpen, EyeOff, FolderOpen, RefreshCw, Rss, Search, SlidersHorizontal, UserPlus, UserRound, UsersRound, X } from "lucide-react";
+import { ArrowRight, BookOpen, ChevronDown, ChevronUp, EyeOff, FolderOpen, RefreshCw, Rss, Search, SlidersHorizontal, UserPlus, UserRound, UsersRound, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
@@ -49,6 +49,7 @@ function ArticlesContent() {
   const [recommendations, setRecommendations] = useState<DiscoveryRecommendations | null>(null);
   const [isRefreshingRecommendations, setIsRefreshingRecommendations] = useState(false);
   const [isRecommendationFeedbackSubmitting, setIsRecommendationFeedbackSubmitting] = useState(false);
+  const [isRecommendationsOpen, setIsRecommendationsOpen] = useState(false);
   const [joinRequestTarget, setJoinRequestTarget] = useState<DiscoveryRecommendations["groups"][number] | null>(null);
   const [joinRequestNote, setJoinRequestNote] = useState("");
   const [isComposing, setIsComposing] = useState(false);
@@ -257,7 +258,10 @@ function ArticlesContent() {
               : <div className="article-empty-state"><strong>{t("discover.notFound")}</strong><span>{querySearch ? t("discover.tryAnother") : t("discover.noContent")}</span></div>}
           {list.items.length ? <ArticleInfiniteFooter hasMore={list.page < list.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
         </div>
-        {recommendations ? <DiscoveryRecommendationsPanel isFeedbackSubmitting={isRecommendationFeedbackSubmitting} isRefreshing={isRefreshingRecommendations} onFeedback={markNotInterested} onJoinGroup={(group) => { setError(""); setJoinRequestTarget(group); setJoinRequestNote(""); }} onRefresh={() => void refreshRecommendations()} onToggleAuthor={toggleAuthor} onToggleCollection={toggleCollection} onToggleTopic={toggleTopic} recommendations={recommendations} /> : null}
+        {recommendations ? <aside className={`article-discovery-sidebar${isRecommendationsOpen ? " is-open" : ""}`}>
+          <button aria-expanded={isRecommendationsOpen} className="side-panel-mobile-toggle" onClick={() => setIsRecommendationsOpen((current) => !current)} type="button"><span>{phrase("为你推荐", "For you")}</span>{isRecommendationsOpen ? <ChevronUp aria-hidden="true" size={15} /> : <ChevronDown aria-hidden="true" size={15} />}</button>
+          <DiscoveryRecommendationsPanel isFeedbackSubmitting={isRecommendationFeedbackSubmitting} isRefreshing={isRefreshingRecommendations} onFeedback={markNotInterested} onJoinGroup={(group) => { setError(""); setJoinRequestTarget(group); setJoinRequestNote(""); }} onRefresh={() => void refreshRecommendations()} onToggleAuthor={toggleAuthor} onToggleCollection={toggleCollection} onToggleTopic={toggleTopic} recommendations={recommendations} />
+        </aside> : null}
       </div>
       {joinRequestTarget ? <RequestComposerDialog icon={<UsersRound aria-hidden="true" size={18} />} isSubmitting={isJoinRequestSubmitting} label={phrase("申请说明", "Request note")} maxLength={200} onChange={setJoinRequestNote} onClose={() => { setJoinRequestTarget(null); setJoinRequestNote(""); }} onSubmit={() => void joinRecommendedGroup()} placeholder={phrase("向群管理员说明来意，可不填", "Introduce yourself to the group managers. Optional.")} submitLabel={phrase("提交入群申请", "Send join request")} title={phrase("申请加入群聊", "Request to join group")} value={joinRequestNote}><div className="request-composer-group-target"><span className="discovery-recommendation-icon group">{joinRequestTarget.avatarUrl ? <img alt="" src={resolveApiUrl(joinRequestTarget.avatarUrl)} /> : <UsersRound aria-hidden="true" size={20} />}</span><span><strong>{joinRequestTarget.name}</strong><small>{phrase(`${joinRequestTarget.memberCount} 位成员`, `${joinRequestTarget.memberCount} members`)}</small></span></div></RequestComposerDialog> : null}
       <AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />

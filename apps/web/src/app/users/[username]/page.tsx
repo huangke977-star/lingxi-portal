@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Ban, Check, Clock3, Eye, FileText, FolderOpen, Heart, MessageCircle, Rss, Send, UserPlus, UsersRound, X } from "lucide-react";
+import { Ban, Check, ChevronDown, ChevronUp, Clock3, Eye, FileText, FolderOpen, Heart, MessageCircle, Rss, Send, UserPlus, UsersRound, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -51,6 +51,7 @@ export default function UserProfilePage() {
   const [isFriendRequestOpen, setIsFriendRequestOpen] = useState(false);
   const [isMessageRequestOpen, setIsMessageRequestOpen] = useState(false);
   const [isBlockConfirmOpen, setIsBlockConfirmOpen] = useState(false);
+  const [isCollectionsOpen, setIsCollectionsOpen] = useState(false);
   const [friendRequestNote, setFriendRequestNote] = useState("");
   const [messageRequestBody, setMessageRequestBody] = useState("");
   const [error, setError] = useState("");
@@ -246,7 +247,10 @@ export default function UserProfilePage() {
         {articles.items.length ? <div className="article-feed-list">{articles.items.map((article) => <ArticleCard article={article} key={article.id} taxonomyPlacement="after-stats" />)}</div> : <div className="search-page-empty"><span>{phrase("暂时没有可见的发布内容。", "There is no visible published content yet.")}</span></div>}
         {articles.items.length ? <ArticleInfiniteFooter hasMore={articles.page < articles.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
       </section>
-      {showcase?.collections.length ? <aside className="public-user-collections"><header><FolderOpen aria-hidden="true" size={16} /><strong>{phrase("文章合集", "Collections")}</strong><span>{showcase.collections.length}</span></header><div className="public-user-collection-list">{showcase.collections.map((collection) => <Link href={localizedPath(`/collections/${collection.id}`, locale)} key={collection.id}><span className="public-user-collection-icon"><FolderOpen aria-hidden="true" size={17} /></span><span className="public-user-collection-copy"><strong>{collection.name}</strong><small>{phrase(`${collection.articleCount} 篇`, `${collection.articleCount} articles`)} · {collection.description || phrase("暂无说明", "No description")}</small></span></Link>)}</div></aside> : null}
+      {showcase?.collections.length ? <aside className={`public-user-collections-sidebar${isCollectionsOpen ? " is-open" : ""}`}>
+        <button aria-expanded={isCollectionsOpen} className="side-panel-mobile-toggle" onClick={() => setIsCollectionsOpen((current) => !current)} type="button"><span>{phrase(`文章合集 ${showcase.collections.length}`, `Collections ${showcase.collections.length}`)}</span>{isCollectionsOpen ? <ChevronUp aria-hidden="true" size={15} /> : <ChevronDown aria-hidden="true" size={15} />}</button>
+        <div className="public-user-collections"><header><FolderOpen aria-hidden="true" size={16} /><strong>{phrase("文章合集", "Collections")}</strong><span>{showcase.collections.length}</span></header><div className="public-user-collection-list">{showcase.collections.map((collection) => <Link href={localizedPath(`/collections/${collection.id}`, locale)} key={collection.id}><span className="public-user-collection-icon"><FolderOpen aria-hidden="true" size={17} /></span><span className="public-user-collection-copy"><strong>{collection.name}</strong><small>{phrase(`${collection.articleCount} 篇`, `${collection.articleCount} articles`)} · {collection.description || phrase("暂无说明", "No description")}</small></span></Link>)}</div></div>
+      </aside> : null}
     </div>
     {isFriendRequestOpen ? <RequestComposerDialog icon={<UserPlus aria-hidden="true" size={18} />} isSubmitting={isActing} label={phrase("申请备注", "Friend request note")} maxLength={120} onChange={setFriendRequestNote} onClose={() => { setIsFriendRequestOpen(false); setFriendRequestNote(""); }} onSubmit={() => void sendFriendRequest()} placeholder={phrase("简单介绍一下自己，可不填", "Introduce yourself briefly (optional)")} submitLabel={phrase("发送好友申请", "Send friend request")} title={phrase(`添加 ${profile.nickname} 为好友`, `Add ${profile.nickname} as a friend`)} value={friendRequestNote} /> : null}
     {isMessageRequestOpen ? <RequestComposerDialog icon={<Send aria-hidden="true" size={18} />} isSubmitting={isActing} label={phrase("首条消息", "First message")} maxLength={500} onChange={setMessageRequestBody} onClose={() => { setIsMessageRequestOpen(false); setMessageRequestBody(""); }} onSubmit={() => void sendMessageRequest()} placeholder={phrase("说明来意，对方接受后这段内容会成为第一条聊天消息", "Introduce your reason for messaging. This becomes the first chat message after they accept.")} requireContent submitLabel={phrase("发送消息请求", "Send message request")} title={phrase("发送消息请求", "Send message request")} value={messageRequestBody} /> : null}
