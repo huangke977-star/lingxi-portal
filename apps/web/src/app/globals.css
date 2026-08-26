@@ -17212,7 +17212,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .resource-catalog-toolbar input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--foreground); font: inherit; font-size: .72rem; }
 .resource-catalog-toolbar .announcement-editor-select { width: 116px; }
 .resource-catalog-toolbar .announcement-editor-select-trigger { min-height: 32px; font-size: .7rem; }
-.resource-catalog-summary { display: flex; min-width: 0; flex: 1 1 auto; align-items: stretch; overflow-x: auto; border-radius: 6px; background: color-mix(in srgb, var(--surface-soft) 72%, transparent); scrollbar-width: none; }
+.resource-catalog-summary { display: flex; min-width: 0; flex: 1 1 auto; align-items: stretch; overflow-x: auto; scrollbar-width: none; }
 .resource-catalog-summary::-webkit-scrollbar { display: none; }
 .resource-catalog-summary > span { display: inline-flex; min-width: max-content; align-items: center; gap: 5px; color: var(--accent-strong); padding: 0 10px; }
 .resource-catalog-summary > span + span { border-left: 1px solid color-mix(in srgb, var(--control-line) 68%, transparent); }
