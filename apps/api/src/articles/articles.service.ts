@@ -502,7 +502,11 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
         where: {
           authorId: user.id,
           status: ArticleStatus.draft,
-          OR: [{ scheduledPublishAt: { not: null } }, { scheduledUnpublishAt: { not: null } }],
+          OR: [
+            { scheduledPublishAt: { not: null } },
+            { scheduledUnpublishAt: { not: null } },
+            { scheduleError: { not: null } },
+          ],
         },
       }),
     ]);
@@ -664,15 +668,30 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       data: { scheduledPublishAt: publishAt, scheduledUnpublishAt: unpublishAt, scheduleError: null },
       include: articleInclude,
     });
+    const notification = clearing
+      ? {
+          title: "文章发布计划已取消",
+          body: `《${article.title}》的发布计划已取消。`,
+          bodyEn: `The publishing schedule for “${article.title}” has been cancelled.`,
+        }
+      : publishAt
+        ? {
+            title: "文章发布计划已保存",
+            body: `《${article.title}》将在 ${publishAt.toLocaleString("zh-CN")} 自动发布。`,
+            bodyEn: `“${article.title}” is scheduled to publish at ${publishAt.toISOString()}.`,
+          }
+        : {
+            title: "文章下线计划已保存",
+            body: `《${article.title}》将在 ${unpublishAt!.toLocaleString("zh-CN")} 自动下线。`,
+            bodyEn: `“${article.title}” is scheduled to go offline at ${unpublishAt!.toISOString()}.`,
+          };
     await this.prisma.userNotification.create({
       data: {
         userId: user.id,
         actorId: user.id,
         type: UserNotificationType.system,
         channel: UserNotificationChannel.system,
-        title: publishAt ? "文章发布计划已保存" : "文章下线计划已保存",
-        body: publishAt ? `《${article.title}》将在 ${publishAt.toLocaleString("zh-CN")} 自动发布。` : `《${article.title}》将在 ${unpublishAt!.toLocaleString("zh-CN")} 自动下线。`,
-        bodyEn: publishAt ? `“${article.title}” is scheduled to publish at ${publishAt.toISOString()}.` : `“${article.title}” is scheduled to go offline at ${unpublishAt!.toISOString()}.`,
+        ...notification,
         actionUrl: "/articles/mine",
       },
     });
@@ -2452,8 +2471,11 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       const mineStatus = query.status ? this.toArticleStatus(query.status) : null;
       where.status = mineStatus ?? { not: ArticleStatus.deleted };
       if (mineStatus === ArticleStatus.draft) {
-        where.scheduledPublishAt = null;
-        where.scheduledUnpublishAt = null;
+        where.AND = [
+          { scheduledPublishAt: null },
+          { scheduledUnpublishAt: null },
+          { scheduleError: null },
+        ];
       }
     } else {
       where.status = ArticleStatus.published;
@@ -2472,7 +2494,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     if (query.authorUsername) where.author = { is: { username: query.authorUsername.trim() } };
     if (query.sort === "pinned") where.isPinned = true;
     if (search) {
-      where.AND = [{
+      const searchCondition: Prisma.ArticleWhereInput = {
         OR: [
           { title: { contains: search } },
           { summary: { contains: search } },
@@ -2482,7 +2504,12 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
           { author: { is: { nickname: { contains: search } } } },
           { author: { is: { username: { contains: search } } } },
         ],
-      }];
+      };
+      if (where.AND) {
+        where.AND = Array.isArray(where.AND) ? [...where.AND, searchCondition] : [where.AND, searchCondition];
+      } else {
+        where.AND = [searchCondition];
+      }
     }
     return where;
   }

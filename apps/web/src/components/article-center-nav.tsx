@@ -7,23 +7,25 @@ import { useLanguage } from "@/components/language-provider";
 import { localizedPath } from "@/lib/i18n";
 import {
   ArticleCenterSummary,
+  ArticleMineSummary,
   getPublicArticleCenterSummary,
+  getMyArticleSummary,
   getVisibleArticleCenterSummary,
 } from "@/lib/article-api";
+import type { ArticleStatus } from "@/lib/article-api";
 import type { AuthUser } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
 import { isSiteManager } from "@/lib/user-permissions";
 
-export type ArticleCenterSection = "discover" | "subscriptions" | "resources" | "collections" | "topics" | "mine" | "templates" | "reading" | "manage";
+export type ArticleCenterSection = "discover" | "subscriptions" | "resources" | "collections" | "topics" | "mine" | "reading" | "manage";
 
-const sections: Array<{ id: Exclude<ArticleCenterSection, "manage">; href: string; labelKey: "discover.discover" | "discover.subscriptions" | "discover.resources" | "discover.collections" | "discover.topics" | "discover.myWriting" | "discover.templates" | "discover.myReading"; protected?: boolean; count?: "discover" | "subscriptions" | "mine" }> = [
+const sections: Array<{ id: Exclude<ArticleCenterSection, "manage">; href: string; labelKey: "discover.discover" | "discover.subscriptions" | "discover.resources" | "discover.collections" | "discover.topics" | "discover.myWriting" | "discover.myReading"; protected?: boolean; count?: "discover" | "subscriptions" | "mine" }> = [
   { id: "discover", href: "/articles", labelKey: "discover.discover", count: "discover" },
   { id: "subscriptions", href: "/articles/subscriptions", labelKey: "discover.subscriptions", protected: true, count: "subscriptions" },
   { id: "resources", href: "/articles/resources", labelKey: "discover.resources" },
   { id: "collections", href: "/articles/collections", labelKey: "discover.collections", protected: true },
   { id: "topics", href: "/topics", labelKey: "discover.topics" },
   { id: "mine", href: "/articles/mine", labelKey: "discover.myWriting", protected: true, count: "mine" },
-  { id: "templates", href: "/articles/templates", labelKey: "discover.templates", protected: true },
   { id: "reading", href: "/articles/reading", labelKey: "discover.myReading", protected: true },
 ];
 
@@ -110,5 +112,68 @@ export function ArticleCenterNav({
         </Link>
       ) : null}
     </div>
+  );
+}
+
+export type ArticleMineTab = "all" | ArticleStatus | "templates";
+
+const mineStatusValues: ArticleStatus[] = ["draft", "published", "unpublished", "blocked", "deleted"];
+
+export function ArticleMineSecondaryNav({
+  active,
+  summary,
+  search = "",
+}: {
+  active: ArticleMineTab;
+  summary?: ArticleMineSummary;
+  search?: string;
+}) {
+  const { locale, phrase } = useLanguage();
+  const [loadedSummary, setLoadedSummary] = useState<ArticleMineSummary | null>(null);
+  const currentSummary = summary ?? loadedSummary ?? { total: 0, draft: 0, published: 0, unpublished: 0, blocked: 0, deleted: 0 };
+
+  useEffect(() => {
+    if (summary) return;
+    const token = readAccessToken();
+    if (!token) return;
+    getMyArticleSummary(token).then(setLoadedSummary).catch(() => {
+      // The secondary navigation remains usable when counts are unavailable.
+    });
+  }, [summary]);
+
+  const statusLabel = (value: "all" | ArticleStatus) => value === "all"
+    ? phrase("全部", "All")
+    : value === "draft"
+      ? phrase("草稿", "Draft")
+      : value === "published"
+        ? phrase("已发布", "Published")
+        : value === "unpublished"
+          ? phrase("已下架", "Unpublished")
+          : value === "blocked"
+            ? phrase("受限", "Restricted")
+            : phrase("回收站", "Recycle bin");
+  const hrefFor = (value: "all" | ArticleStatus) => {
+    const params = new URLSearchParams();
+    if (value !== "all") params.set("status", value);
+    if (search.trim()) params.set("q", search.trim());
+    const query = params.toString();
+    return `${localizedPath("/articles/mine", locale)}${query ? `?${query}` : ""}`;
+  };
+  const countFor = (value: "all" | ArticleStatus) => value === "all" ? currentSummary.total - currentSummary.deleted : currentSummary[value];
+
+  return (
+    <nav aria-label={phrase("文章状态", "Article status")} className="article-status-tabs article-center-secondary-tabs">
+      <Link aria-current={active === "all" ? "page" : undefined} className={active === "all" ? "active" : undefined} href={hrefFor("all")}>
+        {statusLabel("all")}<span>{countFor("all")}</span>
+      </Link>
+      {mineStatusValues.map((value) => (
+        <Link aria-current={active === value ? "page" : undefined} className={active === value ? "active" : undefined} href={hrefFor(value)} key={value}>
+          {statusLabel(value)}<span>{countFor(value)}</span>
+        </Link>
+      ))}
+      <Link aria-current={active === "templates" ? "page" : undefined} className={active === "templates" ? "active" : undefined} href={localizedPath("/articles/templates", locale)}>
+        {phrase("模板", "Templates")}
+      </Link>
+    </nav>
   );
 }

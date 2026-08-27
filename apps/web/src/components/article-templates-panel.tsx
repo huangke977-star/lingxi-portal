@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Eye, FileText, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, Eye, FileText, Folder, Pencil, Plus, Tags, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArticleBody, displayArticleTaxonomy, formatArticleDate } from "@/components/article-ui";
@@ -217,33 +217,38 @@ export function ArticleTemplatesPanel() {
 
       {dialogMode && typeof document !== "undefined" ? createPortal(
         <div className="modal-backdrop article-template-backdrop">
-          <section aria-label={phrase("文章模板", "Article template")} aria-modal="true" className="article-template-dialog article-template-management-dialog" role="dialog">
+          <section aria-label={phrase("文章模板", "Article template")} aria-modal="true" className="announcement-editor article-template-management-dialog" role="dialog">
             {dialogMode === "delete" ? (
               <>
                 <header><span><Trash2 aria-hidden="true" size={17} /><strong>{phrase("删除文章模板", "Delete article template")}</strong></span></header>
-                <p>{phrase(`确定删除模板“${selectedTemplate?.name ?? ""}”吗？删除后无法恢复。`, `Delete “${selectedTemplate?.name ?? ""}”? This cannot be undone.`)}</p>
+                <div className="announcement-editor-body article-template-delete-body"><p className="wide">{phrase(`确定删除模板“${selectedTemplate?.name ?? ""}”吗？删除后无法恢复。`, `Delete “${selectedTemplate?.name ?? ""}”? This cannot be undone.`)}</p></div>
                 <footer><button aria-label={phrase("取消", "Cancel")} className="article-template-icon-button" onClick={closeDialog} title={phrase("取消", "Cancel")} type="button"><X aria-hidden="true" size={17} /></button><button aria-label={phrase("确定删除", "Confirm delete")} className="article-template-icon-button danger" disabled={isSaving} onClick={() => void remove()} title={phrase("确定删除", "Confirm delete")} type="button"><Trash2 aria-hidden="true" size={17} /></button></footer>
               </>
             ) : dialogMode === "view" ? (
               <>
-                <header><span><FileText aria-hidden="true" size={17} /><strong>{selectedTemplate?.name}</strong></span></header>
-                <div className="article-template-view-meta"><span>{selectedTemplate?.title || phrase("未设置文章标题", "No article title")}</span><small>{selectedTemplate?.category ? displayArticleTaxonomy(selectedTemplate.category, locale) : phrase("未分类", "Uncategorized")} · {selectedTemplate ? formatArticleDate(selectedTemplate.updatedAt, locale) : ""}</small></div>
-                <div className="article-template-view-content"><ArticleBody content={selectedTemplate?.content || phrase("模板没有正文内容。", "This template has no content.")} /></div>
-                <footer><button aria-label={phrase("关闭", "Close")} className="article-template-icon-button" onClick={closeDialog} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={17} /></button>{selectedTemplate ? <button aria-label={phrase("编辑模板", "Edit template")} className="article-template-icon-button primary" onClick={() => openTemplate(selectedTemplate, "edit")} title={phrase("编辑", "Edit")} type="button"><Pencil aria-hidden="true" size={17} /></button> : null}</footer>
+                <header><span><FileText aria-hidden="true" size={17} /><strong>{selectedTemplate?.name}</strong></span><button aria-label={phrase("关闭", "Close")} onClick={closeDialog} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={17} /></button></header>
+                <div className="article-template-preview-body">
+                  <article className="article-template-reading-layout">
+                    <header><h1 style={selectedTemplate?.titleColor ? { color: selectedTemplate.titleColor } : undefined}>{selectedTemplate?.title || phrase("未设置文章标题", "No article title")}</h1><div><span>{selectedTemplate?.category ? displayArticleTaxonomy(selectedTemplate.category, locale) : phrase("未分类", "Uncategorized")}</span><span>{selectedTemplate ? formatArticleDate(selectedTemplate.updatedAt, locale) : ""}</span></div></header>
+                    <main><ArticleBody content={selectedTemplate?.content || phrase("模板没有正文内容。", "This template has no content.")} /></main>
+                  </article>
+                </div>
+                <footer>{selectedTemplate ? <button aria-label={phrase("编辑模板", "Edit template")} className="article-template-icon-button primary" onClick={() => openTemplate(selectedTemplate, "edit")} title={phrase("编辑", "Edit")} type="button"><Pencil aria-hidden="true" size={17} /></button> : null}</footer>
               </>
             ) : (
-              <form onSubmit={(event) => { event.preventDefault(); void save(); }}>
+              <form className="article-template-form" onSubmit={(event) => { event.preventDefault(); void save(); }}>
                 <header><span><FileText aria-hidden="true" size={17} /><strong>{phrase(dialogMode === "edit" ? "编辑文章模板" : "创建文章模板", dialogMode === "edit" ? "Edit article template" : "Create article template")}</strong></span></header>
-                <div className="article-template-form-grid">
+                <div className="announcement-editor-body article-template-form-body">
                   <label><span>{phrase("模板名称", "Template name")}</span><input autoFocus maxLength={80} onChange={(event) => updateForm("name", event.target.value)} required value={form.name} /></label>
-                  <label><span>{phrase("文章标题", "Article title")}</span><input maxLength={120} onChange={(event) => updateForm("title", event.target.value)} value={form.title} /></label>
+                  <div className="article-title-field"><input aria-label={phrase("文章标题", "Article title")} className="article-title-input" maxLength={120} onChange={(event) => updateForm("title", event.target.value)} placeholder={phrase("文章标题", "Article title")} value={form.title} /><input aria-label={phrase("标题颜色", "Title color")} className="article-title-color-input" onChange={(event) => updateForm("titleColor", event.target.value)} type="color" value={form.titleColor || "#2b2530"} /></div>
                   <label className="wide"><span>{phrase("摘要", "Summary")}</span><input maxLength={300} onChange={(event) => updateForm("summary", event.target.value)} value={form.summary} /></label>
-                  <label><span>{phrase("分类", "Category")}</span><input maxLength={80} onChange={(event) => updateForm("category", event.target.value)} value={form.category} /></label>
-                  <label><span>{phrase("标签", "Tags")}</span><input maxLength={500} onChange={(event) => updateForm("tags", event.target.value)} placeholder={phrase("用逗号分隔", "Comma separated")} value={form.tags} /></label>
-                  <label><span>{phrase("阅读权限", "Visibility")}</span><GlassSelect ariaLabel={phrase("阅读权限", "Visibility")} onChange={(value) => updateForm("visibility", value)} options={visibilityLabels} value={form.visibility} /></label>
-                  <label><span>{phrase("标题颜色", "Title color")}</span><input aria-label={phrase("标题颜色", "Title color")} className="article-template-color-input" onChange={(event) => updateForm("titleColor", event.target.value)} type="color" value={form.titleColor || "#2b2530"} /></label>
+                  <div className="article-template-taxonomy-grid">
+                    <label className="article-template-inline-field"><Folder aria-hidden="true" size={15} /><input aria-label={phrase("分类", "Category")} maxLength={80} onChange={(event) => updateForm("category", event.target.value)} value={form.category} /></label>
+                    <label className="article-template-inline-field"><Tags aria-hidden="true" size={15} /><input aria-label={phrase("标签", "Tags")} maxLength={500} onChange={(event) => updateForm("tags", event.target.value)} placeholder={phrase("标签，用逗号分隔", "Tags, comma separated")} value={form.tags} /></label>
+                    <div className="article-template-inline-field"><Eye aria-hidden="true" size={15} /><GlassSelect ariaLabel={phrase("阅读权限", "Visibility")} onChange={(value) => updateForm("visibility", value)} options={visibilityLabels} value={form.visibility} /></div>
+                  </div>
                   {form.visibility === "role_restricted" ? <label className="wide"><span>{phrase("可见角色", "Visible roles")}</span><input onChange={(event) => updateForm("roleCodes", event.target.value)} placeholder={phrase("用逗号分隔角色代码", "Comma separated role codes")} value={form.roleCodes} /></label> : null}
-                  <label className="wide"><span>{phrase("模板正文", "Template content")}</span><textarea minLength={1} onChange={(event) => updateForm("content", event.target.value)} required value={form.content} /></label>
+                  <label className="wide article-template-content-field"><textarea aria-label={phrase("模板正文", "Template content")} minLength={1} onChange={(event) => updateForm("content", event.target.value)} placeholder={phrase("模板正文，支持 Markdown", "Template content, Markdown supported")} required value={form.content} /></label>
                 </div>
                 <footer><button aria-label={phrase("取消", "Cancel")} className="article-template-icon-button" onClick={closeDialog} title={phrase("取消", "Cancel")} type="button"><X aria-hidden="true" size={17} /></button><button aria-label={phrase("确定保存", "Confirm save")} className="article-template-icon-button primary" disabled={isSaving} title={phrase("确定保存", "Confirm save")} type="submit"><Check aria-hidden="true" size={17} /></button></footer>
               </form>

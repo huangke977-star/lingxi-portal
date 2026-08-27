@@ -787,6 +787,72 @@ describe("ArticlesService article center extensions", () => {
     expect(invalidPrisma.article.update).not.toHaveBeenCalled();
   });
 
+  it("clears a publication schedule without formatting a missing date", async () => {
+    const publishAt = new Date("2099-01-01T08:00:00.000Z");
+    const scheduled = {
+      ...articleRecord(ArticleStatus.draft),
+      publishedAt: null,
+      scheduledPublishAt: publishAt,
+      scheduledUnpublishAt: null,
+    };
+    const cleared = {
+      ...scheduled,
+      scheduledPublishAt: null,
+      scheduledUnpublishAt: null,
+      scheduleError: null,
+    };
+    const prisma = createPrismaMock();
+    (prisma.article.findUnique as jest.Mock).mockResolvedValueOnce(scheduled);
+    (prisma.article.update as jest.Mock).mockResolvedValueOnce(cleared);
+    const service = createService(prisma);
+
+    await expect(service.schedule(12, user, { publishAt: null, unpublishAt: null })).resolves.toMatchObject({
+      schedule: { publishAt: null, unpublishAt: null, error: null },
+    });
+    expect(prisma.article.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { scheduledPublishAt: null, scheduledUnpublishAt: null, scheduleError: null },
+    }));
+    expect(prisma.userNotification.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        title: "文章发布计划已取消",
+        body: "《服务器经验》的发布计划已取消。",
+        bodyEn: "The publishing schedule for “服务器经验” has been cancelled.",
+      }),
+    }));
+  });
+
+  it("excludes failed schedules from the draft list and summary", async () => {
+    const prisma = createPrismaMock();
+    const service = createService(prisma);
+    (prisma.article.count as jest.Mock).mockResolvedValueOnce(2);
+
+    await service.getMineSummary(user);
+    expect(prisma.article.count).toHaveBeenCalledWith({
+      where: {
+        authorId: user.id,
+        status: ArticleStatus.draft,
+        OR: [
+          { scheduledPublishAt: { not: null } },
+          { scheduledUnpublishAt: { not: null } },
+          { scheduleError: { not: null } },
+        ],
+      },
+    });
+
+    const query = Object.assign(new ListArticlesQueryDto(), { status: ArticleStatus.draft, search: "服务器", page: 1, pageSize: 10 });
+    await service.listMine(query, user);
+    expect(prisma.article.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        AND: [
+          { scheduledPublishAt: null },
+          { scheduledUnpublishAt: null },
+          { scheduleError: null },
+          expect.objectContaining({ OR: expect.any(Array) }),
+        ],
+      }),
+    }));
+  });
+
   it("keeps article templates scoped to their author", async () => {
     const createdAt = new Date("2026-08-27T00:00:00.000Z");
     const template = {

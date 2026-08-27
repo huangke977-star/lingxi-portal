@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { ArticleCenterNav } from "@/components/article-center-nav";
+import { ArticleCenterNav, ArticleMineSecondaryNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticlePinBadge, ArticleStats, ArticleTaxonomy, RecentCommenters, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
@@ -87,8 +87,16 @@ function MyArticlesContent() {
   const searchParams = useSearchParams();
   const rawStatus = searchParams.get("status") ?? "all";
   const status = statusValues.some((value) => value === rawStatus) ? rawStatus as "all" | ArticleStatus : "all";
-  const statusLabel = (value: "all" | ArticleStatus) => value === "all" ? phrase("全部", "All") : value === "draft" ? phrase("草稿", "Draft") : value === "published" ? phrase("已发布", "Published") : value === "unpublished" ? phrase("已下架", "Unpublished") : value === "blocked" ? phrase("受限", "Restricted") : phrase("回收站", "Recycle bin");
   const querySearch = searchParams.get("q") ?? "";
+  const statusLabel = (value: ArticleStatus) => value === "draft"
+    ? phrase("草稿", "Draft")
+    : value === "published"
+      ? phrase("已发布", "Published")
+      : value === "unpublished"
+        ? phrase("已下架", "Unpublished")
+        : value === "blocked"
+          ? phrase("受限", "Restricted")
+          : phrase("回收站", "Recycle bin");
   const [searchInput, setSearchInput] = useState(querySearch);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [summary, setSummary] = useState<ArticleMineSummary>(emptySummary);
@@ -207,10 +215,6 @@ function MyArticlesContent() {
     }
   }
 
-  function countFor(tab: "all" | ArticleStatus): number {
-    return tab === "all" ? summary.total - summary.deleted : summary[tab];
-  }
-
   return (
     <section className="page-shell articles-page my-articles-page">
       <ArticleCenterNav active="mine" isLoggedIn user={user} />
@@ -243,18 +247,7 @@ function MyArticlesContent() {
         </aside>
         <div className="article-mine-main">
       <div className="article-mine-toolbar">
-        <nav aria-label={phrase("文章状态", "Article status")} className="article-status-tabs article-center-secondary-tabs">
-          {statusValues.map((value) => (
-            <button
-              className={status === value ? "active" : undefined}
-              key={value}
-              onClick={() => replaceQuery({ status: value })}
-              type="button"
-            >
-              {statusLabel(value)}<span>{countFor(value)}</span>
-            </button>
-          ))}
-        </nav>
+        <ArticleMineSecondaryNav active={status} search={querySearch} summary={summary} />
         <label className="article-search article-mine-search">
           <Search aria-hidden="true" size={17} />
           <input

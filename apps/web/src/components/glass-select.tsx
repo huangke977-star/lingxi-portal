@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
+import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 
 export interface GlassSelectOption<T extends string> {
@@ -11,12 +12,14 @@ export interface GlassSelectOption<T extends string> {
 export function GlassSelect<T extends string>({
   ariaLabel,
   disabled = false,
+  leadingIcon,
   onChange,
   options,
   value,
 }: {
   ariaLabel: string;
   disabled?: boolean;
+  leadingIcon?: ReactNode;
   onChange: (value: T) => void;
   options: ReadonlyArray<GlassSelectOption<T>>;
   value: T;
@@ -44,7 +47,8 @@ export function GlassSelect<T extends string>({
         onClick={() => setIsOpen((current) => !current)}
         type="button"
       >
-        <span>{selected?.label ?? value}</span>
+        {leadingIcon ? <span className="announcement-editor-select-leading-icon" aria-hidden="true">{leadingIcon}</span> : null}
+        <span className="announcement-editor-select-value">{selected?.label ?? value}</span>
         <ChevronDown aria-hidden="true" size={15} />
       </button>
       {isOpen ? (
