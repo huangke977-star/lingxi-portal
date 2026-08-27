@@ -24,6 +24,7 @@
   --surface-strong: rgba(255, 255, 255, 0.64);
   --surface-soft: rgba(255, 255, 255, 0.38);
   --popover-surface: rgba(255, 255, 255, 0.92);
+  --chat-conversation-background: color-mix(in srgb, var(--popover-surface) 34%, transparent);
   --chat-bubble-background: rgba(255, 255, 255, 0.48);
   --chat-bubble-border: color-mix(in srgb, var(--control-line) 44%, transparent);
   --chat-bubble-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
@@ -10910,7 +10911,7 @@ html:has(.article-comment-form) {
 .chat-system-article-link strong { overflow: hidden; color: var(--foreground); font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; }
 .chat-system-article-link > svg:last-child { transform: rotate(180deg); }
 
-.chat-dock .chat-panel { min-height: 0; background: color-mix(in srgb, var(--popover-surface) 76%, transparent); }
+.chat-dock .chat-panel { min-height: 0; background: var(--chat-conversation-background); }
 .chat-dock .chat-message-list { padding: 10px 13px; }
 .chat-dock .chat-message { max-width: 88%; margin: 6px 0; }
 
@@ -11776,7 +11777,7 @@ html:has(.article-comment-form) {
 .request-composer-input button:hover { background: var(--accent-soft); }
 .request-composer-input button:disabled { cursor: default; opacity: 0.38; }
 
-.chat-dock .chat-panel { background: color-mix(in srgb, var(--popover-surface) 34%, transparent); }
+.chat-dock .chat-panel { background: var(--chat-conversation-background); }
 
 .chat-composer {
   border-top: 1px solid color-mix(in srgb, var(--control-line) 54%, transparent);
@@ -17627,13 +17628,14 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .chat-notification-channel-menu,
 .level-popover {
   border: 1px solid color-mix(in srgb, var(--control-line) 54%, transparent);
-  background: color-mix(in srgb, var(--popover-surface) 34%, transparent);
+  background: var(--chat-conversation-background);
   background-image: none;
   box-shadow: 0 16px 38px rgba(18, 25, 39, 0.2);
-  backdrop-filter: blur(16px) saturate(125%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
-.level-popover::before { background: color-mix(in srgb, var(--popover-surface) 34%, transparent); }
+.level-popover::before { background: var(--chat-conversation-background); }
 
 @media (max-width: 680px) {
   .moderation-reports-header { align-items: flex-start; flex-direction: column; }
