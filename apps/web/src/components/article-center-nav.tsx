@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { PenLine } from "lucide-react";
+import { PenLine, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/components/language-provider";
 import { localizedPath } from "@/lib/i18n";
@@ -121,10 +121,12 @@ const mineStatusValues: ArticleStatus[] = ["draft", "published", "unpublished", 
 
 export function ArticleMineSecondaryNav({
   active,
+  onCreateTemplate,
   summary,
   search = "",
 }: {
   active: ArticleMineTab;
+  onCreateTemplate?: () => void;
   summary?: ArticleMineSummary;
   search?: string;
 }) {
@@ -174,6 +176,7 @@ export function ArticleMineSecondaryNav({
       <Link aria-current={active === "templates" ? "page" : undefined} className={active === "templates" ? "active" : undefined} href={localizedPath("/articles/templates", locale)}>
         {phrase("模板", "Templates")}
       </Link>
+      {onCreateTemplate ? <button aria-label={phrase("创建模板", "Create template")} className="article-template-create-action" onClick={onCreateTemplate} title={phrase("创建模板", "Create template")} type="button"><Plus aria-hidden="true" size={17} /></button> : null}
     </nav>
   );
 }

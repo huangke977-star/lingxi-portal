@@ -9,6 +9,7 @@ import { ArticleBody, displayArticleTaxonomy, formatArticleDate } from "@/compon
 import { AppToast } from "@/components/app-toast";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
+import { listRoles } from "@/lib/admin-api";
 import {
   Article,
   ArticleInput,
@@ -30,9 +31,10 @@ import {
   updateArticle,
   uploadArticleImages,
 } from "@/lib/article-api";
-import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
+import { AuthRole, AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-api";
+import { growthLevelLabel } from "@/lib/system-labels";
 import { localizedPath } from "@/lib/i18n";
 
 const MAX_ARTICLE_IMAGES = 20;
@@ -92,6 +94,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   const [article, setArticle] = useState<Article | null>(null);
   const [draft, setDraft] = useState<ArticleInput>(emptyDraft);
   const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
+  const [roles, setRoles] = useState<AuthRole[]>([]);
   const [pendingImages, setPendingImages] = useState<PendingArticleImage[]>([]);
   const [isLoading, setIsLoading] = useState(Boolean(articleId));
   const [isSaving, setIsSaving] = useState(false);
@@ -251,6 +254,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       articleId ? getMyArticle(token, articleId) : Promise.resolve(null),
       getPublicSiteSettings().catch(() => null),
       listArticleTemplates(token).catch(() => ({ items: [] })),
+      listRoles().catch(() => []),
     ] as const)
       .then((results) => {
         const loadedUser = results[0] as AuthUser;
@@ -258,6 +262,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
         const loadedArticle = results[1] as Article | null;
         const loadedSettings = results[2] as SiteSettings | null;
         setTemplates(results[3].items);
+        setRoles(results[4]);
         if (loadedSettings) {
           setSiteSettings(loadedSettings);
         }
@@ -465,6 +470,15 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       return;
     }
     setDraft((current) => ({ ...current, tags: nextTags.join(",") }));
+  }
+
+  function toggleVisibleRole(roleCode: string) {
+    setDraft((current) => ({
+      ...current,
+      roleCodes: current.roleCodes.includes(roleCode)
+        ? current.roleCodes.filter((code) => code !== roleCode)
+        : [...current.roleCodes, roleCode],
+    }));
   }
 
   function applyTemplate(templateId: string) {
@@ -803,7 +817,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
                 </div>
                 <div className="article-inline-visibility"><GlassSelect ariaLabel={phrase("阅读权限", "Visibility")} leadingIcon={<Eye aria-hidden="true" size={15} />} onChange={(visibility) => setDraft({ ...draft, visibility })} options={visibilityOptions} value={draft.visibility} /></div>
               </div>
-              {draft.visibility === "role_restricted" ? <input onChange={(event) => setDraft({ ...draft, roleCodes: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })} placeholder={phrase("角色代码，用逗号分隔", "Role codes, separated by commas")} value={draft.roleCodes.join(", ")} /> : null}
+              {draft.visibility === "role_restricted" ? <div aria-label={phrase("可见角色", "Visible roles")} className="article-role-options" role="group">{roles.map((role) => <label key={role.code}><input checked={draft.roleCodes.includes(role.code)} onChange={() => toggleVisibleRole(role.code)} type="checkbox" /><span>{growthLevelLabel(role.code, locale, role.name)}</span></label>)}</div> : null}
             </div>
              <textarea className="article-editor-textarea" onChange={(event) => setDraft({ ...draft, content: event.target.value })} placeholder={phrase("支持 Markdown：标题、列表、表格、引用、链接、图片、代码块和局部积分资源块", "Markdown is supported: headings, lists, tables, quotes, links, images, code blocks, and partial point-resource blocks")} ref={textareaRef} value={draft.content} />
             <div className="article-editor-upload"><label className="text-action"><ImagePlus aria-hidden="true" size={16} />{phrase("添加图片", "Add images")}<input accept="image/jpeg,image/png,image/webp,image/avif" hidden multiple onChange={(event) => { insertImagesAtCursor(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} type="file" /></label><span>{pendingImages.length ? phrase(`待上传 ${pendingImages.length} 张，保存时才会上传`, `${pendingImages.length} image(s) pending upload and will upload when saved`) : phrase(`支持 JPG、PNG、WebP、AVIF，单张不超过 ${imageMaxSizeMb}MB`, `JPG, PNG, WebP, and AVIF are supported, up to ${imageMaxSizeMb}MB each`)}</span></div>

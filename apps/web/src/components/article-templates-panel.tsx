@@ -1,12 +1,14 @@
 "use client";
 
-import { Check, ChevronDown, Eye, FileText, Pencil, Plus, Shapes, Tags, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Eye, FileText, Pencil, Shapes, Tags, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { ArticleMineSecondaryNav } from "@/components/article-center-nav";
 import { ArticleBody, displayArticleTaxonomy, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
+import { listRoles } from "@/lib/admin-api";
 import {
   ArticleTemplate,
   ArticleTemplateInput,
@@ -15,10 +17,11 @@ import {
   listArticleTemplates,
   updateArticleTemplate,
 } from "@/lib/article-api";
-import { isAuthExpiredError } from "@/lib/auth-api";
+import { AuthRole, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
 import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-api";
+import { growthLevelLabel } from "@/lib/system-labels";
 import { useRouter } from "next/navigation";
 
 type DialogMode = "create" | "view" | "edit" | "delete";
@@ -36,7 +39,7 @@ interface TemplateForm {
   tags: string;
   titleColor: string;
   visibility: ArticleTemplate["visibility"];
-  roleCodes: string;
+  roleCodes: string[];
 }
 
 const emptyForm: TemplateForm = {
@@ -48,7 +51,7 @@ const emptyForm: TemplateForm = {
   tags: "",
   titleColor: "",
   visibility: "public",
-  roleCodes: "",
+  roleCodes: [],
 };
 
 const visibilityOptions: Array<{ value: ArticleTemplate["visibility"]; label: string; labelEn: string }> = [
@@ -70,6 +73,7 @@ export function ArticleTemplatesPanel() {
   const [form, setForm] = useState<TemplateForm>(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
   const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
+  const [roles, setRoles] = useState<AuthRole[]>([]);
   const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
   const tagPickerRef = useRef<HTMLDivElement>(null);
 
@@ -98,12 +102,14 @@ export function ArticleTemplatesPanel() {
   );
 
   async function load(token: string) {
-    const [result, settings] = await Promise.all([
+    const [result, settings, nextRoles] = await Promise.all([
       listArticleTemplates(token),
       getPublicSiteSettings().catch(() => null),
+      listRoles().catch(() => []),
     ] as const);
     setTemplates(result.items);
     if (settings) setSiteSettings(settings);
+    setRoles(nextRoles);
   }
 
   useEffect(() => {
@@ -153,7 +159,7 @@ export function ArticleTemplatesPanel() {
       tags: template.tags.join(", "),
       titleColor: template.titleColor,
       visibility: template.visibility,
-      roleCodes: template.roleCodes.join(", "),
+      roleCodes: template.roleCodes,
     };
   }
 
@@ -192,6 +198,12 @@ export function ArticleTemplatesPanel() {
     updateForm("tags", nextTags.join(","));
   }
 
+  function toggleVisibleRole(roleCode: string) {
+    updateForm("roleCodes", form.roleCodes.includes(roleCode)
+      ? form.roleCodes.filter((code) => code !== roleCode)
+      : [...form.roleCodes, roleCode]);
+  }
+
   function formInput(): ArticleTemplateInput {
     return {
       name: form.name.trim(),
@@ -202,7 +214,7 @@ export function ArticleTemplatesPanel() {
       tags: form.tags,
       titleColor: form.titleColor,
       visibility: form.visibility,
-      roleCodes: form.roleCodes.split(",").map((value) => value.trim()).filter(Boolean),
+      roleCodes: form.roleCodes,
     };
   }
 
@@ -251,9 +263,7 @@ export function ArticleTemplatesPanel() {
 
   return (
     <section className="article-templates-panel">
-      <header className="article-templates-heading">
-        <button aria-label={phrase("创建模板", "Create template")} className="article-icon-action" onClick={openCreate} title={phrase("创建模板", "Create template")} type="button"><Plus aria-hidden="true" size={17} /></button>
-      </header>
+      <ArticleMineSecondaryNav active="templates" onCreateTemplate={openCreate} />
       {isLoading ? <div className="article-empty-state">{phrase("正在读取文章模板。", "Loading article templates.")}</div> : templates.length ? (
         <div className="article-template-list">
           {templates.map((template) => (
@@ -306,7 +316,7 @@ export function ArticleTemplatesPanel() {
                     </div>
                     <div className="article-template-inline-field"><GlassSelect ariaLabel={phrase("阅读权限", "Visibility")} leadingIcon={<Eye aria-hidden="true" size={15} />} onChange={(value) => updateForm("visibility", value)} options={visibilityLabels} value={form.visibility} /></div>
                   </div>
-                  {form.visibility === "role_restricted" ? <label className="wide"><span>{phrase("可见角色", "Visible roles")}</span><input onChange={(event) => updateForm("roleCodes", event.target.value)} placeholder={phrase("用逗号分隔角色代码", "Comma separated role codes")} value={form.roleCodes} /></label> : null}
+                  {form.visibility === "role_restricted" ? <div aria-label={phrase("可见角色", "Visible roles")} className="wide article-role-options" role="group">{roles.map((role) => <label key={role.code}><input checked={form.roleCodes.includes(role.code)} onChange={() => toggleVisibleRole(role.code)} type="checkbox" /><span>{growthLevelLabel(role.code, locale, role.name)}</span></label>)}</div> : null}
                   <label className="wide article-template-content-field"><textarea aria-label={phrase("模板正文", "Template content")} minLength={1} onChange={(event) => updateForm("content", event.target.value)} placeholder={phrase("模板正文，支持 Markdown", "Template content, Markdown supported")} required value={form.content} /></label>
                 </div>
                 <footer><button aria-label={phrase("取消", "Cancel")} className="article-template-icon-button" onClick={closeDialog} title={phrase("取消", "Cancel")} type="button"><X aria-hidden="true" size={17} /></button><button aria-label={phrase("确定保存", "Confirm save")} className="article-template-icon-button primary" disabled={isSaving} title={phrase("确定保存", "Confirm save")} type="submit"><Check aria-hidden="true" size={17} /></button></footer>
