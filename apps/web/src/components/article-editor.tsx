@@ -2,7 +2,7 @@
 
 import { CalendarClock, Check, ChevronDown, Cloud, CloudOff, Coins, Eye, FilePlus2, History, ImagePlus, RefreshCw, RotateCcw, Save, Send, Shapes, Tags, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleBody, displayArticleTaxonomy, formatArticleDate } from "@/components/article-ui";
@@ -76,6 +76,11 @@ interface LocalArticleDraft {
 
 type AutosaveState = "idle" | "waiting" | "saving" | "saved" | "offline";
 
+interface MarkdownSuggestion {
+  insert: string;
+  preview: string;
+}
+
 const emptyDraft: ArticleInput = {
   title: "",
   summary: "",
@@ -126,6 +131,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
   const [isScheduleSaving, setIsScheduleSaving] = useState(false);
   const [isResourceInfoOpen, setIsResourceInfoOpen] = useState(false);
+  const [markdownSuggestion, setMarkdownSuggestion] = useState<MarkdownSuggestion | null>(null);
   const articleStatusLabel = (status: Article["status"]) => status === "draft" ? phrase("草稿", "Draft") : status === "published" ? phrase("已发布", "Published") : status === "unpublished" ? phrase("已下架", "Unpublished") : status === "blocked" ? phrase("受限", "Restricted") : phrase("已删除", "Deleted");
   const visibilityLabel = (visibility: ArticleInput["visibility"]) => visibility === "public" ? phrase("所有人可见", "Public") : visibility === "authenticated" ? phrase("仅登录用户", "Signed-in users") : visibility === "role_restricted" ? phrase("指定角色", "Specific roles") : phrase("仅自己", "Only me");
   const versionSourceLabel = (source: ArticleVersionSummary["source"]) => source === "autosave" ? phrase("自动保存", "Autosave") : source === "manual" ? phrase("手动保存", "Manual save") : source === "publish" ? phrase("发布", "Publish") : phrase("恢复版本", "Restore version");
@@ -168,6 +174,15 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   useEffect(() => {
     articleRef.current = article;
   }, [article]);
+
+  useEffect(() => {
+    if (!textareaRef.current || document.activeElement !== textareaRef.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (textarea) setMarkdownSuggestion(getMarkdownSuggestion(textarea.value, textarea.selectionStart));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [draft.content]);
 
   useEffect(() => () => {
     if (autosaveTimerRef.current !== null) window.clearTimeout(autosaveTimerRef.current);
@@ -437,6 +452,42 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       textarea?.focus();
       textarea?.setSelectionRange(nextCursor, nextCursor);
     });
+  }
+
+  function updateMarkdownSuggestion(value: string, cursor: number) {
+    setMarkdownSuggestion(getMarkdownSuggestion(value, cursor));
+  }
+
+  function insertMarkdownSuggestion(suggestion: MarkdownSuggestion) {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const cursor = textarea.selectionStart;
+    const nextContent = `${draft.content.slice(0, cursor)}${suggestion.insert}${draft.content.slice(cursor)}`;
+    const nextCursor = cursor + suggestion.insert.length;
+    setDraft((current) => ({ ...current, content: nextContent }));
+    setMarkdownSuggestion(getMarkdownSuggestion(nextContent, nextCursor));
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(nextCursor, nextCursor);
+    });
+  }
+
+  function handleEditorKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Tab") return;
+    const suggestion = getMarkdownSuggestion(event.currentTarget.value, event.currentTarget.selectionStart);
+    if (!suggestion) return;
+    event.preventDefault();
+    insertMarkdownSuggestion(suggestion);
+  }
+
+  function handleEditorPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const imageFiles = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file && file.type.startsWith("image/")));
+    if (!imageFiles.length) return;
+    event.preventDefault();
+    insertImagesAtCursor(imageFiles);
   }
 
   function removePendingImage(image: PendingArticleImage) {
@@ -819,7 +870,8 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
               </div>
               {draft.visibility === "role_restricted" ? <div aria-label={phrase("可见角色", "Visible roles")} className="article-role-options" role="group">{roles.map((role) => <label key={role.code}><input checked={draft.roleCodes.includes(role.code)} onChange={() => toggleVisibleRole(role.code)} type="checkbox" /><span>{growthLevelLabel(role.code, locale, role.name)}</span></label>)}</div> : null}
             </div>
-             <textarea className="article-editor-textarea" onChange={(event) => setDraft({ ...draft, content: event.target.value })} placeholder={phrase("支持 Markdown：标题、列表、表格、引用、链接、图片、代码块和局部积分资源块", "Markdown is supported: headings, lists, tables, quotes, links, images, code blocks, and partial point-resource blocks")} ref={textareaRef} value={draft.content} />
+             <textarea className="article-editor-textarea" onBlur={() => setMarkdownSuggestion(null)} onChange={(event) => { setDraft({ ...draft, content: event.target.value }); updateMarkdownSuggestion(event.target.value, event.target.selectionStart); }} onClick={(event) => updateMarkdownSuggestion(event.currentTarget.value, event.currentTarget.selectionStart)} onFocus={(event) => updateMarkdownSuggestion(event.currentTarget.value, event.currentTarget.selectionStart)} onKeyDown={handleEditorKeyDown} onKeyUp={(event) => updateMarkdownSuggestion(event.currentTarget.value, event.currentTarget.selectionStart)} onPaste={handleEditorPaste} onSelect={(event) => updateMarkdownSuggestion(event.currentTarget.value, event.currentTarget.selectionStart)} placeholder={phrase("支持 Markdown：标题、列表、表格、引用、链接、图片、代码块和局部积分资源块", "Markdown is supported: headings, lists, tables, quotes, links, images, code blocks, and partial point-resource blocks")} ref={textareaRef} value={draft.content} />
+            {markdownSuggestion ? <div aria-label={phrase("Markdown 语法建议", "Markdown syntax suggestion")} aria-live="polite" className="article-markdown-suggestion"><code>{markdownSuggestion.preview}</code><kbd>Tab</kbd></div> : null}
             <div className="article-editor-upload"><label className="text-action"><ImagePlus aria-hidden="true" size={16} />{phrase("添加图片", "Add images")}<input accept="image/jpeg,image/png,image/webp,image/avif" hidden multiple onChange={(event) => { insertImagesAtCursor(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} type="file" /></label><span>{pendingImages.length ? phrase(`待上传 ${pendingImages.length} 张，保存时才会上传`, `${pendingImages.length} image(s) pending upload and will upload when saved`) : phrase(`支持 JPG、PNG、WebP、AVIF，单张不超过 ${imageMaxSizeMb}MB`, `JPG, PNG, WebP, and AVIF are supported, up to ${imageMaxSizeMb}MB each`)}</span></div>
             {pendingImages.length ? <div className="article-pending-images">{pendingImages.map((image) => <span key={image.id}>{image.file.name}<button aria-label={phrase(`移除 ${image.file.name}`, `Remove ${image.file.name}`)} onClick={() => removePendingImage(image)} title={phrase("移除图片", "Remove image")} type="button"><X aria-hidden="true" size={14} /></button></span>)}</div> : null}
              <div className="article-editor-actions"><button className="button secondary" disabled={isSaving || autosaveState === "saving"} onClick={() => void saveArticle(false)} type="button"><Save aria-hidden="true" size={16} />{isSaving ? phrase("保存中", "Saving") : article ? phrase("保存修改", "Save changes") : phrase("保存草稿", "Save draft")}</button><button className="button" disabled={isSaving || autosaveState === "saving" || article?.status === "blocked"} onClick={() => void saveArticle(true)} type="button"><Send aria-hidden="true" size={16} />{phrase("发布文章", "Publish article")}</button><button aria-label={phrase("定时发布", "Schedule publication")} className="button secondary article-schedule-action" disabled={isSaving || autosaveState === "saving" || article?.status === "blocked"} onClick={() => setIsScheduleDialogOpen(true)} title={phrase("定时发布", "Schedule publication")} type="button"><CalendarClock aria-hidden="true" size={16} />{phrase("定时发布", "Schedule publication")}</button>{article?.status === "published" ? <button className="text-action" disabled={isSaving} onClick={() => void takeOffline()} type="button">{phrase("下架", "Unpublish")}</button> : null}{article ? <button className="text-danger-action" disabled={isSaving} onClick={() => void moveToTrash()} type="button"><Trash2 aria-hidden="true" size={16} />{phrase("删除", "Delete")}</button> : null}</div>
@@ -838,6 +890,21 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
 
 function sanitizeImageAlt(value: string, locale: "zh-CN" | "en-US"): string {
   return value.replace(/[\[\]\r\n]/g, " ").trim() || (locale === "en-US" ? "Image" : "图片");
+}
+
+function getMarkdownSuggestion(value: string, cursor: number): MarkdownSuggestion | null {
+  const lineStart = value.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
+  const line = value.slice(lineStart, cursor);
+  if (/^\s*#{1,6}$/.test(line)) return { insert: " ", preview: `${line} heading` };
+  if (/^\s*[-*]$/.test(line)) return { insert: " ", preview: `${line} item` };
+  if (/^\s*\d+\.$/.test(line)) return { insert: " ", preview: `${line} item` };
+  if (/^\s*>$/.test(line)) return { insert: " ", preview: `${line} quote` };
+  if (/^\s*```$/.test(line)) return { insert: "\n\n```", preview: "```\n\n```" };
+  if (/^\s*!\[$/.test(line)) return { insert: "]()", preview: "![alt](url)" };
+  if (/^\s*\[$/.test(line)) return { insert: "]()", preview: "[text](url)" };
+  if (/^\s*:::resource$/.test(line)) return { insert: "{points=10}\n\n:::", preview: ":::resource{points=10}\n\n:::" };
+  if (/^\s*:::$/.test(line)) return { insert: "resource{points=10}\n\n:::", preview: ":::resource{points=10}\n\n:::" };
+  return null;
 }
 
 function parseArticleTags(value: string): string[] {

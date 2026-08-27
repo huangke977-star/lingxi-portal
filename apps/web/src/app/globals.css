@@ -24,6 +24,7 @@
   --surface-strong: rgba(255, 255, 255, 0.64);
   --surface-soft: rgba(255, 255, 255, 0.38);
   --popover-surface: rgba(255, 255, 255, 0.92);
+  --chat-bubble-background: rgba(255, 255, 255, 0.48);
   --accent: #db2777;
   --accent-strong: #be185d;
   --accent-soft: rgba(219, 39, 119, 0.12);
@@ -10369,7 +10370,7 @@ html:has(.article-comment-form) {
   max-width: 100%;
   margin: 0;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--chat-bubble-background);
   color: var(--foreground);
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -11774,6 +11775,8 @@ html:has(.article-comment-form) {
   backdrop-filter: blur(16px) saturate(125%);
   -webkit-backdrop-filter: blur(16px) saturate(125%);
 }
+
+.chat-dock .chat-message p { background: var(--chat-bubble-background); }
 
 .chat-dock .chat-message.mine p {
   border-color: color-mix(in srgb, var(--accent-strong) 16%, transparent);
@@ -17488,6 +17491,39 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .article-editor-page .article-editor-fields > .article-editor-taxonomy-grid > div > span,
 .article-editor-page .article-editor-fields > .article-resource-settings { font-size: 0.74rem; }
 
+/* Compact writing surfaces and the same checkbox treatment used in site settings. */
+.article-editor-page .article-editor-workspace { gap: 6px; }
+.article-editor-page .article-editor-workspace .article-editor-panel,
+.article-editor-page .article-editor-workspace .article-editor-preview { padding: 12px; }
+.article-editor-page .article-markdown-suggestion { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 6px; color: var(--muted); font-size: 0.68rem; }
+.article-editor-page .article-markdown-suggestion code { min-width: 0; overflow: hidden; border-radius: 6px; background: var(--chat-bubble-background); color: var(--muted-strong); font: inherit; line-height: 1.4; padding: 4px 7px; text-overflow: ellipsis; white-space: pre; }
+.article-editor-page .article-markdown-suggestion kbd { display: inline-flex; min-width: 24px; height: 21px; align-items: center; justify-content: center; border-radius: 5px; background: var(--accent-soft); color: var(--accent-strong); font: 0.62rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* Floating tips, profile bubbles, report queues, and action menus share the chat glass surface. */
+.level-popover,
+.level-badge::after,
+.public-profile-popover,
+.portal-entry-tooltip,
+.analytics-chart-tooltip,
+.analytics-metric-tooltip,
+.my-report-detail-tooltip,
+.admin-report-popover,
+.header-popover,
+.account-menu,
+.chat-message-sender > small,
+.chat-emoji-picker,
+.chat-friend-action-menu,
+.chat-conversation-action-menu,
+.chat-message-action-menu,
+.chat-notification-action-menu,
+.chat-notification-channel-menu,
+.chat-mobile-tools-panel,
+.chat-group-member-context { background: var(--chat-bubble-background); }
+
+.level-popover::before,
+.portal-entry-tooltip::before { background: var(--chat-bubble-background); }
+.level-popover { background-image: none; }
+
 @media (max-width: 680px) {
   .moderation-reports-header { align-items: flex-start; flex-direction: column; }
   .moderation-summary { width: 100%; justify-content: flex-start; }
@@ -18703,22 +18739,23 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .article-role-options input {
   appearance: none;
   -webkit-appearance: none;
-  display: grid;
-  width: 14px !important;
-  height: 14px !important;
-  min-height: 14px !important;
-  flex: 0 0 14px;
-  place-content: center;
+  width: 15px !important;
+  min-width: 15px !important;
+  height: 15px !important;
+  min-height: 15px !important;
+  flex: 0 0 15px;
   margin: 0;
   border: 1px solid var(--control-line) !important;
   border-radius: 3px !important;
   outline: 0;
-  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 80%;
   box-shadow: none !important;
 }
-.article-role-options input::before { width: 7px; height: 7px; transform: scale(0); border-radius: 1px; background: var(--accent-strong); content: ""; }
-.article-role-options input:checked { border-color: var(--accent) !important; }
-.article-role-options input:checked::before { transform: scale(1); }
+.article-role-options input:checked { border-color: var(--accent) !important; background-color: var(--accent) !important; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m3.5 8 3 3 6-6'/%3E%3C/svg%3E") !important; }
 
 .article-templates-panel { gap: 6px; }
 .article-center-secondary-tabs .article-template-create-action {
