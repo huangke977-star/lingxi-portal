@@ -25,6 +25,8 @@
   --surface-soft: rgba(255, 255, 255, 0.38);
   --popover-surface: rgba(255, 255, 255, 0.92);
   --chat-bubble-background: rgba(255, 255, 255, 0.48);
+  --chat-bubble-border: color-mix(in srgb, var(--control-line) 44%, transparent);
+  --chat-bubble-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
   --accent: #db2777;
   --accent-strong: #be185d;
   --accent-soft: rgba(219, 39, 119, 0.12);
@@ -10369,17 +10371,21 @@ html:has(.article-comment-form) {
   width: fit-content;
   max-width: 100%;
   margin: 0;
+  border: 1px solid var(--chat-bubble-border);
   border-radius: 8px;
   background: var(--chat-bubble-background);
+  box-shadow: var(--chat-bubble-shadow);
   color: var(--foreground);
   line-height: 1.5;
   overflow-wrap: anywhere;
   padding: 8px 10px;
   white-space: pre-wrap;
+  backdrop-filter: blur(16px) saturate(125%);
 }
 
 .chat-message.mine p {
-  background: var(--accent-soft);
+  border-color: var(--chat-bubble-border);
+  background: var(--chat-bubble-background);
 }
 
 .chat-message.mine > div { justify-items: end; }
@@ -10979,13 +10985,15 @@ html:has(.article-comment-form) {
   grid-template-columns: 28px minmax(0, 1fr) 18px;
   align-items: center;
   gap: 8px;
-  border: 0;
+  border: 1px solid var(--chat-bubble-border);
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--chat-bubble-background);
+  box-shadow: var(--chat-bubble-shadow);
   color: var(--foreground);
   cursor: pointer;
   padding: 9px;
   text-align: left;
+  backdrop-filter: blur(16px) saturate(125%);
 }
 
 .chat-file-attachment > span { display: grid; min-width: 0; }
@@ -11022,12 +11030,14 @@ html:has(.article-comment-form) {
   min-height: 46px;
   max-height: 112px;
   resize: none;
-  border: 1px solid var(--control-line);
+  border: 1px solid var(--chat-bubble-border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.38);
+  background: var(--chat-bubble-background);
+  box-shadow: var(--chat-bubble-shadow);
   color: var(--foreground);
   outline: 0;
   padding: 8px 10px;
+  backdrop-filter: blur(16px) saturate(125%);
 }
 
 .chat-composer-row > button {
@@ -11066,9 +11076,12 @@ html:has(.article-comment-form) {
   height: 62px;
   place-items: center;
   overflow: hidden;
+  border: 1px solid var(--chat-bubble-border);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--chat-bubble-background);
+  box-shadow: var(--chat-bubble-shadow);
   color: var(--muted);
+  backdrop-filter: blur(16px) saturate(125%);
 }
 
 .chat-pending-attachments img { width: 100%; height: 100%; object-fit: cover; }
@@ -11764,24 +11777,6 @@ html:has(.article-comment-form) {
 .request-composer-input button:disabled { cursor: default; opacity: 0.38; }
 
 .chat-dock .chat-panel { background: color-mix(in srgb, var(--popover-surface) 34%, transparent); }
-
-.chat-dock .chat-message p,
-.chat-file-attachment,
-.chat-composer-row textarea,
-.chat-pending-attachments > span {
-  border: 1px solid color-mix(in srgb, var(--control-line) 44%, transparent);
-  background: var(--popover-surface);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
-  backdrop-filter: blur(16px) saturate(125%);
-  -webkit-backdrop-filter: blur(16px) saturate(125%);
-}
-
-.chat-dock .chat-message p { background: var(--chat-bubble-background); }
-
-.chat-dock .chat-message.mine p {
-  border-color: color-mix(in srgb, var(--accent-strong) 16%, transparent);
-  background: color-mix(in srgb, var(--accent-soft) 76%, var(--popover-surface));
-}
 
 .chat-composer {
   border-top: 1px solid color-mix(in srgb, var(--control-line) 54%, transparent);
@@ -16215,10 +16210,16 @@ select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 38%, transpar
 /* Portal form controls must not fall back to browser-sized checkbox widgets. */
 .portal-role-grid input[type="checkbox"],
 .portal-checkbox-row input[type="checkbox"],
-.anonymous-identity-create input[type="checkbox"] { box-sizing: border-box !important; width: 15px !important; min-width: 15px !important; height: 15px !important; min-height: 15px !important; flex: 0 0 15px !important; aspect-ratio: 1; appearance: none !important; border: 1px solid var(--control-line) !important; border-radius: 3px !important; background-color: transparent !important; padding: 0 !important; }
+.anonymous-identity-create input[type="checkbox"],
+.article-role-options input[type="checkbox"] { box-sizing: border-box !important; width: 15px !important; min-width: 15px !important; height: 15px !important; min-height: 15px !important; flex: 0 0 15px !important; aspect-ratio: 1; appearance: none !important; -webkit-appearance: none !important; border: 1px solid var(--control-line) !important; border-radius: 3px !important; background-color: transparent !important; background-image: none !important; background-position: center !important; background-repeat: no-repeat !important; background-size: 80% !important; box-shadow: none !important; padding: 0 !important; }
 .portal-role-grid input[type="checkbox"]:checked,
 .portal-checkbox-row input[type="checkbox"]:checked,
-.anonymous-identity-create input[type="checkbox"]:checked { border-color: var(--accent) !important; background-color: var(--accent) !important; }
+.anonymous-identity-create input[type="checkbox"]:checked,
+.article-role-options input[type="checkbox"]:checked { border-color: var(--accent) !important; background-color: var(--accent) !important; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m3.5 8 3 3 6-6'/%3E%3C/svg%3E") !important; box-shadow: none !important; }
+.portal-role-grid input[type="checkbox"]:focus-visible,
+.portal-checkbox-row input[type="checkbox"]:focus-visible,
+.anonymous-identity-create input[type="checkbox"]:focus-visible,
+.article-role-options input[type="checkbox"]:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
 
 /* Every dialog mask exactly reuses the login overlay treatment. */
 :is(.modal-backdrop, .modal-backdrop--light, .password-modal-backdrop, .avatar-crop-backdrop, .cache-detail-backdrop, .global-search-backdrop, .article-preview-backdrop, .article-versions-backdrop, .comment-report-backdrop, .chat-confirm-backdrop, .install-guide-backdrop, .storage-preview-backdrop, .site-background-preview-backdrop, .announcement-editor-backdrop, .chat-group-manager-backdrop, .group-management-modal-backdrop, .group-management-preview-backdrop, .feedback-modal-backdrop, .article-report-resolution-backdrop, .article-appeal-backdrop, .suggestion-modal-backdrop, .anonymous-topic-backdrop) { background: rgba(255, 248, 251, 0.22); backdrop-filter: blur(7px) saturate(108%); -webkit-backdrop-filter: blur(7px) saturate(108%); }
@@ -18830,26 +18831,6 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   cursor: pointer;
   font-size: 0.69rem;
 }
-.article-role-options input {
-  appearance: none;
-  -webkit-appearance: none;
-  width: 15px !important;
-  min-width: 15px !important;
-  height: 15px !important;
-  min-height: 15px !important;
-  flex: 0 0 15px;
-  margin: 0;
-  border: 1px solid var(--control-line) !important;
-  border-radius: 3px !important;
-  outline: 0;
-  background-color: transparent !important;
-  background-image: none !important;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: 80%;
-  box-shadow: none !important;
-}
-.article-role-options input:checked { border-color: var(--accent) !important; background-color: var(--accent) !important; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m3.5 8 3 3 6-6'/%3E%3C/svg%3E") !important; }
 
 .article-templates-panel { gap: 6px; }
 .article-center-secondary-tabs .article-template-create-action {
