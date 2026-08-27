@@ -24,7 +24,9 @@
   --surface-strong: rgba(255, 255, 255, 0.64);
   --surface-soft: rgba(255, 255, 255, 0.38);
   --popover-surface: rgba(255, 255, 255, 0.92);
-  --chat-conversation-background: color-mix(in srgb, var(--popover-surface) 34%, transparent);
+  --chat-conversation-background: color-mix(in srgb, var(--background) 50%, #f8fbfd);
+  --chat-floating-bubble-border: color-mix(in srgb, var(--control-line) 54%, transparent);
+  --chat-floating-bubble-shadow: 0 16px 38px rgba(18, 25, 39, 0.2);
   --chat-bubble-background: rgba(255, 255, 255, 0.48);
   --chat-bubble-border: color-mix(in srgb, var(--control-line) 44%, transparent);
   --chat-bubble-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
@@ -17584,7 +17586,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   white-space: pre-wrap;
 }
 
-/* Floating tips, profile bubbles, report queues, and action menus share the chat glass surface. */
+/* Floating tips, profile bubbles, report queues, and action menus share the chat conversation surface. */
 .level-popover,
 .level-badge::after,
 .public-profile-popover,
@@ -17617,20 +17619,44 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 
 .level-popover::before,
-.portal-entry-tooltip::before { background: var(--chat-bubble-background); }
+.portal-entry-tooltip::before { background: var(--chat-conversation-background); }
 .level-popover { background-image: none; }
 
-/* Match chat action menus and account-level tips to the chat conversation surface. */
+/* Final source of truth: bubbles use the same opaque surface as the chat conversation area. */
+.header-popover,
+.task-popover.header-popover,
+.account-menu,
+.public-profile-popover,
+.admin-report-popover,
+.level-badge::after,
 .chat-friend-action-menu,
 .chat-conversation-action-menu,
 .chat-message-action-menu,
 .chat-notification-action-menu,
 .chat-notification-channel-menu,
+.chat-emoji-picker,
+.chat-mobile-tools-panel,
+.chat-group-member-context,
+.chat-message-sender > small,
+.portal-entry-tooltip,
+.analytics-chart-tooltip,
+.analytics-metric-tooltip,
 .level-popover {
-  border: 1px solid color-mix(in srgb, var(--control-line) 54%, transparent);
+  border: 1px solid var(--chat-floating-bubble-border);
   background: var(--chat-conversation-background);
   background-image: none;
-  box-shadow: 0 16px 38px rgba(18, 25, 39, 0.2);
+  box-shadow: var(--chat-floating-bubble-shadow);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.portal-entry-tooltip { color: var(--foreground); }
+
+/* Keep the report-detail tooltip borderless while sharing the conversation surface. */
+.my-report-detail-tooltip {
+  border: 0;
+  background: var(--chat-conversation-background);
+  background-image: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
