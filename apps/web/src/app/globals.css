@@ -17619,6 +17619,23 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .portal-entry-tooltip::before { background: var(--chat-bubble-background); }
 .level-popover { background-image: none; }
 
+/* Keep notification, chat action, and account-level popovers on one readable glass surface. */
+.header-popover,
+.chat-friend-action-menu,
+.chat-conversation-action-menu,
+.chat-message-action-menu,
+.chat-notification-action-menu,
+.chat-notification-channel-menu,
+.level-popover {
+  border: 1px solid color-mix(in srgb, var(--control-line) 58%, transparent);
+  background: var(--popover-surface);
+  background-image: none;
+  box-shadow: var(--shadow-hover);
+  backdrop-filter: blur(24px) saturate(125%);
+}
+
+.level-popover::before { background: var(--popover-surface); }
+
 @media (max-width: 680px) {
   .moderation-reports-header { align-items: flex-start; flex-direction: column; }
   .moderation-summary { width: 100%; justify-content: flex-start; }
