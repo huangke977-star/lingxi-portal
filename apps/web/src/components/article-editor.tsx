@@ -78,7 +78,8 @@ type AutosaveState = "idle" | "waiting" | "saving" | "saved" | "offline";
 
 interface MarkdownSuggestion {
   insert: string;
-  preview: string;
+  hint: string;
+  hintEn: string;
 }
 
 const emptyDraft: ArticleInput = {
@@ -114,6 +115,9 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const markdownMirrorRef = useRef<HTMLDivElement | null>(null);
+  const markdownCaretRef = useRef<HTMLSpanElement | null>(null);
+  const markdownSuggestionRef = useRef<HTMLSpanElement | null>(null);
   const categoryPickerRef = useRef<HTMLDivElement | null>(null);
   const tagPickerRef = useRef<HTMLDivElement | null>(null);
   const pendingImagesRef = useRef<PendingArticleImage[]>([]);
@@ -132,6 +136,8 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   const [isScheduleSaving, setIsScheduleSaving] = useState(false);
   const [isResourceInfoOpen, setIsResourceInfoOpen] = useState(false);
   const [markdownSuggestion, setMarkdownSuggestion] = useState<MarkdownSuggestion | null>(null);
+  const [markdownCursor, setMarkdownCursor] = useState(0);
+  const [markdownSuggestionPosition, setMarkdownSuggestionPosition] = useState({ top: 0, left: 0 });
   const articleStatusLabel = (status: Article["status"]) => status === "draft" ? phrase("草稿", "Draft") : status === "published" ? phrase("已发布", "Published") : status === "unpublished" ? phrase("已下架", "Unpublished") : status === "blocked" ? phrase("受限", "Restricted") : phrase("已删除", "Deleted");
   const visibilityLabel = (visibility: ArticleInput["visibility"]) => visibility === "public" ? phrase("所有人可见", "Public") : visibility === "authenticated" ? phrase("仅登录用户", "Signed-in users") : visibility === "role_restricted" ? phrase("指定角色", "Specific roles") : phrase("仅自己", "Only me");
   const versionSourceLabel = (source: ArticleVersionSummary["source"]) => source === "autosave" ? phrase("自动保存", "Autosave") : source === "manual" ? phrase("手动保存", "Manual save") : source === "publish" ? phrase("发布", "Publish") : phrase("恢复版本", "Restore version");
@@ -183,6 +189,16 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [draft.content]);
+
+  useEffect(() => {
+    if (!markdownSuggestion) return;
+    const frame = window.requestAnimationFrame(positionMarkdownSuggestion);
+    window.addEventListener("resize", positionMarkdownSuggestion);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", positionMarkdownSuggestion);
+    };
+  }, [draft.content, markdownCursor, markdownSuggestion]);
 
   useEffect(() => () => {
     if (autosaveTimerRef.current !== null) window.clearTimeout(autosaveTimerRef.current);
@@ -454,8 +470,17 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     });
   }
 
-  function updateMarkdownSuggestion(value: string, cursor: number) {
-    setMarkdownSuggestion(getMarkdownSuggestion(value, cursor));
+  function updateMarkdownSuggestion(value: string, cursor: number | null) {
+    const nextCursor = cursor ?? value.length;
+    setMarkdownCursor(nextCursor);
+    setMarkdownSuggestion(getMarkdownSuggestion(value, nextCursor));
+    window.requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea || textarea.value !== value) return;
+      const actualCursor = textarea.selectionStart ?? value.length;
+      setMarkdownCursor(actualCursor);
+      setMarkdownSuggestion(getMarkdownSuggestion(value, actualCursor));
+    });
   }
 
   function insertMarkdownSuggestion(suggestion: MarkdownSuggestion) {
@@ -465,10 +490,44 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     const nextContent = `${draft.content.slice(0, cursor)}${suggestion.insert}${draft.content.slice(cursor)}`;
     const nextCursor = cursor + suggestion.insert.length;
     setDraft((current) => ({ ...current, content: nextContent }));
+    setMarkdownCursor(nextCursor);
     setMarkdownSuggestion(getMarkdownSuggestion(nextContent, nextCursor));
     window.requestAnimationFrame(() => {
       textarea.focus();
       textarea.setSelectionRange(nextCursor, nextCursor);
+    });
+  }
+
+  function positionMarkdownSuggestion() {
+    const textarea = textareaRef.current;
+    const mirror = markdownMirrorRef.current;
+    const caret = markdownCaretRef.current;
+    const suggestion = markdownSuggestionRef.current;
+    if (!textarea || !mirror || !caret || !suggestion) return;
+    const computedStyle = window.getComputedStyle(textarea);
+    Object.assign(mirror.style, {
+      width: `${textarea.clientWidth}px`,
+      height: `${Math.max(textarea.scrollHeight, textarea.clientHeight)}px`,
+      fontFamily: computedStyle.fontFamily,
+      fontSize: computedStyle.fontSize,
+      fontWeight: computedStyle.fontWeight,
+      letterSpacing: computedStyle.letterSpacing,
+      lineHeight: computedStyle.lineHeight,
+      padding: computedStyle.padding,
+      textIndent: computedStyle.textIndent,
+    });
+    Object.assign(suggestion.style, {
+      fontFamily: computedStyle.fontFamily,
+      fontSize: computedStyle.fontSize,
+      fontWeight: computedStyle.fontWeight,
+      letterSpacing: computedStyle.letterSpacing,
+      lineHeight: computedStyle.lineHeight,
+    });
+    const textareaRect = textarea.getBoundingClientRect();
+    const caretRect = caret.getBoundingClientRect();
+    setMarkdownSuggestionPosition({
+      left: caretRect.left - textareaRect.left - textarea.scrollLeft,
+      top: caretRect.top - textareaRect.top - textarea.scrollTop,
     });
   }
 
@@ -870,8 +929,13 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
               </div>
               {draft.visibility === "role_restricted" ? <div aria-label={phrase("可见角色", "Visible roles")} className="article-role-options" role="group">{roles.map((role) => <label key={role.code}><input checked={draft.roleCodes.includes(role.code)} onChange={() => toggleVisibleRole(role.code)} type="checkbox" /><span>{growthLevelLabel(role.code, locale, role.name)}</span></label>)}</div> : null}
             </div>
-             <textarea className="article-editor-textarea" onBlur={() => setMarkdownSuggestion(null)} onChange={(event) => { setDraft({ ...draft, content: event.target.value }); updateMarkdownSuggestion(event.target.value, event.target.selectionStart); }} onClick={(event) => updateMarkdownSuggestion(event.currentTarget.value, event.currentTarget.selectionStart)} onFocus={(event) => updateMarkdownSuggestion(event.currentTarget.value, event.currentTarget.selectionStart)} onKeyDown={handleEditorKeyDown} onKeyUp={(event) => updateMarkdownSuggestion(event.currentTarget.value, event.currentTarget.selectionStart)} onPaste={handleEditorPaste} onSelect={(event) => updateMarkdownSuggestion(event.currentTarget.value, event.currentTarget.selectionStart)} placeholder={phrase("支持 Markdown：标题、列表、表格、引用、链接、图片、代码块和局部积分资源块", "Markdown is supported: headings, lists, tables, quotes, links, images, code blocks, and partial point-resource blocks")} ref={textareaRef} value={draft.content} />
-            {markdownSuggestion ? <div aria-label={phrase("Markdown 语法建议", "Markdown syntax suggestion")} aria-live="polite" className="article-markdown-suggestion"><code>{markdownSuggestion.preview}</code><kbd>Tab</kbd></div> : null}
+              <div className="article-editor-textarea-wrap">
+                <textarea className="article-editor-textarea" onBlur={() => setMarkdownSuggestion(null)} onChange={(event) => { setDraft({ ...draft, content: event.target.value }); updateMarkdownSuggestion(event.target.value, event.target.selectionStart); }} onClick={(event) => updateMarkdownSuggestion(event.currentTarget.value, event.currentTarget.selectionStart)} onFocus={(event) => updateMarkdownSuggestion(event.currentTarget.value, event.currentTarget.selectionStart)} onKeyDown={handleEditorKeyDown} onKeyUp={(event) => updateMarkdownSuggestion(event.currentTarget.value, event.currentTarget.selectionStart)} onPaste={handleEditorPaste} onScroll={positionMarkdownSuggestion} onSelect={(event) => updateMarkdownSuggestion(event.currentTarget.value, event.currentTarget.selectionStart)} placeholder={phrase("支持 Markdown：标题、列表、表格、引用、链接、图片、代码块和局部积分资源块", "Markdown is supported: headings, lists, tables, quotes, links, images, code blocks, and partial point-resource blocks")} ref={textareaRef} value={draft.content} />
+                {markdownSuggestion ? <>
+                  <div aria-hidden="true" className="article-markdown-mirror" ref={markdownMirrorRef}><span>{draft.content.slice(0, markdownCursor)}</span><span className="article-markdown-caret" ref={markdownCaretRef} /><span>{locale === "en-US" ? markdownSuggestion.hintEn : markdownSuggestion.hint}</span></div>
+                  <span aria-hidden="true" className="article-markdown-inline-suggestion" ref={markdownSuggestionRef} style={{ top: markdownSuggestionPosition.top, left: markdownSuggestionPosition.left }}>{locale === "en-US" ? markdownSuggestion.hintEn : markdownSuggestion.hint}</span>
+                </> : null}
+              </div>
             <div className="article-editor-upload"><label className="text-action"><ImagePlus aria-hidden="true" size={16} />{phrase("添加图片", "Add images")}<input accept="image/jpeg,image/png,image/webp,image/avif" hidden multiple onChange={(event) => { insertImagesAtCursor(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} type="file" /></label><span>{pendingImages.length ? phrase(`待上传 ${pendingImages.length} 张，保存时才会上传`, `${pendingImages.length} image(s) pending upload and will upload when saved`) : phrase(`支持 JPG、PNG、WebP、AVIF，单张不超过 ${imageMaxSizeMb}MB`, `JPG, PNG, WebP, and AVIF are supported, up to ${imageMaxSizeMb}MB each`)}</span></div>
             {pendingImages.length ? <div className="article-pending-images">{pendingImages.map((image) => <span key={image.id}>{image.file.name}<button aria-label={phrase(`移除 ${image.file.name}`, `Remove ${image.file.name}`)} onClick={() => removePendingImage(image)} title={phrase("移除图片", "Remove image")} type="button"><X aria-hidden="true" size={14} /></button></span>)}</div> : null}
              <div className="article-editor-actions"><button className="button secondary" disabled={isSaving || autosaveState === "saving"} onClick={() => void saveArticle(false)} type="button"><Save aria-hidden="true" size={16} />{isSaving ? phrase("保存中", "Saving") : article ? phrase("保存修改", "Save changes") : phrase("保存草稿", "Save draft")}</button><button className="button" disabled={isSaving || autosaveState === "saving" || article?.status === "blocked"} onClick={() => void saveArticle(true)} type="button"><Send aria-hidden="true" size={16} />{phrase("发布文章", "Publish article")}</button><button aria-label={phrase("定时发布", "Schedule publication")} className="button secondary article-schedule-action" disabled={isSaving || autosaveState === "saving" || article?.status === "blocked"} onClick={() => setIsScheduleDialogOpen(true)} title={phrase("定时发布", "Schedule publication")} type="button"><CalendarClock aria-hidden="true" size={16} />{phrase("定时发布", "Schedule publication")}</button>{article?.status === "published" ? <button className="text-action" disabled={isSaving} onClick={() => void takeOffline()} type="button">{phrase("下架", "Unpublish")}</button> : null}{article ? <button className="text-danger-action" disabled={isSaving} onClick={() => void moveToTrash()} type="button"><Trash2 aria-hidden="true" size={16} />{phrase("删除", "Delete")}</button> : null}</div>
@@ -895,15 +959,15 @@ function sanitizeImageAlt(value: string, locale: "zh-CN" | "en-US"): string {
 function getMarkdownSuggestion(value: string, cursor: number): MarkdownSuggestion | null {
   const lineStart = value.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
   const line = value.slice(lineStart, cursor);
-  if (/^\s*#{1,6}$/.test(line)) return { insert: " ", preview: `${line} heading` };
-  if (/^\s*[-*]$/.test(line)) return { insert: " ", preview: `${line} item` };
-  if (/^\s*\d+\.$/.test(line)) return { insert: " ", preview: `${line} item` };
-  if (/^\s*>$/.test(line)) return { insert: " ", preview: `${line} quote` };
-  if (/^\s*```$/.test(line)) return { insert: "\n\n```", preview: "```\n\n```" };
-  if (/^\s*!\[$/.test(line)) return { insert: "]()", preview: "![alt](url)" };
-  if (/^\s*\[$/.test(line)) return { insert: "]()", preview: "[text](url)" };
-  if (/^\s*:::resource$/.test(line)) return { insert: "{points=10}\n\n:::", preview: ":::resource{points=10}\n\n:::" };
-  if (/^\s*:::$/.test(line)) return { insert: "resource{points=10}\n\n:::", preview: ":::resource{points=10}\n\n:::" };
+  if (/^\s*#{1,6}$/.test(line)) return { insert: " ", hint: " 标题", hintEn: " heading" };
+  if (/^\s*[-*]$/.test(line)) return { insert: " ", hint: " 列表项", hintEn: " list item" };
+  if (/^\s*\d+\.$/.test(line)) return { insert: " ", hint: " 列表项", hintEn: " list item" };
+  if (/^\s*>$/.test(line)) return { insert: " ", hint: " 引用", hintEn: " quote" };
+  if (/^\s*```$/.test(line)) return { insert: "\n\n```", hint: "\n\n```", hintEn: "\n\n```" };
+  if (/^\s*!\[$/.test(line)) return { insert: "]()", hint: "](图片地址)", hintEn: "](image-url)" };
+  if (/^\s*\[$/.test(line)) return { insert: "]()", hint: "](链接地址)", hintEn: "](link-url)" };
+  if (/^\s*:::resource$/.test(line)) return { insert: "{points=10}\n\n:::", hint: "{points=10}\n\n:::", hintEn: "{points=10}\n\n:::" };
+  if (/^\s*:::$/.test(line)) return { insert: "resource{points=10}\n\n:::", hint: "resource{points=10}\n\n:::", hintEn: "resource{points=10}\n\n:::" };
   return null;
 }
 

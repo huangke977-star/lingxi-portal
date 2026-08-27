@@ -17495,9 +17495,38 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .article-editor-page .article-editor-workspace { gap: 6px; }
 .article-editor-page .article-editor-workspace .article-editor-panel,
 .article-editor-page .article-editor-workspace .article-editor-preview { padding: 12px; }
-.article-editor-page .article-markdown-suggestion { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 6px; color: var(--muted); font-size: 0.68rem; }
-.article-editor-page .article-markdown-suggestion code { min-width: 0; overflow: hidden; border-radius: 6px; background: var(--chat-bubble-background); color: var(--muted-strong); font: inherit; line-height: 1.4; padding: 4px 7px; text-overflow: ellipsis; white-space: pre; }
-.article-editor-page .article-markdown-suggestion kbd { display: inline-flex; min-width: 24px; height: 21px; align-items: center; justify-content: center; border-radius: 5px; background: var(--accent-soft); color: var(--accent-strong); font: 0.62rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.article-editor-page .article-editor-preview-heading { min-height: 32px; margin-top: 8px; }
+.article-editor-page .article-editor-textarea-wrap { position: relative; min-width: 0; margin-top: 12px; }
+.article-editor-page .article-editor-textarea-wrap .article-editor-textarea { position: relative; z-index: 1; display: block; margin-top: 0; }
+.article-markdown-mirror {
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  min-height: 100%;
+  overflow: visible;
+  border: 1px solid transparent;
+  color: transparent;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  visibility: hidden;
+}
+.article-markdown-caret { display: inline-block; width: 0; height: 1em; vertical-align: baseline; }
+.article-markdown-inline-suggestion {
+  position: absolute;
+  z-index: 2;
+  right: 12px;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
+  font: inherit;
+  line-height: inherit;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: pre-wrap;
+}
 
 /* Floating tips, profile bubbles, report queues, and action menus share the chat glass surface. */
 .level-popover,
@@ -17518,7 +17547,18 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .chat-notification-action-menu,
 .chat-notification-channel-menu,
 .chat-mobile-tools-panel,
-.chat-group-member-context { background: var(--chat-bubble-background); }
+.chat-group-member-context {
+  background: var(--chat-bubble-background);
+  backdrop-filter: blur(22px) saturate(125%);
+  -webkit-backdrop-filter: blur(22px) saturate(125%);
+}
+
+.my-report-detail-tooltip {
+  border: 0;
+  background: var(--chat-bubble-background);
+  background-image: none;
+  box-shadow: var(--shadow-hover), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
 
 .level-popover::before,
 .portal-entry-tooltip::before { background: var(--chat-bubble-background); }
