@@ -1,7 +1,7 @@
 "use client";
 
-import { Check, Eye, FileText, Folder, Pencil, Plus, Tags, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Check, ChevronDown, Eye, FileText, Pencil, Plus, Shapes, Tags, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArticleBody, displayArticleTaxonomy, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
@@ -18,9 +18,14 @@ import {
 import { isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
+import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-api";
 import { useRouter } from "next/navigation";
 
 type DialogMode = "create" | "view" | "edit" | "delete";
+
+const MAX_SELECTED_TEMPLATE_TAGS = 6;
+const ARTICLE_CATEGORY_OPTIONS = ["随笔", "技术", "服务器", "工具", "资源", "教程", "生活", "公告"];
+const ARTICLE_TAG_OPTIONS = ["AI", "开发", "前端", "后端", "数据库", "运维", "服务器", "网络", "工具", "资源", "教程", "经验", "随笔", "生活", "公告"];
 
 interface TemplateForm {
   name: string;
@@ -64,16 +69,58 @@ export function ArticleTemplatesPanel() {
   const [selectedTemplate, setSelectedTemplate] = useState<ArticleTemplate | null>(null);
   const [form, setForm] = useState<TemplateForm>(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
+  const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
+  const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
+  const tagPickerRef = useRef<HTMLDivElement>(null);
 
   const visibilityLabels = useMemo(
     () => visibilityOptions.map((option) => ({ value: option.value, label: locale === "en-US" ? option.labelEn : option.label })),
     [locale],
   );
+  const selectedTags = useMemo(() => parseArticleTags(form.tags), [form.tags]);
+  const configuredCategoryOptions = useMemo(
+    () => siteSettings?.taxonomies?.categories?.filter((item) => item.enabled).map((item) => item.name) ?? ARTICLE_CATEGORY_OPTIONS,
+    [siteSettings],
+  );
+  const configuredTagOptions = useMemo(
+    () => siteSettings?.taxonomies?.tags?.filter((item) => item.enabled).map((item) => item.name) ?? ARTICLE_TAG_OPTIONS,
+    [siteSettings],
+  );
+  const categoryOptions = useMemo(
+    () => form.category && !configuredCategoryOptions.includes(form.category)
+      ? [form.category, ...configuredCategoryOptions]
+      : configuredCategoryOptions,
+    [configuredCategoryOptions, form.category],
+  );
+  const tagOptions = useMemo(
+    () => Array.from(new Set([...configuredTagOptions, ...selectedTags])),
+    [configuredTagOptions, selectedTags],
+  );
 
   async function load(token: string) {
-    const result = await listArticleTemplates(token);
+    const [result, settings] = await Promise.all([
+      listArticleTemplates(token),
+      getPublicSiteSettings().catch(() => null),
+    ] as const);
     setTemplates(result.items);
+    if (settings) setSiteSettings(settings);
   }
+
+  useEffect(() => {
+    if (!isTagPickerOpen) return;
+    function closeTagPicker(event: PointerEvent) {
+      if (!tagPickerRef.current?.contains(event.target as Node)) setIsTagPickerOpen(false);
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsTagPickerOpen(false);
+    }
+    document.addEventListener("pointerdown", closeTagPicker);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeTagPicker);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isTagPickerOpen]);
 
   useEffect(() => {
     const token = readAccessToken();
@@ -112,23 +159,37 @@ export function ArticleTemplatesPanel() {
 
   function openCreate() {
     setSelectedTemplate(null);
-    setForm(emptyForm);
+    setForm({ ...emptyForm, category: configuredCategoryOptions[0] ?? emptyForm.category });
+    setIsTagPickerOpen(false);
     setDialogMode("create");
   }
 
   function openTemplate(template: ArticleTemplate, mode: Exclude<DialogMode, "create">) {
     setSelectedTemplate(template);
     setForm(templateToForm(template));
+    setIsTagPickerOpen(false);
     setDialogMode(mode);
   }
 
   function closeDialog() {
     setDialogMode(null);
     setSelectedTemplate(null);
+    setIsTagPickerOpen(false);
   }
 
   function updateForm<K extends keyof TemplateForm>(key: K, value: TemplateForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function toggleTag(tag: string) {
+    const nextTags = selectedTags.includes(tag)
+      ? selectedTags.filter((item) => item !== tag)
+      : [...selectedTags, tag];
+    if (nextTags.length > MAX_SELECTED_TEMPLATE_TAGS) {
+      setError(phrase(`最多选择 ${MAX_SELECTED_TEMPLATE_TAGS} 个标签。`, `Choose at most ${MAX_SELECTED_TEMPLATE_TAGS} tags.`));
+      return;
+    }
+    updateForm("tags", nextTags.join(","));
   }
 
   function formInput(): ArticleTemplateInput {
@@ -191,10 +252,6 @@ export function ArticleTemplatesPanel() {
   return (
     <section className="article-templates-panel">
       <header className="article-templates-heading">
-        <div>
-          <h1>{phrase("文章模板", "Article templates")}</h1>
-          <p>{phrase("保存常用的标题、正文和文章设置，写文章时可以直接套用。", "Save reusable titles, content, and article settings for the writing page.")}</p>
-        </div>
         <button aria-label={phrase("创建模板", "Create template")} className="article-icon-action" onClick={openCreate} title={phrase("创建模板", "Create template")} type="button"><Plus aria-hidden="true" size={17} /></button>
       </header>
       {isLoading ? <div className="article-empty-state">{phrase("正在读取文章模板。", "Loading article templates.")}</div> : templates.length ? (
@@ -239,13 +296,15 @@ export function ArticleTemplatesPanel() {
               <form className="article-template-form" onSubmit={(event) => { event.preventDefault(); void save(); }}>
                 <header><span><FileText aria-hidden="true" size={17} /><strong>{phrase(dialogMode === "edit" ? "编辑文章模板" : "创建文章模板", dialogMode === "edit" ? "Edit article template" : "Create article template")}</strong></span></header>
                 <div className="announcement-editor-body article-template-form-body">
-                  <label><span>{phrase("模板名称", "Template name")}</span><input autoFocus maxLength={80} onChange={(event) => updateForm("name", event.target.value)} required value={form.name} /></label>
+                  <label className="article-template-name-field"><input aria-label={phrase("模板名称", "Template name")} autoFocus maxLength={80} onChange={(event) => updateForm("name", event.target.value)} placeholder={phrase("模板名称", "Template name")} required value={form.name} /></label>
                   <div className="article-title-field"><input aria-label={phrase("文章标题", "Article title")} className="article-title-input" maxLength={120} onChange={(event) => updateForm("title", event.target.value)} placeholder={phrase("文章标题", "Article title")} value={form.title} /><input aria-label={phrase("标题颜色", "Title color")} className="article-title-color-input" onChange={(event) => updateForm("titleColor", event.target.value)} type="color" value={form.titleColor || "#2b2530"} /></div>
-                  <label className="wide"><span>{phrase("摘要", "Summary")}</span><input maxLength={300} onChange={(event) => updateForm("summary", event.target.value)} value={form.summary} /></label>
                   <div className="article-template-taxonomy-grid">
-                    <label className="article-template-inline-field"><Folder aria-hidden="true" size={15} /><input aria-label={phrase("分类", "Category")} maxLength={80} onChange={(event) => updateForm("category", event.target.value)} value={form.category} /></label>
-                    <label className="article-template-inline-field"><Tags aria-hidden="true" size={15} /><input aria-label={phrase("标签", "Tags")} maxLength={500} onChange={(event) => updateForm("tags", event.target.value)} placeholder={phrase("标签，用逗号分隔", "Tags, comma separated")} value={form.tags} /></label>
-                    <div className="article-template-inline-field"><Eye aria-hidden="true" size={15} /><GlassSelect ariaLabel={phrase("阅读权限", "Visibility")} onChange={(value) => updateForm("visibility", value)} options={visibilityLabels} value={form.visibility} /></div>
+                    <div className="article-template-inline-field"><GlassSelect ariaLabel={phrase("分类", "Category")} leadingIcon={<Shapes aria-hidden="true" size={15} />} onChange={(category) => updateForm("category", category)} options={categoryOptions.map((category) => ({ value: category, label: displayArticleTaxonomy(category, locale) }))} value={form.category} /></div>
+                    <div className="article-template-tag-picker" ref={tagPickerRef}>
+                      <button aria-expanded={isTagPickerOpen} className="article-tag-picker-trigger" onClick={() => setIsTagPickerOpen((current) => !current)} type="button"><Tags aria-hidden="true" size={15} /><span className={`article-tag-picker-values${selectedTags.length ? " selected" : ""}`}>{selectedTags.length ? selectedTags.map((tag) => <span key={tag}>#{displayArticleTaxonomy(tag, locale)}</span>) : phrase("选择标签", "Choose tags")}</span><ChevronDown aria-hidden="true" size={15} /></button>
+                      {isTagPickerOpen ? <div className="article-tag-picker-menu">{tagOptions.map((tag) => { const selected = selectedTags.includes(tag); return <button aria-pressed={selected} className={selected ? "selected" : undefined} key={tag} onClick={() => toggleTag(tag)} type="button"><span>{displayArticleTaxonomy(tag, locale)}</span>{selected ? <Check aria-hidden="true" size={14} /> : null}</button>; })}</div> : null}
+                    </div>
+                    <div className="article-template-inline-field"><GlassSelect ariaLabel={phrase("阅读权限", "Visibility")} leadingIcon={<Eye aria-hidden="true" size={15} />} onChange={(value) => updateForm("visibility", value)} options={visibilityLabels} value={form.visibility} /></div>
                   </div>
                   {form.visibility === "role_restricted" ? <label className="wide"><span>{phrase("可见角色", "Visible roles")}</span><input onChange={(event) => updateForm("roleCodes", event.target.value)} placeholder={phrase("用逗号分隔角色代码", "Comma separated role codes")} value={form.roleCodes} /></label> : null}
                   <label className="wide article-template-content-field"><textarea aria-label={phrase("模板正文", "Template content")} minLength={1} onChange={(event) => updateForm("content", event.target.value)} placeholder={phrase("模板正文，支持 Markdown", "Template content, Markdown supported")} required value={form.content} /></label>
@@ -260,4 +319,8 @@ export function ArticleTemplatesPanel() {
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );
+}
+
+function parseArticleTags(value: string): string[] {
+  return Array.from(new Set(value.split(",").map((tag) => tag.trim()).filter(Boolean)));
 }
