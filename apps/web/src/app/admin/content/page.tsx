@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { FilePlus2, FolderPlus, Pencil, Star, Trash2 } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
@@ -92,6 +93,7 @@ const emptyCategoryDraft: PortalCategoryInput = {
 export default function ContentManagementPage() {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [categories, setCategories] = useState<PortalCategory[]>([]);
@@ -342,7 +344,7 @@ export default function ContentManagementPage() {
       setError(phrase("请先删除该分类下的全部条目。", "Delete every entry in this category first."));
       return;
     }
-    if (!window.confirm(phrase(`确定删除分类“${category.name}”吗？`, `Delete category “${category.name}”?`))) return;
+    if (!(await confirm(phrase(`确定删除分类“${category.name}”吗？`, `Delete category “${category.name}”?`), { danger: true }))) return;
 
     setBusyKey(`category-${category.id}`);
     setError("");
@@ -361,7 +363,7 @@ export default function ContentManagementPage() {
 
   async function handleDeleteEntry(entry: PortalEntry) {
     if (!accessToken) return;
-    if (!window.confirm(phrase(`确定删除条目“${entry.title}”吗？`, `Delete entry “${entry.title}”?`))) return;
+    if (!(await confirm(phrase(`确定删除条目“${entry.title}”吗？`, `Delete entry “${entry.title}”?`), { danger: true }))) return;
 
     setBusyKey(`entry-${entry.id}`);
     setError("");

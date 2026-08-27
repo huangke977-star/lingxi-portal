@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import Script from "next/script";
 import { AuthSessionController } from "@/components/auth-session-controller";
 import { ChatDock } from "@/components/chat-dock";
+import { ConfirmDialogProvider } from "@/components/confirm-dialog";
 import { LanguageProvider } from "@/components/language-provider";
 import { PwaController } from "@/components/pwa-controller";
 import { OnboardingController } from "@/components/onboarding-controller";
@@ -102,18 +103,20 @@ export default async function RootLayout({
           {themeBootScript}
         </Script>
         <LanguageProvider initialLocale={locale}>
-          <AuthSessionController />
-          <OnboardingController />
-          <PwaController />
-          <ThemeController />
-          <ScrollContainment />
-          <TopNav />
-          <main className="content-shell">
-            <RouteBackButton />
-            {children}
-          </main>
-          <ScrollToTop />
-          <ChatDock />
+          <ConfirmDialogProvider>
+            <AuthSessionController />
+            <OnboardingController />
+            <PwaController />
+            <ThemeController />
+            <ScrollContainment />
+            <TopNav />
+            <main className="content-shell">
+              <RouteBackButton />
+              {children}
+            </main>
+            <ScrollToTop />
+            <ChatDock />
+          </ConfirmDialogProvider>
         </LanguageProvider>
       </body>
     </html>

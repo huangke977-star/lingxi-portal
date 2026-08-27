@@ -6,6 +6,7 @@ import { Pencil, Plus, Rss, Search } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { AppToast } from "@/components/app-toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { useLanguage } from "@/components/language-provider";
 import { TopicEditorDialog, type TopicEditorDraft } from "@/components/topic-editor-dialog";
 import { listAdminArticles, type Article } from "@/lib/article-api";
@@ -42,6 +43,7 @@ const blankTopic: TopicEditorDraft = {
 
 export default function TopicsPage() {
   const { locale, phrase, t } = useLanguage();
+  const { confirm } = useConfirm();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [topics, setTopics] = useState<ArticleTopic[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
@@ -188,7 +190,7 @@ export default function TopicsPage() {
 
   async function removeSelectedTopic() {
     const token = readAccessToken();
-    if (!token || !selected || !window.confirm(phrase(`删除专题“${selected.title}”吗？文章本身不会删除。`, `Delete topic “${selected.title}”? Its articles will not be deleted.`))) return;
+    if (!token || !selected || !(await confirm(phrase(`删除专题“${selected.title}”吗？文章本身不会删除。`, `Delete topic “${selected.title}”? Its articles will not be deleted.`)))) return;
     setIsSaving(true);
     try {
       await deleteTopic(token, selected.id);

@@ -20,6 +20,7 @@ import { createPortal } from "react-dom";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { AppToast } from "@/components/app-toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { ContentArticleManager } from "@/components/content-article-manager";
 import { useLanguage } from "@/components/language-provider";
 import { formatArticleDate } from "@/components/article-ui";
@@ -55,6 +56,7 @@ const emptyBrowse: CollectionPage = {
 export default function ArticleCollectionsPage() {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [view, setView] = useState<CollectionView>("browse");
   const [collections, setCollections] = useState<ArticleCollection[]>([]);
@@ -263,7 +265,7 @@ export default function ArticleCollectionsPage() {
     if (
       !token ||
       !selected ||
-      !window.confirm(phrase(`删除合集“${selected.name}”吗？文章本身不会删除。`, `Delete collection “${selected.name}”? Its articles will not be deleted.`))
+      !(await confirm(phrase(`删除合集“${selected.name}”吗？文章本身不会删除。`, `Delete collection “${selected.name}”? Its articles will not be deleted.`)))
     )
       return;
     try {

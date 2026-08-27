@@ -12,6 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { useLanguage } from "@/components/language-provider";
 import { isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
@@ -35,6 +36,7 @@ interface AccountSecurityPanelProps {
 export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const [overview, setOverview] = useState<MySecurityOverview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [savingPreference, setSavingPreference] = useState<
@@ -190,9 +192,9 @@ export function AccountSecurityPanel({ email }: AccountSecurityPanelProps) {
     if (!token || removingDeviceId !== null) return;
     const label = device.deviceLabel || device.label || phrase("这台设备", "this device");
     if (
-      !window.confirm(
+      !(await confirm(
         phrase(`确定取消信任 ${label} 吗？当前会话不会退出，下次登录需要邮箱验证。`, `Remove trust for ${label}? The current session remains signed in, and the next sign-in will require email verification.`),
-      )
+      ))
     ) {
       return;
     }

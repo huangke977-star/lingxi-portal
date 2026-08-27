@@ -27,6 +27,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
@@ -82,6 +83,7 @@ type Phrase = (chinese: string, english: string) => string;
 export default function StorageManagementPage() {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [overview, setOverview] = useState<StorageOverview | null>(null);
@@ -258,7 +260,7 @@ export default function StorageManagementPage() {
   }
 
   async function handleTrashIssue(issue: StorageIssue) {
-    if (!accessToken || busyAction || !window.confirm(phrase(`将 ${issue.storedName} 移入回收站吗？`, `Move ${issue.storedName} to the recycle bin?`))) return;
+    if (!accessToken || busyAction || !(await confirm(phrase(`将 ${issue.storedName} 移入回收站吗？`, `Move ${issue.storedName} to the recycle bin?`), { danger: true }))) return;
     setBusyAction(`trash:${issue.id}`);
     setError("");
     try {
@@ -273,7 +275,7 @@ export default function StorageManagementPage() {
   }
 
   async function handleRemoteRestore(issue: StorageIssue) {
-    if (!accessToken || busyAction || !window.confirm(phrase(`从远端备份恢复 ${issue.storedName} 吗？`, `Restore ${issue.storedName} from remote backup?`))) return;
+    if (!accessToken || busyAction || !(await confirm(phrase(`从远端备份恢复 ${issue.storedName} 吗？`, `Restore ${issue.storedName} from remote backup?`)))) return;
     setBusyAction(`remote:${issue.id}`);
     setError("");
     try {
@@ -348,7 +350,7 @@ export default function StorageManagementPage() {
   }
 
   async function handleDeleteTrash(id: number, name: string) {
-    if (!accessToken || busyAction || !window.confirm(phrase(`永久删除 ${name} 吗？该操作无法撤销。`, `Permanently delete ${name}? This cannot be undone.`))) return;
+    if (!accessToken || busyAction || !(await confirm(phrase(`永久删除 ${name} 吗？该操作无法撤销。`, `Permanently delete ${name}? This cannot be undone.`), { danger: true }))) return;
     setBusyAction(`delete:${id}`);
     setError("");
     try {

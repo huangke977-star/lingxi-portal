@@ -8,6 +8,7 @@ import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleAuthorLine, ArticleBody, ArticleStats, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { LikeBurst } from "@/components/like-burst";
@@ -57,6 +58,7 @@ export default function ArticleDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const [article, setArticle] = useState<Article | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -323,7 +325,7 @@ export default function ArticleDetailPage() {
     }
     const block = article.resource.blocks.find((item) => item.key === blockKey);
     if (!block || block.unlocked) return;
-    if (!window.confirm(phrase(`确定使用 ${block.pointCost} 积分永久解锁这段内容吗？`, `Use ${block.pointCost} points to permanently unlock this section?`))) return;
+    if (!(await confirm(phrase(`确定使用 ${block.pointCost} 积分永久解锁这段内容吗？`, `Use ${block.pointCost} points to permanently unlock this section?`)))) return;
     setIsRedeemingResource(true);
     setError("");
     try {
@@ -410,7 +412,7 @@ export default function ArticleDetailPage() {
 
   async function handleCommentDelete(comment: ArticleComment) {
     const token = readAccessToken();
-    if (!token || !article || !window.confirm(phrase("确定删除这条评论吗？", "Delete this comment?"))) return;
+    if (!token || !article || !(await confirm(phrase("确定删除这条评论吗？", "Delete this comment?")))) return;
     try {
       await deleteArticleComment(token, comment.id);
       const refreshed = await listArticleComments(article.slug, token, { pageSize: COMMENT_PAGE_SIZE });

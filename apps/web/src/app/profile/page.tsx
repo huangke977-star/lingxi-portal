@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import Cropper, { type Area, type CropperProps } from "react-easy-crop";
 import { BookOpen, Coins, Eye, EyeOff, KeyRound, LogOut, MonitorSmartphone, Pin, Sparkles, TrendingUp, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { useLanguage } from "@/components/language-provider";
 import { AccountSecurityPanel } from "@/components/account-security-panel";
 import { GlassSelect } from "@/components/glass-select";
@@ -140,6 +141,7 @@ function levelName(code: string, locale: "zh-CN" | "en-US"): string {
 export default function ProfilePage() {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -717,7 +719,7 @@ export default function ProfilePage() {
       router.replace(localizedPath("/login", locale));
       return;
     }
-    if (!window.confirm(phrase("确定退出其他设备吗？当前设备会保持登录。", "Sign out other devices? This device will remain signed in."))) {
+    if (!(await confirm(phrase("确定退出其他设备吗？当前设备会保持登录。", "Sign out other devices? This device will remain signed in.")))) {
       return;
     }
 
@@ -750,7 +752,7 @@ export default function ProfilePage() {
       router.replace(localizedPath("/login", locale));
       return;
     }
-    if (!window.confirm(phrase("确定退出全部设备吗？当前页面也会退出登录。", "Sign out all devices? This page will sign out too."))) {
+    if (!(await confirm(phrase("确定退出全部设备吗？当前页面也会退出登录。", "Sign out all devices? This page will sign out too.")))) {
       return;
     }
 
@@ -785,7 +787,7 @@ export default function ProfilePage() {
     const prompt = session.current
       ? phrase("确定退出当前设备吗？", "Sign out this device?")
       : phrase(`确定退出 ${formatSessionDevice(session.userAgent, locale)} 吗？`, `Sign out ${formatSessionDevice(session.userAgent, locale)}?`);
-    if (!window.confirm(prompt)) return;
+    if (!(await confirm(prompt))) return;
 
     setSessionAction(`session:${session.id}`);
     setError("");

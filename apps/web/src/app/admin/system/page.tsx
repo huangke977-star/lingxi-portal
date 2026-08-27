@@ -28,6 +28,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
 import { useLanguage } from "@/components/language-provider";
 import { type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
@@ -70,6 +71,7 @@ type Phrase = (chinese: string, english: string) => string;
 export default function SystemStatusPage() {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [status, setStatus] = useState<SystemStatus | null>(null);
@@ -270,7 +272,7 @@ export default function SystemStatusPage() {
   }
 
   async function handleDeleteBackup(name: string) {
-    if (!accessToken || backupBusy || !window.confirm(phrase(`永久删除备份 ${name} 吗？`, `Permanently delete backup ${name}?`))) return;
+    if (!accessToken || backupBusy || !(await confirm(phrase(`永久删除备份 ${name} 吗？`, `Permanently delete backup ${name}?`), { danger: true }))) return;
     setBackupBusy(`delete:${name}`);
     setError("");
     try {

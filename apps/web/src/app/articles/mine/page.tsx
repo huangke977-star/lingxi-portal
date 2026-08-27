@@ -26,6 +26,7 @@ import { ArticleCenterNav, ArticleMineSecondaryNav } from "@/components/article-
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticlePinBadge, ArticleStats, ArticleTaxonomy, RecentCommenters, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { useLanguage } from "@/components/language-provider";
 import {
   ArticleList,
@@ -84,6 +85,7 @@ function MyArticlesFallback() {
 function MyArticlesContent() {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const searchParams = useSearchParams();
   const rawStatus = searchParams.get("status") ?? "all";
   const status = statusValues.some((value) => value === rawStatus) ? rawStatus as "all" | ArticleStatus : "all";
@@ -215,6 +217,18 @@ function MyArticlesContent() {
     }
   }
 
+  async function removeArticle(article: Article) {
+    const permanently = article.status === "deleted";
+    const message = permanently
+      ? phrase(`彻底删除《${article.title}》及其图片吗？此操作无法撤销。`, `Permanently delete “${article.title}” and its images? This cannot be undone.`)
+      : phrase(`将《${article.title}》移入回收站吗？`, `Move “${article.title}” to the recycle bin?`);
+    if (!(await confirm(message, { danger: true }))) return;
+    void runAction(
+      (token) => permanently ? permanentlyDeleteArticle(token, article.id) : deleteArticle(token, article.id),
+      permanently ? phrase("文章已彻底删除。", "Article permanently deleted.") : phrase("文章已移入回收站。", "Article moved to the recycle bin."),
+    );
+  }
+
   return (
     <section className="page-shell articles-page my-articles-page">
       <ArticleCenterNav active="mine" isLoggedIn user={user} />
@@ -281,7 +295,7 @@ function MyArticlesContent() {
                 {article.status === "blocked" ? <button onClick={() => { setAppealArticle(article); setAppealReason(""); }} title={phrase("申诉", "Appeal")} type="button">{phrase("申诉", "Appeal")}</button> : null}
                 {article.status === "published" ? <button onClick={() => void runAction((token) => unpublishArticle(token, article.id), phrase("文章已下架。", "Article unpublished.")) } type="button">{phrase("下架", "Unpublish")}</button> : null}
                 {article.status === "deleted" ? <button onClick={() => void runAction((token) => restoreArticle(token, article.id), phrase("文章已恢复为草稿。", "Article restored as a draft.")) } type="button"><RotateCcw aria-hidden="true" size={16} /><span>{phrase("恢复", "Restore")}</span></button> : null}
-                {article.status === "deleted" ? <button className="text-danger-action" onClick={() => { if (window.confirm(phrase(`彻底删除《${article.title}》及其图片吗？此操作无法撤销。`, `Permanently delete “${article.title}” and its images? This cannot be undone.`))) void runAction((token) => permanentlyDeleteArticle(token, article.id), phrase("文章已彻底删除。", "Article permanently deleted.")); }} type="button"><Trash2 aria-hidden="true" size={16} /><span>{phrase("彻底删除", "Delete permanently")}</span></button> : <button className="text-danger-action" onClick={() => { if (window.confirm(phrase(`将《${article.title}》移入回收站吗？`, `Move “${article.title}” to the recycle bin?`))) void runAction((token) => deleteArticle(token, article.id), phrase("文章已移入回收站。", "Article moved to the recycle bin.")); }} type="button"><Trash2 aria-hidden="true" size={16} /><span>{phrase("删除", "Delete")}</span></button>}
+                <button className="text-danger-action" onClick={() => void removeArticle(article)} type="button"><Trash2 aria-hidden="true" size={16} /><span>{article.status === "deleted" ? phrase("彻底删除", "Delete permanently") : phrase("删除", "Delete")}</span></button>
               </div>
             </article>
           ))}

@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
 import { useLanguage } from "@/components/language-provider";
 import {
@@ -31,6 +32,7 @@ const MAX_APK_SIZE = 120 * 1024 * 1024;
 export default function AndroidReleaseManagementPage() {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [releases, setReleases] = useState<AndroidRelease[]>([]);
@@ -202,10 +204,11 @@ export default function AndroidReleaseManagementPage() {
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await confirm(
       release.isActive
         ? phrase("删除当前最新版后，安装页会暂时使用兜底下载包或显示无新版，确定删除吗？", "Deleting the current release makes the install page use its fallback package or show no release. Continue?")
         : phrase(`确定从磁盘中永久删除 ${release.originalName} 吗？`, `Permanently delete ${release.originalName} from disk?`),
+      { danger: true },
     );
     if (!confirmed) {
       return;

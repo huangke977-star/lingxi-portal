@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleBody, displayArticleTaxonomy, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { listRoles } from "@/lib/admin-api";
@@ -96,6 +97,7 @@ const emptyDraft: ArticleInput = {
 export function ArticleEditor({ articleId }: { articleId?: number }) {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [article, setArticle] = useState<Article | null>(null);
   const [draft, setDraft] = useState<ArticleInput>(emptyDraft);
@@ -784,7 +786,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     const token = readAccessToken();
     const current = articleRef.current;
     if (!token || !current || !selectedVersion) return;
-    if (!window.confirm(phrase(`恢复到版本 ${selectedVersion.versionNumber}？当前内容会先保留在版本历史中。`, `Restore version ${selectedVersion.versionNumber}? Current content will remain in version history.`))) return;
+    if (!(await confirm(phrase(`恢复到版本 ${selectedVersion.versionNumber}？当前内容会先保留在版本历史中。`, `Restore version ${selectedVersion.versionNumber}? Current content will remain in version history.`)))) return;
     setIsSaving(true);
     try {
       const restored = await restoreArticleVersion(token, current.id, selectedVersion.id);
@@ -815,7 +817,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   }
 
   async function moveToTrash() {
-    if (!article || !window.confirm(phrase(`将《${article.title}》移入回收站吗？`, `Move “${article.title}” to the recycle bin?`))) return;
+    if (!article || !(await confirm(phrase(`将《${article.title}》移入回收站吗？`, `Move “${article.title}” to the recycle bin?`)))) return;
     const token = readAccessToken();
     if (!token) return;
     try {

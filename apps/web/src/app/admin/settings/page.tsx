@@ -22,6 +22,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
+import { useConfirm } from "@/components/confirm-dialog";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { listRoles } from "@/lib/admin-api";
@@ -127,6 +128,7 @@ const BUILTIN_BACKGROUND_OPTIONS = [
 export default function SiteSettingsPage() {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
@@ -270,7 +272,7 @@ export default function SiteSettingsPage() {
   }
 
   async function handleResetSettings() {
-    if (!accessToken || !window.confirm(phrase("恢复默认站点设置吗？已上传的资源、背景图片、文章分类和标签不会删除。", "Restore default site settings? Uploaded assets, backgrounds, article categories, and tags will not be deleted."))) return;
+    if (!accessToken || !(await confirm(phrase("恢复默认站点设置吗？已上传的资源、背景图片、文章分类和标签不会删除。", "Restore default site settings? Uploaded assets, backgrounds, article categories, and tags will not be deleted.")))) return;
     if (settingsSaveTimerRef.current !== null) {
       window.clearTimeout(settingsSaveTimerRef.current);
       settingsSaveTimerRef.current = null;
@@ -341,7 +343,7 @@ export default function SiteSettingsPage() {
   }
 
   async function handleDeleteTaxonomy(taxonomy: ArticleTaxonomy) {
-    if (!accessToken || !window.confirm(phrase(`确定删除“${taxonomy.name}”吗？已有文章中的文字分类或标签不会被删除。`, `Delete “${taxonomy.name}”? Existing article category or tag text will not be removed.`))) return;
+    if (!accessToken || !(await confirm(phrase(`确定删除“${taxonomy.name}”吗？已有文章中的文字分类或标签不会被删除。`, `Delete “${taxonomy.name}”? Existing article category or tag text will not be removed.`), { danger: true }))) return;
     setBusyTaxonomyId(taxonomy.id);
     setError("");
     setNotice("");
@@ -388,7 +390,7 @@ export default function SiteSettingsPage() {
       setError(phrase("该资源正在使用，请先选择其他资源后再删除。", "This asset is in use. Choose another one before deleting it."));
       return;
     }
-    if (!accessToken || !window.confirm(phrase(`确定永久删除“${asset.originalName}”吗？`, `Permanently delete “${asset.originalName}”?`))) return;
+    if (!accessToken || !(await confirm(phrase(`确定永久删除“${asset.originalName}”吗？`, `Permanently delete “${asset.originalName}”?`), { danger: true }))) return;
     setBusyAssetId(asset.id);
     setError("");
     setNotice("");
@@ -437,10 +439,11 @@ export default function SiteSettingsPage() {
 
   async function handleDeleteBackground(background: ManagedBackground) {
     if (!accessToken) return;
-    const confirmed = window.confirm(
+    const confirmed = await confirm(
       background.isActive
         ? phrase("删除当前全站背景后将回到设置页选择的内置默认背景，确定删除吗？", "Deleting the active background returns the site to its configured built-in background. Continue?")
         : phrase(`确定从磁盘中永久删除 ${background.originalName} 吗？`, `Permanently delete ${background.originalName} from disk?`),
+      { danger: true },
     );
     if (!confirmed) return;
     setBusyBackgroundId(background.id);

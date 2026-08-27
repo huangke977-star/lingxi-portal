@@ -7,6 +7,7 @@ import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleCard, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { useLanguage } from "@/components/language-provider";
 import {
   Article,
@@ -33,6 +34,7 @@ const emptySummary: ArticleCenterSummary = { discover: 0, subscriptions: 0, mine
 export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const searchParams = useSearchParams();
   const querySearch = searchParams.get("q") ?? "";
   const [searchInput, setSearchInput] = useState(querySearch);
@@ -126,7 +128,7 @@ export function ArticleCollectionPage({ mode }: { mode: ReadingMode }) {
 
   async function clearHistory() {
     const token = readAccessToken();
-    if (!token || !window.confirm(phrase("清空全部阅读历史吗？稍后读、收藏和赞过不会受到影响。", "Clear all reading history? Read later, favorites, and likes will not be affected."))) return;
+    if (!token || !(await confirm(phrase("清空全部阅读历史吗？稍后读、收藏和赞过不会受到影响。", "Clear all reading history? Read later, favorites, and likes will not be affected.")))) return;
     try {
       await clearArticleReadingHistory(token);
       setList(emptyList);

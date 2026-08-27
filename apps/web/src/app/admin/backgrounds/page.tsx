@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
 import { AppToast } from '@/components/app-toast';
+import { useConfirm } from '@/components/confirm-dialog';
 import { AdminPageHeader, AdminPageLoading } from '@/components/admin-page-header';
 import { useLanguage } from '@/components/language-provider';
 import {
@@ -25,6 +26,7 @@ const MAX_FILES_PER_UPLOAD = 20;
 export default function BackgroundManagementPage() {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [backgrounds, setBackgrounds] = useState<ManagedBackground[]>([]);
@@ -152,10 +154,11 @@ export default function BackgroundManagementPage() {
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await confirm(
       background.isActive
         ? phrase('删除当前全站背景后将恢复内置默认背景，确定删除吗？', 'Deleting the active background restores the built-in default. Continue?')
         : phrase(`确定从磁盘中永久删除 ${background.originalName} 吗？`, `Permanently delete ${background.originalName} from disk?`),
+      { danger: true },
     );
     if (!confirmed) {
       return;

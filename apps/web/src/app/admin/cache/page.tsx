@@ -5,6 +5,7 @@ import { RefreshCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AppToast } from "@/components/app-toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
@@ -59,6 +60,7 @@ function categoryLabel(category: CacheKeyCategory, phrase: InlinePhrase) {
 export default function CacheManagementPage() {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [overview, setOverview] = useState<CacheOverview | null>(null);
@@ -319,8 +321,9 @@ export default function CacheManagementPage() {
     if (!accessToken || keys.length === 0) {
       return;
     }
-    const confirmed = window.confirm(
+    const confirmed = await confirm(
       phrase(buildDeleteConfirmation(keys, keyPage?.keys ?? [], detail), buildDeleteConfirmationEnglish(keys, keyPage?.keys ?? [], detail)),
+      { danger: true },
     );
     if (!confirmed) {
       return;
