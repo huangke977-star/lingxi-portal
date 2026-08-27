@@ -135,6 +135,11 @@ export class ArticleTemplateDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(120)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(300)
   summary?: string;
 

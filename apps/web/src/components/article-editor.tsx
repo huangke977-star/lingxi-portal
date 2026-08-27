@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, Check, ChevronDown, Cloud, CloudOff, Eye, FilePlus2, History, ImagePlus, RefreshCw, RotateCcw, Save, Send, Tags, Trash2, X } from "lucide-react";
+import { CalendarClock, Check, ChevronDown, Cloud, CloudOff, Coins, Eye, FilePlus2, Folder, History, ImagePlus, RefreshCw, RotateCcw, Save, Send, Tags, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -17,8 +17,6 @@ import {
   ArticleTemplate,
   autosaveArticle,
   createArticle,
-  createArticleTemplate,
-  deleteArticleTemplate,
   deleteArticle,
   getArticlePublishCheck,
   getArticleVersion,
@@ -120,12 +118,11 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
   const [templates, setTemplates] = useState<ArticleTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
-  const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
-  const [templateName, setTemplateName] = useState("");
-  const [isTemplateSaving, setIsTemplateSaving] = useState(false);
   const [schedulePublishAt, setSchedulePublishAt] = useState("");
   const [scheduleUnpublishAt, setScheduleUnpublishAt] = useState("");
-  const [scheduleTouched, setScheduleTouched] = useState(false);
+  const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
+  const [isScheduleSaving, setIsScheduleSaving] = useState(false);
+  const [isResourceInfoOpen, setIsResourceInfoOpen] = useState(false);
   const articleStatusLabel = (status: Article["status"]) => status === "draft" ? phrase("草稿", "Draft") : status === "published" ? phrase("已发布", "Published") : status === "unpublished" ? phrase("已下架", "Unpublished") : status === "blocked" ? phrase("受限", "Restricted") : phrase("已删除", "Deleted");
   const visibilityLabel = (visibility: ArticleInput["visibility"]) => visibility === "public" ? phrase("所有人可见", "Public") : visibility === "authenticated" ? phrase("仅登录用户", "Signed-in users") : visibility === "role_restricted" ? phrase("指定角色", "Specific roles") : phrase("仅自己", "Only me");
   const versionSourceLabel = (source: ArticleVersionSummary["source"]) => source === "autosave" ? phrase("自动保存", "Autosave") : source === "manual" ? phrase("手动保存", "Manual save") : source === "publish" ? phrase("发布", "Publish") : phrase("恢复版本", "Restore version");
@@ -216,7 +213,6 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     setDraft(nextDraft);
     setSchedulePublishAt(toLocalDateTimeInput(loaded.schedule?.publishAt));
     setScheduleUnpublishAt(toLocalDateTimeInput(loaded.schedule?.unpublishAt));
-    setScheduleTouched(false);
     lastSavedSignatureRef.current = articleDraftSignature(nextDraft);
     setLastAutosavedAt(new Date(loaded.updatedAt));
   }
@@ -282,7 +278,6 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
         setDraft(initialDraft);
         setSchedulePublishAt("");
         setScheduleUnpublishAt("");
-        setScheduleTouched(false);
         lastSavedSignatureRef.current = articleDraftSignature(initialDraft);
         setRecoveryDraft(readRecoveryDraft(loadedUser.id, null));
         initializedRef.current = true;
@@ -481,6 +476,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       summary: template.summary,
       content: template.content,
       category: template.category || current.category,
+      title: template.title || current.title,
       tags: template.tags.join(", "),
       titleColor: template.titleColor,
       visibility: template.visibility,
@@ -489,51 +485,12 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     setNotice(phrase(`已套用模板“${template.name}”。`, `Template “${template.name}” applied.`));
   }
 
-  async function saveTemplate() {
+  async function saveArticle(shouldPublish: boolean): Promise<Article | null> {
     const token = readAccessToken();
-    if (!token) return;
-    if (!templateName.trim()) {
-      setError(phrase("请填写模板名称。", "Enter a template name."));
-      return;
-    }
-    setIsTemplateSaving(true);
-    try {
-      const input = { name: templateName.trim(), summary: "", content: draft.content, category: draft.category, tags: draft.tags, titleColor: draft.titleColor, visibility: draft.visibility, roleCodes: draft.roleCodes };
-      const saved = await createArticleTemplate(token, input);
-      setTemplates((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
-      setSelectedTemplateId(String(saved.id));
-      setIsTemplateDialogOpen(false);
-      setTemplateName("");
-      setNotice(phrase("文章模板已保存。", "Article template saved."));
-    } catch (templateError) {
-      setError(templateError instanceof Error ? templateError.message : phrase("模板保存失败。", "Could not save the template."));
-    } finally {
-      setIsTemplateSaving(false);
-    }
-  }
-
-  async function removeSelectedTemplate() {
-    const token = readAccessToken();
-    const id = Number(selectedTemplateId);
-    if (!token || !Number.isInteger(id)) return;
-    const template = templates.find((item) => item.id === id);
-    if (!template || !window.confirm(phrase(`删除模板“${template.name}”？`, `Delete template “${template.name}”?`))) return;
-    try {
-      await deleteArticleTemplate(token, id);
-      setTemplates((current) => current.filter((item) => item.id !== id));
-      setSelectedTemplateId("");
-      setNotice(phrase("文章模板已删除。", "Article template deleted."));
-    } catch (templateError) {
-      setError(templateError instanceof Error ? templateError.message : phrase("模板删除失败。", "Could not delete the template."));
-    }
-  }
-
-  async function saveArticle(shouldPublish: boolean) {
-    const token = readAccessToken();
-    if (!token) return;
+    if (!token) return null;
     if (!draft.title.trim() || !draft.content.trim()) {
       setError(phrase("标题和正文不能为空。", "Title and content are required."));
-      return;
+      return null;
     }
     if (autosaveTimerRef.current !== null) {
       window.clearTimeout(autosaveTimerRef.current);
@@ -578,30 +535,14 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
         });
       }
 
-      if (scheduleTouched) {
-        saved = await scheduleArticle(token, saved.id, {
-          publishAt: schedulePublishAt ? new Date(schedulePublishAt).toISOString() : null,
-          unpublishAt: scheduleUnpublishAt ? new Date(scheduleUnpublishAt).toISOString() : null,
-        });
-        if (!shouldPublish || schedulePublishAt || scheduleUnpublishAt) {
-          releasePendingImages();
-          applyArticle(saved);
-          removeLocalArticleDraft(localDraftKey);
-          setNotice(schedulePublishAt || scheduleUnpublishAt
-            ? phrase("文章发布计划已保存。", "Article schedule saved.")
-            : phrase("文章发布计划已取消。", "Article schedule cancelled."));
-          return;
-        }
-      }
-
       if (shouldPublish) {
         const publishCheck = await getArticlePublishCheck(token, saved.id);
         if (!publishCheck.valid) throw new Error(publishCheck.errors.join("；"));
-        await publishArticle(token, saved.id);
+        const published = await publishArticle(token, saved.id);
         releasePendingImages();
         removeLocalArticleDraft(localDraftKey);
         router.replace(localizedPath("/articles/mine?status=published", locale));
-        return;
+        return published;
       }
 
       releasePendingImages();
@@ -612,15 +553,48 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       }
       setNotice(saved.status === "blocked" ? phrase("修改已保存，文章仍处于受限状态。", "Changes saved. The article remains restricted.") : wasNewArticle ? phrase("草稿已保存。", "Draft saved.") : phrase("文章修改已保存。", "Article changes saved."));
       if (isVersionsOpen) void loadVersions(saved.id);
+      return saved;
     } catch (saveError) {
       if (isAuthExpiredError(saveError)) {
         clearAuthTokens();
         router.replace(localizedPath("/", locale));
-        return;
+        return null;
       }
       setError(saveError instanceof Error ? saveError.message : phrase("文章保存失败。", "Could not save the article."));
+      return null;
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function saveSchedule() {
+    if (isScheduleSaving) return;
+    setIsScheduleSaving(true);
+    try {
+      const saved = await saveArticle(false);
+      if (!saved) return;
+      const token = readAccessToken();
+      if (!token) return;
+      if (!schedulePublishAt && !scheduleUnpublishAt && !saved.schedule.publishAt && !saved.schedule.unpublishAt) {
+        setError(phrase("请至少设置发布时间或下线时间。", "Set at least a publish or unpublish time."));
+        return;
+      }
+      const scheduled = await scheduleArticle(token, saved.id, {
+        publishAt: schedulePublishAt ? new Date(schedulePublishAt).toISOString() : null,
+        unpublishAt: scheduleUnpublishAt ? new Date(scheduleUnpublishAt).toISOString() : null,
+      });
+      applyArticle(scheduled);
+      setIsScheduleDialogOpen(false);
+      router.replace(localizedPath("/articles/mine", locale));
+    } catch (scheduleError) {
+      if (isAuthExpiredError(scheduleError)) {
+        clearAuthTokens();
+        router.replace(localizedPath("/", locale));
+        return;
+      }
+      setError(scheduleError instanceof Error ? scheduleError.message : phrase("文章发布计划保存失败。", "Could not save the article schedule."));
+    } finally {
+      setIsScheduleSaving(false);
     }
   }
 
@@ -754,22 +728,19 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
             {article?.status === "blocked" ? <div className="article-blocked-reason">{phrase("这篇文章当前受限。", "This article is currently restricted.")}{article.blockedReason ? `${phrase("原因：", "Reason: ")}${article.blockedReason}` : phrase("修改可以保存，但需要管理员解除限制后才能重新发布。", "Edits can be saved, but an administrator must remove the restriction before it can be published again.")}</div> : null}
             <div className="article-editor-tools">
               <div className="article-template-tools">
-                <span><FilePlus2 aria-hidden="true" size={15} />{phrase("文章模板", "Article template")}</span>
+                <span aria-hidden="true"><FilePlus2 size={15} /></span>
                 <GlassSelect ariaLabel={phrase("选择文章模板", "Choose article template")} onChange={applyTemplate} options={[{ value: "", label: phrase("不使用模板", "No template") }, ...templates.map((template) => ({ value: String(template.id), label: template.name }))]} value={selectedTemplateId} />
-                <button aria-label={phrase("保存为模板", "Save as template")} onClick={() => { setTemplateName(""); setIsTemplateDialogOpen(true); }} title={phrase("保存为模板", "Save as template")} type="button"><Save aria-hidden="true" size={15} /></button>
-                {selectedTemplateId ? <button aria-label={phrase("删除当前模板", "Delete selected template")} onClick={() => void removeSelectedTemplate()} title={phrase("删除当前模板", "Delete selected template")} type="button"><Trash2 aria-hidden="true" size={15} /></button> : null}
-              </div>
-              <div className="article-schedule-fields">
-                <label><CalendarClock aria-hidden="true" size={15} /><span>{phrase("定时发布", "Schedule publish")}</span><input aria-label={phrase("定时发布时间", "Scheduled publish time")} onChange={(event) => { setSchedulePublishAt(event.target.value); setScheduleTouched(true); }} type="datetime-local" value={schedulePublishAt} /></label>
-                <label><CalendarClock aria-hidden="true" size={15} /><span>{phrase("定时下线", "Schedule unpublish")}</span><input aria-label={phrase("定时下线时间", "Scheduled unpublish time")} onChange={(event) => { setScheduleUnpublishAt(event.target.value); setScheduleTouched(true); }} type="datetime-local" value={scheduleUnpublishAt} /></label>
+                <button aria-label={phrase("局部积分资源说明", "Partial point resource help")} className="article-editor-tool-button" onClick={() => setIsResourceInfoOpen(true)} title={phrase("局部积分资源说明", "Partial point resource help")} type="button"><Coins aria-hidden="true" size={15} /></button>
               </div>
             </div>
             {article?.schedule?.error ? <div className="article-schedule-error">{phrase("上次计划执行失败：", "The last scheduled action failed: ")}{article.schedule.error}</div> : null}
             <div className="article-editor-fields">
-              <input className="article-title-input" maxLength={120} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder={phrase("文章标题", "Article title")} value={draft.title} />
+              <div className="article-editor-title-row">
+                <div className="article-title-field"><input className="article-title-input" maxLength={120} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder={phrase("文章标题", "Article title")} value={draft.title} /><input aria-label={phrase("标题颜色", "Title color")} className="article-title-color-input" onChange={(event) => setDraft({ ...draft, titleColor: event.target.value })} type="color" value={draft.titleColor || "#2b2530"} /></div>
+                <div className="article-inline-template"><span aria-hidden="true"><FilePlus2 size={14} /></span><GlassSelect ariaLabel={phrase("选择文章模板", "Choose article template")} onChange={applyTemplate} options={[{ value: "", label: phrase("模板", "Template") }, ...templates.map((template) => ({ value: String(template.id), label: template.name }))]} value={selectedTemplateId} /></div>
+              </div>
               <div className="article-editor-taxonomy-grid">
                 <div className="article-category-picker" ref={categoryPickerRef}>
-                  <span>{phrase("分类", "Category")}</span>
                   <button
                     aria-expanded={isCategoryPickerOpen}
                     className="article-category-picker-trigger"
@@ -779,6 +750,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
                     }}
                     type="button"
                   >
+                    <Folder aria-hidden="true" size={15} />
                     <span>{draft.category ? displayArticleTaxonomy(draft.category, locale) : phrase("随笔", "Essay")}</span>
                     <ChevronDown aria-hidden="true" size={15} />
                   </button>
@@ -805,7 +777,6 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
                   ) : null}
                 </div>
                 <div className="article-tag-picker" ref={tagPickerRef}>
-                  <span>{phrase("标签", "Tags")}</span>
                   <button
                     aria-expanded={isTagPickerOpen}
                     className="article-tag-picker-trigger"
@@ -836,25 +807,22 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
                     </div>
                   ) : null}
                 </div>
-              </div>
-              <div className="article-editor-grid"><label>{phrase("阅读权限", "Visibility")}<GlassSelect ariaLabel={phrase("阅读权限", "Visibility")} onChange={(visibility) => setDraft({ ...draft, visibility })} options={visibilityOptions} value={draft.visibility} /></label><label>{phrase("标题颜色", "Title color")}<input aria-label={phrase("标题颜色", "Title color")} onChange={(event) => setDraft({ ...draft, titleColor: event.target.value })} type="color" value={draft.titleColor || "#2b2530"} /></label></div>
-              <div className="article-resource-settings">
-                <strong>{phrase("局部积分资源", "Partial point resource")}</strong>
-                <span>{phrase("在正文中使用 ", "Use ")}<code>:::resource&#123;points=10&#125;</code>{phrase(" 和 ", " and ")}<code>:::</code>{phrase(" 包住需要兑换的内容；普通正文仍可直接阅读。", " around content that requires redemption; the rest stays readable.")}</span>
+                <div className="article-inline-visibility"><Eye aria-hidden="true" size={15} /><GlassSelect ariaLabel={phrase("阅读权限", "Visibility")} onChange={(visibility) => setDraft({ ...draft, visibility })} options={visibilityOptions} value={draft.visibility} /></div>
               </div>
               {draft.visibility === "role_restricted" ? <input onChange={(event) => setDraft({ ...draft, roleCodes: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })} placeholder={phrase("角色代码，用逗号分隔", "Role codes, separated by commas")} value={draft.roleCodes.join(", ")} /> : null}
             </div>
              <textarea className="article-editor-textarea" onChange={(event) => setDraft({ ...draft, content: event.target.value })} placeholder={phrase("支持 Markdown：标题、列表、表格、引用、链接、图片、代码块和局部积分资源块", "Markdown is supported: headings, lists, tables, quotes, links, images, code blocks, and partial point-resource blocks")} ref={textareaRef} value={draft.content} />
             <div className="article-editor-upload"><label className="text-action"><ImagePlus aria-hidden="true" size={16} />{phrase("添加图片", "Add images")}<input accept="image/jpeg,image/png,image/webp,image/avif" hidden multiple onChange={(event) => { insertImagesAtCursor(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} type="file" /></label><span>{pendingImages.length ? phrase(`待上传 ${pendingImages.length} 张，保存时才会上传`, `${pendingImages.length} image(s) pending upload and will upload when saved`) : phrase(`支持 JPG、PNG、WebP、AVIF，单张不超过 ${imageMaxSizeMb}MB`, `JPG, PNG, WebP, and AVIF are supported, up to ${imageMaxSizeMb}MB each`)}</span></div>
             {pendingImages.length ? <div className="article-pending-images">{pendingImages.map((image) => <span key={image.id}>{image.file.name}<button aria-label={phrase(`移除 ${image.file.name}`, `Remove ${image.file.name}`)} onClick={() => removePendingImage(image)} title={phrase("移除图片", "Remove image")} type="button"><X aria-hidden="true" size={14} /></button></span>)}</div> : null}
-            <div className="article-editor-actions"><button className="button secondary" disabled={isSaving || autosaveState === "saving"} onClick={() => void saveArticle(false)} type="button"><Save aria-hidden="true" size={16} />{isSaving ? phrase("保存中", "Saving") : article ? phrase("保存修改", "Save changes") : phrase("保存草稿", "Save draft")}</button><button className="button" disabled={isSaving || autosaveState === "saving" || article?.status === "blocked"} onClick={() => void saveArticle(true)} type="button"><Send aria-hidden="true" size={16} />{phrase("发布文章", "Publish article")}</button>{article?.status === "published" ? <button className="text-action" disabled={isSaving} onClick={() => void takeOffline()} type="button">{phrase("下架", "Unpublish")}</button> : null}{article ? <button className="text-danger-action" disabled={isSaving} onClick={() => void moveToTrash()} type="button"><Trash2 aria-hidden="true" size={16} />{phrase("删除", "Delete")}</button> : null}</div>
+             <div className="article-editor-actions"><button className="button secondary" disabled={isSaving || autosaveState === "saving"} onClick={() => void saveArticle(false)} type="button"><Save aria-hidden="true" size={16} />{isSaving ? phrase("保存中", "Saving") : article ? phrase("保存修改", "Save changes") : phrase("保存草稿", "Save draft")}</button><button className="button" disabled={isSaving || autosaveState === "saving" || article?.status === "blocked"} onClick={() => void saveArticle(true)} type="button"><Send aria-hidden="true" size={16} />{phrase("发布文章", "Publish article")}</button><button aria-label={phrase("定时发布", "Schedule publication")} className="article-editor-icon-button" disabled={isSaving || autosaveState === "saving" || article?.status === "blocked"} onClick={() => setIsScheduleDialogOpen(true)} title={phrase("定时发布", "Schedule publication")} type="button"><CalendarClock aria-hidden="true" size={17} /></button>{article?.status === "published" ? <button className="text-action" disabled={isSaving} onClick={() => void takeOffline()} type="button">{phrase("下架", "Unpublish")}</button> : null}{article ? <button className="text-danger-action" disabled={isSaving} onClick={() => void moveToTrash()} type="button"><Trash2 aria-hidden="true" size={16} />{phrase("删除", "Delete")}</button> : null}</div>
           </section>
           <aside className="article-editor-preview"><div className="article-editor-preview-heading"><span className="section-label">{phrase("预览", "Preview")}</span><span>{phrase("正文预览", "Content preview")}</span></div><ArticleBody content={draft.content || phrase("开始输入后，这里会显示文章预览。", "Start writing to see an article preview here.")} pendingImageUrls={pendingImageUrls} /></aside>
         </div>
       )}
       {isPreviewOpen && typeof document !== "undefined" ? createPortal(<div className="article-preview-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setIsPreviewOpen(false); }}><section aria-label={phrase("文章发布预览", "Article publish preview")} aria-modal="true" className="article-publish-preview" role="dialog"><header className="article-preview-toolbar"><span><Eye aria-hidden="true" size={17} /><strong>{phrase("发布预览", "Publish preview")}</strong></span><button aria-label={phrase("关闭预览", "Close preview")} onClick={() => setIsPreviewOpen(false)} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={18} /></button></header><article className="article-reading-layout"><header className="article-reading-header"><h1 style={draft.titleColor ? { color: draft.titleColor } : undefined}>{draft.title || phrase("未命名文章", "Untitled article")}</h1><div className="article-reading-author"><span>{user?.nickname || user?.username || phrase("当前用户", "Current user")}</span><span className="article-reading-divider" /><span>{phrase(`预览于 ${formatArticleDate(new Date().toISOString(), locale)}`, `Previewed ${formatArticleDate(new Date().toISOString(), locale)}`)}</span></div></header><div className="article-reading-grid preview"><aside className="article-reading-aside"><dl className="article-aside-meta"><div><dt>{phrase("分类", "Category")}</dt><dd>{draft.category ? displayArticleTaxonomy(draft.category, locale) : phrase("随笔", "Essay")}</dd></div><div><dt>{phrase("阅读权限", "Visibility")}</dt><dd>{visibilityLabel(draft.visibility)}</dd></div></dl>{selectedTags.length ? <div className="article-tag-list">{selectedTags.map((tag) => <span key={tag}>#{displayArticleTaxonomy(tag, locale)}</span>)}</div> : null}</aside><main className="article-reading-main"><ArticleBody content={draft.content || phrase("开始输入后，这里会显示文章预览。", "Start writing to see the article preview here.")} pendingImageUrls={pendingImageUrls} /></main></div></article></section></div>, document.body) : null}
       {isVersionsOpen && typeof document !== "undefined" ? createPortal(<div className="article-versions-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setIsVersionsOpen(false); }}><section aria-label={phrase("文章历史版本", "Article version history")} aria-modal="true" className="article-versions-dialog" role="dialog"><header><span><History aria-hidden="true" size={17} /><strong>{phrase("历史版本", "Version history")}</strong></span><button aria-label={phrase("关闭历史版本", "Close version history")} onClick={() => setIsVersionsOpen(false)} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={18} /></button></header><div className="article-versions-layout"><nav>{isLoadingVersions && !versions.length ? <span className="article-version-empty">{phrase("正在读取版本。", "Loading versions.")}</span> : versions.map((version) => <button className={selectedVersion?.id === version.id ? "active" : undefined} key={version.id} onClick={() => void selectVersion(version.id)} type="button"><span><strong>{phrase(`版本 ${version.versionNumber}`, `Version ${version.versionNumber}`)}</strong><em>{versionSourceLabel(version.source)}</em></span><small>{formatVersionTime(version.createdAt, locale)}</small><small>{version.changedFields.map((field) => versionFieldLabel(field)).join(locale === "en-US" ? ", " : "、") || phrase("内容未变化", "No content changes")}</small></button>)}</nav><div className="article-version-detail">{selectedVersion ? <><div><span><strong>{phrase(`版本 ${selectedVersion.versionNumber}`, `Version ${selectedVersion.versionNumber}`)}</strong><small>{versionSourceLabel(selectedVersion.source)} · {formatVersionTime(selectedVersion.createdAt, locale)}</small></span><button className="button secondary" disabled={isSaving} onClick={() => void restoreSelectedVersion()} type="button"><RotateCcw aria-hidden="true" size={15} />{phrase("恢复此版本", "Restore this version")}</button></div><h2>{selectedVersion.title || phrase("未命名文章", "Untitled article")}</h2><div className="article-version-taxonomy"><span>{selectedVersion.category ? displayArticleTaxonomy(selectedVersion.category, locale) : phrase("随笔", "Essay")}</span>{selectedVersion.tags.map((tag) => <span key={tag}>#{displayArticleTaxonomy(tag, locale)}</span>)}</div><ArticleBody content={selectedVersion.content || phrase("此版本没有正文内容。", "This version has no article content.")} /></> : <span className="article-version-empty">{phrase("选择左侧版本查看完整内容。", "Choose a version on the left to view its full content.")}</span>}</div></div></section></div>, document.body) : null}
-      {isTemplateDialogOpen && typeof document !== "undefined" ? createPortal(<div className="modal-backdrop article-template-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget && !isTemplateSaving) setIsTemplateDialogOpen(false); }}><form aria-label={phrase("保存文章模板", "Save article template")} aria-modal="true" className="article-template-dialog" onSubmit={(event) => { event.preventDefault(); void saveTemplate(); }} role="dialog"><header><span><FilePlus2 aria-hidden="true" size={17} /><strong>{phrase("保存文章模板", "Save article template")}</strong></span><button aria-label={phrase("关闭", "Close")} onClick={() => setIsTemplateDialogOpen(false)} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={17} /></button></header><p>{phrase("模板只属于当前账号，用于复用正文、分类和标签。", "Templates belong to this account and reuse the body, category, and tags.")}</p><label><span>{phrase("模板名称", "Template name")}</span><input autoFocus maxLength={80} onChange={(event) => setTemplateName(event.target.value)} required value={templateName} /></label><footer><button onClick={() => setIsTemplateDialogOpen(false)} type="button">{phrase("取消", "Cancel")}</button><button className="button" disabled={isTemplateSaving} type="submit">{isTemplateSaving ? phrase("保存中", "Saving") : phrase("保存", "Save")}</button></footer></form></div>, document.body) : null}
+      {isScheduleDialogOpen && typeof document !== "undefined" ? createPortal(<div className="modal-backdrop article-schedule-backdrop"><form aria-label={phrase("设置发布计划", "Set publication schedule")} aria-modal="true" className="article-template-dialog article-schedule-dialog" onSubmit={(event) => { event.preventDefault(); void saveSchedule(); }} role="dialog"><header><span><CalendarClock aria-hidden="true" size={17} /><strong>{phrase("设置发布计划", "Set publication schedule")}</strong></span></header><p>{phrase("设置发布时间和可选的自动下线时间；清空已有时间并确定可以取消计划。", "Set a publication time and optional automatic unpublish time. Clear existing times to cancel a schedule.")}</p><label><span>{phrase("发布时间", "Publish time")}</span><input aria-label={phrase("发布时间", "Publish time")} onChange={(event) => setSchedulePublishAt(event.target.value)} type="datetime-local" value={schedulePublishAt} /></label><label><span>{phrase("下线时间", "Unpublish time")}</span><input aria-label={phrase("下线时间", "Unpublish time")} onChange={(event) => setScheduleUnpublishAt(event.target.value)} type="datetime-local" value={scheduleUnpublishAt} /></label><footer><button aria-label={phrase("取消", "Cancel")} className="article-template-icon-button" onClick={() => setIsScheduleDialogOpen(false)} title={phrase("取消", "Cancel")} type="button"><X aria-hidden="true" size={17} /></button><button aria-label={phrase("确定", "Confirm")} className="article-template-icon-button primary" disabled={isScheduleSaving} title={phrase("确定", "Confirm")} type="submit"><Check aria-hidden="true" size={17} /></button></footer></form></div>, document.body) : null}
+      {isResourceInfoOpen && typeof document !== "undefined" ? createPortal(<div className="modal-backdrop article-resource-info-backdrop"><section aria-label={phrase("局部积分资源说明", "Partial point resource help")} aria-modal="true" className="article-template-dialog article-resource-info-dialog" role="dialog"><header><span><Coins aria-hidden="true" size={17} /><strong>{phrase("局部积分资源", "Partial point resource")}</strong></span></header><p>{phrase("普通正文仍可直接阅读，只有被资源标记包住的区块需要积分兑换。", "Ordinary content remains readable; only a block wrapped by the resource markers requires points.")}</p><pre>{":::resource{points=10}\n这里是需要兑换的内容\n:::"}</pre><footer><button aria-label={phrase("关闭", "Close")} className="article-template-icon-button" onClick={() => setIsResourceInfoOpen(false)} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={17} /></button></footer></section></div>, document.body) : null}
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
     </section>
   );

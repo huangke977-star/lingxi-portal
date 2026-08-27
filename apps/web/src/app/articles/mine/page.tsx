@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  CircleX,
   Clock3,
   Coins,
   Edit3,
@@ -33,6 +34,7 @@ import {
   ArticleStatus,
   Article,
   ArticleScheduleItem,
+  cancelArticleSchedule,
   deleteArticle,
   createArticleAppeal,
   getMyArticleDashboard,
@@ -235,7 +237,7 @@ function MyArticlesContent() {
             </div>
             <div className="article-schedule-list">
               <header><span><CalendarClock aria-hidden="true" size={15} /><strong>{phrase("发布计划", "Publishing schedule")}</strong></span><small>{schedules.length}</small></header>
-              {schedules.length ? <div>{schedules.map((item) => <Link href={localizedPath(`/articles/edit/${item.id}`, locale)} key={item.id}><span><strong>{item.title || phrase("未命名文章", "Untitled article")}</strong><small>{item.publishAt ? phrase(`发布于 ${formatArticleDate(item.publishAt, locale)}`, `Publishes ${formatArticleDate(item.publishAt, locale)}`) : item.unpublishAt ? phrase(`下线于 ${formatArticleDate(item.unpublishAt, locale)}`, `Unpublishes ${formatArticleDate(item.unpublishAt, locale)}`) : phrase("执行失败，请重新设置", "Execution failed, reschedule it")}</small></span><CalendarClock aria-hidden="true" size={14} /></Link>)}</div> : <p>{phrase("还没有安排发布或下线的文章。", "No articles are scheduled to publish or go offline.")}</p>}
+              {schedules.length ? <div>{schedules.map((item) => <div className="article-schedule-row" key={item.id}><Link href={localizedPath(`/articles/edit/${item.id}`, locale)}><span><strong>{item.title || phrase("未命名文章", "Untitled article")}</strong><small>{item.publishAt ? phrase(`发布于 ${formatArticleDate(item.publishAt, locale)}`, `Publishes ${formatArticleDate(item.publishAt, locale)}`) : item.unpublishAt ? phrase(`下线于 ${formatArticleDate(item.unpublishAt, locale)}`, `Unpublishes ${formatArticleDate(item.unpublishAt, locale)}`) : phrase("执行失败，请重新设置", "Execution failed, reschedule it")}</small></span><CalendarClock aria-hidden="true" size={14} /></Link><button aria-label={phrase(`取消 ${item.title || "文章"} 的发布计划`, `Cancel schedule for ${item.title || "article"}`)} className="article-schedule-cancel-button" onClick={() => void runAction((token) => cancelArticleSchedule(token, item.id), phrase("文章发布计划已取消。", "Article schedule cancelled."))} title={phrase("取消发布计划", "Cancel schedule")} type="button"><CircleX aria-hidden="true" size={15} /></button></div>)}</div> : <p>{phrase("还没有安排发布或下线的文章。", "No articles are scheduled to publish or go offline.")}</p>}
             </div>
           </section>
         </aside>

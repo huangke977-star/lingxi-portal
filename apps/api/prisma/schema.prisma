@@ -1229,6 +1229,7 @@ model ArticleTemplate {
   authorId    Int               @map("author_id")
   author      User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
   name        String            @db.VarChar(80)
+  title       String            @default("") @db.VarChar(120)
   summary     String            @default("") @db.VarChar(300)
   content     String            @db.LongText
   category    String            @default("") @db.VarChar(80)

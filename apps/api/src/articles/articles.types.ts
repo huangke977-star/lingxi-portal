@@ -82,6 +82,7 @@ export interface ArticleResponse {
 export interface ArticleTemplateResponse {
   id: number;
   name: string;
+  title: string;
   summary: string;
   content: string;
   category: string;

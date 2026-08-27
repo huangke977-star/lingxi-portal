@@ -492,11 +492,20 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getMineSummary(user: AuthenticatedUser): Promise<ArticleMineSummaryResponse> {
-    const grouped = await this.prisma.article.groupBy({
-      by: ["status"],
-      where: { authorId: user.id },
-      _count: { _all: true },
-    });
+    const [grouped, scheduledDrafts] = await Promise.all([
+      this.prisma.article.groupBy({
+        by: ["status"],
+        where: { authorId: user.id },
+        _count: { _all: true },
+      }),
+      this.prisma.article.count({
+        where: {
+          authorId: user.id,
+          status: ArticleStatus.draft,
+          OR: [{ scheduledPublishAt: { not: null } }, { scheduledUnpublishAt: { not: null } }],
+        },
+      }),
+    ]);
     const summary: ArticleMineSummaryResponse = {
       total: 0,
       draft: 0,
@@ -510,6 +519,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       summary[item.status] = count;
       summary.total += count;
     }
+    summary.draft = Math.max(0, summary.draft - scheduledDrafts);
     return summary;
   }
 
@@ -2439,7 +2449,12 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       if (query.status) where.status = this.toArticleStatus(query.status);
     } else if (mine && user) {
       where.authorId = user.id;
-      where.status = query.status ? this.toArticleStatus(query.status) : { not: ArticleStatus.deleted };
+      const mineStatus = query.status ? this.toArticleStatus(query.status) : null;
+      where.status = mineStatus ?? { not: ArticleStatus.deleted };
+      if (mineStatus === ArticleStatus.draft) {
+        where.scheduledPublishAt = null;
+        where.scheduledUnpublishAt = null;
+      }
     } else {
       where.status = ArticleStatus.published;
       if (!user) {
@@ -2646,6 +2661,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     const visibility = dto.visibility ?? ArticleVisibility.public;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
     return {
+      title: dto.title?.trim() ?? "",
       name,
       summary: dto.summary?.trim() ?? "",
       content,
@@ -2667,6 +2683,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
   private toTemplateResponse(template: {
     id: number;
     name: string;
+    title: string;
     summary: string;
     content: string;
     category: string;
@@ -2680,6 +2697,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     return {
       id: template.id,
       name: template.name,
+      title: template.title,
       summary: template.summary,
       content: template.content,
       category: template.category,

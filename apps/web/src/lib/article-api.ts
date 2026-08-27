@@ -181,6 +181,7 @@ export interface ArticleInput {
 export interface ArticleTemplate {
   id: number;
   name: string;
+  title: string;
   summary: string;
   content: string;
   category: string;
@@ -194,6 +195,7 @@ export interface ArticleTemplate {
 
 export interface ArticleTemplateInput {
   name: string;
+  title: string;
   summary: string;
   content: string;
   category: string;
@@ -333,6 +335,14 @@ export function updateArticleTemplate(accessToken: string, id: number, input: Ar
 
 export function deleteArticleTemplate(accessToken: string, id: number): Promise<void> {
   return requestJson(`/articles/mine/templates/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function cancelArticleSchedule(accessToken: string, id: number): Promise<Article> {
+  return requestJson<Article>(`/articles/${id}/schedule`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ publishAt: null, unpublishAt: null }),
+  });
 }
 
 export function listFavoriteArticles(accessToken: string, query?: Parameters<typeof listQuery>[0]): Promise<ArticleList> {

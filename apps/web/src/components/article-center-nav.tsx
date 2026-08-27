@@ -14,15 +14,16 @@ import type { AuthUser } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
 import { isSiteManager } from "@/lib/user-permissions";
 
-export type ArticleCenterSection = "discover" | "subscriptions" | "resources" | "collections" | "topics" | "mine" | "reading" | "manage";
+export type ArticleCenterSection = "discover" | "subscriptions" | "resources" | "collections" | "topics" | "mine" | "templates" | "reading" | "manage";
 
-const sections: Array<{ id: Exclude<ArticleCenterSection, "manage">; href: string; labelKey: "discover.discover" | "discover.subscriptions" | "discover.resources" | "discover.collections" | "discover.topics" | "discover.myWriting" | "discover.myReading"; protected?: boolean; count?: "discover" | "subscriptions" | "mine" }> = [
+const sections: Array<{ id: Exclude<ArticleCenterSection, "manage">; href: string; labelKey: "discover.discover" | "discover.subscriptions" | "discover.resources" | "discover.collections" | "discover.topics" | "discover.myWriting" | "discover.templates" | "discover.myReading"; protected?: boolean; count?: "discover" | "subscriptions" | "mine" }> = [
   { id: "discover", href: "/articles", labelKey: "discover.discover", count: "discover" },
   { id: "subscriptions", href: "/articles/subscriptions", labelKey: "discover.subscriptions", protected: true, count: "subscriptions" },
   { id: "resources", href: "/articles/resources", labelKey: "discover.resources" },
   { id: "collections", href: "/articles/collections", labelKey: "discover.collections", protected: true },
   { id: "topics", href: "/topics", labelKey: "discover.topics" },
   { id: "mine", href: "/articles/mine", labelKey: "discover.myWriting", protected: true, count: "mine" },
+  { id: "templates", href: "/articles/templates", labelKey: "discover.templates", protected: true },
   { id: "reading", href: "/articles/reading", labelKey: "discover.myReading", protected: true },
 ];
 
