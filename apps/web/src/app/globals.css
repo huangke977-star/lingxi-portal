@@ -17619,22 +17619,21 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .portal-entry-tooltip::before { background: var(--chat-bubble-background); }
 .level-popover { background-image: none; }
 
-/* Keep notification, chat action, and account-level popovers on one readable glass surface. */
-.header-popover,
+/* Match chat action menus and account-level tips to the chat conversation surface. */
 .chat-friend-action-menu,
 .chat-conversation-action-menu,
 .chat-message-action-menu,
 .chat-notification-action-menu,
 .chat-notification-channel-menu,
 .level-popover {
-  border: 1px solid color-mix(in srgb, var(--control-line) 58%, transparent);
-  background: var(--popover-surface);
+  border: 1px solid color-mix(in srgb, var(--control-line) 54%, transparent);
+  background: color-mix(in srgb, var(--popover-surface) 34%, transparent);
   background-image: none;
-  box-shadow: var(--shadow-hover);
-  backdrop-filter: blur(24px) saturate(125%);
+  box-shadow: 0 16px 38px rgba(18, 25, 39, 0.2);
+  backdrop-filter: blur(16px) saturate(125%);
 }
 
-.level-popover::before { background: var(--popover-surface); }
+.level-popover::before { background: color-mix(in srgb, var(--popover-surface) 34%, transparent); }
 
 @media (max-width: 680px) {
   .moderation-reports-header { align-items: flex-start; flex-direction: column; }
