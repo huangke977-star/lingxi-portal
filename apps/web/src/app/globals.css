@@ -336,6 +336,45 @@
   .topic-card ul { display: none; }
 }
 
+/* P14 article tools stay compact and use the shared glass control language. */
+.article-editor-tools { display: grid; gap: 9px; margin-bottom: 12px; padding: 10px 12px; border-radius: 7px; background: color-mix(in srgb, var(--surface) 42%, transparent); }
+.article-template-tools, .article-schedule-fields { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.article-template-tools > span { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; color: var(--muted); font-size: 0.72rem; }
+.article-template-tools .announcement-editor-select { width: min(240px, 100%); }
+.article-template-tools > button { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--accent-strong); cursor: pointer; }
+.article-template-tools > button:hover { background: var(--accent-soft); }
+.article-schedule-fields { flex-wrap: wrap; }
+.article-schedule-fields label { display: inline-flex; min-width: 0; align-items: center; gap: 5px; color: var(--muted); font-size: 0.7rem; }
+.article-schedule-fields label input { width: 190px; min-height: 30px; padding: 4px 7px; font-size: 0.72rem; }
+.article-schedule-error { margin: -3px 0 11px; border-radius: 6px; background: color-mix(in srgb, #b44352 12%, transparent); color: #a43d4c; font-size: 0.72rem; line-height: 1.5; padding: 7px 9px; }
+.article-template-dialog { display: grid; width: min(440px, calc(100vw - 28px)); gap: 12px; border-radius: 8px; background: color-mix(in srgb, var(--glass-tint) 84%, transparent); box-shadow: var(--panel-shadow); backdrop-filter: blur(var(--glass-blur)); padding: 16px; }
+.article-template-dialog header, .article-template-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.article-template-dialog header > span { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-strong); }
+.article-template-dialog header button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
+.article-template-dialog p { margin: 0; color: var(--muted); font-size: 0.74rem; line-height: 1.5; }
+.article-template-dialog label { display: grid; gap: 5px; color: var(--muted); font-size: 0.72rem; }
+.article-template-dialog label input { min-height: 34px; }
+.article-template-dialog footer { justify-content: flex-end; }
+.article-schedule-list { display: grid; gap: 6px; margin-top: 10px; }
+.article-schedule-list > header { display: flex; align-items: center; justify-content: space-between; gap: 7px; color: var(--muted); font-size: 0.7rem; }
+.article-schedule-list > header > span { display: inline-flex; align-items: center; gap: 5px; }
+.article-schedule-list > header small { color: var(--muted); font-size: 0.66rem; }
+.article-schedule-list > div { display: grid; gap: 2px; }
+.article-schedule-list > div > a { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 7px; border-radius: 5px; color: var(--foreground); padding: 5px 6px; }
+.article-schedule-list > div > a:hover { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+.article-schedule-list > div > a > span { display: grid; min-width: 0; gap: 2px; }
+.article-schedule-list > div strong, .article-schedule-list > div small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.article-schedule-list > div strong { font-size: 0.7rem; }
+.article-schedule-list > div small { color: var(--muted); font-size: 0.62rem; }
+.article-schedule-list > p { margin: 0; color: var(--muted); font-size: 0.66rem; line-height: 1.45; }
+
+@media (max-width: 760px) {
+  .article-template-tools { flex-wrap: wrap; }
+  .article-template-tools .announcement-editor-select { flex: 1 1 180px; }
+  .article-schedule-fields { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+  .article-schedule-fields label input { width: 100%; flex: 1; }
+}
+
 @media (max-width: 520px) {
   .discovery-toolbar { align-items: flex-start; }
   .discovery-sort-tabs { gap: 13px; }

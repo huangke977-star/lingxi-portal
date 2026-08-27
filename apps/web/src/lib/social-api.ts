@@ -243,6 +243,9 @@ export interface SocialNotification {
     | "subscription_published"
     | "announcement_published"
     | "suggestion_updated"
+    | "article_scheduled_publish"
+    | "article_scheduled_publish_failed"
+    | "article_scheduled_unpublish"
     | "system";
   channel: NotificationChannel;
   title: string;

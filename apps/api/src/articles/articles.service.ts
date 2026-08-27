@@ -3,7 +3,10 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
 } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { access, mkdir, unlink, writeFile } from "node:fs/promises";
@@ -33,6 +36,8 @@ import { ContentModerationService } from "../moderation/content-moderation.servi
 import {
   ARTICLE_STATUSES,
   ArticleStatusValue,
+  ArticleScheduleDto,
+  ArticleTemplateDto,
   AutosaveArticleDto,
   CreateArticleCommentDto,
   CreateArticleAppealDto,
@@ -64,6 +69,9 @@ import {
   ArticleMineDashboardResponse,
   ArticleMineSummaryResponse,
   ArticleResponse,
+  ArticlePublishCheckResponse,
+  ArticleScheduleListResponse,
+  ArticleTemplateResponse,
   ArticleReadLaterResponse,
   ArticleVersionResponse,
   ArticleVersionSummaryResponse,
@@ -135,6 +143,7 @@ const ARTICLE_IMAGE_FORMATS: SupportedArticleImageFormat[] = [
 ];
 
 const ARTICLE_AUTOSAVE_VERSION_LIMIT = 50;
+const ARTICLE_LIFECYCLE_TICK_MS = 30_000;
 
 const ARTICLE_VERSION_FIELDS = [
   "title",
@@ -322,7 +331,10 @@ function countDistinctReportPublications<T extends {
 }
 
 @Injectable()
-export class ArticlesService {
+export class ArticlesService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(ArticlesService.name);
+  private lifecycleTimer: NodeJS.Timeout | null = null;
+  private lifecycleProcessing = false;
   private readonly uploadDirectory = resolve(
     process.env.ARTICLE_UPLOAD_DIR ?? join(process.cwd(), "uploads", "articles"),
   );
@@ -335,6 +347,17 @@ export class ArticlesService {
     @Inject(ContentModerationService)
     private readonly contentModerationService: Pick<ContentModerationService, "enforce" | "recordAccepted"> = noOpContentModerationService,
   ) {}
+
+  onModuleInit(): void {
+    if (process.env.NODE_ENV === "test") return;
+    this.lifecycleTimer = setInterval(() => void this.processArticleLifecycleInBackground(), ARTICLE_LIFECYCLE_TICK_MS);
+    this.lifecycleTimer.unref();
+    setTimeout(() => void this.processArticleLifecycleInBackground(), 5_000).unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.lifecycleTimer) clearInterval(this.lifecycleTimer);
+  }
 
   listPublic(query: ListArticlesQueryDto): Promise<ArticleListResponse> {
     return this.listArticles(query, null, false);
@@ -540,6 +563,185 @@ export class ArticlesService {
         settledAt: item.sellerSettledAt?.toISOString() ?? null,
       })),
     };
+  }
+
+  async listMyArticleSchedules(user: AuthenticatedUser): Promise<ArticleScheduleListResponse> {
+    const items = await this.prisma.article.findMany({
+      where: { authorId: user.id, OR: [{ scheduledPublishAt: { not: null } }, { scheduledUnpublishAt: { not: null } }, { scheduleError: { not: null } }] },
+      orderBy: [{ scheduledPublishAt: "asc" }, { scheduledUnpublishAt: "asc" }, { updatedAt: "desc" }],
+      take: 100,
+      select: { id: true, title: true, slug: true, status: true, scheduledPublishAt: true, scheduledUnpublishAt: true, scheduleError: true, updatedAt: true },
+    });
+    return {
+      items: items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        slug: item.slug,
+        status: item.status,
+        publishAt: item.scheduledPublishAt?.toISOString() ?? null,
+        unpublishAt: item.scheduledUnpublishAt?.toISOString() ?? null,
+        error: item.scheduleError,
+        updatedAt: item.updatedAt.toISOString(),
+      })),
+    };
+  }
+
+  async listTemplates(user: AuthenticatedUser): Promise<{ items: ArticleTemplateResponse[] }> {
+    const templates = await this.prisma.articleTemplate.findMany({
+      where: { authorId: user.id },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: 50,
+    });
+    return { items: templates.map((template) => this.toTemplateResponse(template)) };
+  }
+
+  async createTemplate(user: AuthenticatedUser, dto: ArticleTemplateDto): Promise<ArticleTemplateResponse> {
+    const data = await this.normalizeTemplateInput(dto);
+    try {
+      const template = await this.prisma.articleTemplate.create({ data: { ...data, authorId: user.id } });
+      return this.toTemplateResponse(template);
+    } catch (error) {
+      this.rethrowTemplatePersistenceError(error);
+    }
+  }
+
+  async updateTemplate(id: number, user: AuthenticatedUser, dto: ArticleTemplateDto): Promise<ArticleTemplateResponse> {
+    const existing = await this.prisma.articleTemplate.findFirst({ where: { id, authorId: user.id } });
+    if (!existing) throw new NotFoundException("文章模板不存在。");
+    const data = await this.normalizeTemplateInput(dto);
+    try {
+      const template = await this.prisma.articleTemplate.update({ where: { id }, data });
+      return this.toTemplateResponse(template);
+    } catch (error) {
+      this.rethrowTemplatePersistenceError(error);
+    }
+  }
+
+  async deleteTemplate(id: number, user: AuthenticatedUser): Promise<{ success: true }> {
+    const result = await this.prisma.articleTemplate.deleteMany({ where: { id, authorId: user.id } });
+    if (!result.count) throw new NotFoundException("文章模板不存在。");
+    return { success: true };
+  }
+
+  async getPublishCheck(id: number, user: AuthenticatedUser): Promise<ArticlePublishCheckResponse> {
+    const article = await this.getArticleOrThrow(id);
+    this.assertCanEdit(article, user);
+    return this.publishCheckFor(article, user);
+  }
+
+  async schedule(id: number, user: AuthenticatedUser, dto: ArticleScheduleDto): Promise<ArticleResponse> {
+    const existing = await this.getArticleOrThrow(id);
+    this.assertCanEdit(existing, user);
+    if (existing.status === ArticleStatus.blocked || existing.status === ArticleStatus.deleted) {
+      throw new BadRequestException("受限或已删除的文章不能设置发布计划。");
+    }
+    const publishAt = dto.publishAt === undefined ? existing.scheduledPublishAt : this.parseScheduleDate(dto.publishAt, "发布");
+    const unpublishAt = dto.unpublishAt === undefined ? existing.scheduledUnpublishAt : this.parseScheduleDate(dto.unpublishAt, "下线");
+    const now = new Date();
+    const clearing = dto.publishAt === null && dto.unpublishAt === null;
+    if (!publishAt && !unpublishAt && !clearing) throw new BadRequestException("请至少设置发布时间或下线时间。");
+    if (publishAt && publishAt <= now) throw new BadRequestException("发布时间必须晚于当前时间。");
+    if (unpublishAt && unpublishAt <= now) throw new BadRequestException("下线时间必须晚于当前时间。");
+    if (existing.status === ArticleStatus.published && publishAt) throw new BadRequestException("已发布文章不能再次设置发布时间。");
+    if (existing.status !== ArticleStatus.published && unpublishAt && !publishAt) throw new BadRequestException("草稿需要同时设置未来的发布时间和下线时间。");
+    if (publishAt && unpublishAt && unpublishAt <= publishAt) throw new BadRequestException("下线时间必须晚于发布时间。");
+    if (publishAt) {
+      const check = await this.publishCheckFor(existing, user);
+      if (check.errors.length) throw new BadRequestException(check.errors.join("；"));
+    }
+    const article = await this.prisma.article.update({
+      where: { id },
+      data: { scheduledPublishAt: publishAt, scheduledUnpublishAt: unpublishAt, scheduleError: null },
+      include: articleInclude,
+    });
+    await this.prisma.userNotification.create({
+      data: {
+        userId: user.id,
+        actorId: user.id,
+        type: UserNotificationType.system,
+        channel: UserNotificationChannel.system,
+        title: publishAt ? "文章发布计划已保存" : "文章下线计划已保存",
+        body: publishAt ? `《${article.title}》将在 ${publishAt.toLocaleString("zh-CN")} 自动发布。` : `《${article.title}》将在 ${unpublishAt!.toLocaleString("zh-CN")} 自动下线。`,
+        bodyEn: publishAt ? `“${article.title}” is scheduled to publish at ${publishAt.toISOString()}.` : `“${article.title}” is scheduled to go offline at ${unpublishAt!.toISOString()}.`,
+        actionUrl: "/articles/mine",
+      },
+    });
+    return this.toResponse(article, user);
+  }
+
+  async processArticleLifecycle(): Promise<void> {
+    if (this.lifecycleProcessing) return;
+    this.lifecycleProcessing = true;
+    try {
+      const now = new Date();
+      const publishCandidates = await this.prisma.article.findMany({
+        where: { status: { in: [ArticleStatus.draft, ArticleStatus.unpublished] }, scheduledPublishAt: { lte: now } },
+        select: { id: true },
+        orderBy: [{ scheduledPublishAt: "asc" }, { id: "asc" }],
+        take: 20,
+      });
+      for (const item of publishCandidates) await this.processScheduledPublication(item.id, now);
+      const unpublishCandidates = await this.prisma.article.findMany({
+        where: { status: ArticleStatus.published, scheduledUnpublishAt: { lte: now } },
+        select: { id: true },
+        orderBy: [{ scheduledUnpublishAt: "asc" }, { id: "asc" }],
+        take: 20,
+      });
+      for (const item of unpublishCandidates) await this.processScheduledUnpublication(item.id, now);
+    } finally {
+      this.lifecycleProcessing = false;
+    }
+  }
+
+  private async processArticleLifecycleInBackground(): Promise<void> {
+    await this.processArticleLifecycle().catch((error) => this.logger.warn(`Article lifecycle task failed: ${this.errorMessage(error)}`));
+  }
+
+  private async processScheduledPublication(id: number, now: Date): Promise<void> {
+    const claimed = await this.prisma.article.updateMany({
+      where: { id, status: { in: [ArticleStatus.draft, ArticleStatus.unpublished] }, scheduledPublishAt: { lte: now } },
+      data: { scheduledPublishAt: null, scheduleError: null },
+    });
+    if (!claimed.count) return;
+    const existing = await this.getArticleOrThrow(id);
+    try {
+      const author = await this.scheduledAuthor(existing.authorId);
+      if (!author) throw new BadRequestException("文章作者账号不存在或已停用。");
+      const check = await this.publishCheckFor(existing, author);
+      if (check.errors.length) throw new BadRequestException(check.errors.join("；"));
+      await this.contentModerationService.enforce({ source: "article", actorId: author.id, content: `${existing.title}\n${existing.content}`, contentRef: `article:${id}` });
+      const isFirstPublication = existing.publishedAt === null;
+      const updated = await this.prisma.$transaction(async (transaction) => {
+        const article = await transaction.article.update({
+          where: { id },
+          data: { status: ArticleStatus.published, publicationCount: { increment: 1 }, publishedAt: existing.publishedAt ?? now, blockedReason: null, scheduleError: null },
+          include: articleInclude,
+        });
+        await this.createVersionSnapshot(transaction, article, author.id, ArticleVersionSource.publish);
+        if (isFirstPublication) {
+          await this.reputationService.awardArticlePublished(transaction, author.id, article.id);
+          await this.notifySubscribersOfPublication(transaction, article);
+        }
+        await transaction.userNotification.create({
+          data: { userId: author.id, actorId: null, type: UserNotificationType.article_scheduled_publish, channel: UserNotificationChannel.system, title: "文章已按计划发布", body: `《${article.title}》已按计划发布。`, bodyEn: `“${article.title}” was published on schedule.`, actionUrl: `/articles/${article.slug}`, articleId: article.id },
+        });
+        return article;
+      });
+      await this.contentModerationService.recordAccepted({ source: "article", actorId: author.id, content: `${updated.title}\n${updated.content}`, contentRef: `article:${id}` });
+    } catch (error) {
+      const message = this.errorMessage(error).slice(0, 500);
+      await this.prisma.article.update({ where: { id }, data: { scheduleError: message } });
+      const article = await this.prisma.article.findUnique({ where: { id }, select: { authorId: true, title: true } });
+      if (article) await this.prisma.userNotification.create({ data: { userId: article.authorId, actorId: null, type: UserNotificationType.article_scheduled_publish_failed, channel: UserNotificationChannel.system, title: "文章定时发布失败", body: `《${article.title}》未能按计划发布：${message}`, bodyEn: `Scheduled publication of “${article.title}” failed: ${message}`, actionUrl: "/articles/mine", articleId: id } });
+    }
+  }
+
+  private async processScheduledUnpublication(id: number, now: Date): Promise<void> {
+    const claimed = await this.prisma.article.updateMany({ where: { id, status: ArticleStatus.published, scheduledUnpublishAt: { lte: now } }, data: { status: ArticleStatus.unpublished, scheduledUnpublishAt: null, scheduleError: null } });
+    if (!claimed.count) return;
+    const article = await this.prisma.article.findUnique({ where: { id }, select: { authorId: true, title: true, slug: true } });
+    if (!article) return;
+    await this.prisma.userNotification.create({ data: { userId: article.authorId, actorId: null, type: UserNotificationType.article_scheduled_unpublish, channel: UserNotificationChannel.system, title: "文章已按计划下线", body: `《${article.title}》已按计划下线。`, bodyEn: `“${article.title}” was taken offline on schedule.`, actionUrl: "/articles/mine", articleId: id } });
   }
 
   async getMineById(id: number, user: AuthenticatedUser): Promise<ArticleResponse> {
@@ -858,9 +1060,12 @@ export class ArticlesService {
         category,
         tags,
         titleColor: dto.titleColor === undefined ? existing.titleColor : this.normalizeTitleColor(dto.titleColor),
-        visibility,
-        status,
-        publicationCount: isNewPublication ? { increment: 1 } : undefined,
+          visibility,
+          status,
+          scheduledPublishAt: status === ArticleStatus.published ? null : undefined,
+          scheduledUnpublishAt: status === ArticleStatus.published ? null : undefined,
+          scheduleError: null,
+          publicationCount: isNewPublication ? { increment: 1 } : undefined,
         ...resource,
         ...buildSearchFields([title, category, tags]),
         publishedAt:
@@ -906,7 +1111,7 @@ export class ArticlesService {
     const article = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.article.update({
         where: { id },
-        data: { status: ArticleStatus.published, publicationCount: isNewPublication ? { increment: 1 } : undefined, publishedAt: existing.publishedAt ?? new Date(), blockedReason: null, ...resource },
+        data: { status: ArticleStatus.published, publicationCount: isNewPublication ? { increment: 1 } : undefined, publishedAt: existing.publishedAt ?? new Date(), blockedReason: null, scheduledPublishAt: null, scheduledUnpublishAt: null, scheduleError: null, ...resource },
         include: articleInclude,
       });
       await this.createVersionSnapshot(transaction, updated, user.id, isNewPublication ? ArticleVersionSource.publish : ArticleVersionSource.manual);
@@ -930,7 +1135,7 @@ export class ArticlesService {
     }
     const article = await this.prisma.article.update({
       where: { id },
-      data: { status: ArticleStatus.unpublished },
+      data: { status: ArticleStatus.unpublished, scheduledPublishAt: null, scheduledUnpublishAt: null, scheduleError: null },
       include: articleInclude,
     });
     return this.toResponse(article, user);
@@ -939,7 +1144,7 @@ export class ArticlesService {
   async delete(id: number, user: AuthenticatedUser): Promise<{ success: true }> {
     const existing = await this.getArticleOrThrow(id);
     this.assertCanEdit(existing, user);
-    await this.prisma.article.update({ where: { id }, data: { status: ArticleStatus.deleted } });
+    await this.prisma.article.update({ where: { id }, data: { status: ArticleStatus.deleted, scheduledPublishAt: null, scheduledUnpublishAt: null, scheduleError: null } });
     return { success: true };
   }
 
@@ -956,6 +1161,9 @@ export class ArticlesService {
         isPinned: false,
         pinOrder: 0,
         blockedReason: null,
+        scheduledPublishAt: null,
+        scheduledUnpublishAt: null,
+        scheduleError: null,
       },
       include: articleInclude,
     });
@@ -2405,6 +2613,96 @@ export class ArticlesService {
     return user.isSuperAdmin || Boolean(user.isAdministrator);
   }
 
+  private async scheduledAuthor(userId: number): Promise<Pick<AuthenticatedUser, "id" | "isSuperAdmin" | "isAdministrator"> | null> {
+    return this.prisma.user.findUnique({ where: { id: userId, status: "active" }, select: { id: true, isSuperAdmin: true, isAdministrator: true } });
+  }
+
+  private async publishCheckFor(
+    article: ArticleRecord,
+    user: Pick<AuthenticatedUser, "id" | "isSuperAdmin" | "isAdministrator">,
+  ): Promise<ArticlePublishCheckResponse> {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    if (!article.title.trim()) errors.push("文章标题不能为空。");
+    if (!article.content.trim()) errors.push("文章正文不能为空。");
+    if (article.status === ArticleStatus.blocked) errors.push("受限文章需要管理员解除限制后才能发布。");
+    if (article.status === ArticleStatus.deleted) errors.push("回收站中的文章不能发布。");
+    if (!this.canManageContent(user as AuthenticatedUser)) {
+      const restriction = await this.prisma.articlePublishRestriction?.findFirst({
+        where: { userId: user.id, liftedAt: null, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+        select: { endsAt: true },
+      });
+      if (restriction) errors.push(restriction.endsAt ? `当前账号被限制发布文章至 ${restriction.endsAt.toLocaleString("zh-CN")}。` : "当前账号被永久限制发布文章。");
+    }
+    if (parseArticleContent(article.content).blocks.length) warnings.push("文章包含局部积分资源，发布后读者需要按区块兑换。");
+    warnings.push("发布时仍会再次执行敏感词、重复内容和链接频率检查。");
+    return { valid: errors.length === 0, errors, warnings };
+  }
+
+  private async normalizeTemplateInput(dto: ArticleTemplateDto) {
+    const name = dto.name.trim();
+    const content = dto.content.trim();
+    if (!name || !content) throw new BadRequestException("模板名称和正文不能为空。");
+    const visibility = dto.visibility ?? ArticleVisibility.public;
+    const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
+    return {
+      name,
+      summary: dto.summary?.trim() ?? "",
+      content,
+      category: dto.category?.trim() ?? "",
+      tags: this.normalizeTags(dto.tags),
+      titleColor: this.normalizeTitleColor(dto.titleColor),
+      visibility,
+      roleCodes: roles.map((role) => role.code).join(","),
+    };
+  }
+
+  private rethrowTemplatePersistenceError(error: unknown): never {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new BadRequestException("该模板名称已经存在，请换一个名称。");
+    }
+    throw error;
+  }
+
+  private toTemplateResponse(template: {
+    id: number;
+    name: string;
+    summary: string;
+    content: string;
+    category: string;
+    tags: string;
+    titleColor: string;
+    visibility: ArticleVisibility;
+    roleCodes: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }): ArticleTemplateResponse {
+    return {
+      id: template.id,
+      name: template.name,
+      summary: template.summary,
+      content: template.content,
+      category: template.category,
+      tags: template.tags.split(",").filter(Boolean),
+      titleColor: template.titleColor,
+      visibility: template.visibility,
+      roleCodes: template.roleCodes.split(",").filter(Boolean),
+      createdAt: template.createdAt.toISOString(),
+      updatedAt: template.updatedAt.toISOString(),
+    };
+  }
+
+  private parseScheduleDate(value: string | null | undefined, label: string): Date | null {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) throw new BadRequestException(`${label}时间无效。`);
+    return parsed;
+  }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
   private assertCanManageContent(user: AuthenticatedUser): void {
     if (!this.canManageContent(user)) throw new ForbiddenException("需要管理员权限。");
   }
@@ -2702,6 +3000,11 @@ export class ArticlesService {
       isPinned: article.isPinned,
       pinOrder: article.pinOrder,
       publishedAt: article.publishedAt?.toISOString() ?? null,
+      schedule: {
+        publishAt: article.scheduledPublishAt?.toISOString() ?? null,
+        unpublishAt: article.scheduledUnpublishAt?.toISOString() ?? null,
+        error: article.scheduleError ?? null,
+      },
       blockedReason: article.blockedReason,
       viewCount: article.viewCount,
       likeCount: article.likeCount,

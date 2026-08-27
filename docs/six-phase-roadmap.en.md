@@ -490,7 +490,46 @@ Goal: improve first-use discovery and resource conversion through reversible int
 - Empty search results offer trending queries, visible topics, and point-resource entry points. The resource center supports search, sorting, minimum price, redemption popularity, and personal redemption, sales, and pending summaries.
 - Resource content blocks automatically synchronize the article resource flag and minimum point cost. Prisma validation, all 287 API tests, API/Web lint and production builds, and P12 Playwright desktop/mobile checks passed.
 
-The fixed delivery order is remaining P7 work -> P8 home/dashboard/tools center -> P9 -> P10 -> P11. Each phase must be independently accepted, deployed, and recorded under this roadmap's definition of done.
+### Phase 13: Recommendation And Subscription Experience
+
+Goal: make recommendations explainable and reversible while bringing creator analytics and subscription management into clearer workflows.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P13-01 | Recommendation feedback, hide/restore, and personalized ranking from interests and interactions | Completed |
+| P13-02 | Creator heat scoring with topic, collection, and creator recommendations | Completed |
+| P13-03 | Unified creator data, resource income, subscription management, and mobile collapse behavior | Completed |
+
+### P13 Acceptance Record
+
+- Recommendations combine reading, likes, favorites, read-later activity, subscriptions, engagement, recent activity, and pin state, then recheck current visibility before rendering.
+- Recommendation feedback supports not-interested, restore, and cache invalidation. Recommended creators are ranked by public content volume, views, comments, likes, favorites, and recent activity.
+- Creator, subscription, and recommendation panels use sidebars on desktop and default-collapsed panels on mobile; fixed copy is synchronized in Chinese and English.
+
+### Phase 14: Article Publishing Plans And Author Templates
+
+Goal: complete the controllable authoring loop from editing and checks through scheduled publication and scheduled unpublishing.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P14-01 | Schedule article publication and unpublishing with future-time and ordering validation | Completed |
+| P14-02 | Personal article templates with save, select, delete, and author isolation | Completed |
+| P14-03 | Pre-publish checks for title, body, publishing restrictions, restricted/recycled state, and resource warnings | Completed |
+| P14-04 | Show publishing plans, execution errors, and rescheduling entry in My articles | Completed |
+| P14-05 | Startup catch-up, 30-second lifecycle scanning, and conditional database claiming | Completed |
+| P14-06 | In-app success, failure, and scheduled-unpublish notices with Chinese and English titles and bodies | Completed |
+| P14-07 | Synchronize API/Web types, migrations, tests, builds, and roadmap documentation | Completed |
+
+### P14 Acceptance Record
+
+- Articles now have scheduled publish/unpublish fields and personal templates in an additive migration. Templates are unique by author and name, and every read, update, and delete checks author ownership.
+- Plans accept future times only; unpublishing must be later than publishing, and a draft cannot have only an unpublish time. Restricted and recycled articles cannot be scheduled.
+- The editor supports selecting, saving, and deleting templates plus scheduled publication and unpublishing. The publish action calls the pre-publish check first; partial point-resource blocks warn readers without blocking readable ordinary content.
+- The API runs one catch-up scan at startup and scans due plans every 30 seconds. A due row is claimed with a conditional update before governance checks, version creation, points/subscriber work, and result notification, preventing duplicate publication or unpublishing.
+- Failures retain their reason and appear in the My articles publishing-plan section, where the author can revise content or reschedule. Fixed notification titles and bodies have Chinese and English variants.
+- All 22 P14 service tests passed; the complete API suite, API/Web lint, API/Web production builds, Prisma generation, and migration static checks passed.
+
+The fixed delivery order is remaining P7 work -> P8 home/dashboard/tools center -> P9 -> P10 -> P11 -> P12 -> P13 -> P14. Each phase must be independently accepted, deployed, and recorded under this roadmap's definition of done.
 
 ## 14. Resume Procedure
 

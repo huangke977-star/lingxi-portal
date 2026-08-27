@@ -50,6 +50,11 @@ export interface Article {
   isPinned: boolean;
   pinOrder: number;
   publishedAt: string | null;
+  schedule: {
+    publishAt: string | null;
+    unpublishAt: string | null;
+    error: string | null;
+  };
   blockedReason: string | null;
   viewCount: number;
   likeCount: number;
@@ -173,6 +178,42 @@ export interface ArticleInput {
   roleCodes: string[];
 }
 
+export interface ArticleTemplate {
+  id: number;
+  name: string;
+  summary: string;
+  content: string;
+  category: string;
+  tags: string[];
+  titleColor: string;
+  visibility: ArticleVisibility;
+  roleCodes: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ArticleTemplateInput {
+  name: string;
+  summary: string;
+  content: string;
+  category: string;
+  tags: string;
+  titleColor: string;
+  visibility: ArticleVisibility;
+  roleCodes: string[];
+}
+
+export interface ArticleScheduleItem {
+  id: number;
+  title: string;
+  slug: string;
+  status: ArticleStatus;
+  publishAt: string | null;
+  unpublishAt: string | null;
+  error: string | null;
+  updatedAt: string;
+}
+
 export type ArticleVersionSource = "autosave" | "manual" | "publish" | "restore";
 
 export interface ArticleVersionSummary {
@@ -272,6 +313,26 @@ export function getMyArticle(accessToken: string, id: number): Promise<Article> 
     cache: "no-store",
     headers: authHeaders(accessToken),
   });
+}
+
+export function listMyArticleSchedules(accessToken: string): Promise<{ items: ArticleScheduleItem[] }> {
+  return requestJson("/articles/mine/schedules", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function listArticleTemplates(accessToken: string): Promise<{ items: ArticleTemplate[] }> {
+  return requestJson("/articles/mine/templates", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function createArticleTemplate(accessToken: string, input: ArticleTemplateInput): Promise<ArticleTemplate> {
+  return requestJson("/articles/mine/templates", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify(input) });
+}
+
+export function updateArticleTemplate(accessToken: string, id: number, input: ArticleTemplateInput): Promise<ArticleTemplate> {
+  return requestJson(`/articles/mine/templates/${id}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(input) });
+}
+
+export function deleteArticleTemplate(accessToken: string, id: number): Promise<void> {
+  return requestJson(`/articles/mine/templates/${id}`, { method: "DELETE", headers: authHeaders(accessToken) });
 }
 
 export function listFavoriteArticles(accessToken: string, query?: Parameters<typeof listQuery>[0]): Promise<ArticleList> {
@@ -382,6 +443,14 @@ export function restoreArticleVersion(accessToken: string, id: number, versionId
 
 export function publishArticle(accessToken: string, id: number): Promise<Article> {
   return requestJson<Article>(`/articles/${id}/publish`, { method: "POST", headers: authHeaders(accessToken) });
+}
+
+export function getArticlePublishCheck(accessToken: string, id: number): Promise<{ valid: boolean; errors: string[]; warnings: string[] }> {
+  return requestJson(`/articles/${id}/publish-check`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function scheduleArticle(accessToken: string, id: number, input: { publishAt: string | null; unpublishAt: string | null }): Promise<Article> {
+  return requestJson(`/articles/${id}/schedule`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(input) });
 }
 
 export function unpublishArticle(accessToken: string, id: number): Promise<Article> {

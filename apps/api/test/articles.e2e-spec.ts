@@ -54,6 +54,9 @@ function articleRecord(status: ArticleStatus = ArticleStatus.published) {
     isPinned: false,
     pinOrder: 0,
     publishedAt: new Date("2026-07-20T00:00:00.000Z"),
+    scheduledPublishAt: null,
+    scheduledUnpublishAt: null,
+    scheduleError: null,
     blockedReason: null,
     viewCount: 3,
     likeCount: 2,
@@ -67,6 +70,7 @@ function articleRecord(status: ArticleStatus = ArticleStatus.published) {
       username: user.username,
       avatarStoredName: null,
       isSuperAdmin: false,
+      isAdministrator: false,
       role: user.role,
     },
     allowedRoles: [],
@@ -125,6 +129,7 @@ function createPrismaMock() {
         { status: ArticleStatus.deleted, _count: { _all: 1 } },
       ]),
     },
+    userNotification: { create: jest.fn(async () => ({ id: 1 })) },
     articleFavorite: {
       count: jest.fn(async (_args: unknown) => {
         void _args;
@@ -747,5 +752,147 @@ describe("ArticlesService article center extensions", () => {
       status: "resolved",
     })).rejects.toThrow("已经处理");
     expect(transaction.userNotification.create).not.toHaveBeenCalled();
+  });
+
+  it("validates and stores a future publication schedule", async () => {
+    const publishAt = new Date("2099-01-01T08:00:00.000Z");
+    const unpublishAt = new Date("2099-01-02T08:00:00.000Z");
+    const prisma = createPrismaMock();
+    const draft = { ...articleRecord(ArticleStatus.draft), publishedAt: null };
+    (prisma.article.findUnique as jest.Mock).mockResolvedValueOnce(draft);
+    (prisma.article.update as jest.Mock).mockResolvedValueOnce({ ...draft, scheduledPublishAt: publishAt, scheduledUnpublishAt: unpublishAt });
+    const service = createService(prisma);
+
+    await expect(service.schedule(12, user, {
+      publishAt: publishAt.toISOString(),
+      unpublishAt: unpublishAt.toISOString(),
+    })).resolves.toMatchObject({
+      schedule: { publishAt: publishAt.toISOString(), unpublishAt: unpublishAt.toISOString(), error: null },
+    });
+    expect(prisma.article.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 12 },
+      data: { scheduledPublishAt: publishAt, scheduledUnpublishAt: unpublishAt, scheduleError: null },
+    }));
+    expect(prisma.userNotification.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ type: "system", actionUrl: "/articles/mine" }),
+    }));
+
+    const invalidPrisma = createPrismaMock();
+    (invalidPrisma.article.findUnique as jest.Mock).mockResolvedValueOnce(draft);
+    const invalidService = createService(invalidPrisma);
+    await expect(invalidService.schedule(12, user, {
+      publishAt: unpublishAt.toISOString(),
+      unpublishAt: publishAt.toISOString(),
+    })).rejects.toThrow("下线时间必须晚于发布时间");
+    expect(invalidPrisma.article.update).not.toHaveBeenCalled();
+  });
+
+  it("keeps article templates scoped to their author", async () => {
+    const createdAt = new Date("2026-08-27T00:00:00.000Z");
+    const template = {
+      id: 3,
+      authorId: user.id,
+      name: "运维模板",
+      summary: "",
+      content: "# 记录",
+      category: "运维",
+      tags: "服务器,经验",
+      titleColor: "",
+      visibility: ArticleVisibility.public,
+      roleCodes: "",
+      createdAt,
+      updatedAt: createdAt,
+    };
+    const prisma = {
+      articleTemplate: {
+        findMany: jest.fn(async () => [template]),
+        create: jest.fn(async () => template),
+        findFirst: jest.fn(async (input: { where: { id: number; authorId: number } }) => input.where.authorId === user.id ? template : null),
+        update: jest.fn(async () => template),
+      },
+      role: { findMany: jest.fn(async () => []) },
+    };
+    const service = createService(prisma);
+
+    await expect(service.listTemplates(user)).resolves.toMatchObject({ items: [{ id: 3, name: "运维模板", tags: ["服务器", "经验"] }] });
+    await expect(service.createTemplate(user, {
+      name: "运维模板",
+      content: "# 记录",
+      category: "运维",
+      tags: "服务器,经验",
+    })).resolves.toMatchObject({ id: 3 });
+    expect(prisma.articleTemplate.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ authorId: user.id, tags: "服务器,经验" }) }));
+    await expect(service.updateTemplate(3, { ...user, id: 99 }, {
+      name: "运维模板",
+      content: "# 记录",
+    })).rejects.toThrow("文章模板不存在");
+  });
+
+  it("publishes scheduled articles once and records the localized notification type", async () => {
+    const scheduledAt = new Date("2026-08-26T00:00:00.000Z");
+    const candidate = { ...articleRecord(ArticleStatus.draft), publishedAt: null, scheduledPublishAt: scheduledAt };
+    const published = { ...candidate, status: ArticleStatus.published, publishedAt: scheduledAt, scheduledPublishAt: null };
+    const transaction = {
+      article: { update: jest.fn(async () => published) },
+      articleVersion: { findFirst: jest.fn(async () => null), create: jest.fn(async () => ({})) },
+      userSubscription: { findMany: jest.fn(async () => []) },
+      userNotification: { create: jest.fn(async () => ({})) },
+    };
+    const prisma = {
+      article: {
+        findMany: jest.fn(async (input: { where: { scheduledPublishAt?: unknown } }) => input.where.scheduledPublishAt ? [candidate] : []),
+        findUnique: jest.fn(async () => candidate),
+        updateMany: jest.fn(async () => ({ count: 1 })),
+      },
+      user: { findUnique: jest.fn(async () => ({ id: user.id, isSuperAdmin: false, isAdministrator: false })) },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    };
+    const service = createService(prisma);
+
+    await service.processArticleLifecycle();
+
+    expect(prisma.article.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 12, status: { in: [ArticleStatus.draft, ArticleStatus.unpublished] }, scheduledPublishAt: { lte: expect.any(Date) } },
+    }));
+    expect(transaction.article.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: ArticleStatus.published, publicationCount: { increment: 1 } }),
+    }));
+    expect(transaction.userNotification.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ type: "article_scheduled_publish", bodyEn: expect.stringContaining("published on schedule") }),
+    }));
+
+    (prisma.article.updateMany as jest.Mock).mockResolvedValueOnce({ count: 0 });
+    await service.processArticleLifecycle();
+    expect(transaction.article.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a failure and notifies the author when scheduled publication is rejected", async () => {
+    const scheduledAt = new Date("2026-08-26T00:00:00.000Z");
+    const candidate = { ...articleRecord(ArticleStatus.draft), publishedAt: null, scheduledPublishAt: scheduledAt };
+    const prisma = {
+      article: {
+        findMany: jest.fn(async (input: { where: { scheduledPublishAt?: unknown } }) => input.where.scheduledPublishAt ? [candidate] : []),
+        findUnique: jest.fn(async () => candidate),
+        updateMany: jest.fn(async () => ({ count: 1 })),
+        update: jest.fn(async () => candidate),
+      },
+      user: { findUnique: jest.fn(async () => ({ id: user.id, isSuperAdmin: false, isAdministrator: false })) },
+      userNotification: { create: jest.fn(async () => ({})) },
+    };
+    const moderation = { enforce: jest.fn(async () => { throw new Error("命中敏感词规则"); }), recordAccepted: jest.fn() };
+    const service = new ArticlesService(
+      prisma as unknown as PrismaService,
+      siteSettingsService as unknown as SiteSettingsService,
+      redisService as unknown as RedisService,
+      reputationService as unknown as ReputationService,
+      moderation,
+    );
+
+    await service.processArticleLifecycle();
+
+    expect(prisma.article.update).toHaveBeenCalledWith({ where: { id: 12 }, data: { scheduleError: "命中敏感词规则" } });
+    expect(prisma.userNotification.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ type: "article_scheduled_publish_failed", bodyEn: expect.stringContaining("failed") }),
+    }));
   });
 });

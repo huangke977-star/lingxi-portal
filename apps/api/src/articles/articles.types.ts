@@ -50,6 +50,11 @@ export interface ArticleResponse {
   isPinned: boolean;
   pinOrder: number;
   publishedAt: string | null;
+  schedule: {
+    publishAt: string | null;
+    unpublishAt: string | null;
+    error: string | null;
+  };
   blockedReason: string | null;
   viewCount: number;
   likeCount: number;
@@ -72,6 +77,39 @@ export interface ArticleResponse {
   lastReadAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ArticleTemplateResponse {
+  id: number;
+  name: string;
+  summary: string;
+  content: string;
+  category: string;
+  tags: string[];
+  titleColor: string;
+  visibility: ArticleVisibilityValue;
+  roleCodes: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ArticlePublishCheckResponse {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export interface ArticleScheduleListResponse {
+  items: Array<{
+    id: number;
+    title: string;
+    slug: string;
+    status: ArticleStatusValue;
+    publishAt: string | null;
+    unpublishAt: string | null;
+    error: string | null;
+    updatedAt: string;
+  }>;
 }
 
 export interface ArticleCommentResponse {

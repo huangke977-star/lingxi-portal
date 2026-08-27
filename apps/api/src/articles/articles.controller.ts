@@ -32,6 +32,8 @@ import {
   CreateArticleCommentDto,
   CreateArticleAppealDto,
   CreateArticleDto,
+  ArticleScheduleDto,
+  ArticleTemplateDto,
   AutosaveArticleDto,
   ListArticleCommentsQueryDto,
   ListArticlesQueryDto,
@@ -96,6 +98,40 @@ export class ArticlesController {
   @UseGuards(JwtAuthGuard)
   getMineDashboard(@CurrentUser() user: AuthenticatedUser) {
     return this.articlesService.getMineDashboard(user);
+  }
+
+  @Get("mine/schedules")
+  @UseGuards(JwtAuthGuard)
+  listMyArticleSchedules(@CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.listMyArticleSchedules(user);
+  }
+
+  @Get("mine/templates")
+  @UseGuards(JwtAuthGuard)
+  listMyArticleTemplates(@CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.listTemplates(user);
+  }
+
+  @Post("mine/templates")
+  @UseGuards(JwtAuthGuard)
+  createMyArticleTemplate(@CurrentUser() user: AuthenticatedUser, @Body() dto: ArticleTemplateDto) {
+    return this.articlesService.createTemplate(user, dto);
+  }
+
+  @Patch("mine/templates/:templateId")
+  @UseGuards(JwtAuthGuard)
+  updateMyArticleTemplate(
+    @Param("templateId", ParseIntPipe) templateId: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ArticleTemplateDto,
+  ) {
+    return this.articlesService.updateTemplate(templateId, user, dto);
+  }
+
+  @Delete("mine/templates/:templateId")
+  @UseGuards(JwtAuthGuard)
+  deleteMyArticleTemplate(@Param("templateId", ParseIntPipe) templateId: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.deleteTemplate(templateId, user);
   }
 
   @Get("mine/reports")
@@ -340,6 +376,18 @@ export class ArticlesController {
   @UseGuards(JwtAuthGuard)
   publish(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
     return this.articlesService.publish(id, user);
+  }
+
+  @Get(":id/publish-check")
+  @UseGuards(JwtAuthGuard)
+  publishCheck(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    return this.articlesService.getPublishCheck(id, user);
+  }
+
+  @Patch(":id/schedule")
+  @UseGuards(JwtAuthGuard)
+  schedule(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser, @Body() dto: ArticleScheduleDto) {
+    return this.articlesService.schedule(id, user, dto);
   }
 
   @Post(":id/unpublish")

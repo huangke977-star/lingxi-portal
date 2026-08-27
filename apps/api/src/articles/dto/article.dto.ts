@@ -115,6 +115,56 @@ export class AutosaveArticleDto {
 
 }
 
+export class ArticleScheduleDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  publishAt?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  unpublishAt?: string | null;
+}
+
+export class ArticleTemplateDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(80)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  summary?: string;
+
+  @IsString()
+  content!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  tags?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(7)
+  titleColor?: string;
+
+  @IsOptional()
+  @IsIn(ARTICLE_VISIBILITIES)
+  visibility?: ArticleVisibilityValue;
+
+  @IsOptional()
+  @IsString({ each: true })
+  roleCodes?: string[];
+}
+
 export class ListArticlesQueryDto {
   @IsOptional()
   @Type(() => Number)

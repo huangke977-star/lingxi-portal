@@ -139,6 +139,9 @@ const notificationTypes: Record<string, LocalizedPair> = {
   author_subscribed: ["新的订阅者", "New subscriber"],
   subscription_published: ["订阅作者发布新文章", "Subscribed author published"],
   suggestion_updated: ["建议进度已更新", "Suggestion progress updated"],
+  article_scheduled_publish: ["文章已按计划发布", "Article published on schedule"],
+  article_scheduled_publish_failed: ["文章定时发布失败", "Scheduled publication failed"],
+  article_scheduled_unpublish: ["文章已按计划下线", "Article taken offline on schedule"],
 };
 
 const notificationKinds: Record<string, LocalizedPair> = {

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   Bookmark,
+  CalendarClock,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -31,11 +32,13 @@ import {
   ArticleMineSummary,
   ArticleStatus,
   Article,
+  ArticleScheduleItem,
   deleteArticle,
   createArticleAppeal,
   getMyArticleDashboard,
   getMyArticleSummary,
   listMyArticles,
+  listMyArticleSchedules,
   permanentlyDeleteArticle,
   restoreArticle,
   unpublishArticle,
@@ -88,6 +91,7 @@ function MyArticlesContent() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [summary, setSummary] = useState<ArticleMineSummary>(emptySummary);
   const [dashboard, setDashboard] = useState<ArticleMineDashboard>(emptyDashboard);
+  const [schedules, setSchedules] = useState<ArticleScheduleItem[]>([]);
   const [list, setList] = useState<ArticleList>(emptyList);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -112,7 +116,7 @@ function MyArticlesContent() {
   }
 
   async function load(token: string) {
-    const [currentUser, currentSummary, currentDashboard, currentList] = await Promise.all([
+    const [currentUser, currentSummary, currentDashboard, currentList, currentSchedules] = await Promise.all([
       getMe(token),
       getMyArticleSummary(token),
       getMyArticleDashboard(token),
@@ -122,11 +126,13 @@ function MyArticlesContent() {
         search: querySearch,
         status: status === "all" ? undefined : status,
       }),
+      listMyArticleSchedules(token),
     ]);
     setUser(currentUser);
     setSummary(currentSummary);
     setDashboard(currentDashboard);
     setList(currentList);
+    setSchedules(currentSchedules.items);
   }
 
   useEffect(() => {
@@ -226,6 +232,10 @@ function MyArticlesContent() {
             <div className="article-resource-income">
               <header><span><Coins aria-hidden="true" size={15} /><strong>{phrase("资源收益明细", "Resource income")}</strong></span><Link href={localizedPath("/profile/points", locale)}>{phrase("全部积分记录", "All point activity")}</Link></header>
               {dashboard.recentResourceIncome.length ? <div>{dashboard.recentResourceIncome.map((income) => <Link href={localizedPath(`/articles/${income.article.slug}`, locale)} key={income.id}><span><strong>{income.article.title}</strong><small>{phrase(`兑换于 ${formatArticleDate(income.createdAt, locale)}`, `Unlocked ${formatArticleDate(income.createdAt, locale)}`)}</small></span><span><b><Coins aria-hidden="true" size={13} />{income.pointCost}</b><small className={income.settledAt ? "settled" : "pending"}>{income.settledAt ? phrase(`已于 ${formatArticleDate(income.settledAt, locale)}到账`, `Settled ${formatArticleDate(income.settledAt, locale)}`) : phrase(`预计 ${formatArticleDate(income.availableAt, locale)}到账`, `Expected ${formatArticleDate(income.availableAt, locale)}`)}</small></span></Link>)}</div> : <p>{phrase("资源兑换后会在这里显示作者收益和到账状态。", "Resource unlocks will show their income and settlement status here.")}</p>}
+            </div>
+            <div className="article-schedule-list">
+              <header><span><CalendarClock aria-hidden="true" size={15} /><strong>{phrase("发布计划", "Publishing schedule")}</strong></span><small>{schedules.length}</small></header>
+              {schedules.length ? <div>{schedules.map((item) => <Link href={localizedPath(`/articles/edit/${item.id}`, locale)} key={item.id}><span><strong>{item.title || phrase("未命名文章", "Untitled article")}</strong><small>{item.publishAt ? phrase(`发布于 ${formatArticleDate(item.publishAt, locale)}`, `Publishes ${formatArticleDate(item.publishAt, locale)}`) : item.unpublishAt ? phrase(`下线于 ${formatArticleDate(item.unpublishAt, locale)}`, `Unpublishes ${formatArticleDate(item.unpublishAt, locale)}`) : phrase("执行失败，请重新设置", "Execution failed, reschedule it")}</small></span><CalendarClock aria-hidden="true" size={14} /></Link>)}</div> : <p>{phrase("还没有安排发布或下线的文章。", "No articles are scheduled to publish or go offline.")}</p>}
             </div>
           </section>
         </aside>

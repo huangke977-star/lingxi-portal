@@ -193,6 +193,9 @@ enum UserNotificationType {
   article_appeal_resolved
   feedback_updated
   article_publish_restricted
+  article_scheduled_publish
+  article_scheduled_publish_failed
+  article_scheduled_unpublish
   system
 }
 
@@ -589,6 +592,7 @@ model User {
   suggestionsReviewed        SiteSuggestion[]                @relation("SiteSuggestionReviewer")
   suggestionReplies          SiteSuggestionReply[]           @relation("SiteSuggestionReplyAuthor")
   reputationLedgers          UserReputationLedger[]
+  articleTemplates           ArticleTemplate[]
   resourceExchanges          ArticleResourceExchange[]       @relation("ArticleResourceBuyer")
   resourceSales              ArticleResourceExchange[]       @relation("ArticleResourceAuthor")
   articleAppealsSubmitted    ArticleAppeal[]                 @relation("ArticleAppealAuthor")
@@ -1179,6 +1183,9 @@ model Article {
   isPinned              Boolean                   @default(false) @map("is_pinned")
   pinOrder              Int                       @default(0) @map("pin_order")
   publishedAt           DateTime?                 @map("published_at")
+  scheduledPublishAt    DateTime?                 @map("scheduled_publish_at")
+  scheduledUnpublishAt  DateTime?                 @map("scheduled_unpublish_at")
+  scheduleError         String?                   @map("schedule_error") @db.VarChar(500)
   blockedReason         String?                   @map("blocked_reason") @db.VarChar(255)
   viewCount             Int                       @default(0) @map("view_count")
   likeCount             Int                       @default(0) @map("like_count")
@@ -1212,7 +1219,29 @@ model Article {
   @@index([status, visibility, isPinned, pinOrder])
   @@index([category, status])
   @@index([publishedAt])
+  @@index([scheduledPublishAt, status])
+  @@index([scheduledUnpublishAt, status])
   @@map("articles")
+}
+
+model ArticleTemplate {
+  id          Int               @id @default(autoincrement())
+  authorId    Int               @map("author_id")
+  author      User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  name        String            @db.VarChar(80)
+  summary     String            @default("") @db.VarChar(300)
+  content     String            @db.LongText
+  category    String            @default("") @db.VarChar(80)
+  tags        String            @default("") @db.VarChar(500)
+  titleColor  String            @default("") @map("title_color") @db.VarChar(7)
+  visibility  ArticleVisibility @default(public)
+  roleCodes   String            @default("") @map("role_codes") @db.VarChar(500)
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  @@unique([authorId, name])
+  @@index([authorId, updatedAt])
+  @@map("article_templates")
 }
 
 model ArticleAppeal {
