@@ -17646,8 +17646,9 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   background: var(--chat-conversation-background);
   background-image: none;
   box-shadow: var(--chat-floating-bubble-shadow);
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  /* This visually neutral value survives CSS optimization and clears legacy panel blur. */
+  backdrop-filter: blur(0.001px) !important;
+  -webkit-backdrop-filter: blur(0.001px) !important;
 }
 
 .portal-entry-tooltip { color: var(--foreground); }
@@ -17657,8 +17658,8 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   border: 0;
   background: var(--chat-conversation-background);
   background-image: none;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  backdrop-filter: blur(0.001px) !important;
+  -webkit-backdrop-filter: blur(0.001px) !important;
 }
 
 .level-popover::before { background: var(--chat-conversation-background); }

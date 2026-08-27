@@ -69,6 +69,9 @@ const navItems = [
   { href: "/dashboard", key: "nav.workspace" },
 ] as const;
 
+// Keeps actual header popovers clear of the legacy blur rule after CSS bundling.
+const chatConversationPopoverStyle = { backdropFilter: "blur(0.001px)" } as const;
+
 const emptySummary = {
   unreadMessages: 0,
   pendingFriendRequests: 0,
@@ -383,14 +386,14 @@ export function TopNav() {
           {user ? <>
             {isSiteManager(user) ? <div className="header-action-wrap" ref={taskPopoverRef} onPointerEnter={(event) => handleHoverOpen(event, taskCloseTimerRef, () => setIsTaskPopoverOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(taskCloseTimerRef, () => setIsTaskPopoverOpen(false)); }}>
               <button aria-expanded={isTaskPopoverOpen} aria-label={t("nav.pendingReports")} className={`header-action-button${isTaskPopoverOpen ? " active" : ""}`} onClick={() => setIsTaskPopoverOpen((current) => !current)} title={t("nav.pendingReports")} type="button"><ListTodo aria-hidden="true" size={19} />{pendingReportCount ? <b>{pendingReportCount > 99 ? "99+" : pendingReportCount}</b> : null}</button>
-              <div className={`header-popover task-popover${isTaskPopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(taskCloseTimerRef)}>
+              <div className={`header-popover task-popover${isTaskPopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(taskCloseTimerRef)} style={chatConversationPopoverStyle}>
                 <div className="header-popover-heading"><strong>{t("nav.pendingReports")}</strong><button onClick={() => { setIsTaskPopoverOpen(false); router.push(localizedPath("/admin/reports", locale)); }} type="button">{t("nav.enterManagement")}</button></div>
                 <div className="header-popover-list">{pendingReports.length ? pendingReports.slice(0, 6).map((report) => <button key={report.key} onClick={() => { setIsTaskPopoverOpen(false); router.push(localizedPath(pendingReportActionUrl(report), locale)); }} type="button"><span className="header-popover-icon"><ListTodo aria-hidden="true" size={16} /></span><span><strong>{report.sourceLabel} · {report.article?.title || report.group?.name || report.comment?.body || report.message?.body || phrase("待处理内容", "Pending content")}</strong><small>{report.reporter.nickname} · {formatHeaderTime(report.createdAt, locale)}</small></span></button>) : <span className="header-popover-empty">{t("nav.noPendingReports")}</span>}</div>
               </div>
             </div> : null}
             <div className="header-action-wrap" ref={messagePopoverRef} onPointerEnter={(event) => handleHoverOpen(event, messageCloseTimerRef, () => setIsMessagePopoverOpen(true))} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(messageCloseTimerRef, () => setIsMessagePopoverOpen(false)); }}>
               <button aria-expanded={isMessagePopoverOpen} aria-label={t("nav.messageNotification")} className={`header-action-button${isMessagePopoverOpen ? " active" : ""}`} onClick={() => setIsMessagePopoverOpen((current) => !current)} title={t("nav.messageNotification")} type="button"><MessageCircleMore aria-hidden="true" size={20} />{socialCount ? <b>{socialCount > 99 ? "99+" : socialCount}</b> : null}</button>
-              <div className={`header-popover message-popover${isMessagePopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(messageCloseTimerRef)}>
+              <div className={`header-popover message-popover${isMessagePopoverOpen ? " open" : ""}`} onPointerEnter={() => cancelClose(messageCloseTimerRef)} style={chatConversationPopoverStyle}>
                 <div className="header-popover-heading"><strong>{t("nav.messages")}</strong><button onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ tab: "chats" }); }} type="button">{t("nav.openChat")}</button></div>
                 <div className="header-popover-list">
                   {unreadConversations.map((conversation) => <button key={`conversation-${conversation.id}`} onClick={() => { setIsMessagePopoverOpen(false); openChatDock({ conversationId: conversation.id }); }} type="button"><span className="header-popover-icon"><MessageCircleMore aria-hidden="true" size={16} /></span><span><strong>{conversation.user.nickname}</strong><small>{conversation.lastMessage?.body || phrase("发来附件", "Sent an attachment")}</small></span><b>{conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</b></button>)}
