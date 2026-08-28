@@ -69,12 +69,8 @@ const navItems = [
   { href: "/dashboard", key: "nav.workspace" },
 ] as const;
 
-// Keeps actual header popovers on the chat conversation surface after CSS bundling.
-const chatConversationPopoverStyle = {
-  background: "var(--chat-conversation-background)",
-  backgroundImage: "none",
-  backdropFilter: "blur(0.001px)",
-} as const;
+// Keeps actual header popovers clear of the legacy blur rule after CSS bundling.
+const chatConversationPopoverStyle = { backdropFilter: "blur(0.001px)" } as const;
 
 const emptySummary = {
   unreadMessages: 0,

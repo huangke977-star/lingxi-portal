@@ -24,8 +24,7 @@
   --surface-strong: rgba(255, 255, 255, 0.64);
   --surface-soft: rgba(255, 255, 255, 0.38);
   --popover-surface: rgba(255, 255, 255, 0.92);
-  /* Floating bubbles use the conversation surface itself, not a lighter derivative. */
-  --chat-conversation-background: var(--background);
+  --chat-conversation-background: color-mix(in srgb, var(--background) 50%, #f8fbfd);
   --chat-floating-bubble-border: color-mix(in srgb, var(--control-line) 54%, transparent);
   --chat-floating-bubble-shadow: 0 16px 38px rgba(18, 25, 39, 0.2);
   --chat-bubble-background: rgba(255, 255, 255, 0.48);

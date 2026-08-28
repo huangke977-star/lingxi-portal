@@ -2593,13 +2593,7 @@ function ChatFriendActionMenu({ anchorRef, children }: { anchorRef: RefObject<HT
       data-testid="chat-conversation-action-menu"
       data-chat-friend-action
       ref={menuRef}
-      style={{
-        background: "var(--chat-conversation-background)",
-        backgroundImage: "none",
-        left: position?.left ?? 0,
-        top: position?.top ?? 0,
-        visibility: position ? "visible" : "hidden",
-      }}
+      style={{ left: position?.left ?? 0, top: position?.top ?? 0, visibility: position ? "visible" : "hidden" }}
     >
       {children}
     </div>,
