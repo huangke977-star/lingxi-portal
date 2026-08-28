@@ -19442,9 +19442,13 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  background: transparent;
   scrollbar-color: color-mix(in srgb, var(--accent-strong) 44%, transparent) transparent;
   scrollbar-width: thin;
 }
+
+.article-publish-preview .article-reading-main,
+.article-publish-preview .article-reading-aside { background: transparent; }
 
 .article-publish-preview > .article-reading-layout::-webkit-scrollbar { width: 5px; }
 .article-publish-preview > .article-reading-layout::-webkit-scrollbar-track { background: transparent; }
@@ -19454,11 +19458,11 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 
 .article-rich-editor .article-rich-editor-content > * + * { margin-top: 0.38em; }
-.article-editor-page .article-editor-preview .article-body { line-height: 1.52; }
+.article-editor-page .article-editor-preview .article-body { line-height: 1.42; }
 .article-editor-page .article-editor-preview .article-body p,
-.article-publish-preview .article-body p { margin-bottom: 0.28em; }
-.article-detail-page .article-body { line-height: 1.58; }
-.article-detail-page .article-body p { margin-bottom: 0.55em; }
+.article-publish-preview .article-body p { margin-bottom: 0.22em; }
+.article-detail-page .article-body { line-height: 1.5; }
+.article-detail-page .article-body p { margin-bottom: 0.45em; }
 
 /* The mobile override keeps the local chat confirmation inside the chat dock. */
 @media (max-width: 860px) {
