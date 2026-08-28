@@ -707,14 +707,14 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
           {article ? articleStatusLabel(article.status) : phrase("新文章", "New article")}
         </span>
         <div className="article-editor-context-actions">
-          {recoveryDraft ? <div className="article-draft-recovery"><span><strong>{phrase("发现未提交的本地草稿", "An unsaved local draft was found")}</strong><small>{formatRecoveryTime(recoveryDraft.savedAt, locale)}{recoveryDraft.pendingImageNames.length ? phrase(` · ${recoveryDraft.pendingImageNames.length} 张图片需要重新选择`, ` · ${recoveryDraft.pendingImageNames.length} images must be selected again`) : ""}</small></span><div><button className="text-action" onClick={recoverLocalDraft} type="button"><RotateCcw aria-hidden="true" size={14} />{phrase("恢复", "Restore")}</button><button className="text-danger-action" onClick={discardRecoveryDraft} type="button">{phrase("丢弃", "Discard")}</button></div></div> : null}
+          {recoveryDraft ? <div className="article-draft-recovery"><span><strong>{phrase("发现未提交的本地草稿", "An unsaved local draft was found")}</strong><small>{formatRecoveryTime(recoveryDraft.savedAt, locale)}{recoveryDraft.pendingImageNames.length ? phrase(` · ${recoveryDraft.pendingImageNames.length} 张图片需要重新选择`, ` · ${recoveryDraft.pendingImageNames.length} images must be selected again`) : ""}</small></span><div><button className="text-action article-editor-top-action" onClick={recoverLocalDraft} type="button"><RotateCcw aria-hidden="true" size={14} />{phrase("恢复", "Restore")}</button><button className="text-action article-editor-top-action danger-text" onClick={discardRecoveryDraft} type="button">{phrase("丢弃", "Discard")}</button></div></div> : null}
           <span className={`article-autosave-state ${autosaveState}`}>
             {autosaveState === "offline" ? <CloudOff aria-hidden="true" size={15} /> : <Cloud aria-hidden="true" size={15} />}
             {autosaveState === "waiting" ? phrase("等待自动保存", "Waiting to autosave") : autosaveState === "saving" ? phrase("自动保存中", "Autosaving") : autosaveState === "offline" ? phrase("已保存在本机", "Saved locally") : lastAutosavedAt ? phrase(`${formatShortTime(lastAutosavedAt, locale)} 已保存`, `Saved at ${formatShortTime(lastAutosavedAt, locale)}`) : phrase("自动保存已开启", "Autosave is on")}
             {autosaveState === "offline" ? <button aria-label={phrase("重试自动保存", "Retry autosave")} onClick={() => void runAutosave()} title={phrase("重试", "Retry")} type="button"><RefreshCw aria-hidden="true" size={14} /></button> : null}
           </span>
-          <button className="text-action" onClick={() => void openVersions()} type="button"><History aria-hidden="true" size={15} />{phrase("历史版本", "Version history")}</button>
-          <button className="text-action" onClick={() => setIsPreviewOpen(true)} type="button"><Eye aria-hidden="true" size={15} />{phrase("发布预览", "Publish preview")}</button>
+          <button className="text-action article-editor-top-action" onClick={() => void openVersions()} type="button"><History aria-hidden="true" size={15} />{phrase("历史版本", "Version history")}</button>
+          <button className="text-action article-editor-top-action" onClick={() => setIsPreviewOpen(true)} type="button"><Eye aria-hidden="true" size={15} />{phrase("发布预览", "Publish preview")}</button>
         </div>
       </div>
 

@@ -13,6 +13,7 @@ import { Bold, Coins, Code2, ImagePlus, Italic, Link2, List, ListChecks, ListOrd
 import { marked } from "marked";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 
 export interface RichEditorImage {
@@ -199,9 +200,9 @@ export function ArticleRichEditor({ value, format, onChange, onImageFiles, onErr
   return (
     <div className="article-rich-editor">
       <div className="article-rich-toolbar" role="toolbar" aria-label={phrase("文章格式工具", "Article formatting tools")}>
-        <select aria-label={phrase("文本层级", "Text level")} className="article-rich-heading-select" onChange={(event) => { const level = event.target.value; if (level === "p") editor.chain().focus().setParagraph().run(); else editor.chain().focus().toggleHeading({ level: Number(level) as 1 | 2 | 3 }).run(); }} value={headingValue}>
-          <option value="p">{phrase("正文", "Text")}</option><option value="1">{phrase("标题 1", "Heading 1")}</option><option value="2">{phrase("标题 2", "Heading 2")}</option><option value="3">{phrase("标题 3", "Heading 3")}</option>
-        </select>
+        <div className="article-rich-heading-select">
+          <GlassSelect ariaLabel={phrase("文本层级", "Text level")} onChange={(level) => { if (level === "p") editor.chain().focus().setParagraph().run(); else editor.chain().focus().toggleHeading({ level: Number(level) as 1 | 2 | 3 }).run(); }} options={[{ value: "p", label: phrase("正文", "Text") }, { value: "1", label: phrase("标题1", "H1") }, { value: "2", label: phrase("标题2", "H2") }, { value: "3", label: phrase("标题3", "H3") }]} value={headingValue} />
+        </div>
         <span className="article-rich-toolbar-divider" />
         {toolbarButton(phrase("粗体", "Bold"), <Bold size={15} />, () => editor.chain().focus().toggleBold().run(), editor.isActive("bold"))}
         {toolbarButton(phrase("斜体", "Italic"), <Italic size={15} />, () => editor.chain().focus().toggleItalic().run(), editor.isActive("italic"))}
