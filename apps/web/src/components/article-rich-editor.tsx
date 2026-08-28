@@ -201,7 +201,7 @@ export function ArticleRichEditor({ value, format, onChange, onImageFiles, onErr
     <div className="article-rich-editor">
       <div className="article-rich-toolbar" role="toolbar" aria-label={phrase("文章格式工具", "Article formatting tools")}>
         <div className="article-rich-heading-select">
-          <GlassSelect ariaLabel={phrase("文本层级", "Text level")} onChange={(level) => { if (level === "p") editor.chain().focus().setParagraph().run(); else editor.chain().focus().toggleHeading({ level: Number(level) as 1 | 2 | 3 }).run(); }} options={[{ value: "p", label: phrase("正文", "Text") }, { value: "1", label: phrase("标题1", "H1") }, { value: "2", label: phrase("标题2", "H2") }, { value: "3", label: phrase("标题3", "H3") }]} value={headingValue} />
+          <GlassSelect ariaLabel={phrase("文本层级", "Text level")} menuClassName="article-rich-heading-select-menu" menuPortal onChange={(level) => { if (level === "p") editor.chain().focus().setParagraph().run(); else editor.chain().focus().toggleHeading({ level: Number(level) as 1 | 2 | 3 }).run(); }} options={[{ value: "p", label: phrase("正文", "Text") }, { value: "1", label: phrase("标题1", "H1") }, { value: "2", label: phrase("标题2", "H2") }, { value: "3", label: phrase("标题3", "H3") }]} value={headingValue} />
         </div>
         <span className="article-rich-toolbar-divider" />
         {toolbarButton(phrase("粗体", "Bold"), <Bold size={15} />, () => editor.chain().focus().toggleBold().run(), editor.isActive("bold"))}
