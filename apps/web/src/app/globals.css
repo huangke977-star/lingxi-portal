@@ -19413,6 +19413,48 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .auth-language-control { right: 60px; }
 .auth-close { right: 12px; }
 
+/* Article preview uses the same fixed glass shell as the anonymous chat dialog. */
+.article-preview-backdrop { z-index: 13000; }
+
+.article-publish-preview {
+  display: grid;
+  height: min(760px, calc(100dvh - 32px));
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--control-line) 58%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--popover-surface) 70%, transparent);
+  box-shadow: 0 22px 58px rgba(20, 27, 39, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.34);
+  backdrop-filter: blur(30px) saturate(142%);
+  -webkit-backdrop-filter: blur(30px) saturate(142%);
+}
+
+.article-publish-preview .article-preview-toolbar {
+  position: relative;
+  top: auto;
+  background: color-mix(in srgb, var(--popover-surface) 58%, transparent);
+}
+
+.article-publish-preview > .article-reading-layout {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: color-mix(in srgb, var(--accent-strong) 44%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.article-publish-preview > .article-reading-layout::-webkit-scrollbar { width: 5px; }
+.article-publish-preview > .article-reading-layout::-webkit-scrollbar-track { background: transparent; }
+.article-publish-preview > .article-reading-layout::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-strong) 44%, transparent);
+}
+
+.article-rich-editor .article-rich-editor-content > * + * { margin-top: 0.38em; }
+.article-editor-page .article-editor-preview .article-body p,
+.article-publish-preview .article-body p { margin-bottom: 0.42em; }
+
 /* The mobile override keeps the local chat confirmation inside the chat dock. */
 @media (max-width: 860px) {
   .chat-attachment-preview img {
