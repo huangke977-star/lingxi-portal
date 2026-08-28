@@ -17664,6 +17664,35 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 .level-popover::before { background: var(--chat-conversation-background); }
 
+/* Keep every floating bubble on the chat conversation surface without changing the chat panel. */
+:where(
+  .header-popover,
+  .account-menu,
+  .public-profile-popover,
+  .admin-report-popover,
+  .level-popover,
+  .portal-entry-tooltip,
+  .analytics-chart-tooltip,
+  .analytics-metric-tooltip,
+  .my-report-detail-tooltip,
+  .chat-emoji-picker,
+  .chat-friend-action-menu,
+  .chat-conversation-action-menu,
+  .chat-message-action-menu,
+  .chat-notification-action-menu,
+  .chat-notification-channel-menu,
+  .chat-mobile-tools-panel,
+  .chat-group-member-context,
+  .chat-message-sender > small,
+  .app-toast,
+  .level-badge::after,
+  .level-popover::before,
+  .portal-entry-tooltip::before
+) {
+  background-color: var(--chat-conversation-background) !important;
+  background-image: none !important;
+}
+
 @media (max-width: 680px) {
   .moderation-reports-header { align-items: flex-start; flex-direction: column; }
   .moderation-summary { width: 100%; justify-content: flex-start; }
