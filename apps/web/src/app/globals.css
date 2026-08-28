@@ -17604,20 +17604,20 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .chat-notification-channel-menu,
 .chat-mobile-tools-panel,
 .chat-group-member-context {
-  background: var(--chat-bubble-background);
+  background: var(--chat-conversation-background);
   backdrop-filter: blur(22px) saturate(125%);
   -webkit-backdrop-filter: blur(22px) saturate(125%);
 }
 
 .my-report-detail-tooltip {
   border: 0;
-  background: var(--chat-bubble-background);
+  background: var(--chat-conversation-background);
   background-image: none;
   box-shadow: var(--shadow-hover), inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
 .level-popover::before,
-.portal-entry-tooltip::before { background: var(--chat-bubble-background); }
+.portal-entry-tooltip::before { background: var(--chat-conversation-background); }
 .level-popover { background-image: none; }
 
 /* Match chat action menus and account-level tips to the chat conversation surface. */
@@ -17636,6 +17636,8 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 
 .level-popover::before { background: var(--chat-conversation-background); }
+
+.app-toast { background: var(--chat-conversation-background); }
 
 @media (max-width: 680px) {
   .moderation-reports-header { align-items: flex-start; flex-direction: column; }
