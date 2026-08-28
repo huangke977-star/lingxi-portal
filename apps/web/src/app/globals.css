@@ -11222,7 +11222,7 @@ html:has(.article-comment-form) {
 }
 
 /* Header message and moderation previews. */
-.topbar { z-index: 1500; }
+.topbar { z-index: 12000; }
 
 .header-action-wrap {
   position: relative;
@@ -16751,7 +16751,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .confirm-dialog-backdrop {
   position: fixed;
   z-index: 2600;
-  inset: var(--topbar-offset) 0 0;
+  inset: 0;
   display: grid;
   place-items: center;
   background: rgba(255, 248, 251, 0.12) !important;
@@ -18993,14 +18993,14 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .moderation-action-backdrop,
   .subscription-management-backdrop
 ) {
-  inset: var(--topbar-offset) 0 0;
+  inset: 0;
   min-height: 0;
 }
 
 /* Keep the standalone chat confirmation and attachment layers below the navigation. */
 .chat-confirm-backdrop {
   position: fixed;
-  inset: var(--topbar-offset) 0 0;
+  inset: 0;
 }
 
 .chat-dock .chat-confirm-backdrop {
@@ -19009,7 +19009,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 
 .chat-attachment-preview {
-  inset: var(--topbar-offset) 0 0;
+  inset: 0;
 }
 
 .chat-attachment-preview img {
@@ -19037,19 +19037,67 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .chat-notification-channel-menu,
 .chat-mobile-tools-panel,
 .chat-mobile-channel-sheet,
+ .chat-group-member-context,
+ .chat-call-mini,
+ .app-toast {
+  background: var(--chat-conversation-background) !important;
+}
+
+.level-popover,
+.level-badge::after,
+.public-profile-popover,
+.portal-entry-tooltip,
+.analytics-chart-tooltip,
+.analytics-metric-tooltip,
+.my-report-detail-tooltip,
+.admin-report-popover,
+.header-popover,
+.account-menu,
+.chat-message-sender > small,
+.chat-emoji-picker,
+.chat-friend-action-menu,
+.chat-friend-action-menu-floating,
+.chat-conversation-action-menu,
+.chat-message-action-menu,
+.chat-notification-action-menu,
+.chat-notification-channel-menu,
+.chat-mobile-tools-panel,
+.chat-mobile-channel-sheet,
 .chat-group-member-context,
 .chat-call-mini,
-.app-toast {
-  background:
-    linear-gradient(var(--chat-conversation-background), var(--chat-conversation-background)),
-    var(--popover-surface) !important;
+ .app-toast {
+  background: var(--chat-conversation-background) !important;
+}
+
+:is(
+  .level-popover,
+  .public-profile-popover,
+  .analytics-chart-tooltip,
+  .analytics-metric-tooltip,
+  .my-report-detail-tooltip,
+  .admin-report-popover,
+  .header-popover,
+  .account-menu,
+  .chat-message-sender > small,
+  .chat-emoji-picker,
+  .chat-friend-action-menu,
+  .chat-friend-action-menu-floating,
+  .chat-conversation-action-menu,
+  .chat-message-action-menu,
+  .chat-notification-action-menu,
+  .chat-notification-channel-menu,
+  .chat-mobile-tools-panel,
+  .chat-mobile-channel-sheet,
+  .chat-group-member-context,
+  .chat-call-mini,
+  .app-toast
+) {
+  backdrop-filter: blur(34px) saturate(146%) !important;
 }
 
 .level-popover::before,
 .portal-entry-tooltip::before {
-  background:
-    linear-gradient(var(--chat-conversation-background), var(--chat-conversation-background)),
-    var(--popover-surface) !important;
+  background: var(--chat-conversation-background) !important;
 }
 
 /* Login and announcement dialogs share the same glass surface and leave room for both controls. */
