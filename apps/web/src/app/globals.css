@@ -24,7 +24,8 @@
   --surface-strong: rgba(255, 255, 255, 0.64);
   --surface-soft: rgba(255, 255, 255, 0.38);
   --popover-surface: rgba(255, 255, 255, 0.92);
-  --chat-conversation-background: color-mix(in srgb, var(--background) 50%, #f8fbfd);
+  /* Floating bubbles use the conversation surface itself, not a lighter derivative. */
+  --chat-conversation-background: var(--background);
   --chat-floating-bubble-border: color-mix(in srgb, var(--control-line) 54%, transparent);
   --chat-floating-bubble-shadow: 0 16px 38px rgba(18, 25, 39, 0.2);
   --chat-bubble-background: rgba(255, 255, 255, 0.48);
@@ -17622,7 +17623,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .portal-entry-tooltip::before { background: var(--chat-conversation-background); }
 .level-popover { background-image: none; }
 
-/* Final source of truth: every floating bubble uses the existing chat conversation surface. */
+/* Final source of truth: bubbles use the same opaque surface as the chat conversation area. */
 .header-popover,
 .task-popover.header-popover,
 .account-menu,
@@ -17641,12 +17642,11 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .portal-entry-tooltip,
 .analytics-chart-tooltip,
 .analytics-metric-tooltip,
-.level-popover,
-.app-toast {
-  border: 1px solid var(--chat-floating-bubble-border) !important;
-  background: var(--chat-conversation-background) !important;
-  background-image: none !important;
-  box-shadow: var(--chat-floating-bubble-shadow) !important;
+.level-popover {
+  border: 1px solid var(--chat-floating-bubble-border);
+  background: var(--chat-conversation-background);
+  background-image: none;
+  box-shadow: var(--chat-floating-bubble-shadow);
   /* This visually neutral value survives CSS optimization and clears legacy panel blur. */
   backdrop-filter: blur(0.001px) !important;
   -webkit-backdrop-filter: blur(0.001px) !important;
