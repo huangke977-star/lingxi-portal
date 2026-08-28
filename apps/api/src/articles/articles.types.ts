@@ -83,6 +83,17 @@ export interface ArticleResponse {
   updatedAt: string;
 }
 
+export interface ArticleAttachmentResponse {
+  id: number;
+  kind: "image" | "file" | "audio" | "video";
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  downloadUrl: string;
+  thumbnailUrl: string | null;
+  createdAt: string;
+}
+
 export interface ArticleTemplateResponse {
   id: number;
   name: string;
@@ -127,6 +138,7 @@ export interface ArticleCommentResponse {
   likeCount: number;
   liked: boolean;
   reported: boolean;
+  attachments: ArticleCommentAttachmentResponse[];
   pendingReportCount?: number;
   reports?: ArticleCommentReportResponse[];
   author: ArticleAuthorResponse;
@@ -134,11 +146,23 @@ export interface ArticleCommentResponse {
   updatedAt: string;
 }
 
+export interface ArticleCommentAttachmentResponse {
+  id: number;
+  kind: "image" | "file" | "audio" | "video";
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  downloadUrl: string;
+  thumbnailUrl: string | null;
+  createdAt: string;
+}
+
 export interface ArticleCommentReportResponse {
   id: number;
   commentId: number;
   commentBody: string;
   commentStatus: string;
+  attachments: ArticleCommentAttachmentResponse[];
   article: {
     id: number;
     title: string;

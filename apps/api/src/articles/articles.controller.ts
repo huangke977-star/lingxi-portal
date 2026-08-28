@@ -10,6 +10,7 @@ import {
   Post,
   Query,
   Req,
+  Res,
   StreamableFile,
   UploadedFiles,
   UseGuards,
@@ -17,10 +18,11 @@ import {
 } from "@nestjs/common";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { createReadStream } from "node:fs";
-import type { Request } from "express";
+import type { Request, Response } from "express";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { OptionalJwtAuthGuard } from "../auth/guards/optional-jwt-auth.guard";
 import { UserManagementGuard } from "../auth/guards/user-management.guard";
 import {
   ARTICLE_IMAGE_MAX_FILE_SIZE_BYTES,
@@ -49,6 +51,8 @@ import {
   UpdateArticleDto,
   UpdateArticlePublishRestrictionDto,
 } from "./dto/article.dto";
+import { CHAT_ATTACHMENT_MAX_FILES, CHAT_ATTACHMENT_MAX_FILE_SIZE_BYTES, createChatAttachmentStorage } from "../social/chat-attachment.storage";
+import type { UploadedChatAttachment } from "../social/chat-attachment.storage";
 
 @Controller("articles")
 export class ArticlesController {
@@ -280,6 +284,43 @@ export class ArticlesController {
     return new StreamableFile(createReadStream(file.filePath), { type: file.mimeType });
   }
 
+  @Get("attachments/:id/download")
+  @UseGuards(OptionalJwtAuthGuard)
+  async downloadArticleAttachment(
+    @Param("id", ParseIntPipe) id: number,
+    @Req() request: Request & { user?: AuthenticatedUser },
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const attachment = await this.articlesService.getArticleAttachment(id, request.user ?? null);
+    response.set({
+      "Cache-Control": "private, no-store",
+      "Content-Disposition": `${attachment.kind === "image" ? "inline" : "attachment"}; filename="${attachment.originalName.replace(/[^A-Za-z0-9._-]/g, "_") || "attachment"}"; filename*=UTF-8''${encodeURIComponent(attachment.originalName)}`,
+      "Content-Length": String(attachment.sizeBytes),
+      "Content-Security-Policy": "sandbox",
+      "Content-Type": attachment.mimeType,
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+    });
+    return new StreamableFile(createReadStream(attachment.filePath));
+  }
+
+  @Get("attachments/:id/thumbnail")
+  @UseGuards(OptionalJwtAuthGuard)
+  async downloadArticleAttachmentThumbnail(
+    @Param("id", ParseIntPipe) id: number,
+    @Req() request: Request & { user?: AuthenticatedUser },
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const thumbnail = await this.articlesService.getArticleAttachmentThumbnail(id, request.user ?? null);
+    response.set({
+      "Cache-Control": "private, max-age=86400",
+      "Content-Length": String(thumbnail.sizeBytes),
+      "Content-Type": "image/webp",
+      "X-Content-Type-Options": "nosniff",
+    });
+    return new StreamableFile(createReadStream(thumbnail.filePath));
+  }
+
   @Get("visible/:slug")
   @UseGuards(JwtAuthGuard)
   getVisible(
@@ -450,6 +491,25 @@ export class ArticlesController {
     return this.articlesService.uploadImages(id, user, files);
   }
 
+  @Post(":id/attachments")
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FilesInterceptor("files", CHAT_ATTACHMENT_MAX_FILES, {
+      storage: createChatAttachmentStorage(),
+      limits: {
+        fileSize: CHAT_ATTACHMENT_MAX_FILE_SIZE_BYTES,
+        files: CHAT_ATTACHMENT_MAX_FILES,
+      },
+    }),
+  )
+  uploadAttachments(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFiles() files: UploadedChatAttachment[] | undefined,
+  ) {
+    return this.articlesService.uploadAttachments(id, user, files);
+  }
+
   @Post(":id/like")
   @UseGuards(JwtAuthGuard)
   like(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
@@ -508,12 +568,57 @@ export class ArticlesController {
 
   @Post(":id/comments")
   @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FilesInterceptor("files", CHAT_ATTACHMENT_MAX_FILES, {
+      storage: createChatAttachmentStorage(),
+      limits: { files: CHAT_ATTACHMENT_MAX_FILES, fileSize: CHAT_ATTACHMENT_MAX_FILE_SIZE_BYTES },
+    }),
+  )
   createComment(
     @Param("id", ParseIntPipe) id: number,
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateArticleCommentDto,
+    @UploadedFiles() files: UploadedChatAttachment[] | undefined,
   ) {
-    return this.articlesService.createComment(id, user, dto);
+    return this.articlesService.createComment(id, user, dto, files);
+  }
+
+  @Get("comment-attachments/:id/download")
+  @UseGuards(OptionalJwtAuthGuard)
+  async downloadCommentAttachment(
+    @Param("id", ParseIntPipe) id: number,
+    @Req() request: Request & { user?: AuthenticatedUser },
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const attachment = await this.articlesService.getCommentAttachment(id, request.user ?? null);
+    const fallbackName = attachment.originalName.replace(/[^A-Za-z0-9._-]/g, "_") || "attachment";
+    response.set({
+      "Cache-Control": "private, no-store",
+      "Content-Disposition": `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodeURIComponent(attachment.originalName)}`,
+      "Content-Length": String(attachment.sizeBytes),
+      "Content-Security-Policy": "sandbox",
+      "Content-Type": attachment.mimeType,
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+    });
+    return new StreamableFile(createReadStream(attachment.filePath));
+  }
+
+  @Get("comment-attachments/:id/thumbnail")
+  @UseGuards(OptionalJwtAuthGuard)
+  async downloadCommentAttachmentThumbnail(
+    @Param("id", ParseIntPipe) id: number,
+    @Req() request: Request & { user?: AuthenticatedUser },
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const thumbnail = await this.articlesService.getCommentAttachmentThumbnail(id, request.user ?? null);
+    response.set({
+      "Cache-Control": "private, max-age=86400",
+      "Content-Length": String(thumbnail.sizeBytes),
+      "Content-Type": "image/webp",
+      "X-Content-Type-Options": "nosniff",
+    });
+    return new StreamableFile(createReadStream(thumbnail.filePath));
   }
 
   @Delete("comments/:id")

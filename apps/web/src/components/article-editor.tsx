@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArticleCenterNav } from "@/components/article-center-nav";
-import { ArticleRichEditor, type RichEditorImage } from "@/components/article-rich-editor";
+import { ArticleRichEditor, type RichEditorAttachment } from "@/components/article-rich-editor";
 import { ArticleBody, displayArticleTaxonomy, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -31,7 +31,7 @@ import {
   scheduleArticle,
   unpublishArticle,
   updateArticle,
-  uploadArticleImages,
+  uploadArticleAttachments,
 } from "@/lib/article-api";
 import { AuthRole, AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
@@ -40,8 +40,9 @@ import { growthLevelLabel } from "@/lib/system-labels";
 import { localizedPath } from "@/lib/i18n";
 
 const MAX_ARTICLE_IMAGES = 20;
+const MAX_ARTICLE_ATTACHMENTS = 50;
 const MAX_SELECTED_TAGS = 6;
-const PENDING_IMAGE_PATH_PREFIX = "/__pending_article_image__/";
+const PENDING_ATTACHMENT_PATH_PREFIX = "/__pending_article_attachment__/";
 const ARTICLE_AUTOSAVE_DELAY_MS = 1800;
 const ARTICLE_LOCAL_DRAFT_PREFIX = "lingxi:article-draft";
 const ARTICLE_CATEGORY_OPTIONS = ["随笔", "技术", "服务器", "工具", "资源", "教程", "生活", "公告"];
@@ -63,11 +64,12 @@ const ARTICLE_TAG_OPTIONS = [
   "公告",
 ];
 
-interface PendingArticleImage {
+interface PendingArticleAttachment {
   id: string;
   file: File;
   marker: string;
-  previewUrl: string;
+  previewUrl: string | null;
+  kind: "image" | "file" | "audio" | "video";
 }
 
 interface LocalArticleDraft {
@@ -99,7 +101,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   const [draft, setDraft] = useState<ArticleInput>(emptyDraft);
   const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
   const [roles, setRoles] = useState<AuthRole[]>([]);
-  const [pendingImages, setPendingImages] = useState<PendingArticleImage[]>([]);
+  const [pendingImages, setPendingImages] = useState<PendingArticleAttachment[]>([]);
   const [isLoading, setIsLoading] = useState(Boolean(articleId));
   const [isSaving, setIsSaving] = useState(false);
   const [autosaveState, setAutosaveState] = useState<AutosaveState>("idle");
@@ -114,7 +116,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   const [notice, setNotice] = useState("");
   const categoryPickerRef = useRef<HTMLDivElement | null>(null);
   const tagPickerRef = useRef<HTMLDivElement | null>(null);
-  const pendingImagesRef = useRef<PendingArticleImage[]>([]);
+  const pendingImagesRef = useRef<PendingArticleAttachment[]>([]);
   const articleRef = useRef<Article | null>(null);
   const initializedRef = useRef(false);
   const lastSavedSignatureRef = useRef("");
@@ -154,7 +156,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     [configuredTagOptions, selectedTags],
   );
   const pendingImageUrls = useMemo(
-    () => Object.fromEntries(pendingImages.map((image) => [image.marker, image.previewUrl])),
+    () => Object.fromEntries(pendingImages.filter((image) => image.kind === "image" && image.previewUrl).map((image) => [image.marker, image.previewUrl as string])),
     [pendingImages],
   );
 
@@ -173,7 +175,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
 
   useEffect(() => () => {
     if (autosaveTimerRef.current !== null) window.clearTimeout(autosaveTimerRef.current);
-    pendingImagesRef.current.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+    pendingImagesRef.current.forEach((image) => image.previewUrl && URL.revokeObjectURL(image.previewUrl));
   }, []);
 
   useEffect(() => {
@@ -379,24 +381,24 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     });
   }
 
-  function prepareImages(files: File[]): PendingArticleImage[] {
-    const availableSlots = Math.max(
-      0,
-      MAX_ARTICLE_IMAGES - (article?.images.length ?? 0) - pendingImages.length,
-    );
+  function prepareAttachments(files: File[]): PendingArticleAttachment[] {
+    const availableSlots = Math.max(0, MAX_ARTICLE_ATTACHMENTS - pendingImages.length);
+    const availableImageSlots = Math.max(0, MAX_ARTICLE_IMAGES - (article?.images.length ?? 0) - pendingImages.filter((item) => item.kind === "image").length);
     if (!availableSlots) {
-      setError(phrase(`单篇文章最多包含 ${MAX_ARTICLE_IMAGES} 张图片。`, `An article can contain at most ${MAX_ARTICLE_IMAGES} images.`));
+      setError(phrase(`单篇文章最多包含 ${MAX_ARTICLE_ATTACHMENTS} 个附件。`, `An article can contain at most ${MAX_ARTICLE_ATTACHMENTS} attachments.`));
       return [];
     }
 
-    const accepted: PendingArticleImage[] = [];
+    const accepted: PendingArticleAttachment[] = [];
     for (const file of files) {
-      if (!file.type.startsWith("image/")) {
-        setError(phrase(`${file.name} 不是支持的图片格式。`, `${file.name} is not a supported image format.`));
+      const kind = file.type.startsWith("image/") ? "image" : file.type.startsWith("audio/") ? "audio" : file.type.startsWith("video/") ? "video" : "file";
+      if (kind === "image" && availableImageSlots <= accepted.filter((item) => item.kind === "image").length) {
+        setError(phrase(`单篇文章最多包含 ${MAX_ARTICLE_IMAGES} 张图片。`, `An article can contain at most ${MAX_ARTICLE_IMAGES} images.`));
         continue;
       }
-      if (file.size > imageMaxSizeMb * 1024 * 1024) {
-        setError(phrase(`${file.name} 超过单张 ${imageMaxSizeMb}MB 限制。`, `${file.name} exceeds the ${imageMaxSizeMb} MB per-image limit.`));
+      const maxSize = kind === "image" ? imageMaxSizeMb * 1024 * 1024 : 50 * 1024 * 1024;
+      if (file.size < 1 || file.size > maxSize) {
+        setError(phrase(`${file.name} 超过单个附件大小限制。`, `${file.name} exceeds the per-attachment size limit.`));
         continue;
       }
       if (accepted.length >= availableSlots) break;
@@ -404,34 +406,41 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       accepted.push({
         id,
         file,
-        marker: `${PENDING_IMAGE_PATH_PREFIX}${id}`,
-        previewUrl: URL.createObjectURL(file),
+        marker: `${PENDING_ATTACHMENT_PATH_PREFIX}${id}`,
+        previewUrl: kind === "image" ? URL.createObjectURL(file) : null,
+        kind,
       });
     }
     if (files.length > accepted.length && accepted.length === availableSlots) {
-      setError(phrase(`本次最多还能添加 ${availableSlots} 张图片。`, `You can add at most ${availableSlots} more image(s) this time.`));
+      setError(phrase(`本次最多还能添加 ${availableSlots} 个附件。`, `You can add at most ${availableSlots} more attachment(s) this time.`));
     }
     return accepted;
   }
 
-  async function addImages(files: File[]): Promise<RichEditorImage[]> {
-    const accepted = prepareImages(files);
+  async function addAttachments(files: File[]): Promise<RichEditorAttachment[]> {
+    const accepted = prepareAttachments(files);
     if (!accepted.length) return [];
     setPendingImages((current) => [...current, ...accepted]);
-    return accepted.map((image) => ({ src: image.marker, alt: sanitizeImageAlt(image.file.name, locale) }));
+    return accepted.map((attachment) => ({
+      kind: attachment.kind,
+      src: attachment.marker,
+      href: attachment.marker,
+      name: attachment.file.name,
+      alt: sanitizeImageAlt(attachment.file.name, locale),
+    }));
   }
 
-  function removePendingImage(image: PendingArticleImage) {
-    URL.revokeObjectURL(image.previewUrl);
+  function removePendingImage(image: PendingArticleAttachment) {
+    if (image.previewUrl) URL.revokeObjectURL(image.previewUrl);
     setPendingImages((current) => current.filter((item) => item.id !== image.id));
     setDraft((current) => ({
       ...current,
-      content: removePendingImageContent(current.content, image.marker),
+      content: removePendingAttachmentContent(current.content, image.marker),
     }));
   }
 
   function releasePendingImages() {
-    pendingImagesRef.current.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+    pendingImagesRef.current.forEach((image) => image.previewUrl && URL.revokeObjectURL(image.previewUrl));
     pendingImagesRef.current = [];
     setPendingImages([]);
   }
@@ -503,24 +512,25 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       let finalContent = draft.content;
 
       if (!saved) {
+        const contentForCreate = stripPendingAttachmentContent(draft.content, usedPendingImages);
         saved = await createArticle(token, {
           ...draft,
           summary: "",
-          content: stripPendingImageContent(draft.content, usedPendingImages),
+          content: contentForCreate || "<p></p>",
           status: "draft",
         });
       }
 
       if (usedPendingImages.length) {
-        const imagePaths = await uploadArticleImages(
+        const attachments = await uploadArticleAttachments(
           token,
           saved.id,
           usedPendingImages.map((image) => image.file),
         );
-        if (imagePaths.length !== usedPendingImages.length) {
-          throw new Error(phrase("部分图片上传失败，请重新保存。", "Some image uploads failed. Save again."));
+        if (attachments.length !== usedPendingImages.length) {
+          throw new Error(phrase("部分附件上传失败，请重新保存。", "Some attachments failed to upload. Save again."));
         }
-        finalContent = replacePendingImageMarkers(draft.content, usedPendingImages, imagePaths);
+        finalContent = replacePendingAttachmentMarkers(draft.content, usedPendingImages, attachments.map((attachment) => attachment.downloadUrl));
       }
 
       if (!wasNewArticle || usedPendingImages.length) {
@@ -800,9 +810,9 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
               </div>
               {draft.visibility === "role_restricted" ? <div aria-label={phrase("可见角色", "Visible roles")} className="article-role-options" role="group">{roles.map((role) => <label key={role.code}><input checked={draft.roleCodes.includes(role.code)} onChange={() => toggleVisibleRole(role.code)} type="checkbox" /><span>{growthLevelLabel(role.code, locale, role.name)}</span></label>)}</div> : null}
             </div>
-              <ArticleRichEditor format={draft.contentFormat} onChange={(content, contentFormat) => setDraft((current) => ({ ...current, content, contentFormat }))} onError={setError} onImageFiles={addImages} value={draft.content} />
-            <div className="article-editor-upload"><span>{pendingImages.length ? phrase(`待上传 ${pendingImages.length} 张，保存时才会上传`, `${pendingImages.length} image(s) pending upload and will upload when saved`) : phrase(`支持 JPG、PNG、WebP、AVIF，单张不超过 ${imageMaxSizeMb}MB`, `JPG, PNG, WebP, and AVIF are supported, up to ${imageMaxSizeMb}MB each`)}</span></div>
-            {pendingImages.length ? <div className="article-pending-images">{pendingImages.map((image) => <span key={image.id}>{image.file.name}<button aria-label={phrase(`移除 ${image.file.name}`, `Remove ${image.file.name}`)} onClick={() => removePendingImage(image)} title={phrase("移除图片", "Remove image")} type="button"><X aria-hidden="true" size={14} /></button></span>)}</div> : null}
+              <ArticleRichEditor format={draft.contentFormat} onChange={(content, contentFormat) => setDraft((current) => ({ ...current, content, contentFormat }))} onAttachmentFiles={addAttachments} onError={setError} value={draft.content} />
+            <div className="article-editor-upload"><span>{pendingImages.length ? phrase(`待上传 ${pendingImages.length} 个附件，保存时才会上传`, `${pendingImages.length} attachment(s) pending upload and will upload when saved`) : phrase(`支持图片、音频、视频和常用文件，单个附件不超过 50MB`, `Images, audio, video, and common files are supported, up to 50MB each`)}</span></div>
+            {pendingImages.length ? <div className="article-pending-images">{pendingImages.map((image) => <span key={image.id}>{image.file.name}<button aria-label={phrase(`移除 ${image.file.name}`, `Remove ${image.file.name}`)} onClick={() => removePendingImage(image)} title={phrase("移除附件", "Remove attachment")} type="button"><X aria-hidden="true" size={14} /></button></span>)}</div> : null}
              <div className="article-editor-actions"><button className="button secondary" disabled={isSaving || autosaveState === "saving"} onClick={() => void saveArticle(false)} type="button"><Save aria-hidden="true" size={16} />{isSaving ? phrase("保存中", "Saving") : article ? phrase("保存修改", "Save changes") : phrase("保存草稿", "Save draft")}</button><button className="button" disabled={isSaving || autosaveState === "saving" || article?.status === "blocked"} onClick={() => void saveArticle(true)} type="button"><Send aria-hidden="true" size={16} />{phrase("发布文章", "Publish article")}</button><button aria-label={phrase("定时发布", "Schedule publication")} className="button secondary article-schedule-action" disabled={isSaving || autosaveState === "saving" || article?.status === "blocked"} onClick={() => setIsScheduleDialogOpen(true)} title={phrase("定时发布", "Schedule publication")} type="button"><CalendarClock aria-hidden="true" size={16} />{phrase("定时发布", "Schedule publication")}</button>{article?.status === "published" ? <button className="text-action" disabled={isSaving} onClick={() => void takeOffline()} type="button">{phrase("下架", "Unpublish")}</button> : null}{article ? <button className="text-danger-action" disabled={isSaving} onClick={() => void moveToTrash()} type="button"><Trash2 aria-hidden="true" size={16} />{phrase("删除", "Delete")}</button> : null}</div>
           </section>
           <aside className="article-editor-preview"><div className="article-editor-preview-heading"><span className="section-label">{phrase("预览", "Preview")}</span><span>{phrase("正文预览", "Content preview")}</span></div><ArticleBody content={draft.content || phrase("开始输入后，这里会显示文章预览。", "Start writing to see an article preview here.")} contentFormat={draft.contentFormat} pendingImageUrls={pendingImageUrls} /></aside>
@@ -828,37 +838,39 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function removePendingImageContent(content: string, marker: string): string {
+function removePendingAttachmentContent(content: string, marker: string): string {
   const imagePattern = new RegExp(`!\\[[^\\]]*\\]\\(${escapeRegExp(marker)}\\)\\n*`, "g");
   const htmlPattern = new RegExp(`<img\\b[^>]*src=["']${escapeRegExp(marker)}["'][^>]*>`, "gi");
-  return content.replace(imagePattern, "").replace(htmlPattern, "").replace(/\n{3,}/g, "\n\n");
+  const markdownLinkPattern = new RegExp(`\\[[^\\]]*\\]\\(${escapeRegExp(marker)}\\)\\n*`, "g");
+  const htmlLinkPattern = new RegExp(`<a\\b[^>]*href=["']${escapeRegExp(marker)}["'][^>]*>[\\s\\S]*?<\\/a>`, "gi");
+  return content.replace(imagePattern, "").replace(htmlPattern, "").replace(markdownLinkPattern, "").replace(htmlLinkPattern, "").replace(/\n{3,}/g, "\n\n");
 }
 
-function stripPendingImageContent(
+function stripPendingAttachmentContent(
   content: string,
-  pendingImages: PendingArticleImage[],
+  pendingImages: PendingArticleAttachment[],
 ): string {
   return pendingImages.reduce(
-    (current, image) => removePendingImageContent(current, image.marker),
+    (current, image) => removePendingAttachmentContent(current, image.marker),
     content,
   );
 }
 
-function replacePendingImageMarkers(
+function replacePendingAttachmentMarkers(
   content: string,
-  pendingImages: PendingArticleImage[],
-  imagePaths: string[],
+  pendingImages: PendingArticleAttachment[],
+  attachmentPaths: string[],
 ): string {
   return pendingImages.reduce(
-    (current, image, index) => current.replaceAll(image.marker, imagePaths[index]),
+    (current, image, index) => current.replaceAll(image.marker, attachmentPaths[index]),
     content,
   );
 }
 
-function draftWithoutPendingImages(draft: ArticleInput, pendingImages: PendingArticleImage[]): ArticleInput {
+function draftWithoutPendingImages(draft: ArticleInput, pendingImages: PendingArticleAttachment[]): ArticleInput {
   return {
     ...draft,
-    content: stripPendingImageContent(draft.content, pendingImages),
+    content: stripPendingAttachmentContent(draft.content, pendingImages),
   };
 }
 

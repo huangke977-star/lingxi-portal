@@ -1,11 +1,13 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, UnauthorizedException } from "@nestjs/common";
 import { JwtService, JwtSignOptions } from "@nestjs/jwt";
 import { createHash } from "node:crypto";
-import { AnonymousTopicReactionValue, AnonymousTopicStatus, Prisma } from "../generated/prisma/client";
+import { AnonymousTopicReactionValue, AnonymousTopicStatus, ChatAttachmentKind, Prisma } from "../generated/prisma/client";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PasswordService } from "../auth/password.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
+import { ChatAttachmentsService, type StoredChatAttachmentInfo } from "../social/chat-attachments.service";
+import type { UploadedChatAttachment } from "../social/chat-attachment.storage";
 import {
   ClaimAnonymousIdentityDto,
   CreateAnonymousMessageDto,
@@ -21,7 +23,13 @@ import {
 
 interface IdentityPayload { topicId: number; identityId: number; kind: "anonymous-topic"; }
 
-const messageInclude = { identity: { select: { id: true, nickname: true } } } satisfies Prisma.AnonymousTopicMessageInclude;
+const messageInclude = {
+  identity: { select: { id: true, nickname: true } },
+  attachments: {
+    orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }],
+    select: { id: true, kind: true, originalName: true, mimeType: true, sizeBytes: true, createdAt: true },
+  },
+} satisfies Prisma.AnonymousTopicMessageInclude;
 
 type MessageRecord = Prisma.AnonymousTopicMessageGetPayload<{ include: typeof messageInclude }>;
 
@@ -32,6 +40,7 @@ export class AnonymousTopicsService {
     private readonly passwordService: PasswordService,
     private readonly jwtService: JwtService,
     private readonly redis: RedisService,
+    @Optional() private readonly chatAttachmentsService?: ChatAttachmentsService,
   ) {}
 
   async list(query: ListAnonymousTopicsQueryDto, visitorKey?: string) {
@@ -184,27 +193,74 @@ export class AnonymousTopicsService {
     return { identityToken: await this.signIdentity(topicId, identity.id), nickname: identity.nickname, isCreator: false };
   }
 
-  async createMessage(topicId: number, dto: CreateAnonymousMessageDto) {
-    const body = dto.body.trim();
-    if (!body) throw new BadRequestException("请输入要发送的内容。");
-    this.assertVisitorKey(dto.visitorKey);
-    await this.assertRateLimit("message", dto.visitorKey, 1, 6);
-    const topic = await this.prisma.anonymousTopic.findFirst({ where: { id: topicId, isHidden: false } });
-    if (!topic) throw new NotFoundException("话题不存在或已隐藏。");
-    if (topic.status !== AnonymousTopicStatus.active) throw new BadRequestException("该话题已关闭，不能继续发言。");
-    const identityId = await this.resolveIdentityToken(topicId, dto.identityToken);
-    const message = await this.prisma.$transaction(async (transaction) => {
-      // Visibility count and public sequence are separate: moderation may reduce the former, while sequence numbers never repeat.
-      const updatedTopic = await transaction.anonymousTopic.update({
-        where: { id: topicId },
-        data: { messageCount: { increment: 1 }, messageSequence: { increment: 1 } },
+  async createMessage(topicId: number, dto: CreateAnonymousMessageDto, files?: UploadedChatAttachment[]) {
+    let stored: StoredChatAttachmentInfo[] = [];
+    try {
+      const body = dto.body.trim();
+      if (!body && !files?.length) throw new BadRequestException("请输入要发送的内容。");
+      this.assertVisitorKey(dto.visitorKey);
+      await this.assertRateLimit("message", dto.visitorKey, 1, 6);
+      const topic = await this.prisma.anonymousTopic.findFirst({ where: { id: topicId, isHidden: false } });
+      if (!topic) throw new NotFoundException("话题不存在或已隐藏。");
+      if (topic.status !== AnonymousTopicStatus.active) throw new BadRequestException("该话题已关闭，不能继续发言。");
+      const identityId = await this.resolveIdentityToken(topicId, dto.identityToken);
+      stored = files?.length ? await this.storeContentFiles(files) : [];
+      const message = await this.prisma.$transaction(async (transaction) => {
+        // Visibility count and public sequence are separate: moderation may reduce the former, while sequence numbers never repeat.
+        const updatedTopic = await transaction.anonymousTopic.update({
+          where: { id: topicId },
+          data: { messageCount: { increment: 1 }, messageSequence: { increment: 1 } },
+        });
+        return transaction.anonymousTopicMessage.create({
+          data: {
+            topicId,
+            sequence: updatedTopic.messageSequence,
+            identityId,
+            body,
+            attachments: stored.length ? { create: stored.map((attachment) => ({ ...attachment, visitorKey: this.digestVisitorKey(dto.visitorKey) })) } : undefined,
+          },
+          include: messageInclude,
+        });
       });
-      return transaction.anonymousTopicMessage.create({
-        data: { topicId, sequence: updatedTopic.messageSequence, identityId, body },
-        include: messageInclude,
-      });
+      return this.toMessage(message);
+    } catch (error) {
+      await Promise.all([
+        this.chatAttachmentsService?.cleanupUploadedFiles(files),
+        stored.length ? this.chatAttachmentsService?.deleteStoredFiles(stored.map((attachment) => attachment.storedName)) : Promise.resolve(),
+      ]);
+      throw error;
+    }
+  }
+
+  async getAttachment(id: number, thumbnail = false): Promise<{
+    filePath: string;
+    mimeType: string;
+    originalName: string;
+    sizeBytes: number;
+  }> {
+    const attachment = await this.prisma.anonymousTopicAttachment.findUnique({
+      where: { id },
+      select: {
+        storedName: true,
+        kind: true,
+        originalName: true,
+        mimeType: true,
+        sizeBytes: true,
+        message: { select: { isHidden: true, topic: { select: { isHidden: true } } } },
+      },
     });
-    return this.toMessage(message);
+    if (!attachment || attachment.message.isHidden || attachment.message.topic.isHidden) throw new NotFoundException("附件不存在或已隐藏。");
+    if (thumbnail && attachment.kind !== ChatAttachmentKind.image) throw new NotFoundException("图片缩略图不存在。");
+    const file = thumbnail
+      ? await this.chatAttachmentsService?.getStoredThumbnail(attachment.storedName)
+      : await this.chatAttachmentsService?.getStoredFile(attachment.storedName);
+    if (!file) throw new NotFoundException("附件文件不存在。");
+    return {
+      ...file,
+      mimeType: thumbnail ? "image/webp" : attachment.mimeType,
+      originalName: attachment.originalName,
+      sizeBytes: thumbnail ? file.sizeBytes : attachment.sizeBytes,
+    };
   }
 
   async react(messageId: number, dto: ReactAnonymousMessageDto) {
@@ -479,8 +535,23 @@ export class AnonymousTopicsService {
       isHidden: message.isHidden,
       likeCount: message.likeCount,
       dislikeCount: message.dislikeCount,
+      attachments: (message.attachments ?? []).map((attachment) => ({
+        id: attachment.id,
+        kind: attachment.kind,
+        originalName: attachment.originalName,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        downloadUrl: `/anonymous-topics/attachments/${attachment.id}/download`,
+        thumbnailUrl: attachment.kind === ChatAttachmentKind.image ? `/anonymous-topics/attachments/${attachment.id}/thumbnail` : null,
+        createdAt: attachment.createdAt.toISOString(),
+      })),
       createdAt: message.createdAt.toISOString(),
     };
+  }
+
+  private async storeContentFiles(files: UploadedChatAttachment[]): Promise<StoredChatAttachmentInfo[]> {
+    if (!this.chatAttachmentsService) throw new BadRequestException("附件功能暂不可用，请稍后重试。");
+    return this.chatAttachmentsService.storeFiles(files);
   }
 
   private assertAnonymousInput(title: string, nickname: string, password: string, visitorKey: string): void {

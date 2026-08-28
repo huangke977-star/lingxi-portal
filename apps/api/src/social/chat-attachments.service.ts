@@ -92,6 +92,15 @@ interface PreparedAttachment {
   kind: ChatAttachmentKind;
 }
 
+export interface StoredChatAttachmentInfo {
+  kind: ChatAttachmentKind;
+  originalName: string;
+  storedName: string;
+  mimeType: string;
+  sizeBytes: number;
+  sortOrder: number;
+}
+
 @Injectable()
 export class ChatAttachmentsService {
   private readonly uploadDirectory = chatUploadDirectory();
@@ -112,6 +121,35 @@ export class ChatAttachmentsService {
       await this.cleanupFiles(files);
       throw error;
     }
+    let stored: StoredChatAttachmentInfo[] = [];
+    try {
+      stored = await this.storeFiles(files);
+      const records = await this.prisma.$transaction(
+        stored.map((attachment) => this.prisma.chatAttachment.create({
+          data: {
+            conversationId,
+            uploadedById: userId,
+            kind: attachment.kind,
+            originalName: attachment.originalName,
+            storedName: attachment.storedName,
+            mimeType: attachment.mimeType,
+            sizeBytes: attachment.sizeBytes,
+            sortOrder: attachment.sortOrder,
+          },
+        })),
+      );
+      return records.map((record) => this.toResponse(record));
+    } catch (error) {
+      await Promise.all([
+        this.cleanupFiles(files),
+        stored.length ? this.deleteStoredFiles(stored.map((attachment) => attachment.storedName)) : Promise.resolve(),
+      ]);
+      throw error;
+    }
+  }
+
+  async storeFiles(files: UploadedChatAttachment[]): Promise<StoredChatAttachmentInfo[]> {
+    if (!files.length) return [];
     if (files.length > CHAT_ATTACHMENT_MAX_FILES) {
       await this.cleanupFiles(files);
       throw new BadRequestException(`单次最多上传 ${CHAT_ATTACHMENT_MAX_FILES} 个附件。`);
@@ -124,29 +162,20 @@ export class ChatAttachmentsService {
     const prepared: PreparedAttachment[] = [];
     const movedPaths: string[] = [];
     try {
-      for (const file of files) {
-        prepared.push(await this.prepareFile(file));
-      }
+      for (const file of files) prepared.push(await this.prepareFile(file));
       await mkdir(this.uploadDirectory, { recursive: true });
       for (const attachment of prepared) {
         await rename(attachment.temporaryPath, attachment.finalPath);
         movedPaths.push(attachment.finalPath);
       }
-      const records = await this.prisma.$transaction(
-        prepared.map((attachment, index) => this.prisma.chatAttachment.create({
-          data: {
-            conversationId,
-            uploadedById: userId,
-            kind: attachment.kind,
-            originalName: attachment.originalName,
-            storedName: attachment.storedName,
-            mimeType: attachment.mimeType,
-            sizeBytes: attachment.sizeBytes,
-            sortOrder: index,
-          },
-        })),
-      );
-      return records.map((record) => this.toResponse(record));
+      return prepared.map((attachment, sortOrder) => ({
+        kind: attachment.kind,
+        originalName: attachment.originalName,
+        storedName: attachment.storedName,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        sortOrder,
+      }));
     } catch (error) {
       await Promise.all([
         ...files.map((file) => unlink(file.path).catch(() => undefined)),
@@ -154,6 +183,43 @@ export class ChatAttachmentsService {
       ]);
       throw error;
     }
+  }
+
+  async cleanupUploadedFiles(files: UploadedChatAttachment[] | undefined): Promise<void> {
+    if (!files?.length) return;
+    await this.cleanupFiles(files);
+  }
+
+  async getStoredFile(storedName: string): Promise<{ filePath: string; sizeBytes: number }> {
+    const filePath = this.resolveStoredPath(storedName);
+    const file = await stat(filePath).catch(() => null);
+    if (!file) throw new NotFoundException("附件文件不存在。");
+    return { filePath, sizeBytes: file.size };
+  }
+
+  async getStoredThumbnail(storedName: string): Promise<{ filePath: string; sizeBytes: number }> {
+    const thumbnailPath = this.resolveStoredPath(this.thumbnailStoredName(storedName));
+    let file = await stat(thumbnailPath).catch(() => null);
+    if (!file) {
+      const original = await this.getStoredFile(storedName);
+      const temporaryPath = `${thumbnailPath}.${randomUUID()}.tmp`;
+      try {
+        await mkdir(this.uploadDirectory, { recursive: true });
+        await sharp(original.filePath)
+          .rotate()
+          .resize(480, 480, { fit: "inside", withoutEnlargement: true })
+          .webp({ quality: 72, effort: 4 })
+          .toFile(temporaryPath);
+        await rename(temporaryPath, thumbnailPath);
+      } catch (error) {
+        await unlink(temporaryPath).catch(() => undefined);
+        file = await stat(thumbnailPath).catch(() => null);
+        if (!file) throw error;
+      }
+      file = await stat(thumbnailPath).catch(() => null);
+    }
+    if (!file) throw new NotFoundException("图片缩略图不存在。");
+    return { filePath: thumbnailPath, sizeBytes: file.size };
   }
 
   async getDownload(

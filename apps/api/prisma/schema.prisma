@@ -1127,12 +1127,31 @@ model AnonymousTopicMessage {
   likeCount    Int                      @default(0) @map("like_count")
   dislikeCount Int                      @default(0) @map("dislike_count")
   reactions    AnonymousTopicReaction[]
+  attachments  AnonymousTopicAttachment[]
   createdAt    DateTime                 @default(now()) @map("created_at")
   updatedAt    DateTime                 @updatedAt @map("updated_at")
 
   @@unique([topicId, sequence])
   @@index([topicId, isHidden, sequence])
   @@map("anonymous_topic_messages")
+}
+
+model AnonymousTopicAttachment {
+  id           Int                @id @default(autoincrement())
+  messageId    Int                @map("message_id")
+  message      AnonymousTopicMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  visitorKey   String             @map("visitor_key") @db.Char(64)
+  kind         ChatAttachmentKind
+  originalName String             @map("original_name") @db.VarChar(255)
+  storedName   String             @unique @map("stored_name") @db.VarChar(255)
+  mimeType     String             @map("mime_type") @db.VarChar(127)
+  sizeBytes    Int                @map("size_bytes")
+  sortOrder    Int                @default(0) @map("sort_order")
+  createdAt    DateTime           @default(now()) @map("created_at")
+
+  @@index([messageId, sortOrder])
+  @@index([visitorKey, createdAt])
+  @@map("anonymous_topic_attachments")
 }
 
 model AnonymousTopicReaction {
@@ -1203,6 +1222,7 @@ model Article {
   searchPinyin          String                    @default("") @map("search_pinyin") @db.VarChar(4096)
   allowedRoles          ArticleAllowedRole[]
   images                ArticleImage[]
+  attachments           ArticleAttachment[]
   comments              ArticleComment[]
   reports               ArticleReport[]
   likes                 ArticleLike[]
@@ -1422,6 +1442,22 @@ model ArticleImage {
   @@map("article_images")
 }
 
+model ArticleAttachment {
+  id           Int               @id @default(autoincrement())
+  articleId    Int               @map("article_id")
+  article      Article           @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  kind         ChatAttachmentKind
+  originalName String            @map("original_name") @db.VarChar(255)
+  storedName   String            @unique @map("stored_name") @db.VarChar(255)
+  mimeType     String            @map("mime_type") @db.VarChar(127)
+  sizeBytes    Int               @map("size_bytes")
+  sortOrder    Int               @default(0) @map("sort_order")
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  @@index([articleId, sortOrder])
+  @@map("article_attachments")
+}
+
 model ArticleComment {
   id            Int                    @id @default(autoincrement())
   articleId     Int                    @map("article_id")
@@ -1437,6 +1473,7 @@ model ArticleComment {
   likes         ArticleCommentLike[]
   reports       ArticleCommentReport[]
   notifications UserNotification[]
+  attachments   ArticleCommentAttachment[]
   createdAt     DateTime               @default(now()) @map("created_at")
   updatedAt     DateTime               @updatedAt @map("updated_at")
 
@@ -1444,6 +1481,24 @@ model ArticleComment {
   @@index([parentId])
   @@index([createdAt])
   @@map("article_comments")
+}
+
+model ArticleCommentAttachment {
+  id           Int             @id @default(autoincrement())
+  commentId    Int             @map("comment_id")
+  comment      ArticleComment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  ownerId      Int             @map("owner_id")
+  kind         ChatAttachmentKind
+  originalName String          @map("original_name") @db.VarChar(255)
+  storedName   String          @unique @map("stored_name") @db.VarChar(255)
+  mimeType     String          @map("mime_type") @db.VarChar(127)
+  sizeBytes    Int             @map("size_bytes")
+  sortOrder    Int             @default(0) @map("sort_order")
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  @@index([commentId, sortOrder])
+  @@index([ownerId, createdAt])
+  @@map("article_comment_attachments")
 }
 
 model ArticleCommentLike {

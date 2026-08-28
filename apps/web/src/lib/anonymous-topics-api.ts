@@ -1,4 +1,5 @@
 import { requestJson } from "./auth-api";
+import type { ContentAttachment } from "./content-attachments";
 
 export type AnonymousTopicStatus = "active" | "closed";
 export type AnonymousTopicSort = "time" | "participation" | "likes" | "favorites" | "home";
@@ -35,6 +36,7 @@ export interface AnonymousTopicMessage {
   isHidden: boolean;
   likeCount: number;
   dislikeCount: number;
+  attachments: ContentAttachment[];
   createdAt: string;
 }
 
@@ -141,8 +143,14 @@ export function claimAnonymousIdentity(topicId: number, input: { password: strin
   return requestJson(`/anonymous-topics/${topicId}/identity`, { method: "POST", body: JSON.stringify({ ...input, visitorKey: getAnonymousVisitorKey() }) });
 }
 
-export function sendAnonymousMessage(topicId: number, body: string, identityToken?: string): Promise<AnonymousTopicMessage> {
-  return requestJson(`/anonymous-topics/${topicId}/messages`, { method: "POST", body: JSON.stringify({ body, identityToken, visitorKey: getAnonymousVisitorKey() }) });
+export function sendAnonymousMessage(topicId: number, body: string, identityToken?: string, files: File[] = []): Promise<AnonymousTopicMessage> {
+  if (!files.length) return requestJson(`/anonymous-topics/${topicId}/messages`, { method: "POST", body: JSON.stringify({ body, identityToken, visitorKey: getAnonymousVisitorKey() }) });
+  const form = new FormData();
+  form.append("body", body);
+  if (identityToken) form.append("identityToken", identityToken);
+  form.append("visitorKey", getAnonymousVisitorKey());
+  files.forEach((file) => form.append("files", file));
+  return requestJson(`/anonymous-topics/${topicId}/messages`, { method: "POST", body: form });
 }
 
 export function reactToAnonymousMessage(messageId: number, value: "up" | "down"): Promise<AnonymousTopicMessage> {

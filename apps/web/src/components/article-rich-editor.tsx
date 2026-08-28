@@ -9,7 +9,7 @@ import TaskList from "@tiptap/extension-task-list";
 import Underline from "@tiptap/extension-underline";
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type NodeViewProps } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Bold, Coins, Code2, ImagePlus, Italic, Link2, List, ListChecks, ListOrdered, Minus, Quote, Redo2, RemoveFormatting, Strikethrough, Undo2, Unlink, X } from "lucide-react";
+import { Bold, Coins, Code2, FileUp, Italic, Link2, List, ListChecks, ListOrdered, Minus, Quote, Redo2, RemoveFormatting, Strikethrough, Undo2, Unlink, X } from "lucide-react";
 import { marked } from "marked";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -21,11 +21,19 @@ export interface RichEditorImage {
   alt: string;
 }
 
+export interface RichEditorAttachment {
+  kind: "image" | "file" | "audio" | "video";
+  src: string;
+  href: string;
+  name: string;
+  alt: string;
+}
+
 interface ArticleRichEditorProps {
   value: string;
   format: "markdown" | "html";
   onChange: (value: string, format: "html") => void;
-  onImageFiles?: (files: File[]) => Promise<RichEditorImage[]>;
+  onAttachmentFiles?: (files: File[]) => Promise<RichEditorAttachment[]>;
   onError?: (message: string) => void;
 }
 
@@ -63,20 +71,20 @@ function ResourceBlockView({ node }: NodeViewProps) {
   );
 }
 
-export function ArticleRichEditor({ value, format, onChange, onImageFiles, onError }: ArticleRichEditorProps) {
+export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, onError }: ArticleRichEditorProps) {
   const { phrase } = useLanguage();
   const [isResourceDialogOpen, setIsResourceDialogOpen] = useState(false);
   const [resourcePoints, setResourcePoints] = useState("10");
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const selectionRef = useRef<{ from: number; to: number } | null>(null);
-  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<Editor | null>(null);
-  const imageHandlerRef = useRef(onImageFiles);
+  const attachmentHandlerRef = useRef(onAttachmentFiles);
 
   useEffect(() => {
-    imageHandlerRef.current = onImageFiles;
-  }, [onImageFiles]);
+    attachmentHandlerRef.current = onAttachmentFiles;
+  }, [onAttachmentFiles]);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -101,13 +109,20 @@ export function ArticleRichEditor({ value, format, onChange, onImageFiles, onErr
         spellcheck: "true",
       },
       handlePaste: (_view, event) => {
-        const imageFiles = Array.from(event.clipboardData?.items ?? [])
+        const files = Array.from(event.clipboardData?.items ?? [])
           .filter((item) => item.kind === "file")
           .map((item) => item.getAsFile())
-          .filter((file): file is File => Boolean(file && file.type.startsWith("image/")));
-        if (!imageFiles.length || !imageHandlerRef.current) return false;
+          .filter((file): file is File => Boolean(file));
+        if (!files.length || !attachmentHandlerRef.current) return false;
         event.preventDefault();
-        void insertImages(imageFiles);
+        void insertAttachments(files);
+        return true;
+      },
+      handleDrop: (_view, event) => {
+        const files = Array.from(event.dataTransfer?.files ?? []);
+        if (!files.length || !attachmentHandlerRef.current) return false;
+        event.preventDefault();
+        void insertAttachments(files);
         return true;
       },
     },
@@ -128,13 +143,26 @@ export function ArticleRichEditor({ value, format, onChange, onImageFiles, onErr
     }
   }, [editor, format, value]);
 
-  const insertImages = useCallback(async (files: File[]) => {
-    if (!imageHandlerRef.current) return;
-    const images = await imageHandlerRef.current(files);
-    if (!images.length || !editorRef.current) return;
-    editorRef.current.chain().focus().insertContent(
-      images.map((image) => ({ type: "image", attrs: { src: image.src, alt: image.alt, title: image.alt } })),
-    ).run();
+  const insertAttachments = useCallback(async (files: File[]) => {
+    if (!attachmentHandlerRef.current) return;
+    const attachments = await attachmentHandlerRef.current(files);
+    if (!attachments.length || !editorRef.current) return;
+    const chain = editorRef.current.chain().focus();
+    attachments.forEach((attachment) => {
+      if (attachment.kind === "image") {
+        chain.insertContent({ type: "image", attrs: { src: attachment.src, alt: attachment.alt, title: attachment.alt } });
+      } else {
+        chain.insertContent({
+          type: "paragraph",
+          content: [{
+            type: "text",
+            text: attachment.name,
+            marks: [{ type: "link", attrs: { href: attachment.href, target: "_blank", rel: "noreferrer" } }],
+          }],
+        });
+      }
+    });
+    chain.run();
   }, []);
 
   function openResourceDialog() {
@@ -184,9 +212,19 @@ export function ArticleRichEditor({ value, format, onChange, onImageFiles, onErr
       onError?.(phrase("链接地址不安全或格式不支持。", "This link is unsafe or unsupported."));
       return;
     }
-    if (selectionRef.current) editor.chain().focus().setTextSelection(selectionRef.current).run();
-    if (valueToApply) editor.chain().focus().setLink({ href: valueToApply }).run();
-    else editor.chain().focus().unsetLink().run();
+    const selection = selectionRef.current;
+    if (selection && selection.from !== selection.to) {
+      editor.chain().focus().setTextSelection(selection).run();
+      if (valueToApply) editor.chain().focus().setLink({ href: valueToApply }).run();
+      else editor.chain().focus().unsetLink().run();
+    } else if (valueToApply) {
+      editor.chain().focus().insertContent({
+        type: "text",
+        text: valueToApply,
+        marks: [{ type: "link", attrs: { href: valueToApply, target: "_blank", rel: "noreferrer" } }],
+      }).run();
+    }
+    setLinkUrl("");
     setIsLinkDialogOpen(false);
   }
 
@@ -218,9 +256,9 @@ export function ArticleRichEditor({ value, format, onChange, onImageFiles, onErr
         <span className="article-rich-toolbar-divider" />
         <button aria-label={phrase("插入链接", "Insert link")} className={editor.isActive("link") ? "active" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={openLinkDialog} title={phrase("插入链接", "Insert link")} type="button"><Link2 size={15} /></button>
         {toolbarButton(phrase("取消链接", "Remove link"), <Unlink size={15} />, () => editor.chain().focus().unsetLink().run(), false, !editor.isActive("link"))}
-        {onImageFiles ? <button aria-label={phrase("插入图片", "Insert image")} onMouseDown={(event) => event.preventDefault()} onClick={() => imageInputRef.current?.click()} title={phrase("插入图片", "Insert image")} type="button"><ImagePlus size={15} /></button> : null}
+        {onAttachmentFiles ? <button aria-label={phrase("上传图片或文件", "Upload images or files")} onMouseDown={(event) => event.preventDefault()} onClick={() => attachmentInputRef.current?.click()} title={phrase("上传图片或文件", "Upload images or files")} type="button"><FileUp size={15} /></button> : null}
         <button aria-label={phrase("插入积分资源", "Insert point resource")} className={editor.isActive("resourceBlock") ? "active" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={openResourceDialog} title={phrase("插入积分资源", "Insert point resource")} type="button"><Coins size={15} /></button>
-        {onImageFiles ? <input accept="image/jpeg,image/png,image/webp,image/avif" hidden multiple onChange={(event) => { void insertImages(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} ref={imageInputRef} type="file" /> : null}
+        {onAttachmentFiles ? <input hidden multiple onChange={(event) => { void insertAttachments(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} ref={attachmentInputRef} type="file" /> : null}
         <span className="article-rich-toolbar-spacer" />
         {toolbarButton(phrase("清除格式", "Clear formatting"), <RemoveFormatting size={15} />, () => editor.chain().focus().clearNodes().unsetAllMarks().run())}
         {toolbarButton(phrase("撤销", "Undo"), <Undo2 size={15} />, () => editor.chain().focus().undo().run(), false, !editor.can().undo())}
@@ -242,7 +280,7 @@ export function ArticleRichEditor({ value, format, onChange, onImageFiles, onErr
           <section aria-modal="true" className="announcement-editor article-rich-dialog" role="dialog">
             <header><span><Link2 aria-hidden="true" size={17} /><strong>{phrase("设置链接", "Set link")}</strong></span><button aria-label={phrase("关闭", "Close")} onClick={() => setIsLinkDialogOpen(false)} title={phrase("关闭", "Close")} type="button"><X size={17} /></button></header>
             <div className="announcement-editor-body"><label><span>{phrase("链接地址", "Link URL")}</span><input autoFocus onChange={(event) => setLinkUrl(event.target.value)} placeholder="https://" type="url" value={linkUrl} /></label></div>
-            <footer><button aria-label={phrase("取消", "Cancel")} className="article-template-icon-button" onClick={() => setIsLinkDialogOpen(false)} title={phrase("取消", "Cancel")} type="button"><X size={17} /></button><button aria-label={phrase("确定", "Confirm")} className="article-template-icon-button primary" onClick={applyLink} title={phrase("确定", "Confirm")} type="button"><Link2 size={17} /></button></footer>
+            <footer><button aria-label={phrase("取消", "Cancel")} className="article-template-icon-button" onClick={() => { setLinkUrl(""); setIsLinkDialogOpen(false); }} title={phrase("取消", "Cancel")} type="button"><X size={17} /></button><button aria-label={phrase("确定", "Confirm")} className="article-template-icon-button primary" onClick={applyLink} title={phrase("确定", "Confirm")} type="button"><Link2 size={17} /></button></footer>
           </section>
         </div>, document.body,
       ) : null}

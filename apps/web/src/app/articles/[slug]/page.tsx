@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bookmark, CalendarDays, Clock3, Coins, CornerDownRight, Flag, Heart, MessageCircle, Reply, Rss, Send, Tag, ThumbsUp, Trash2, X } from "lucide-react";
+import { Bookmark, CalendarDays, Clock3, Coins, CornerDownRight, Flag, Heart, MessageCircle, Reply, Rss, Tag, ThumbsUp, Trash2, X } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
@@ -9,6 +9,7 @@ import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { ArticleAuthorLine, ArticleBody, ArticleStats, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import { useConfirm } from "@/components/confirm-dialog";
+import { ContentAttachmentComposer, ContentAttachmentList } from "@/components/content-attachment-composer";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { LikeBurst } from "@/components/like-burst";
@@ -364,28 +365,29 @@ export default function ArticleDetailPage() {
     }
   }
 
-  async function handleCommentSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!article || !commentDraft.trim()) return;
+  async function handleCommentSubmit(files: File[]): Promise<boolean> {
+    if (!article || (!commentDraft.trim() && !files.length)) return false;
     if (siteSettings && !siteSettings.commentsEnabled) {
       setError(phrase("评论功能暂未开放。", "Comments are not available."));
-      return;
+      return false;
     }
     const token = readAccessToken();
     if (!token) {
       router.push(`${localizedPath("/login", locale)}?from=${encodeURIComponent(localizedPath(`/articles/${article.slug}`, locale))}`);
-      return;
+      return false;
     }
     setIsSubmittingComment(true);
     try {
-      const comment = await createArticleComment(token, article.id, commentDraft.trim(), replyingTo?.id);
+      const comment = await createArticleComment(token, article.id, commentDraft.trim(), replyingTo?.id, files);
       setComments((current) => mergeArticleComments(current, [comment]));
       setArticle((current) => current ? { ...current, commentCount: current.commentCount + 1 } : current);
       setCommentDraft("");
       setReplyingTo(null);
       setNotice(replyingTo ? phrase("回复已发布。", "Reply posted.") : phrase("评论已发布。", "Comment posted."));
+      return true;
     } catch (commentError) {
       setError(commentError instanceof Error ? commentError.message : phrase("评论发布失败。", "Could not post comment."));
+      return false;
     } finally {
       setIsSubmittingComment(false);
     }
@@ -478,7 +480,8 @@ export default function ArticleDetailPage() {
             {parent ? <span className="article-reply-target"><CornerDownRight aria-hidden="true" size={13} />{phrase(`回复 @${parent.author.nickname}`, `Reply to @${parent.author.nickname}`)}</span> : null}
             <time>{formatArticleDate(comment.createdAt, locale)}</time>
           </div>
-          <p>{comment.body}</p>
+          {comment.attachments?.length ? <ContentAttachmentList attachments={comment.attachments} /> : null}
+          {comment.body ? <p>{comment.body}</p> : null}
           {comment.status === "active" ? <div className="article-comment-actions">
             <span className="like-action-wrap compact"><button className={comment.liked ? "active" : undefined} onClick={() => void handleCommentLike(comment)} type="button"><ThumbsUp aria-hidden="true" fill={comment.liked ? "currentColor" : "none"} size={14} />{comment.likeCount || phrase("点赞", "Like")}</button><LikeBurst burst={commentLikeBursts[comment.id] ?? 0} variant="thumb" /></span>
             {siteSettings?.commentsEnabled !== false ? <button onClick={() => beginReply(comment)} type="button"><Reply aria-hidden="true" size={14} />{phrase("回复", "Reply")}</button> : null}
@@ -527,15 +530,15 @@ export default function ArticleDetailPage() {
 
       <section className="article-comments-section">
         <div className="article-section-heading"><div><span className="section-label">CONVERSATION</span><h2>{phrase("评论与回复", "Comments and replies")}</h2></div><span>{phrase(`${article.commentCount} 条`, `${article.commentCount} comments`)}</span></div>
-        {siteSettings?.commentsEnabled === false ? <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />{phrase("评论功能暂未开放。", "Comments are not available.")}</div> : <form className="article-comment-form" onSubmit={handleCommentSubmit}>
+        {siteSettings?.commentsEnabled === false ? <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />{phrase("评论功能暂未开放。", "Comments are not available.")}</div> : <div className="article-comment-form">
           <div aria-hidden={!replyingTo} className={`article-composer-context${replyingTo ? " active" : ""}`}>
             {replyingTo ? <><span title={phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`)}>{phrase("回复", "Reply")} <strong>@{replyingTo.author.nickname}</strong></span><button aria-label={phrase("取消回复", "Cancel reply")} onClick={() => setReplyingTo(null)} title={phrase("取消回复", "Cancel reply")} type="button"><X aria-hidden="true" size={14} /></button></> : null}
           </div>
-          <div className="article-comment-input-wrap"><textarea aria-label={replyingTo ? phrase(`回复 ${replyingTo.author.nickname}`, `Reply to ${replyingTo.author.nickname}`) : phrase("评论文章", "Comment on article")} maxLength={2000} onChange={(event) => setCommentDraft(event.target.value)} placeholder={replyingTo ? phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`) : phrase("写下你的想法", "Write your thoughts")} ref={composerRef} rows={3} value={commentDraft} /><button aria-label={replyingTo ? phrase("发送回复", "Send reply") : phrase("发送评论", "Send comment")} disabled={isSubmittingComment || !commentDraft.trim()} title={replyingTo ? phrase("发送回复", "Send reply") : phrase("发送评论", "Send comment")} type="submit"><Send aria-hidden="true" size={17} /></button></div>
+          <ContentAttachmentComposer ariaLabel={replyingTo ? phrase(`回复 ${replyingTo.author.nickname}`, `Reply to ${replyingTo.author.nickname}`) : phrase("评论文章", "Comment on article")} isSubmitting={isSubmittingComment} onChange={setCommentDraft} onSubmit={handleCommentSubmit} placeholder={replyingTo ? phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`) : phrase("写下你的想法", "Write your thoughts")} textareaRef={composerRef} value={commentDraft} />
           <div className="article-composer-footer">
             <span className="article-composer-count">{commentDraft.length} / 2000</span>
           </div>
-        </form>}
+        </div>}
         {commentThreads.length ? <>
           <div className="article-comments-list">{commentThreads.map((thread) => <section className="article-comment-thread" key={thread.root.id}>{renderComment(thread.root)}{thread.replies.length ? <div className="article-comment-replies">{thread.replies.map(({ comment, parent }) => renderComment(comment, parent ?? thread.root))}</div> : null}</section>)}</div>
           <ArticleInfiniteFooter hasMore={hasMoreComments} isLoading={isLoadingMoreComments} onLoadMore={() => void loadMoreComments()} />

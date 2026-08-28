@@ -7,6 +7,7 @@ import {
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { access, mkdir, unlink, writeFile } from "node:fs/promises";
@@ -15,6 +16,7 @@ import {
   ArticleCommentReportReason,
   ArticleCommentReportStatus,
   ArticleCommentStatus,
+  ChatAttachmentKind,
   ArticleAppealStatus,
   ArticleContentFormat,
   ArticleStatus,
@@ -58,6 +60,7 @@ import {
 } from "./dto/article.dto";
 import {
   ArticleAuthorResponse,
+  ArticleAttachmentResponse,
   ArticleAppealResponse,
   ArticleCenterSummaryResponse,
   ArticleCommentResponse,
@@ -78,12 +81,15 @@ import {
   ArticleVersionSummaryResponse,
   ReadingProgressResponse,
   ViolationAuthorResponse,
+  ArticleCommentAttachmentResponse,
 } from "./articles.types";
 import {
   articleContentToPlainText,
   normalizeArticleContent,
   parseArticleContent,
 } from "./article-resources";
+import { ChatAttachmentsService, type StoredChatAttachmentInfo } from "../social/chat-attachments.service";
+import type { UploadedChatAttachment } from "../social/chat-attachment.storage";
 
 export const ARTICLE_IMAGE_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 export const ARTICLE_IMAGE_MAX_FILES_PER_ARTICLE = 20;
@@ -263,6 +269,17 @@ const commentReportInclude = {
     select: {
       body: true,
       status: true,
+      attachments: {
+        orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }],
+        select: {
+          id: true,
+          kind: true,
+          originalName: true,
+          mimeType: true,
+          sizeBytes: true,
+          createdAt: true,
+        },
+      },
       article: { select: { id: true, title: true, slug: true } },
     },
   },
@@ -352,6 +369,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     private readonly reputationService: ReputationService,
     @Inject(ContentModerationService)
     private readonly contentModerationService: Pick<ContentModerationService, "enforce" | "recordAccepted"> = noOpContentModerationService,
+    @Optional() private readonly chatAttachmentsService?: ChatAttachmentsService,
   ) {}
 
   onModuleInit(): void {
@@ -1220,13 +1238,102 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     if (existing.status !== ArticleStatus.deleted) {
       throw new BadRequestException("文章需要先移入回收站才能彻底删除。");
     }
+    const attachments = this.prisma.articleAttachment
+      ? await this.prisma.articleAttachment.findMany({ where: { articleId: id }, select: { storedName: true } })
+      : [];
     await this.prisma.article.delete({ where: { id } });
-    await Promise.all(
-      existing.images.map(({ storedName }) =>
-        unlink(this.resolveStoredPath(storedName)).catch(() => undefined),
-      ),
-    );
+    await Promise.all([
+      ...existing.images.map(({ storedName }) => unlink(this.resolveStoredPath(storedName)).catch(() => undefined)),
+      ...attachments.map(({ storedName }) => this.chatAttachmentsService?.deleteStoredFiles([storedName]) ?? Promise.resolve()),
+    ]);
     return { success: true };
+  }
+
+  async uploadAttachments(
+    id: number,
+    user: AuthenticatedUser,
+    files: UploadedChatAttachment[] | undefined,
+  ): Promise<{ attachments: ArticleAttachmentResponse[] }> {
+    const article = await this.getArticleOrThrow(id);
+    this.assertCanEdit(article, user);
+    if (!files?.length) throw new BadRequestException("至少需要上传一个文章附件。");
+    const existingCount = await this.prisma.articleAttachment.count({ where: { articleId: id } });
+    if (existingCount + files.length > 50) {
+      await this.chatAttachmentsService?.cleanupUploadedFiles(files);
+      throw new BadRequestException("单篇文章最多包含 50 个附件。");
+    }
+    if (!this.chatAttachmentsService) {
+      await this.cleanupUploadedFiles(files);
+      throw new BadRequestException("附件功能暂不可用，请稍后重试。");
+    }
+    let stored: StoredChatAttachmentInfo[] = [];
+    try {
+      stored = await this.chatAttachmentsService.storeFiles(files);
+      const records = await this.prisma.$transaction(
+        stored.map((attachment, index) => this.prisma.articleAttachment.create({
+          data: {
+            articleId: id,
+            kind: attachment.kind,
+            originalName: attachment.originalName,
+            storedName: attachment.storedName,
+            mimeType: attachment.mimeType,
+            sizeBytes: attachment.sizeBytes,
+            sortOrder: existingCount + index,
+          },
+        })),
+      );
+      return { attachments: records.map((record) => this.toArticleAttachmentResponse(record)) };
+    } catch (error) {
+      await Promise.all([
+        this.chatAttachmentsService.cleanupUploadedFiles(files),
+        stored.length ? this.chatAttachmentsService.deleteStoredFiles(stored.map((attachment) => attachment.storedName)) : Promise.resolve(),
+      ]);
+      throw error;
+    }
+  }
+
+  async getArticleAttachment(id: number, user: AuthenticatedUser | null): Promise<{
+    filePath: string;
+    kind: ChatAttachmentKind;
+    mimeType: string;
+    originalName: string;
+    sizeBytes: number;
+  }> {
+    const attachment = await this.prisma.articleAttachment.findUnique({
+      where: { id },
+      select: {
+        storedName: true,
+        kind: true,
+        mimeType: true,
+        originalName: true,
+        sizeBytes: true,
+        article: { select: { authorId: true, status: true, visibility: true, allowedRoles: { select: { role: { select: { code: true } } } } } },
+      },
+    });
+    if (!attachment) throw new NotFoundException("附件不存在。");
+    this.assertCanRead(attachment.article, user);
+    if (!this.chatAttachmentsService) throw new NotFoundException("附件文件不存在。");
+    const file = await this.chatAttachmentsService.getStoredFile(attachment.storedName);
+    return { ...file, kind: attachment.kind, mimeType: attachment.mimeType, originalName: attachment.originalName, sizeBytes: attachment.sizeBytes };
+  }
+
+  async getArticleAttachmentThumbnail(id: number, user: AuthenticatedUser | null): Promise<{ filePath: string; sizeBytes: number }> {
+    const attachment = await this.prisma.articleAttachment.findUnique({
+      where: { id },
+      select: {
+        storedName: true,
+        kind: true,
+        article: { select: { authorId: true, status: true, visibility: true, allowedRoles: { select: { role: { select: { code: true } } } } } },
+      },
+    });
+    if (!attachment || attachment.kind !== ChatAttachmentKind.image) throw new NotFoundException("图片缩略图不存在。");
+    this.assertCanRead(attachment.article, user);
+    if (!this.chatAttachmentsService) throw new NotFoundException("图片缩略图不存在。");
+    return this.chatAttachmentsService.getStoredThumbnail(attachment.storedName);
+  }
+
+  private async cleanupUploadedFiles(files: UploadedChatAttachment[]): Promise<void> {
+    await Promise.all(files.map((file) => unlink(file.path).catch(() => undefined)));
   }
 
   async uploadImages(
@@ -1462,71 +1569,87 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     return { count: result.count };
   }
 
-  async createComment(id: number, user: AuthenticatedUser, dto: CreateArticleCommentDto): Promise<ArticleCommentResponse> {
-    const [publishPolicy, notificationSettings] = await Promise.all([
-      this.siteSettingsService.getArticlePublishPolicy(),
-      this.siteSettingsService.getNotificationSettings(),
-    ]);
-    if (!publishPolicy.commentsEnabled) {
-      throw new BadRequestException("评论功能暂未开放。");
-    }
-    const article = await this.getArticleOrThrow(id);
-    this.assertCanRead(article, user);
-    const body = dto.body.trim();
-    if (!body) {
-      throw new BadRequestException("评论内容不能为空。");
-    }
-    await this.contentModerationService.enforce({ source: "comment", actorId: user.id, content: body });
-    let parent: { id: number; authorId: number } | null = null;
-    if (dto.parentId) {
-      parent = await this.prisma.articleComment.findFirst({ where: { id: dto.parentId, articleId: id, status: ArticleCommentStatus.active }, select: { id: true, authorId: true } });
-      if (!parent) {
-        throw new BadRequestException("回复的评论不存在。");
+  async createComment(id: number, user: AuthenticatedUser, dto: CreateArticleCommentDto, files?: UploadedChatAttachment[]): Promise<ArticleCommentResponse> {
+    let stored: StoredChatAttachmentInfo[] = [];
+    try {
+      const [publishPolicy, notificationSettings] = await Promise.all([
+        this.siteSettingsService.getArticlePublishPolicy(),
+        this.siteSettingsService.getNotificationSettings(),
+      ]);
+      if (!publishPolicy.commentsEnabled) {
+        throw new BadRequestException("评论功能暂未开放。");
       }
-    }
-    const comment = await this.prisma.$transaction(async (transaction) => {
-      const created = await transaction.articleComment.create({
-        data: { articleId: id, authorId: user.id, parentId: dto.parentId ?? null, body },
-        select: this.commentSelect(),
-      });
-      await transaction.article.update({ where: { id }, data: { commentCount: { increment: 1 } } });
-      await this.reputationService.awardArticleComment(transaction, user.id, created.id, id);
-      const actionUrl = `/articles/${article.slug}?commentId=${created.id}`;
-      if (parent) {
-        if (notificationSettings.notifyCommentReplied && parent.authorId !== user.id) await transaction.userNotification.create({ data: {
-          userId: parent.authorId, actorId: user.id,
-          type: UserNotificationType.comment_replied, channel: UserNotificationChannel.interaction,
-          title: "评论有了新回复", ...this.siteSettingsService.renderNotificationTemplate(notificationSettings, "commentReplied", {
-            actor: user.nickname || user.username,
-            article: article.title,
-            comment: body,
-          }),
-          actionUrl, articleId: article.id, commentId: created.id,
-        } });
-        if (notificationSettings.notifyArticleCommented && article.authorId !== user.id && article.authorId !== parent.authorId) await transaction.userNotification.create({ data: {
+      const article = await this.getArticleOrThrow(id);
+      this.assertCanRead(article, user);
+      const body = dto.body.trim();
+      if (!body && !files?.length) {
+        throw new BadRequestException("评论内容不能为空。");
+      }
+      if (body) await this.contentModerationService.enforce({ source: "comment", actorId: user.id, content: body });
+      let parent: { id: number; authorId: number } | null = null;
+      if (dto.parentId) {
+        parent = await this.prisma.articleComment.findFirst({ where: { id: dto.parentId, articleId: id, status: ArticleCommentStatus.active }, select: { id: true, authorId: true } });
+        if (!parent) {
+          throw new BadRequestException("回复的评论不存在。");
+        }
+      }
+      stored = files?.length ? await this.storeContentFiles(files) : [];
+      const comment = await this.prisma.$transaction(async (transaction) => {
+        const created = await transaction.articleComment.create({
+          data: {
+            articleId: id,
+            authorId: user.id,
+            parentId: dto.parentId ?? null,
+            body,
+            attachments: stored.length ? { create: stored.map((attachment) => ({ ...attachment, ownerId: user.id })) } : undefined,
+          },
+          select: this.commentSelect(),
+        });
+        await transaction.article.update({ where: { id }, data: { commentCount: { increment: 1 } } });
+        await this.reputationService.awardArticleComment(transaction, user.id, created.id, id);
+        const actionUrl = `/articles/${article.slug}?commentId=${created.id}`;
+        if (parent) {
+          if (notificationSettings.notifyCommentReplied && parent.authorId !== user.id) await transaction.userNotification.create({ data: {
+            userId: parent.authorId, actorId: user.id,
+            type: UserNotificationType.comment_replied, channel: UserNotificationChannel.interaction,
+            title: "评论有了新回复", ...this.siteSettingsService.renderNotificationTemplate(notificationSettings, "commentReplied", {
+              actor: user.nickname || user.username,
+              article: article.title,
+              comment: body,
+            }),
+            actionUrl, articleId: article.id, commentId: created.id,
+          } });
+          if (notificationSettings.notifyArticleCommented && article.authorId !== user.id && article.authorId !== parent.authorId) await transaction.userNotification.create({ data: {
+            userId: article.authorId, actorId: user.id,
+            type: UserNotificationType.article_commented, channel: UserNotificationChannel.interaction,
+            title: "文章有了新回复", ...this.siteSettingsService.renderNotificationTemplate(notificationSettings, "articleCommented", {
+              actor: user.nickname || user.username,
+              article: article.title,
+              comment: body,
+            }),
+            actionUrl, articleId: article.id, commentId: created.id,
+          } });
+        } else if (notificationSettings.notifyArticleCommented && article.authorId !== user.id) await transaction.userNotification.create({ data: {
           userId: article.authorId, actorId: user.id,
           type: UserNotificationType.article_commented, channel: UserNotificationChannel.interaction,
-          title: "文章有了新回复", ...this.siteSettingsService.renderNotificationTemplate(notificationSettings, "articleCommented", {
+          title: "文章有了新评论", ...this.siteSettingsService.renderNotificationTemplate(notificationSettings, "articleCommented", {
             actor: user.nickname || user.username,
             article: article.title,
             comment: body,
           }),
           actionUrl, articleId: article.id, commentId: created.id,
         } });
-      } else if (notificationSettings.notifyArticleCommented && article.authorId !== user.id) await transaction.userNotification.create({ data: {
-        userId: article.authorId, actorId: user.id,
-        type: UserNotificationType.article_commented, channel: UserNotificationChannel.interaction,
-        title: "文章有了新评论", ...this.siteSettingsService.renderNotificationTemplate(notificationSettings, "articleCommented", {
-          actor: user.nickname || user.username,
-          article: article.title,
-          comment: body,
-        }),
-        actionUrl, articleId: article.id, commentId: created.id,
-      } });
-      return created;
-    });
-    await this.contentModerationService.recordAccepted({ source: "comment", actorId: user.id, content: body, contentRef: `comment:${comment.id}` });
-    return this.toCommentResponse(comment);
+        return created;
+      });
+      if (body) await this.contentModerationService.recordAccepted({ source: "comment", actorId: user.id, content: body, contentRef: `comment:${comment.id}` });
+      return this.toCommentResponse(comment);
+    } catch (error) {
+      await Promise.all([
+        this.chatAttachmentsService?.cleanupUploadedFiles(files),
+        stored.length ? this.chatAttachmentsService?.deleteStoredFiles(stored.map((attachment) => attachment.storedName)) : Promise.resolve(),
+      ]);
+      throw error;
+    }
   }
 
   async deleteComment(id: number, user: AuthenticatedUser): Promise<{ success: true }> {
@@ -1806,6 +1929,49 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       throw new NotFoundException("文章不存在。");
     }
     return this.toResponse(article, actor);
+  }
+
+  async getCommentAttachment(id: number, user: AuthenticatedUser | null): Promise<{
+    filePath: string;
+    mimeType: string;
+    originalName: string;
+    sizeBytes: number;
+  }> {
+    const attachment = await this.findCommentAttachment(id);
+    this.assertCanRead(attachment.comment.article, user);
+    const file = await this.chatAttachmentsService?.getStoredFile(attachment.storedName);
+    if (!file) throw new NotFoundException("附件文件不存在。");
+    return { ...file, mimeType: attachment.mimeType, originalName: attachment.originalName, sizeBytes: attachment.sizeBytes };
+  }
+
+  async getCommentAttachmentThumbnail(id: number, user: AuthenticatedUser | null): Promise<{ filePath: string; sizeBytes: number }> {
+    const attachment = await this.findCommentAttachment(id);
+    if (attachment.kind !== ChatAttachmentKind.image) throw new NotFoundException("图片缩略图不存在。");
+    this.assertCanRead(attachment.comment.article, user);
+    const file = await this.chatAttachmentsService?.getStoredThumbnail(attachment.storedName);
+    if (!file) throw new NotFoundException("图片缩略图不存在。");
+    return file;
+  }
+
+  private async findCommentAttachment(id: number) {
+    const attachment = await this.prisma.articleCommentAttachment.findUnique({
+      where: { id },
+      select: {
+        storedName: true,
+        kind: true,
+        originalName: true,
+        mimeType: true,
+        sizeBytes: true,
+        comment: { select: { article: { include: articleInclude } } },
+      },
+    });
+    if (!attachment) throw new NotFoundException("附件不存在。");
+    return attachment;
+  }
+
+  private async storeContentFiles(files: UploadedChatAttachment[]): Promise<StoredChatAttachmentInfo[]> {
+    if (!this.chatAttachmentsService) throw new BadRequestException("附件功能暂不可用，请稍后重试。");
+    return this.chatAttachmentsService.storeFiles(files);
   }
 
   async moderateComment(id: number, actor: AuthenticatedUser, dto: ModerateArticleCommentDto): Promise<{ success: true }> {
@@ -2576,7 +2742,12 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     return article;
   }
 
-  private assertCanRead(article: ArticleRecord, user: AuthenticatedUser | null): void {
+  private assertCanRead(article: {
+    status: ArticleStatus;
+    authorId: number;
+    visibility: ArticleVisibility;
+    allowedRoles: Array<{ role: { code: string } }>;
+  }, user: AuthenticatedUser | null): void {
     if (article.status !== ArticleStatus.published) {
       if (!user || (!this.canManageContent(user) && article.authorId !== user.id)) {
         throw new NotFoundException("文章不存在。");
@@ -3127,6 +3298,26 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  private toArticleAttachmentResponse(attachment: {
+    id: number;
+    kind: ChatAttachmentKind;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    createdAt: Date;
+  }): ArticleAttachmentResponse {
+    return {
+      id: attachment.id,
+      kind: attachment.kind,
+      originalName: attachment.originalName,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.sizeBytes,
+      downloadUrl: `/articles/attachments/${attachment.id}/download`,
+      thumbnailUrl: attachment.kind === ChatAttachmentKind.image ? `/articles/attachments/${attachment.id}/thumbnail` : null,
+      createdAt: attachment.createdAt.toISOString(),
+    };
+  }
+
   private commentSelect() {
     return {
       id: true,
@@ -3137,6 +3328,17 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       likeCount: true,
       createdAt: true,
       updatedAt: true,
+      attachments: {
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          kind: true,
+          originalName: true,
+          mimeType: true,
+          sizeBytes: true,
+          createdAt: true,
+        },
+      },
       author: {
         select: {
           id: true,
@@ -3148,7 +3350,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
           role: { select: { code: true, name: true, level: true } },
         },
       },
-    } as const;
+    } satisfies Prisma.ArticleCommentSelect;
   }
 
   private toCommentResponse(comment: {
@@ -3160,6 +3362,14 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     likeCount: number;
     createdAt: Date;
     updatedAt: Date;
+    attachments?: Array<{
+      id: number;
+      kind: ChatAttachmentKind;
+      originalName: string;
+      mimeType: string;
+      sizeBytes: number;
+      createdAt: Date;
+    }>;
     author: {
       id: number;
       nickname: string;
@@ -3189,6 +3399,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       likeCount: Math.max(0, comment.likeCount),
       liked: options.liked ?? false,
       reported: options.reported ?? false,
+      attachments: (comment.attachments ?? []).map((attachment) => this.toCommentAttachmentResponse(attachment)),
       pendingReportCount: options.pendingReportCount,
       reports: options.reports,
       author: this.toAuthor(comment.author),
@@ -3203,6 +3414,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       commentId: report.commentId,
       commentBody: report.comment.body,
       commentStatus: report.comment.status,
+      attachments: (report.comment.attachments ?? []).map((attachment) => this.toCommentAttachmentResponse(attachment)),
       article: report.comment.article,
       reporter: this.toAuthor(report.reporter),
       reason: report.reason,
@@ -3211,6 +3423,26 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       resolution: report.resolution,
       createdAt: report.createdAt.toISOString(),
       handledAt: report.handledAt?.toISOString() ?? null,
+    };
+  }
+
+  private toCommentAttachmentResponse(attachment: {
+    id: number;
+    kind: ChatAttachmentKind;
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    createdAt: Date;
+  }): ArticleCommentAttachmentResponse {
+    return {
+      id: attachment.id,
+      kind: attachment.kind,
+      originalName: attachment.originalName,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.sizeBytes,
+      downloadUrl: `/articles/comment-attachments/${attachment.id}/download`,
+      thumbnailUrl: attachment.kind === ChatAttachmentKind.image ? `/articles/comment-attachments/${attachment.id}/thumbnail` : null,
+      createdAt: attachment.createdAt.toISOString(),
     };
   }
 

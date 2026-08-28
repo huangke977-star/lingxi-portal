@@ -3,11 +3,12 @@ import { JwtModule } from "@nestjs/jwt";
 import { AuthModule } from "../auth/auth.module";
 import { RedisModule } from "../redis/redis.module";
 import { UsersModule } from "../users/users.module";
+import { SocialModule } from "../social/social.module";
 import { AnonymousTopicsController } from "./anonymous-topics.controller";
 import { AnonymousTopicsService } from "./anonymous-topics.service";
 
 @Module({
-  imports: [JwtModule.register({}), AuthModule, RedisModule, UsersModule],
+  imports: [JwtModule.register({}), AuthModule, RedisModule, UsersModule, SocialModule],
   controllers: [AnonymousTopicsController],
   providers: [AnonymousTopicsService],
 })

@@ -1,4 +1,5 @@
 import { requestJson } from "./auth-api";
+import type { ContentAttachment } from "./content-attachments";
 
 export type ArticleStatus = "draft" | "published" | "unpublished" | "blocked" | "deleted";
 export type ArticleVisibility = "public" | "authenticated" | "role_restricted" | "private";
@@ -81,6 +82,17 @@ export interface Article {
   updatedAt: string;
 }
 
+export interface ArticleAttachment {
+  id: number;
+  kind: ContentAttachment["kind"];
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  downloadUrl: string;
+  thumbnailUrl: string | null;
+  createdAt: string;
+}
+
 export interface ArticleComment {
   id: number;
   articleId: number;
@@ -90,6 +102,7 @@ export interface ArticleComment {
   likeCount: number;
   liked: boolean;
   reported: boolean;
+  attachments: ContentAttachment[];
   pendingReportCount?: number;
   reports?: ArticleCommentReport[];
   author: ArticleAuthor;
@@ -112,6 +125,7 @@ export interface ArticleCommentReport {
   commentId: number;
   commentBody: string;
   commentStatus: ArticleComment["status"];
+  attachments: ContentAttachment[];
   article: { id: number; title: string; slug: string };
   reporter: ArticleAuthor;
   reason: ArticleCommentReportReason;
@@ -502,6 +516,17 @@ export async function uploadArticleImages(accessToken: string, id: number, files
   return result.images;
 }
 
+export async function uploadArticleAttachments(accessToken: string, id: number, files: File[]): Promise<ArticleAttachment[]> {
+  const body = new FormData();
+  files.forEach((file) => body.append("files", file));
+  const result = await requestJson<{ attachments: ArticleAttachment[] }>(`/articles/${id}/attachments`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body,
+  });
+  return result.attachments;
+}
+
 export function likeArticle(accessToken: string, id: number, liked: boolean): Promise<{ liked?: boolean; favorited?: boolean; likeCount: number; favoriteCount: number }> {
   return requestJson(`/articles/${id}/like`, {
     method: liked ? "POST" : "DELETE",
@@ -631,12 +656,17 @@ export function clearArticleReadingHistory(accessToken: string): Promise<{ count
   return requestJson<{ count: number }>("/articles/history", { method: "DELETE", headers: authHeaders(accessToken) });
 }
 
-export function createArticleComment(accessToken: string, id: number, body: string, parentId?: number): Promise<ArticleComment> {
-  return requestJson<ArticleComment>(`/articles/${id}/comments`, {
+export function createArticleComment(accessToken: string, id: number, body: string, parentId?: number, files: File[] = []): Promise<ArticleComment> {
+  if (!files.length) return requestJson<ArticleComment>(`/articles/${id}/comments`, {
     method: "POST",
     headers: authHeaders(accessToken),
     body: JSON.stringify({ body, parentId }),
   });
+  const form = new FormData();
+  form.append("body", body);
+  if (parentId) form.append("parentId", String(parentId));
+  files.forEach((file) => form.append("files", file));
+  return requestJson<ArticleComment>(`/articles/${id}/comments`, { method: "POST", headers: authHeaders(accessToken), body: form });
 }
 
 export function deleteArticleComment(accessToken: string, id: number): Promise<void> {

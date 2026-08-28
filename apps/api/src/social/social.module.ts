@@ -20,6 +20,6 @@ import { ModerationModule } from "../moderation/moderation.module";
   imports: [JwtModule.register({}), UsersModule, RedisModule, SiteSettingsModule, PushModule, ReputationModule, forwardRef(() => ModerationModule)],
   controllers: [SocialController, PublicProfilesController, ChatGroupsController, ChatGroupAvatarsController],
   providers: [SocialService, ChatAttachmentsService, ChatGroupsService, CallsService, ChatGateway, PendingActionReminderService],
-  exports: [SocialService, ChatGroupsService],
+  exports: [SocialService, ChatGroupsService, ChatAttachmentsService],
 })
 export class SocialModule {}
