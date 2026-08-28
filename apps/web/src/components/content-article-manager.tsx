@@ -162,7 +162,7 @@ export function ContentArticleManager({
 
       <DndContext
         collisionDetection={closestCenter}
-        onDragEnd={(event) => void dragEnd(event)}
+        onDragEnd={(event: DragEndEvent) => void dragEnd(event)}
         sensors={sensors}
       >
         <SortableContext

@@ -650,7 +650,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
     });
     return {
       items: records.map((article: ResourceCatalogArticleRecord) => {
-        const blocks = this.resourceBlocks(article.content);
+        const blocks = this.resourceBlocks(article.content, article.contentFormat);
         return {
           article: this.toArticle(article, viewer),
           minimumPointCost: Math.min(...blocks.map((block) => block.pointCost)),
@@ -1931,8 +1931,8 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
     return slug;
   }
 
-  private resourceBlocks(content: string) {
-    return parseArticleContent(content).blocks;
+  private resourceBlocks(content: string, contentFormat: "markdown" | "html" = "markdown") {
+    return parseArticleContent(content, contentFormat).blocks;
   }
 
   private async dispatchSubscriptionDigests(): Promise<void> {

@@ -4,6 +4,7 @@ import { Check, ChevronDown, Eye, FileText, Pencil, Shapes, Tags, Trash2, X } fr
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArticleMineSecondaryNav } from "@/components/article-center-nav";
+import { ArticleRichEditor } from "@/components/article-rich-editor";
 import { ArticleBody, displayArticleTaxonomy, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import { GlassSelect } from "@/components/glass-select";
@@ -35,6 +36,7 @@ interface TemplateForm {
   title: string;
   summary: string;
   content: string;
+  contentFormat: ArticleTemplate["contentFormat"];
   category: string;
   tags: string;
   titleColor: string;
@@ -47,6 +49,7 @@ const emptyForm: TemplateForm = {
   title: "",
   summary: "",
   content: "",
+  contentFormat: "html",
   category: "随笔",
   tags: "",
   titleColor: "",
@@ -155,6 +158,7 @@ export function ArticleTemplatesPanel() {
       title: template.title,
       summary: template.summary,
       content: template.content,
+      contentFormat: template.contentFormat,
       category: template.category,
       tags: template.tags.join(", "),
       titleColor: template.titleColor,
@@ -210,6 +214,7 @@ export function ArticleTemplatesPanel() {
       title: form.title.trim(),
       summary: form.summary.trim(),
       content: form.content,
+      contentFormat: form.contentFormat,
       category: form.category.trim(),
       tags: form.tags,
       titleColor: form.titleColor,
@@ -297,7 +302,7 @@ export function ArticleTemplatesPanel() {
                 <div className="article-template-preview-body">
                   <article className="article-template-reading-layout">
                     <header><h1 style={selectedTemplate?.titleColor ? { color: selectedTemplate.titleColor } : undefined}>{selectedTemplate?.title || phrase("未设置文章标题", "No article title")}</h1><div><span>{selectedTemplate?.category ? displayArticleTaxonomy(selectedTemplate.category, locale) : phrase("未分类", "Uncategorized")}</span><span>{selectedTemplate ? formatArticleDate(selectedTemplate.updatedAt, locale) : ""}</span></div></header>
-                    <main><ArticleBody content={selectedTemplate?.content || phrase("模板没有正文内容。", "This template has no content.")} /></main>
+                    <main><ArticleBody content={selectedTemplate?.content || phrase("模板没有正文内容。", "This template has no content.")} contentFormat={selectedTemplate?.contentFormat} /></main>
                   </article>
                 </div>
                 <footer>{selectedTemplate ? <button aria-label={phrase("编辑模板", "Edit template")} className="article-template-icon-button primary" onClick={() => openTemplate(selectedTemplate, "edit")} title={phrase("编辑", "Edit")} type="button"><Pencil aria-hidden="true" size={17} /></button> : null}</footer>
@@ -317,7 +322,7 @@ export function ArticleTemplatesPanel() {
                     <div className="article-template-inline-field"><GlassSelect ariaLabel={phrase("阅读权限", "Visibility")} leadingIcon={<Eye aria-hidden="true" size={15} />} onChange={(value) => updateForm("visibility", value)} options={visibilityLabels} value={form.visibility} /></div>
                   </div>
                   {form.visibility === "role_restricted" ? <div aria-label={phrase("可见角色", "Visible roles")} className="wide article-role-options" role="group">{roles.map((role) => <label key={role.code}><input checked={form.roleCodes.includes(role.code)} onChange={() => toggleVisibleRole(role.code)} type="checkbox" /><span>{growthLevelLabel(role.code, locale, role.name)}</span></label>)}</div> : null}
-                  <label className="wide article-template-content-field"><textarea aria-label={phrase("模板正文", "Template content")} minLength={1} onChange={(event) => updateForm("content", event.target.value)} placeholder={phrase("模板正文，支持 Markdown", "Template content, Markdown supported")} required value={form.content} /></label>
+                  <div className="wide article-template-content-field"><ArticleRichEditor format={form.contentFormat} onChange={(content, contentFormat) => setForm((current) => ({ ...current, content, contentFormat }))} onError={setError} value={form.content} /></div>
                 </div>
                 <footer><button aria-label={phrase("取消", "Cancel")} className="article-template-icon-button" onClick={closeDialog} title={phrase("取消", "Cancel")} type="button"><X aria-hidden="true" size={17} /></button><button aria-label={phrase("确定保存", "Confirm save")} className="article-template-icon-button primary" disabled={isSaving} title={phrase("确定保存", "Confirm save")} type="submit"><Check aria-hidden="true" size={17} /></button></footer>
               </form>

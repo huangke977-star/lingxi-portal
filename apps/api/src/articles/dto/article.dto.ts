@@ -28,6 +28,9 @@ export const ARTICLE_VISIBILITIES = [
 ] as const;
 export type ArticleVisibilityValue = (typeof ARTICLE_VISIBILITIES)[number];
 
+export const ARTICLE_CONTENT_FORMATS = ["markdown", "html"] as const;
+export type ArticleContentFormatValue = (typeof ARTICLE_CONTENT_FORMATS)[number];
+
 export const ARTICLE_COMMENT_STATUSES = ["active", "blocked", "deleted"] as const;
 export type ArticleCommentStatusValue = (typeof ARTICLE_COMMENT_STATUSES)[number];
 
@@ -43,6 +46,10 @@ export class CreateArticleDto {
 
   @IsString()
   content!: string;
+
+  @IsOptional()
+  @IsIn(ARTICLE_CONTENT_FORMATS)
+  contentFormat?: ArticleContentFormatValue;
 
   @IsOptional()
   @IsString()
@@ -89,6 +96,10 @@ export class AutosaveArticleDto {
   @IsOptional()
   @IsString()
   content?: string;
+
+  @IsOptional()
+  @IsIn(ARTICLE_CONTENT_FORMATS)
+  contentFormat?: ArticleContentFormatValue;
 
   @IsOptional()
   @IsString()
@@ -145,6 +156,10 @@ export class ArticleTemplateDto {
 
   @IsString()
   content!: string;
+
+  @IsOptional()
+  @IsIn(ARTICLE_CONTENT_FORMATS)
+  contentFormat?: ArticleContentFormatValue;
 
   @IsOptional()
   @IsString()

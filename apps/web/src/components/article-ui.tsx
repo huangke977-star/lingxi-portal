@@ -10,7 +10,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { memo } from "react";
 import type { MouseEvent, ReactNode } from "react";
-import type { Article, ArticleAuthor, ArticleContentSegment } from "@/lib/article-api";
+import type { Article, ArticleAuthor, ArticleContentFormat, ArticleContentSegment } from "@/lib/article-api";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
 import { PublicProfilePopover } from "@/components/public-profile-popover";
@@ -104,10 +104,10 @@ export function ArticleTaxonomy({ article, limit = 3 }: { article: Article; limi
       {visibleTags.map((tag) => <span className="article-tag-chip" key={tag}>#{displayArticleTaxonomy(tag, locale)}</span>)}
       {hiddenCount ? <span className="article-tag-more">+{hiddenCount}</span> : null}
       {(article.collections ?? []).slice(0, 2).map((collection) => (
-        <Link className="article-group-chip collection" href={localizedPath(collection.href, locale)} key={`collection-${collection.id}`} onClick={(event) => event.stopPropagation()}>{collection.label}</Link>
+        <Link className="article-group-chip collection" href={localizedPath(collection.href, locale)} key={`collection-${collection.id}`} onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}>{collection.label}</Link>
       ))}
       {(article.topics ?? []).slice(0, 2).map((topic) => (
-        <Link className="article-group-chip topic" href={localizedPath(topic.href, locale)} key={`topic-${topic.id}`} onClick={(event) => event.stopPropagation()}>{topic.label}</Link>
+        <Link className="article-group-chip topic" href={localizedPath(topic.href, locale)} key={`topic-${topic.id}`} onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}>{topic.label}</Link>
       ))}
     </span>
   );
@@ -173,21 +173,24 @@ export function ArticleCard({
 export const ArticleBody = memo(function ArticleBody({
   content,
   contentSegments,
+  contentFormat: requestedFormat,
   pendingImageUrls,
   onRedeemResource,
 }: {
   content: string;
+  contentFormat?: ArticleContentFormat;
   contentSegments?: ArticleContentSegment[];
   pendingImageUrls?: Record<string, string>;
   onRedeemResource?: (blockKey: string) => void;
 }) {
   const { t } = useLanguage();
-  const segments = contentSegments?.length ? contentSegments : parseArticleContentForDisplay(content);
+  const contentFormat = requestedFormat ?? (looksLikeHtml(content) ? "html" : "markdown");
+  const segments = contentSegments?.length ? contentSegments : parseArticleContentForDisplay(content, contentFormat);
   return (
     <div className="article-body">
       {segments.map((segment, index) => segment.type === "resource" ? (
         segment.unlocked && segment.content ? (
-          <MarkdownSegment content={segment.content} key={segment.key ?? `resource-${index}`} pendingImageUrls={pendingImageUrls} />
+          contentFormat === "html" ? <HtmlSegment content={segment.content} key={segment.key ?? `resource-${index}`} pendingImageUrls={pendingImageUrls} /> : <MarkdownSegment content={segment.content} key={segment.key ?? `resource-${index}`} pendingImageUrls={pendingImageUrls} />
         ) : (
           <section className="article-resource-lock" key={segment.key ?? `resource-${index}`}>
             <LockKeyhole aria-hidden="true" size={24} />
@@ -195,7 +198,7 @@ export const ArticleBody = memo(function ArticleBody({
             {segment.key && onRedeemResource ? <button onClick={() => onRedeemResource(segment.key!)} type="button"><Coins aria-hidden="true" size={16} />{t("article.redeem")}</button> : null}
           </section>
         )
-      ) : <MarkdownSegment content={segment.content ?? ""} key={`markdown-${index}`} pendingImageUrls={pendingImageUrls} />)}
+      ) : segment.type === "html" ? <HtmlSegment content={segment.content ?? ""} key={`html-${index}`} pendingImageUrls={pendingImageUrls} /> : <MarkdownSegment content={segment.content ?? ""} key={`markdown-${index}`} pendingImageUrls={pendingImageUrls} />)}
     </div>
   );
 });
@@ -221,7 +224,16 @@ function MarkdownSegment({ content, pendingImageUrls }: { content: string; pendi
   </ReactMarkdown>;
 }
 
-function parseArticleContentForDisplay(source: string): ArticleContentSegment[] {
+function HtmlSegment({ content, pendingImageUrls }: { content: string; pendingImageUrls?: Record<string, string> }) {
+  const resolvedContent = Object.entries(pendingImageUrls ?? {}).reduce(
+    (current, [marker, url]) => current.replaceAll(marker, url),
+    content,
+  );
+  return <div className="article-html-segment" dangerouslySetInnerHTML={{ __html: resolvedContent }} />;
+}
+
+function parseArticleContentForDisplay(source: string, format: ArticleContentFormat): ArticleContentSegment[] {
+  if (format === "html") return parseHtmlContentForDisplay(source);
   const lines = source.replaceAll("\r\n", "\n").split("\n");
   const segments: ArticleContentSegment[] = [];
   let markdown: string[] = [];
@@ -257,6 +269,28 @@ function parseArticleContentForDisplay(source: string): ArticleContentSegment[] 
   return segments.length ? segments : [{ type: "markdown", content: source }];
 }
 
+function parseHtmlContentForDisplay(source: string): ArticleContentSegment[] {
+  const segments: ArticleContentSegment[] = [];
+  const pattern = /<resource-block\b([^>]*)>([\s\S]*?)<\/resource-block>/gi;
+  let cursor = 0;
+  for (const match of source.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    const normal = source.slice(cursor, index).trim();
+    if (normal) segments.push({ type: "html", content: normal });
+    const pointCost = Number(/data-points=["'](\d+)["']/i.exec(match[1] ?? "")?.[1] ?? 0);
+    const content = (match[2] ?? "").trim();
+    if (pointCost > 0 && content) segments.push({ type: "resource", content, pointCost, unlocked: true, key: `preview-resource-${segments.length}` });
+    cursor = index + match[0].length;
+  }
+  const tail = source.slice(cursor).trim();
+  if (tail) segments.push({ type: "html", content: tail });
+  return segments.length ? segments : [{ type: "html", content: source }];
+}
+
 function safeArticleUrl(value: unknown): value is string {
   return typeof value === "string" && (value.startsWith("/") || /^https?:\/\//i.test(value));
+}
+
+function looksLikeHtml(value: string): boolean {
+  return /<(?:p|h[1-6]|ul|ol|blockquote|pre|resource-block)\b/i.test(value.trim());
 }

@@ -1,7 +1,7 @@
 import { ArticleStatus, ArticleVisibility, Prisma } from "../src/generated/prisma/client";
 import { ArticlesService } from "../src/articles/articles.service";
 import { AuthenticatedUser } from "../src/auth/auth.types";
-import { parseArticleContent } from "../src/articles/article-resources";
+import { parseArticleContent, sanitizeArticleHtml } from "../src/articles/article-resources";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { RedisService } from "../src/redis/redis.service";
 import { ReputationService } from "../src/reputation/reputation.service";
@@ -126,6 +126,33 @@ type ExchangeCreateArgs = {
 };
 
 describe("article resource blocks", () => {
+  it("sanitizes HTML content before it can be rendered", () => {
+    const sanitized = sanitizeArticleHtml('<p>公开内容</p><script>alert("x")</script><p onclick="alert(1)">安全内容</p>');
+    expect(sanitized).toContain("公开内容");
+    expect(sanitized).toContain("安全内容");
+    expect(sanitized).not.toContain("script");
+    expect(sanitized).not.toContain("onclick");
+  });
+
+  it("parses HTML resource blocks and keeps ordinary HTML segments", () => {
+    const parsed = parseArticleContent(
+      '<p>公开正文。</p><resource-block data-points="10"><p>需要兑换的内容。</p></resource-block><p>后续正文。</p>',
+      "html",
+    );
+    expect(parsed.blocks).toHaveLength(1);
+    expect(parsed.blocks[0]).toMatchObject({ pointCost: 10, content: "<p>需要兑换的内容。</p>" });
+    expect(parsed.segments).toEqual([
+      { type: "html", content: "<p>公开正文。</p>" },
+      { type: "resource", key: parsed.blocks[0]!.key, pointCost: 10, content: "<p>需要兑换的内容。</p>" },
+      { type: "html", content: "<p>后续正文。</p>" },
+    ]);
+  });
+
+  it("rejects invalid HTML resource point values", () => {
+    expect(() => parseArticleContent('<resource-block data-points="0"><p>secret</p></resource-block>', "html"))
+      .toThrow("资源块积分必须是 1 到 10000 的整数。");
+  });
+
   it("derives the resource flag and lowest exchange cost from resource-block content", () => {
     const service = createService({});
     const summary = (service as unknown as {

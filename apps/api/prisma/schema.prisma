@@ -38,6 +38,11 @@ enum ArticleStatus {
   deleted
 }
 
+enum ArticleContentFormat {
+  markdown
+  html
+}
+
 enum ArticleVisibility {
   public
   authenticated
@@ -1173,6 +1178,7 @@ model Article {
   slug                  String                    @unique @db.VarChar(180)
   summary               String                    @default("") @db.VarChar(300)
   content               String                    @db.LongText
+  contentFormat         ArticleContentFormat     @default(markdown) @map("content_format")
   coverPath             String?                   @map("cover_path") @db.VarChar(512)
   category              String                    @default("") @db.VarChar(80)
   tags                  String                    @default("") @db.VarChar(500)
@@ -1232,6 +1238,7 @@ model ArticleTemplate {
   title       String            @default("") @db.VarChar(120)
   summary     String            @default("") @db.VarChar(300)
   content     String            @db.LongText
+  contentFormat ArticleContentFormat @default(markdown) @map("content_format")
   category    String            @default("") @db.VarChar(80)
   tags        String            @default("") @db.VarChar(500)
   titleColor  String            @default("") @map("title_color") @db.VarChar(7)
@@ -1298,6 +1305,7 @@ model ArticleVersion {
   title           String               @db.VarChar(120)
   summary         String               @default("") @db.VarChar(300)
   content         String               @db.LongText
+  contentFormat   ArticleContentFormat @default(markdown) @map("content_format")
   category        String               @default("") @db.VarChar(80)
   tags            String               @default("") @db.VarChar(500)
   titleColor      String               @default("") @map("title_color") @db.VarChar(7)

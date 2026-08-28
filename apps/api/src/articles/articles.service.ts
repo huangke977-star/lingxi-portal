@@ -16,6 +16,7 @@ import {
   ArticleCommentReportStatus,
   ArticleCommentStatus,
   ArticleAppealStatus,
+  ArticleContentFormat,
   ArticleStatus,
   ArticleTopicStatus,
   ArticleVersionSource,
@@ -78,7 +79,11 @@ import {
   ReadingProgressResponse,
   ViolationAuthorResponse,
 } from "./articles.types";
-import { parseArticleContent } from "./article-resources";
+import {
+  articleContentToPlainText,
+  normalizeArticleContent,
+  parseArticleContent,
+} from "./article-resources";
 
 export const ARTICLE_IMAGE_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 export const ARTICLE_IMAGE_MAX_FILES_PER_ARTICLE = 20;
@@ -149,6 +154,7 @@ const ARTICLE_VERSION_FIELDS = [
   "title",
   "summary",
   "content",
+  "contentFormat",
   "category",
   "tags",
   "titleColor",
@@ -858,18 +864,19 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
   async create(user: AuthenticatedUser, dto: CreateArticleDto): Promise<ArticleResponse> {
     const publishPolicy = await this.siteSettingsService.getArticlePublishPolicy();
     const title = dto.title.trim();
-    const content = dto.content.trim();
+    const contentFormat = dto.contentFormat === "html" ? ArticleContentFormat.html : ArticleContentFormat.markdown;
+    const content = normalizeArticleContent(dto.content, contentFormat);
     if (!title || !content) {
       throw new BadRequestException("文章标题和正文不能为空。");
     }
-    const resource = this.resourceSummary(content);
+    const resource = this.resourceSummary(content, contentFormat);
 
     const visibility = dto.visibility ?? publishPolicy.defaultArticleVisibility;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
     const status = this.normalizeAuthorStatus(dto.status);
     if (status === ArticleStatus.published) await this.assertArticlePublishAllowed(user);
     if (status === ArticleStatus.published) {
-      await this.contentModerationService.enforce({ source: "article", actorId: user.id, content: `${title}\n${content}` });
+      await this.contentModerationService.enforce({ source: "article", actorId: user.id, content: `${title}\n${articleContentToPlainText(content, contentFormat)}` });
     }
     const slug = await this.createUniqueSlug(title);
     const tags = this.normalizeTags(dto.tags);
@@ -880,6 +887,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
         slug,
         summary: dto.summary?.trim() ?? "",
         content,
+        contentFormat,
         category: dto.category?.trim() ?? "",
         tags,
         titleColor: this.normalizeTitleColor(dto.titleColor),
@@ -899,7 +907,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       return created;
     });
     if (status === ArticleStatus.published) {
-      await this.contentModerationService.recordAccepted({ source: "article", actorId: user.id, content: `${title}\n${content}`, contentRef: `article:${article.id}` });
+      await this.contentModerationService.recordAccepted({ source: "article", actorId: user.id, content: `${title}\n${articleContentToPlainText(content, contentFormat)}`, contentRef: `article:${article.id}` });
     }
     return this.toResponse(article, user);
   }
@@ -909,8 +917,9 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     const title = dto.title?.trim() ?? "";
     const category = dto.category?.trim() ?? "";
     const tags = this.normalizeTags(dto.tags);
-    const content = dto.content ?? "";
-    const resource = this.resourceSummary(content);
+    const contentFormat = dto.contentFormat === "html" ? ArticleContentFormat.html : ArticleContentFormat.markdown;
+    const content = normalizeArticleContent(dto.content ?? "", contentFormat);
+    const resource = this.resourceSummary(content, contentFormat);
     const visibility = dto.visibility ?? publishPolicy.defaultArticleVisibility;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
     const slug = await this.createUniqueSlug(title || "untitled-article");
@@ -922,6 +931,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
           slug,
           summary: dto.summary?.trim() ?? "",
           content,
+          contentFormat,
           category,
           tags,
           titleColor: this.normalizeTitleColor(dto.titleColor),
@@ -950,8 +960,9 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException("回收站中的文章不能自动保存。");
     }
     const title = dto.title === undefined ? existing.title : dto.title.trim();
-    const content = dto.content === undefined ? existing.content : dto.content;
-    const resource = this.resourceSummary(content);
+    const contentFormat = dto.contentFormat === undefined ? existing.contentFormat : (dto.contentFormat === "html" ? ArticleContentFormat.html : ArticleContentFormat.markdown);
+    const content = dto.content === undefined ? existing.content : normalizeArticleContent(dto.content, contentFormat);
+    const resource = this.resourceSummary(content, contentFormat);
     const category = dto.category === undefined ? existing.category : dto.category.trim();
     const tags = dto.tags === undefined ? existing.tags : this.normalizeTags(dto.tags);
     const visibility = dto.visibility ?? existing.visibility;
@@ -963,6 +974,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
           title,
           summary: dto.summary === undefined ? existing.summary : dto.summary.trim(),
           content,
+          contentFormat,
           category,
           tags,
           titleColor: dto.titleColor === undefined ? existing.titleColor : this.normalizeTitleColor(dto.titleColor),
@@ -1009,7 +1021,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       include: { editor: { select: { id: true, username: true, nickname: true } } },
     });
     if (!version) throw new NotFoundException("文章版本不存在。");
-    parseArticleContent(version.content);
+    parseArticleContent(version.content, version.contentFormat);
     return this.toVersionResponse(version);
   }
 
@@ -1029,7 +1041,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     if (!version) throw new NotFoundException("文章版本不存在。");
     const roleCodes = version.roleCodes.split(",").filter(Boolean);
     const roles = await this.resolveRoles(version.visibility, roleCodes);
-    const resource = this.resourceSummary(version.content);
+    const resource = this.resourceSummary(version.content, version.contentFormat);
     const restoredStatus = existing.status === ArticleStatus.blocked ? ArticleStatus.blocked : ArticleStatus.draft;
     const article = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.article.update({
@@ -1038,6 +1050,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
           title: version.title,
           summary: version.summary,
           content: version.content,
+          contentFormat: version.contentFormat,
           category: version.category,
           tags: version.tags,
           titleColor: version.titleColor,
@@ -1076,16 +1089,18 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     const title = dto.title?.trim() || existing.title;
     const category = dto.category === undefined ? existing.category : dto.category.trim();
     const tags = dto.tags === undefined ? existing.tags : this.normalizeTags(dto.tags);
-    const content = dto.content === undefined ? existing.content : dto.content.trim();
-    const resource = this.resourceSummary(content);
+    const contentFormat = dto.contentFormat === undefined ? existing.contentFormat : (dto.contentFormat === "html" ? ArticleContentFormat.html : ArticleContentFormat.markdown);
+    const content = dto.content === undefined ? existing.content : normalizeArticleContent(dto.content, contentFormat);
+    const resource = this.resourceSummary(content, contentFormat);
     if (status === ArticleStatus.published && !this.canManageContent(user)) {
-      await this.contentModerationService.enforce({ source: "article", actorId: user.id, content: `${title}\n${content}`, contentRef: `article:${id}` });
+      await this.contentModerationService.enforce({ source: "article", actorId: user.id, content: `${title}\n${articleContentToPlainText(content, contentFormat)}`, contentRef: `article:${id}` });
     }
     const article = await this.prisma.$transaction(async (transaction) => {
       const updated = await transaction.article.update({ where: { id }, data: {
         title,
         summary: dto.summary === undefined ? existing.summary : dto.summary.trim(),
         content,
+        contentFormat,
         category,
         tags,
         titleColor: dto.titleColor === undefined ? existing.titleColor : this.normalizeTitleColor(dto.titleColor),
@@ -1116,7 +1131,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       return updated;
     });
     if (status === ArticleStatus.published && !this.canManageContent(user)) {
-      await this.contentModerationService.recordAccepted({ source: "article", actorId: user.id, content: `${title}\n${content}`, contentRef: `article:${article.id}` });
+      await this.contentModerationService.recordAccepted({ source: "article", actorId: user.id, content: `${title}\n${articleContentToPlainText(content, contentFormat)}`, contentRef: `article:${article.id}` });
     }
     return this.toResponse(article, user);
   }
@@ -1131,9 +1146,9 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     if (!existing.title.trim() || !existing.content.trim()) {
       throw new BadRequestException("文章标题和正文不能为空。");
     }
-    const resource = this.resourceSummary(existing.content);
+    const resource = this.resourceSummary(existing.content, existing.contentFormat);
     if (!this.canManageContent(user)) {
-      await this.contentModerationService.enforce({ source: "article", actorId: user.id, content: `${existing.title}\n${existing.content}`, contentRef: `article:${id}` });
+      await this.contentModerationService.enforce({ source: "article", actorId: user.id, content: `${existing.title}\n${articleContentToPlainText(existing.content, existing.contentFormat)}`, contentRef: `article:${id}` });
     }
     const isFirstPublication = existing.publishedAt === null;
     const isNewPublication = existing.status !== ArticleStatus.published;
@@ -1151,7 +1166,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       return updated;
     });
     if (!this.canManageContent(user)) {
-      await this.contentModerationService.recordAccepted({ source: "article", actorId: user.id, content: `${article.title}\n${article.content}`, contentRef: `article:${article.id}` });
+      await this.contentModerationService.recordAccepted({ source: "article", actorId: user.id, content: `${article.title}\n${articleContentToPlainText(article.content, article.contentFormat)}`, contentRef: `article:${article.id}` });
     }
     return this.toResponse(article, user);
   }
@@ -1357,7 +1372,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     const article = await this.getArticleOrThrow(id);
     this.assertCanRead(article, user);
     if (article.status !== ArticleStatus.published) throw new BadRequestException("文章当前不能兑换资源。");
-    const parsed = parseArticleContent(article.content);
+    const parsed = parseArticleContent(article.content, article.contentFormat);
     const block = parsed.blocks.find((candidate) => candidate.key === dto.blockKey);
     if (!block) throw new BadRequestException("资源区域不存在或已经更新，请刷新文章后重试。");
     if (article.authorId !== user.id && !this.canManageContent(user)) {
@@ -2676,14 +2691,15 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       });
       if (restriction) errors.push(restriction.endsAt ? `当前账号被限制发布文章至 ${restriction.endsAt.toLocaleString("zh-CN")}。` : "当前账号被永久限制发布文章。");
     }
-    if (parseArticleContent(article.content).blocks.length) warnings.push("文章包含局部积分资源，发布后读者需要按区块兑换。");
+    if (parseArticleContent(article.content, article.contentFormat).blocks.length) warnings.push("文章包含局部积分资源，发布后读者需要按区块兑换。");
     warnings.push("发布时仍会再次执行敏感词、重复内容和链接频率检查。");
     return { valid: errors.length === 0, errors, warnings };
   }
 
   private async normalizeTemplateInput(dto: ArticleTemplateDto) {
     const name = dto.name.trim();
-    const content = dto.content.trim();
+    const contentFormat = dto.contentFormat === "html" ? ArticleContentFormat.html : ArticleContentFormat.markdown;
+    const content = normalizeArticleContent(dto.content, contentFormat);
     if (!name || !content) throw new BadRequestException("模板名称和正文不能为空。");
     const visibility = dto.visibility ?? ArticleVisibility.public;
     const roles = await this.resolveRoles(visibility, dto.roleCodes ?? []);
@@ -2692,6 +2708,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       name,
       summary: dto.summary?.trim() ?? "",
       content,
+      contentFormat,
       category: dto.category?.trim() ?? "",
       tags: this.normalizeTags(dto.tags),
       titleColor: this.normalizeTitleColor(dto.titleColor),
@@ -2713,6 +2730,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     title: string;
     summary: string;
     content: string;
+    contentFormat: ArticleContentFormat;
     category: string;
     tags: string;
     titleColor: string;
@@ -2727,6 +2745,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       title: template.title,
       summary: template.summary,
       content: template.content,
+      contentFormat: template.contentFormat,
       category: template.category,
       tags: template.tags.split(",").filter(Boolean),
       titleColor: template.titleColor,
@@ -2807,8 +2826,8 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Keeps article search/filter metadata in step with the resource-block grammar. */
-  private resourceSummary(content: string): { isPointResource: boolean; pointCost: number } {
-    const blocks = parseArticleContent(content).blocks;
+  private resourceSummary(content: string, contentFormat: ArticleContentFormat = ArticleContentFormat.markdown): { isPointResource: boolean; pointCost: number } {
+    const blocks = parseArticleContent(content, contentFormat).blocks;
     return {
       isPointResource: blocks.length > 0,
       pointCost: blocks.length ? Math.min(...blocks.map((block) => block.pointCost)) : 0,
@@ -2889,6 +2908,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       title: article.title,
       summary: article.summary,
       content: article.content,
+      contentFormat: article.contentFormat,
       category: article.category,
       tags: article.tags,
       titleColor: article.titleColor,
@@ -2908,6 +2928,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
         title: true,
         summary: true,
         content: true,
+        contentFormat: true,
         category: true,
         tags: true,
         titleColor: true,
@@ -2975,6 +2996,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     title: string;
     summary: string;
     content: string;
+    contentFormat: ArticleContentFormat;
     category: string;
     tags: string;
     titleColor: string;
@@ -2989,6 +3011,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       title: version.title,
       summary: version.summary,
       content: version.content,
+      contentFormat: version.contentFormat,
       category: version.category,
       tags: version.tags.split(",").filter(Boolean),
       titleColor: version.titleColor,
@@ -3013,20 +3036,20 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       recentCommenters.push(this.toAuthor(comment.author));
       if (recentCommenters.length === 5) break;
     }
-    const parsedContent = parseArticleContent(article.content);
+    const parsedContent = parseArticleContent(article.content, article.contentFormat);
     const fullContentAccess = Boolean(viewer && (viewer.id === article.authorId || this.canManageContent(viewer)));
     const unlockedKeys = fullContentAccess
       ? new Set(parsedContent.blocks.map((block) => block.key))
       : readerState?.unlockedResourceKeys ?? new Set<string>();
     const contentSegments = parsedContent.segments.map((segment) => {
-      if (segment.type === "markdown") return { type: "markdown" as const, content: segment.content };
+      if (segment.type === "markdown" || segment.type === "html") return { type: segment.type, content: segment.content };
       const unlocked = unlockedKeys.has(segment.key);
       return unlocked
         ? { type: "resource" as const, key: segment.key, pointCost: segment.pointCost, unlocked: true, content: segment.content }
         : { type: "resource" as const, key: segment.key, pointCost: segment.pointCost, unlocked: false };
     });
     const publicContent = parsedContent.segments
-      .filter((segment): segment is Extract<typeof segment, { type: "markdown" }> => segment.type === "markdown")
+      .filter((segment): segment is Extract<typeof segment, { type: "markdown" | "html" }> => segment.type === "markdown" || segment.type === "html")
       .map((segment) => segment.content)
       .join("\n\n");
     return {
@@ -3035,6 +3058,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       slug: article.slug,
       summary: article.summary,
       content: fullContentAccess ? article.content : publicContent,
+      contentFormat: article.contentFormat,
       contentSegments,
       coverPath: article.coverPath,
       category: article.category,

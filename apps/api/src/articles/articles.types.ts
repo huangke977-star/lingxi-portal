@@ -1,8 +1,11 @@
 import type {
+  ArticleContentFormatValue,
   ArticleCommentStatusValue,
   ArticleStatusValue,
   ArticleVisibilityValue,
 } from "./dto/article.dto";
+
+export type ArticleContentFormatResponse = ArticleContentFormatValue;
 
 export interface ArticleAuthorResponse {
   id: number;
@@ -27,7 +30,7 @@ export interface ArticleGroupingResponse {
 }
 
 export interface ArticleContentSegmentResponse {
-  type: "markdown" | "resource";
+  type: "markdown" | "html" | "resource";
   content?: string;
   key?: string;
   pointCost?: number;
@@ -40,6 +43,7 @@ export interface ArticleResponse {
   slug: string;
   summary: string;
   content: string;
+  contentFormat: ArticleContentFormatResponse;
   contentSegments: ArticleContentSegmentResponse[];
   coverPath: string | null;
   category: string;
@@ -85,6 +89,7 @@ export interface ArticleTemplateResponse {
   title: string;
   summary: string;
   content: string;
+  contentFormat: ArticleContentFormatResponse;
   category: string;
   tags: string[];
   titleColor: string;
@@ -278,6 +283,7 @@ export interface ArticleVersionResponse extends ArticleVersionSummaryResponse {
   title: string;
   summary: string;
   content: string;
+  contentFormat: ArticleContentFormatResponse;
   category: string;
   tags: string[];
   titleColor: string;

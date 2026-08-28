@@ -3,6 +3,7 @@ import { requestJson } from "./auth-api";
 export type ArticleStatus = "draft" | "published" | "unpublished" | "blocked" | "deleted";
 export type ArticleVisibility = "public" | "authenticated" | "role_restricted" | "private";
 export type ArticleCommentStatus = "active" | "blocked" | "deleted";
+export type ArticleContentFormat = "markdown" | "html";
 
 export interface ArticleAuthor {
   id: number;
@@ -27,7 +28,7 @@ export interface ArticleGrouping {
 }
 
 export interface ArticleContentSegment {
-  type: "markdown" | "resource";
+  type: "markdown" | "html" | "resource";
   content?: string;
   key?: string;
   pointCost?: number;
@@ -40,6 +41,7 @@ export interface Article {
   slug: string;
   summary: string;
   content: string;
+  contentFormat: ArticleContentFormat;
   contentSegments: ArticleContentSegment[];
   coverPath: string | null;
   category: string;
@@ -170,6 +172,7 @@ export interface ArticleInput {
   title: string;
   summary: string;
   content: string;
+  contentFormat: ArticleContentFormat;
   category: string;
   tags: string;
   titleColor: string;
@@ -184,6 +187,7 @@ export interface ArticleTemplate {
   title: string;
   summary: string;
   content: string;
+  contentFormat: ArticleContentFormat;
   category: string;
   tags: string[];
   titleColor: string;
@@ -198,6 +202,7 @@ export interface ArticleTemplateInput {
   title: string;
   summary: string;
   content: string;
+  contentFormat: ArticleContentFormat;
   category: string;
   tags: string;
   titleColor: string;
@@ -231,6 +236,7 @@ export interface ArticleVersion extends ArticleVersionSummary {
   title: string;
   summary: string;
   content: string;
+  contentFormat: ArticleContentFormat;
   category: string;
   tags: string[];
   titleColor: string;
