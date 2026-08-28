@@ -17637,7 +17637,16 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 .level-popover::before { background: var(--chat-conversation-background); }
 
+.chat-mobile-channel-sheet,
+.chat-call-mini,
 .app-toast { background: var(--chat-conversation-background); }
+
+.auth-panel,
+.announcement-editor {
+  background: color-mix(in srgb, var(--popover-surface) 86%, transparent);
+}
+
+.auth-language-control { right: 58px; }
 
 @media (max-width: 680px) {
   .moderation-reports-header { align-items: flex-start; flex-direction: column; }
