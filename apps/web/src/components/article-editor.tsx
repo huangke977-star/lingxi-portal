@@ -831,8 +831,8 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
                   <div className="article-publish-preview-title-line">
                     <h1 style={draft.titleColor ? { color: draft.titleColor } : undefined}>{draft.title || phrase("未命名文章", "Untitled article")}</h1>
                     <div aria-label={phrase("分类与标签", "Category and tags")} className="article-publish-preview-taxonomy">
-                      <span>{draft.category ? displayArticleTaxonomy(draft.category, locale) : phrase("随笔", "Essay")}</span>
-                      {selectedTags.map((tag) => <span key={tag}>#{displayArticleTaxonomy(tag, locale)}</span>)}
+                      <span className="article-publish-preview-category">{draft.category ? displayArticleTaxonomy(draft.category, locale) : phrase("随笔", "Essay")}</span>
+                      {selectedTags.map((tag) => <span className="article-publish-preview-tag" key={tag}>#{displayArticleTaxonomy(tag, locale)}</span>)}
                     </div>
                   </div>
                   <div className="article-reading-author"><span>{user?.nickname || user?.username || phrase("当前用户", "Current user")}</span><span className="article-reading-divider" /><span>{phrase(`预览于 ${formatArticleDate(new Date().toISOString(), locale)}`, `Previewed ${formatArticleDate(new Date().toISOString(), locale)}`)}</span><span className="article-reading-divider" /><span>{visibilityLabel(draft.visibility)}</span></div>

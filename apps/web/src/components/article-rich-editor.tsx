@@ -309,7 +309,9 @@ function markdownToHtml(value: string): string {
 }
 
 function normalizeEditorHtml(value: string): string {
-  return value.replace(/<p>(?:<br>)?<\/p>$/i, "").trim();
+  const normalized = value.trim();
+  if (!normalized || /^(?:<p>(?:<br\s*\/?>)?<\/p>)+$/i.test(normalized)) return "";
+  return normalized;
 }
 
 function isSafeLink(value: string): boolean {

@@ -19829,10 +19829,16 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .article-publish-preview-taxonomy span {
   flex: 0 0 auto;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
-  color: var(--accent-strong);
   font-size: 0.7rem;
   padding: 3px 6px;
+}
+.article-publish-preview-taxonomy .article-publish-preview-category {
+  background: color-mix(in srgb, var(--accent-soft) 78%, transparent);
+  color: var(--accent-strong);
+}
+.article-publish-preview-taxonomy .article-publish-preview-tag {
+  background: color-mix(in srgb, #3e9889 18%, transparent);
+  color: #287b70;
 }
 
 .article-publish-preview-grid {
@@ -19864,6 +19870,10 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .article-body p {
   margin-bottom: 0.14em;
   line-height: inherit;
+}
+.article-body p:empty,
+.article-body p:has(> br:only-child) {
+  min-height: 1.24em;
 }
 :is(
   .article-detail-page,
