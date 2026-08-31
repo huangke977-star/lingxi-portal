@@ -19062,14 +19062,29 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   font-size: 0.72rem;
 }
 
-.article-rich-font-size-select { flex: 0 0 54px; min-width: 54px; }
+.article-rich-font-size-select {
+  flex: 0 0 58px;
+  width: 58px;
+  min-width: 58px;
+}
+.article-rich-font-size-select .announcement-editor-select { width: 100%; min-width: 0; }
 .article-rich-font-size-select .announcement-editor-select-trigger {
+  display: flex;
+  width: 100%;
   min-height: 30px;
+  height: 30px;
+  min-width: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
   border: 0;
   background: transparent;
   font-size: 0.72rem;
   padding: 5px 6px;
 }
+.article-rich-font-size-select .announcement-editor-select-trigger > svg { flex: 0 0 auto; }
+.article-rich-font-size-select .announcement-editor-select-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .article-rich-font-size-select .announcement-editor-select-menu { min-width: 72px; }
 .article-rich-font-size-select .announcement-editor-select-menu button { min-height: 28px; font-size: 0.72rem; }
 .announcement-editor-select-menu-portal.article-rich-font-size-select-menu { min-width: 72px; }
@@ -19096,7 +19111,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   background: color-mix(in srgb, var(--surface) 20%, transparent);
   color: var(--foreground);
   cursor: text;
-  font-size: 0.875rem;
+  font-size: 14px;
   padding: 16px 17px 22px;
   scrollbar-color: color-mix(in srgb, var(--accent-strong) 48%, transparent) transparent;
   scrollbar-width: thin;
@@ -19128,8 +19143,8 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   background: color-mix(in srgb, var(--accent-strong) 44%, rgba(255, 255, 255, 0.32));
 }
 
-.article-rich-editor .article-rich-editor-content > * + * { margin-top: 0.72em; }
-.article-rich-editor .article-rich-editor-content p { min-height: 1.55em; margin: 0; line-height: 1.72; }
+.article-rich-editor .article-rich-editor-content > * + * { margin-top: 0.52em; }
+.article-rich-editor .article-rich-editor-content p { min-height: 1.45em; margin: 0; line-height: 1.5; }
 .article-rich-editor .article-rich-editor-content h1,
 .article-rich-editor .article-rich-editor-content h2,
 .article-rich-editor .article-rich-editor-content h3 {
@@ -19749,7 +19764,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .article-template-view-content,
   .article-template-reading-layout
 ) .article-body {
-  line-height: 1.38;
+  line-height: 1.32;
 }
 
 :is(
@@ -19765,7 +19780,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 /* The editor preview has a more specific legacy rule; keep its reading rhythm
    aligned with the detail and dialog previews as well. */
 .article-editor-page .article-editor-workspace .article-editor-preview .article-body {
-  line-height: 1.38;
+  line-height: 1.32;
 }
 
 /* Publish preview keeps metadata beside its title, leaving one centered body column. */
