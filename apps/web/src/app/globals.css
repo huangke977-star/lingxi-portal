@@ -19633,3 +19633,57 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .article-body-image-trigger { display: block; max-width: 100%; border: 0; background: transparent; cursor: zoom-in; padding: 0; }
 .article-body-image-trigger .article-body-image { display: block; }
 .article-image-preview { z-index: 13050; }
+
+/* Large article dialogs keep the topic-dialog glass treatment, but use a denser
+   surface so document text remains readable over the editor underneath. */
+.article-preview-backdrop,
+.article-versions-backdrop {
+  background: rgba(255, 248, 251, 0.22);
+  backdrop-filter: blur(7px) saturate(108%);
+  -webkit-backdrop-filter: blur(7px) saturate(108%);
+}
+
+.article-versions-backdrop { z-index: 13000; }
+
+.article-publish-preview,
+.article-versions-dialog {
+  border: 1px solid color-mix(in srgb, var(--control-line) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-strong) 94%, transparent);
+  box-shadow: 0 20px 58px rgba(29, 46, 64, 0.25);
+  backdrop-filter: blur(16px) saturate(1.08);
+  -webkit-backdrop-filter: blur(16px) saturate(1.08);
+}
+
+/* The scroll container fills the preview panel, keeping its bar at the outer edge. */
+.article-publish-preview > .article-reading-layout {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.article-versions-layout > nav,
+.article-version-detail {
+  scrollbar-color: color-mix(in srgb, var(--accent-strong) 44%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.article-versions-layout > nav::-webkit-scrollbar,
+.article-version-detail::-webkit-scrollbar { width: 5px; }
+.article-versions-layout > nav::-webkit-scrollbar-track,
+.article-version-detail::-webkit-scrollbar-track { background: transparent; }
+.article-versions-layout > nav::-webkit-scrollbar-thumb,
+.article-version-detail::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-strong) 44%, transparent);
+}
+
+.article-version-detail > div:first-child > .button {
+  min-height: 30px;
+  gap: 4px;
+  font-size: 0.68rem;
+  padding: 5px 8px;
+}
+
+.article-version-detail > div:first-child > .button svg { width: 14px; height: 14px; }
