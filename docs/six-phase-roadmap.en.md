@@ -564,7 +564,9 @@ Acceptance focus: export contents and permissions are correct, download URLs exp
 - The administrator-only Deleted accounts page searches the original username, nickname, and email and shows retained article/comment ownership. The server re-checks administrator permission, so ordinary users cannot access trace data.
 - Reused the existing blocking relationship and applied filtering in discovery, search, and messaging relationship queries. Added a personal privacy page for blocked relationships, data export, account deletion, TOTP enrollment/disable, recovery codes, and privacy audit records.
 - TOTP secrets are encrypted at rest; sign-in requires a TOTP code or a one-time recovery code. Deletion, export, and security-setting changes are recorded in the audit log, with bilingual page copy.
-- The full API suite passed 44 suites and 306 tests. API/Web lint had no errors, and API/Web production builds, Prisma generate, Prisma validate, and diff checks passed. Production deployment and live acceptance results will be appended after this release.
+- The full API suite passed 44 suites and 306 tests. API/Web lint had no errors, and API/Web production builds, Prisma generate, Prisma validate, and diff checks passed.
+- Commit `1823d5d` was pushed, and GitHub Actions run `33377146641` built both API and Web images successfully. Production applied migration `20260831100000_add_account_privacy` on 2026-08-31; backup `backups/pre-1823d5d-20260831-173035.sql.gz` was created with a size of 160057 bytes. Only API/Web were recreated; MySQL, Redis, Caddy, and TURN were not restarted.
+- Production acceptance returned `200` for `/api/health`, the home page, login, privacy, and administrator routes; unauthenticated access to the administrator trace API returned `401`, and API/Web logs were error-free for the last five minutes. The old API/Web dangling images were removed, no stopped Lingxi containers remained, and no data volumes were deleted.
 
 ### Phase 16: Stronger Community Interaction
 

@@ -564,7 +564,9 @@
 - 管理员专用的“已注销账号”页面可以检索原用户名、昵称和邮箱，并查看该账号保留的文章和评论归属；服务端接口再次校验管理员权限，普通用户不能访问追溯数据。
 - 复用现有屏蔽关系并在发现、搜索和消息关系查询中执行过滤；新增个人隐私页面，提供屏蔽关系查看、数据导出、账号注销、TOTP 绑定/关闭、恢复码和隐私审计记录。
 - TOTP 密钥加密存储，登录时强制验证验证码或一次性恢复码；注销、导出和安全设置变化写入审计记录，并提供中英文页面文案。
-- API 全量测试 44 个套件、306 项通过；API/Web lint 无 error，API/Web 生产构建、Prisma generate、Prisma validate 和 diff 检查均通过。生产部署和线上验收结果在本次发布完成后补录。
+- API 全量测试 44 个套件、306 项通过；API/Web lint 无 error，API/Web 生产构建、Prisma generate、Prisma validate 和 diff 检查均通过。
+- 提交 `1823d5d` 已推送，GitHub Actions 运行 `33377146641` 的 API/Web 镜像均构建成功。生产于 2026-08-31 应用迁移 `20260831100000_add_account_privacy`，备份 `backups/pre-1823d5d-20260831-173035.sql.gz` 已生成且大小为 160057 字节；仅重建 API/Web，MySQL、Redis、Caddy 和 TURN 未重启。
+- 生产验收中 `/api/health`、首页、登录页、隐私页和管理员入口均返回 `200`，未登录访问管理员追溯 API 返回 `401`，API/Web 近 5 分钟日志无错误。旧 API/Web dangling 镜像已清理，没有停止的 Lingxi 容器，数据卷未删除。
 
 ### 第十六阶段：社区互动增强
 
