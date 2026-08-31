@@ -6,6 +6,7 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
+import { FontSize, TextStyle } from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type NodeViewProps } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -57,6 +58,8 @@ const ResourceBlock = Node.create({
   },
 });
 
+const DEFAULT_EDITOR_FONT_SIZE = "14px";
+
 function ResourceBlockView({ node }: NodeViewProps) {
   const { phrase } = useLanguage();
   return (
@@ -96,6 +99,8 @@ export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, 
       Link.configure({ openOnClick: false, autolink: true }),
       Image.configure({ inline: false, allowBase64: false }),
       Underline,
+      TextStyle,
+      FontSize,
       TaskList,
       TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder: phrase("开始写作，支持 Markdown 快捷输入…", "Start writing with Markdown shortcuts…") }),
@@ -147,7 +152,7 @@ export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, 
     if (!attachmentHandlerRef.current) return;
     const attachments = await attachmentHandlerRef.current(files);
     if (!attachments.length || !editorRef.current) return;
-    const chain = editorRef.current.chain().focus();
+    const chain = editorRef.current.chain().focus(undefined, { scrollIntoView: false });
     attachments.forEach((attachment) => {
       if (attachment.kind === "image") {
         chain.insertContent({ type: "image", attrs: { src: attachment.src, alt: attachment.alt, title: attachment.alt } });
@@ -182,18 +187,18 @@ export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, 
     }
     const selection = selectionRef.current;
     if (editor.isActive("resourceBlock")) {
-      editor.chain().focus().updateAttributes("resourceBlock", { points }).run();
+      editor.chain().focus(undefined, { scrollIntoView: false }).updateAttributes("resourceBlock", { points }).run();
     } else if (selection && selection.from !== selection.to) {
-      editor.chain().focus().setTextSelection(selection).wrapIn("resourceBlock", { points }).run();
+      editor.chain().focus(undefined, { scrollIntoView: false }).setTextSelection(selection).wrapIn("resourceBlock", { points }).run();
     } else {
-      editor.chain().focus().insertContent({ type: "resourceBlock", attrs: { points }, content: [{ type: "paragraph" }] }).run();
+      editor.chain().focus(undefined, { scrollIntoView: false }).insertContent({ type: "resourceBlock", attrs: { points }, content: [{ type: "paragraph" }] }).run();
     }
     setIsResourceDialogOpen(false);
   }
 
   function removeResourceBlock() {
     if (!editor) return;
-    editor.chain().focus().lift("resourceBlock").run();
+    editor.chain().focus(undefined, { scrollIntoView: false }).lift("resourceBlock").run();
     setIsResourceDialogOpen(false);
   }
 
@@ -214,11 +219,11 @@ export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, 
     }
     const selection = selectionRef.current;
     if (selection && selection.from !== selection.to) {
-      editor.chain().focus().setTextSelection(selection).run();
-      if (valueToApply) editor.chain().focus().setLink({ href: valueToApply }).run();
-      else editor.chain().focus().unsetLink().run();
+      editor.chain().focus(undefined, { scrollIntoView: false }).setTextSelection(selection).run();
+      if (valueToApply) editor.chain().focus(undefined, { scrollIntoView: false }).setLink({ href: valueToApply }).run();
+      else editor.chain().focus(undefined, { scrollIntoView: false }).unsetLink().run();
     } else if (valueToApply) {
-      editor.chain().focus().insertContent({
+      editor.chain().focus(undefined, { scrollIntoView: false }).insertContent({
         type: "text",
         text: valueToApply,
         marks: [{ type: "link", attrs: { href: valueToApply, target: "_blank", rel: "noreferrer" } }],
@@ -231,6 +236,8 @@ export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, 
   if (!editor) return <div className="article-rich-editor-loading">{phrase("正在加载编辑器…", "Loading editor…")}</div>;
 
   const headingValue = editor.isActive("heading", { level: 1 }) ? "1" : editor.isActive("heading", { level: 2 }) ? "2" : editor.isActive("heading", { level: 3 }) ? "3" : "p";
+  const fontSizeValue = editor.getAttributes("textStyle").fontSize ?? DEFAULT_EDITOR_FONT_SIZE;
+  const fontSizeOptions = ["12px", "14px", "16px", "18px", "20px"].map((value) => ({ label: value.replace("px", ""), value }));
   const toolbarButton = (label: string, icon: ReactNode, action: () => void, active = false, disabled = false) => (
     <button aria-label={label} className={active ? "active" : undefined} disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={action} title={label} type="button">{icon}</button>
   );
@@ -239,30 +246,33 @@ export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, 
     <div className="article-rich-editor">
       <div className="article-rich-toolbar" role="toolbar" aria-label={phrase("文章格式工具", "Article formatting tools")}>
         <div className="article-rich-heading-select">
-          <GlassSelect ariaLabel={phrase("文本层级", "Text level")} menuClassName="article-rich-heading-select-menu" menuPortal onChange={(level) => { if (level === "p") editor.chain().focus().setParagraph().run(); else editor.chain().focus().toggleHeading({ level: Number(level) as 1 | 2 | 3 }).run(); }} options={[{ value: "p", label: phrase("正文", "Text") }, { value: "1", label: phrase("标题1", "H1") }, { value: "2", label: phrase("标题2", "H2") }, { value: "3", label: phrase("标题3", "H3") }]} value={headingValue} />
+          <GlassSelect ariaLabel={phrase("文本层级", "Text level")} menuClassName="article-rich-heading-select-menu" menuPortal onChange={(level) => { if (level === "p") editor.chain().focus(undefined, { scrollIntoView: false }).setParagraph().run(); else editor.chain().focus(undefined, { scrollIntoView: false }).toggleHeading({ level: Number(level) as 1 | 2 | 3 }).run(); }} options={[{ value: "p", label: phrase("正文", "Text") }, { value: "1", label: phrase("标题1", "H1") }, { value: "2", label: phrase("标题2", "H2") }, { value: "3", label: phrase("标题3", "H3") }]} value={headingValue} />
+        </div>
+        <div className="article-rich-font-size-select">
+          <GlassSelect ariaLabel={phrase("字号", "Font size")} menuClassName="article-rich-font-size-select-menu" menuPortal onChange={(fontSize) => editor.chain().focus(undefined, { scrollIntoView: false }).setFontSize(fontSize).run()} options={fontSizeOptions} value={fontSizeValue} />
         </div>
         <span className="article-rich-toolbar-divider" />
-        {toolbarButton(phrase("粗体", "Bold"), <Bold size={15} />, () => editor.chain().focus().toggleBold().run(), editor.isActive("bold"))}
-        {toolbarButton(phrase("斜体", "Italic"), <Italic size={15} />, () => editor.chain().focus().toggleItalic().run(), editor.isActive("italic"))}
-        {toolbarButton(phrase("删除线", "Strikethrough"), <Strikethrough size={15} />, () => editor.chain().focus().toggleStrike().run(), editor.isActive("strike"))}
-        {toolbarButton(phrase("下划线", "Underline"), <span className="article-rich-underlined">U</span>, () => editor.chain().focus().toggleUnderline().run(), editor.isActive("underline"))}
+        {toolbarButton(phrase("粗体", "Bold"), <Bold size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).toggleBold().run(), editor.isActive("bold"))}
+        {toolbarButton(phrase("斜体", "Italic"), <Italic size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).toggleItalic().run(), editor.isActive("italic"))}
+        {toolbarButton(phrase("删除线", "Strikethrough"), <Strikethrough size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).toggleStrike().run(), editor.isActive("strike"))}
+        {toolbarButton(phrase("下划线", "Underline"), <span className="article-rich-underlined">U</span>, () => editor.chain().focus(undefined, { scrollIntoView: false }).toggleUnderline().run(), editor.isActive("underline"))}
         <span className="article-rich-toolbar-divider" />
-        {toolbarButton(phrase("无序列表", "Bullet list"), <List size={15} />, () => editor.chain().focus().toggleBulletList().run(), editor.isActive("bulletList"))}
-        {toolbarButton(phrase("有序列表", "Ordered list"), <ListOrdered size={15} />, () => editor.chain().focus().toggleOrderedList().run(), editor.isActive("orderedList"))}
-        {toolbarButton(phrase("任务列表", "Task list"), <ListChecks size={15} />, () => editor.chain().focus().toggleTaskList().run(), editor.isActive("taskList"))}
-        {toolbarButton(phrase("引用", "Blockquote"), <Quote size={15} />, () => editor.chain().focus().toggleBlockquote().run(), editor.isActive("blockquote"))}
-        {toolbarButton(phrase("代码块", "Code block"), <Code2 size={15} />, () => editor.chain().focus().toggleCodeBlock().run(), editor.isActive("codeBlock"))}
-        {toolbarButton(phrase("分割线", "Horizontal rule"), <Minus size={15} />, () => editor.chain().focus().setHorizontalRule().run())}
+        {toolbarButton(phrase("无序列表", "Bullet list"), <List size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).toggleBulletList().run(), editor.isActive("bulletList"))}
+        {toolbarButton(phrase("有序列表", "Ordered list"), <ListOrdered size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).toggleOrderedList().run(), editor.isActive("orderedList"))}
+        {toolbarButton(phrase("任务列表", "Task list"), <ListChecks size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).toggleTaskList().run(), editor.isActive("taskList"))}
+        {toolbarButton(phrase("引用", "Blockquote"), <Quote size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).toggleBlockquote().run(), editor.isActive("blockquote"))}
+        {toolbarButton(phrase("代码块", "Code block"), <Code2 size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).toggleCodeBlock().run(), editor.isActive("codeBlock"))}
+        {toolbarButton(phrase("分割线", "Horizontal rule"), <Minus size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).setHorizontalRule().run())}
         <span className="article-rich-toolbar-divider" />
         <button aria-label={phrase("插入链接", "Insert link")} className={editor.isActive("link") ? "active" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={openLinkDialog} title={phrase("插入链接", "Insert link")} type="button"><Link2 size={15} /></button>
-        {toolbarButton(phrase("取消链接", "Remove link"), <Unlink size={15} />, () => editor.chain().focus().unsetLink().run(), false, !editor.isActive("link"))}
+        {toolbarButton(phrase("取消链接", "Remove link"), <Unlink size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).unsetLink().run(), false, !editor.isActive("link"))}
         {onAttachmentFiles ? <button aria-label={phrase("上传图片或文件", "Upload images or files")} onMouseDown={(event) => event.preventDefault()} onClick={() => attachmentInputRef.current?.click()} title={phrase("上传图片或文件", "Upload images or files")} type="button"><FileUp size={15} /></button> : null}
         <button aria-label={phrase("插入积分资源", "Insert point resource")} className={editor.isActive("resourceBlock") ? "active" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={openResourceDialog} title={phrase("插入积分资源", "Insert point resource")} type="button"><Coins size={15} /></button>
         {onAttachmentFiles ? <input hidden multiple onChange={(event) => { void insertAttachments(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} ref={attachmentInputRef} type="file" /> : null}
         <span className="article-rich-toolbar-spacer" />
-        {toolbarButton(phrase("清除格式", "Clear formatting"), <RemoveFormatting size={15} />, () => editor.chain().focus().clearNodes().unsetAllMarks().run())}
-        {toolbarButton(phrase("撤销", "Undo"), <Undo2 size={15} />, () => editor.chain().focus().undo().run(), false, !editor.can().undo())}
-        {toolbarButton(phrase("重做", "Redo"), <Redo2 size={15} />, () => editor.chain().focus().redo().run(), false, !editor.can().redo())}
+        {toolbarButton(phrase("清除格式", "Clear formatting"), <RemoveFormatting size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).clearNodes().unsetAllMarks().run())}
+        {toolbarButton(phrase("撤销", "Undo"), <Undo2 size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).undo().run(), false, !editor.can().undo())}
+        {toolbarButton(phrase("重做", "Redo"), <Redo2 size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).redo().run(), false, !editor.can().redo())}
       </div>
       <EditorContent editor={editor} />
 
