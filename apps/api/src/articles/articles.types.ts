@@ -14,6 +14,7 @@ export interface ArticleAuthorResponse {
   avatarUrl: string | null;
   isSuperAdmin: boolean;
   isAdministrator: boolean;
+  isDeleted?: boolean;
   role: ArticleRoleResponse;
 }
 

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { RedisModule } from '../redis/redis.module';
 import { SiteSettingsModule } from '../site-settings/site-settings.module';
@@ -10,11 +10,12 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from './guards/optional-jwt-auth.guard';
 import { PasswordService } from './password.service';
 import { RefreshTokenService } from './refresh-token.service';
+import { AccountPrivacyModule } from '../account-privacy/account-privacy.module';
 
 @Module({
-  imports: [JwtModule.register({}), RedisModule, UsersModule, SiteSettingsModule, SecurityModule],
+  imports: [JwtModule.register({}), RedisModule, UsersModule, SiteSettingsModule, SecurityModule, forwardRef(() => AccountPrivacyModule)],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard, OptionalJwtAuthGuard, PasswordService, RefreshTokenService],
-  exports: [JwtAuthGuard, OptionalJwtAuthGuard, PasswordService],
+  exports: [JwtModule, JwtAuthGuard, OptionalJwtAuthGuard, PasswordService],
 })
 export class AuthModule {}

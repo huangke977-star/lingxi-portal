@@ -790,6 +790,7 @@ describe("P2 account security", () => {
         {
           verify: jest.fn(async () => undefined),
         } as unknown as TurnstileService,
+        {} as never,
       );
 
       const result = await service.resetPassword(

@@ -171,11 +171,11 @@ export class SearchService {
       publishedAt: article.publishedAt?.toISOString() ?? null,
       author: {
         id: article.author.id,
-        username: article.author.username,
-        nickname: article.author.nickname || article.author.username,
-        avatarUrl: article.author.avatarStoredName ? `/auth/avatars/${article.author.avatarStoredName}` : null,
-        isSuperAdmin: article.author.isSuperAdmin,
-        isAdministrator: article.author.isAdministrator,
+        username: article.author.username.startsWith("deleted-") ? "deleted-user" : article.author.username,
+        nickname: article.author.username.startsWith("deleted-") ? "已注销用户" : (article.author.nickname || article.author.username),
+        avatarUrl: article.author.username.startsWith("deleted-") ? null : (article.author.avatarStoredName ? `/auth/avatars/${article.author.avatarStoredName}` : null),
+        isSuperAdmin: article.author.username.startsWith("deleted-") ? false : article.author.isSuperAdmin,
+        isAdministrator: article.author.username.startsWith("deleted-") ? false : article.author.isAdministrator,
         role: {
           ...article.author.role,
           name: article.author.role.name,

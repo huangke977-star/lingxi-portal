@@ -33,6 +33,8 @@ export default function LoginPage() {
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const [deviceChallenge, setDeviceChallenge] =
     useState<DeviceLoginVerificationRequired | null>(null);
+  const [totpRequired, setTotpRequired] = useState(false);
+  const [totpCode, setTotpCode] = useState("");
   const [deviceCode, setDeviceCode] = useState("");
   const [retryAfter, setRetryAfter] = useState(0);
   const isLeavingRef = useRef(false);
@@ -94,6 +96,7 @@ export default function LoginPage() {
         account,
         password,
         turnstileToken: turnstileToken || undefined,
+        totpCode: totpCode.trim() || undefined,
       });
       if (isLeavingRef.current) return;
 
@@ -106,6 +109,13 @@ export default function LoginPage() {
         setTurnstileToken("");
         setTurnstileResetKey((value) => value + 1);
         setNotice(phrase(`验证码已发送至 ${response.emailHint}`, `Verification code sent to ${response.emailHint}`));
+        return;
+      }
+
+      if ("totpVerificationRequired" in response) {
+        setTotpRequired(true);
+        setTotpCode("");
+        setNotice(phrase("请输入身份验证器中的 6 位验证码。", "Enter the 6-digit code from your authenticator."));
         return;
       }
 
@@ -219,7 +229,7 @@ export default function LoginPage() {
         />
         <div className="auth-panel-head">
           <span className="section-label">HLOVET</span>
-          <h1>{deviceChallenge ? t("auth.newDevice") : t("auth.accountLogin")}</h1>
+          <h1>{deviceChallenge ? t("auth.newDevice") : totpRequired ? phrase("双因素验证", "Two-factor verification") : t("auth.accountLogin")}</h1>
         </div>
         <form
           className="form-stack"
@@ -295,6 +305,20 @@ export default function LoginPage() {
                   value={password}
                 />
               </label>
+              {totpRequired ? (
+                <label>
+                  <span>{phrase("身份验证器验证码", "Authenticator code")}</span>
+                  <input
+                    autoComplete="one-time-code"
+                    autoFocus
+                    inputMode="numeric"
+                    maxLength={6}
+                    onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder={phrase("输入 6 位验证码或恢复码", "Enter a 6-digit code or recovery code")}
+                    value={totpCode}
+                  />
+                </label>
+              ) : null}
               {turnstileRequired ? (
                 <div className="auth-turnstile-field">
                   <span>{t("auth.securityCheck")}</span>

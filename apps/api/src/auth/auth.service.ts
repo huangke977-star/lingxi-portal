@@ -4,6 +4,8 @@ import {
   ForbiddenException,
   Injectable,
   UnauthorizedException,
+  forwardRef,
+  Inject,
 } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { RedisService } from '../redis/redis.service';
@@ -26,6 +28,7 @@ import { SecurityConfigurationService } from '../security/security-configuration
 import { TurnstileService } from '../security/turnstile.service';
 import { PasswordRecoveryResetDto } from '../security/dto/security.dto';
 import { LoginSecurityEventType } from '../generated/prisma/client';
+import { AccountPrivacyService } from '../account-privacy/account-privacy.service';
 
 @Injectable()
 export class AuthService {
@@ -42,6 +45,8 @@ export class AuthService {
     private readonly accountSecurity: AccountSecurityService,
     private readonly securityConfiguration: SecurityConfigurationService,
     private readonly turnstile: TurnstileService,
+    @Inject(forwardRef(() => AccountPrivacyService))
+    private readonly accountPrivacy: AccountPrivacyService,
   ) {}
 
   async register(dto: RegisterDto, context: RefreshSessionContext): Promise<AuthResponse> {
@@ -113,6 +118,9 @@ export class AuthService {
     }
 
     await this.redis.del(failureKey);
+    const totpResult = await this.accountPrivacy.verifyTotpForLogin(user.id, dto.totpCode);
+    if (totpResult === "required") return { totpVerificationRequired: true };
+    if (!totpResult) throw new UnauthorizedException("双因素验证码无效。");
     if (
       securityConfiguration.smtpEnabled &&
       securityConfiguration.untrustedDeviceEmailVerificationEnabled &&

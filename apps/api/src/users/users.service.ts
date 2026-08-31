@@ -197,7 +197,7 @@ export class UsersService {
       throw new UnauthorizedException("User not found.");
     }
 
-    if (user.status !== "active") {
+    if (user.status !== "active" && user.status !== "deletion_pending") {
       throw new ForbiddenException("User is disabled.");
     }
 

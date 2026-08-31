@@ -13,6 +13,7 @@ export interface ArticleAuthor {
   avatarUrl: string | null;
   isSuperAdmin: boolean;
   isAdministrator: boolean;
+  isDeleted?: boolean;
   role: ArticleRole;
 }
 

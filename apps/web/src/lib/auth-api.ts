@@ -32,7 +32,7 @@ export interface AuthUser {
   username: string;
   nickname: string;
   email: string;
-  status: "active" | "disabled";
+  status: "active" | "deletion_pending" | "disabled";
   isSuperAdmin: boolean;
   isAdministrator: boolean;
   avatarUrl: string | null;
@@ -57,7 +57,11 @@ export interface DeviceLoginVerificationRequired {
   retryAfterSeconds: number;
 }
 
-export type LoginResponse = AuthResponse | DeviceLoginVerificationRequired;
+export interface TotpVerificationRequired {
+  totpVerificationRequired: true;
+}
+
+export type LoginResponse = AuthResponse | DeviceLoginVerificationRequired | TotpVerificationRequired;
 
 export interface AuthSession {
   id: string;
@@ -92,13 +96,14 @@ export async function login(input: {
   account: string;
   password: string;
   turnstileToken?: string;
+  totpCode?: string;
 }): Promise<LoginResponse> {
   const response = await requestJson<LoginResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify(input),
   });
 
-  return "deviceVerificationRequired" in response
+  return "deviceVerificationRequired" in response || "totpVerificationRequired" in response
     ? response
     : normalizeAuthResponse(response);
 }

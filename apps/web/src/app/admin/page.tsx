@@ -382,7 +382,7 @@ export default function AdminPage() {
 
   return (
     <section className="page-shell admin-shell">
-      <AdminPageHeader description={pageDescription} title={phrase("用户管理", "User management")} />
+      <AdminPageHeader actions={<Link className="text-action" href={localizedPath("/admin/deleted-users", locale)}>{phrase("已注销账号", "Deleted accounts")}</Link>} description={pageDescription} title={phrase("用户管理", "User management")} />
       <div className="admin-list-toolbar">
         <div className="admin-summary" aria-label={phrase("用户概览", "User summary")}>
           <span>{phrase(`${total} 个账号`, `${total} accounts`)}</span>

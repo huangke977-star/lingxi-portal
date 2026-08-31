@@ -1719,13 +1719,15 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
     isAdministrator: boolean;
     role: { code: string; name: string; level: number };
   }): DiscoveryAuthorResponse {
+    const deleted = author.username.startsWith("deleted-");
     return {
       id: author.id,
-      nickname: author.nickname || author.username,
-      username: author.username,
-      avatarUrl: author.avatarStoredName ? `/auth/avatars/${author.avatarStoredName}` : null,
-      isSuperAdmin: author.isSuperAdmin,
-      isAdministrator: author.isAdministrator,
+      nickname: deleted ? "已注销用户" : (author.nickname || author.username),
+      username: deleted ? "deleted-user" : author.username,
+      avatarUrl: deleted ? null : (author.avatarStoredName ? `/auth/avatars/${author.avatarStoredName}` : null),
+      isSuperAdmin: deleted ? false : author.isSuperAdmin,
+      isAdministrator: deleted ? false : author.isAdministrator,
+      isDeleted: deleted,
       role: {
         ...author.role,
         name: author.role.name,

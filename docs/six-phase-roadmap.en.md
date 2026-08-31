@@ -2,8 +2,8 @@
 
 - Document status: Active
 - Created: 2026-08-04
-- Last updated: 2026-08-24
-- Current phase: Phase 10 completed
+- Last updated: 2026-08-31
+- Current phase: Phase 15 completed
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -43,6 +43,17 @@ Status definitions:
 | Phase 8 | Portal Entry Upgrade | Home, dashboard, and tools-center redesign | Completed |
 | Phase 9 | Privacy And Discovery Extension | Social permissions, search scope, discovery entry points | Completed |
 | Phase 10 | Moderation Automation | Unified reports, anti-spam, and review rules | Completed |
+| Phase 11 | Product Stability Closeout | Points-resource loop, performance checks, and operations recommendations | Completed |
+| Phase 12 | Growth And Content Conversion | Interest onboarding, subscription digest, search fallback, and resource center | Completed |
+| Phase 13 | Recommendation And Subscription Experience | Recommendation feedback, creator heat, subscription management, and mobile collapse | Completed |
+| Phase 14 | Article Publishing Plans And Author Templates | Scheduled publication, scheduled unpublishing, templates, and pre-publish checks | Completed |
+| Phase 15 | Account And Privacy Completeness | Data export, deletion, blocking, two-factor authentication, and authorization records | Completed |
+| Phase 16 | Stronger Community Interaction | Mentions, quotes, message search, group pins, message location, and subscription improvements | Not started |
+| Phase 17 | Content Distribution And Public Sharing | RSS/Atom, sitemaps, Open Graph, and email distribution | Not started |
+| Phase 18 | Deeper Recommendations And Resources | Recommendation explanations, recovery, redemption records, points rules, and creator earnings | Not started |
+| Phase 19 | External Integration Capability | Webhooks, read-only API tokens, external notifications, and third-party login | Not started |
+| Phase 20 | Mobile And Offline Experience | Offline PWA reading, weak-network fallback, push improvements, and native-app assessment | Not started |
+| Phase 21 | Operational Resilience And Compliance Closeout | Real recovery drills, audit retention, dependency upgrades, load testing, and DR manual | Not started |
 
 ## 4. External Prerequisites
 
@@ -127,7 +138,7 @@ Goal: add account recovery, bot protection, and login-risk awareness while keepi
 - New features default to disabled, historical users remain email-verified after migration, and password recovery revokes every refresh session while immediately invalidating old access tokens through the account security version.
 - Commit `a22a04f` was pushed and GitHub Actions run `31064603456` published both API and Web images. Production applied migration 28 on 2026-08-06 and recreated only API/Web; MySQL, Redis, Caddy, and TURN were not restarted.
 - Home, login, registration, recovery, Profile, Security Management, and health pages returned `200`. Public policy, unauthenticated `401`, default-disabled state, the server-side credential-encryption environment, and 390px mobile overflow were verified, with no API/Web startup errors.
-- SMTP registration verification, password recovery, and Turnstile were manually verified in production. P2-11 untrusted-device email verification remains disabled by default and needs a controlled live acceptance run after preserving a signed-in super-admin session.
+- SMTP registration verification, password recovery, and Turnstile were manually verified in production. P2-11 untrusted-device email verification remains disabled by default in normal deployments, but its controlled live-device acceptance has passed.
 - P2-11 commits `8e97c4c` and production fix `c139889` were pushed, and Actions runs `31152045165` and `31152920263` succeeded. Production applied migration 29 on 2026-08-07 and recreated only API/Web. Acceptance caught and rolled back a Socket.IO session-validation crash; after the fix, all 28 API suites with 179 tests passed, repeated API health checks returned `200`, the API restart count stayed at zero, logs were clean, all 14 Redis login sessions remained, and MySQL, Redis, Caddy, and TURN were not restarted. Live acceptance then passed for untrusted-device email verification, trust removal, and per-session sign-out, completing Phase 2.
 
 ### Acceptance
@@ -529,9 +540,135 @@ Goal: complete the controllable authoring loop from editing and checks through s
 - Failures retain their reason and appear in the My articles publishing-plan section, where the author can revise content or reschedule. Fixed notification titles and bodies have Chinese and English variants.
 - All 22 P14 service tests passed; the complete API suite, API/Web lint, API/Web production builds, Prisma generation, and migration static checks passed.
 
-The fixed delivery order is remaining P7 work -> P8 home/dashboard/tools center -> P9 -> P10 -> P11 -> P12 -> P13 -> P14. Each phase must be independently accepted, deployed, and recorded under this roadmap's definition of done.
+### Phase 15: Account And Privacy Completeness
 
-## 14. Resume Procedure
+Goal: let users control their data, login security, and authorization scope while establishing traceable lifecycles for account deletion, privacy blocking, and compliance operations.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P15-01 | Data export for profile, articles, comments, favorites, subscriptions, points, and login records through an asynchronous expiring download package | Completed |
+| P15-02 | Account deletion with a cooling-off period, cancellation entry point, and expiry cleanup; restrict login and sensitive actions during the period | Completed |
+| P15-03 | Privacy controls for site-wide blocking/hiding, blocked-content filtering, and relationship removal across lists and recommendations | Completed |
+| P15-04 | Optional TOTP two-factor authentication with enrollment, verification, recovery codes, re-enrollment, and administrator emergency recovery | Completed |
+| P15-05 | Privacy and authorization records for login, devices, grants, exports, deletion, and security-setting changes with a user-visible scope | Completed |
+| P15-06 | Permission checks, rate limits, sensitive-data redaction, cleanup jobs, migration, bilingual copy, and automated acceptance coverage | Completed |
+
+Necessity: High. This should be completed before widening public distribution and external integrations because it covers user data rights and account security.
+
+Acceptance focus: export contents and permissions are correct, download URLs expire, deletion is reversible and idempotently cleaned up, blocking applies to discovery/search/messages, TOTP cannot bypass password or session checks, and sensitive actions produce audit records.
+
+### P15 Acceptance Record
+
+- Added additive migration `20260831100000_add_account_privacy` with asynchronous data export, 24-hour expiring downloads, duplicate-request throttling, and expiry cleanup. Exports cover profile data, articles, comments, favorites, author/topic/collection subscriptions, points ledgers, and login-device records.
+- Account deletion uses a seven-day cooling-off period and supports cancellation; expiry cleanup is idempotent. Articles and comments retain their data ownership, while public article, comment, discovery, search, and profile surfaces show `Deleted user` without exposing the original account.
+- The administrator-only Deleted accounts page searches the original username, nickname, and email and shows retained article/comment ownership. The server re-checks administrator permission, so ordinary users cannot access trace data.
+- Reused the existing blocking relationship and applied filtering in discovery, search, and messaging relationship queries. Added a personal privacy page for blocked relationships, data export, account deletion, TOTP enrollment/disable, recovery codes, and privacy audit records.
+- TOTP secrets are encrypted at rest; sign-in requires a TOTP code or a one-time recovery code. Deletion, export, and security-setting changes are recorded in the audit log, with bilingual page copy.
+- The full API suite passed 44 suites and 306 tests. API/Web lint had no errors, and API/Web production builds, Prisma generate, Prisma validate, and diff checks passed. Production deployment and live acceptance results will be appended after this release.
+
+### Phase 16: Stronger Community Interaction
+
+Goal: improve discussion readability and findability so users can follow context in direct messages, comments, and groups while controlling subscription delivery.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P16-01 | `@` mention notifications in article comments, replies, and group messages with visibility, blocking, and notification-preference checks | Not started |
+| P16-02 | Quoted replies with a stable quoted summary and source; show a safe fallback when the original is deleted or no longer visible | Not started |
+| P16-03 | Direct-message and group-message search by keyword, sender, time, and conversation with paginated, scoped results | Not started |
+| P16-04 | Pinned group announcements and important messages with administrator-only write access and ordering | Not started |
+| P16-05 | Group-message location from search results, notifications, and quotes with historical pagination and permission changes handled | Not started |
+| P16-06 | Author, topic, and tag subscription improvements with consistent state, unsubscribe entry points, delivery frequency, and bulk management | Not started |
+
+Necessity: High. This directly improves community retention and message handling, and depends on Phase 15 blocking and notification boundaries.
+
+Acceptance focus: notifications are neither unauthorized nor duplicated; quotes do not leak hidden content; search never crosses unauthorized conversations; pins and message location work on desktop, mobile, and both locales.
+
+### Phase 17: Content Distribution And Public Sharing
+
+Goal: make public content discoverable by subscription tools and search engines while preserving author, topic, collection, and article privacy boundaries.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P17-01 | RSS/Atom feeds for the site, authors, topics, and collections with current-visibility filtering and per-user rate limits | Not started |
+| P17-02 | Sitemaps for public articles, authors, topics, and collections with incremental timestamps and stale-entry removal | Not started |
+| P17-03 | Article Open Graph share cards with title, summary, author, cover, locale, and canonical URL; use a site asset when no cover exists | Not started |
+| P17-04 | Public author/topic subscription pages with shareable entry points that do not expose private content or internal account data | Not started |
+| P17-05 | Email channel for subscription digests with subscribe, unsubscribe, frequency control, delivery records, retries, and bilingual templates | Not started |
+
+Necessity: Medium-high. This is suitable after privacy boundaries are stable and supports off-site distribution and indexing; the email channel requires SMTP configuration.
+
+Acceptance focus: feeds, sitemaps, and share cards contain public data only; revoked visibility invalidates cached/source content promptly; unsubscribe links work without a new login; email failures are traceable without duplicate delivery.
+
+### Phase 18: Deeper Recommendations And Resources
+
+Goal: make recommendations more transparent and recoverable, and extend points resources from redemption into a verifiable delivery, download, and earnings loop.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P18-01 | Explainable recommendation reasons based on interests, subscriptions, reading, or interaction without exposing another user's private behavior | Not started |
+| P18-02 | Manage and restore not-interested feedback by type, with cache invalidation and cleanup | Not started |
+| P18-03 | Resource-delivery records for redemption, unlock, download, failure, and retry, queryable by the owning user | Not started |
+| P18-04 | Points top-up, refund, and violation rules covering duplicate deductions, takedowns, failed orders, and administrator boundaries | Not started |
+| P18-05 | Creator-resource earnings view for pending, settled, refunded, and article/resource-block aggregates | Not started |
+
+Necessity: Medium. Build on the existing recommendation and resource ledger, prioritizing explainability and reconciliation before complex ranking models.
+
+Acceptance focus: reasons match actual ranking inputs; feedback cannot bypass visibility; redemption retries are idempotent; refunds cannot be issued twice; creator earnings reconcile to the points ledger.
+
+### Phase 19: External Integration Capability
+
+Goal: expose controlled external integration without exposing the internal database or high-privilege operations.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P19-01 | Webhooks with event subscriptions, signatures, retry backoff, idempotency keys, failure records, and manual replay | Not started |
+| P19-02 | Read-only API tokens with account/resource scopes, expiry, rotation, revocation, rate limits, and access audit | Not started |
+| P19-03 | External notification channels with unified preferences, channel verification, failure fallback, and sensitive-data redaction | Not started |
+| P19-04 | Evaluate and implement third-party login or enterprise SSO only after confirming OIDC/SAML scope, account linking, unlinking, and recovery | Not started |
+
+Necessity: Decide from actual partner or enterprise demand. Webhooks and read-only tokens can come first; third-party login/SSO requires an explicit identity and security decision.
+
+Acceptance focus: least-privilege tokens, unforgeable webhooks, idempotent duplicate delivery, no secrets in logs, non-blocking external failures, and an explicit account-link confirmation flow.
+
+### Phase 20: Mobile And Offline Experience
+
+Goal: improve usability on mobile networks and assess native Android/iOS investment only when real usage justifies its maintenance cost.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P20-01 | Offline PWA reading for user-saved articles, topics, and collections with stale markers and cache management | Not started |
+| P20-02 | Weak-network fallback with timeouts, offline retry, image compression, offline queueing, and recovery feedback | Not started |
+| P20-03 | Web Push improvements for permission guidance, expired-subscription cleanup, categories, deep links, and bilingual payloads | Not started |
+| P20-04 | Android/iOS assessment based on active users, push delivery, and offline needs; native development is not assumed by default | Not started |
+
+Necessity: Medium. Prioritize PWA and weak-network behavior; treat native apps as an evidence-based assessment.
+
+Acceptance focus: offline content never includes unauthorized data; caches can be deleted within a size limit; weak-network actions do not submit twice; push clicks reach the correct content; major desktop and mobile browsers are covered.
+
+### Phase 21: Operational Resilience And Compliance Closeout
+
+Goal: move from feature completeness to long-term operation, recovery, auditability, and maintainable handover.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P21-01 | Real OSS/R2 recovery drill with paired database/media snapshots, sampled restore, hash verification, and recorded results | Not started |
+| P21-02 | Backup alert drills for failure, timeout, low disk, orphaned files, and restore failure with escalation paths | Not started |
+| P21-03 | Audit-log retention and compliance policy for categories, retention, redaction, search, export permissions, and expiry cleanup | Not started |
+| P21-04 | Compatibility review for Node, Next, Nest, Prisma, MySQL, Redis, and base-image upgrades | Not started |
+| P21-05 | Load testing and disaster recovery for core reads/writes, messaging, search, scheduled work, rate limits, and recovery-time targets | Not started |
+| P21-06 | Operations and handover manual for release rollback, migrations, container cleanup, alert response, key rotation, and emergency contacts | Not started |
+
+Necessity: High. This is the long-term operations closeout, while real restore, email, and object-storage drills depend on the corresponding external services.
+
+Acceptance focus: restore results are reproducible, alerts reach owners, ordinary administrators cannot alter audit history, upgrades are rollbackable, load and recovery targets are recorded, and another maintainer can follow the manual successfully.
+
+### Later-Phase Dependencies And Order
+
+Phase 15 is next and establishes the account, blocking, and authorization foundation. Phase 16 depends on its relationship and notification boundaries. Phases 17 and 18 can run in parallel after Phase 15, but P17-05 requires SMTP. Phase 19 depends on a stable event and permission model; third-party login/SSO needs a separate decision. Phase 20 can follow once public URLs and content-cache boundaries from Phase 17 are clear. Phase 21 should collect operational evidence continuously and run its final acceptance after the main P15-P20 work is complete.
+
+The fixed execution order is P15 -> P16 -> P17/P18 -> P19 -> P20 -> P21. Each phase must complete code, migrations, tests, bilingual documentation, push, deployment, and production verification before its status changes to `Completed`.
+
+## 15. Resume Procedure
 
 When continuing this roadmap:
 

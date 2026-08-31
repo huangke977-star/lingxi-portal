@@ -13,6 +13,11 @@ export class LoginDto {
   @IsString()
   @MaxLength(2048)
   turnstileToken?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(12)
+  totpCode?: string;
 }
 
 export class DeviceLoginVerificationDto {

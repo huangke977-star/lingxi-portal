@@ -90,6 +90,10 @@ export function PublicProfilePopover({ author }: { author: ArticleAuthor }) {
     };
   }, [isOpen]);
 
+  if (author.isDeleted) {
+    return <span className="identity-badged-avatar"><span className="comment-avatar-button">{getAvatarFallbackText({ nickname: locale === "en-US" ? "Deleted user" : "已注销用户", username: "deleted-user" })}</span><span className="article-author-profile-link">{locale === "en-US" ? "Deleted user" : "已注销用户"}</span></span>;
+  }
+
   async function openProfile() {
     setIsOpen((current) => !current);
     if (profile || isLoading) return;

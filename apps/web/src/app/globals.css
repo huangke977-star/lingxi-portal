@@ -305,6 +305,55 @@
 .profile-featured-collection > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile-featured-collection > small { color: var(--muted); }
 
+.privacy-entry-panel { grid-column: 1 / -1; }
+.privacy-entry-panel > p { margin: 0; color: var(--muted); font-size: 0.84rem; }
+.account-privacy-page { display: grid; gap: 16px; }
+.privacy-page-header { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
+.privacy-page-header h1 { margin: 4px 0 5px; font-size: 1.45rem; }
+.privacy-page-header p { margin: 0; color: var(--muted); font-size: 0.82rem; }
+.privacy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.privacy-card, .privacy-audit-card { min-width: 0; align-content: start; }
+.privacy-card-heading { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px; color: var(--accent-strong); }
+.privacy-card-heading h2 { margin: 0; color: var(--foreground); font-size: 1rem; }
+.privacy-card-heading p { margin: 5px 0 0; color: var(--muted); font-size: 0.78rem; line-height: 1.55; }
+.privacy-card > .button { justify-self: start; min-height: 34px; font-size: 0.78rem; }
+.privacy-card .button.danger { color: var(--danger); }
+.privacy-job-status { display: grid; gap: 5px; border-radius: 7px; background: var(--surface-soft); padding: 9px 10px; color: var(--muted-strong); font-size: 0.76rem; }
+.privacy-job-status small { color: var(--muted); }
+.privacy-job-status .text-action { justify-self: start; display: inline-flex; align-items: center; gap: 5px; }
+.privacy-warning { margin: 0; color: var(--danger); font-size: 0.78rem; line-height: 1.5; }
+.privacy-inline-field { display: grid; gap: 5px; color: var(--muted-strong); font-size: 0.76rem; }
+.privacy-inline-field input, .privacy-card > input { min-height: 35px; border: 0; border-radius: 6px; background: var(--surface-soft); color: var(--foreground); font: inherit; outline: none; padding: 7px 9px; }
+.privacy-inline-field input:focus, .privacy-card > input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+.privacy-secret { overflow-wrap: anywhere; border-radius: 6px; background: var(--surface-soft); padding: 8px; color: var(--accent-strong); font-size: 0.8rem; }
+.privacy-uri { overflow-wrap: anywhere; color: var(--muted); font-size: 0.68rem; line-height: 1.4; }
+.privacy-recovery-codes { display: grid; gap: 6px; border-radius: 7px; background: color-mix(in srgb, var(--accent-soft) 60%, transparent); padding: 9px; color: var(--accent-strong); font-size: 0.76rem; }
+.privacy-recovery-codes code { overflow-wrap: anywhere; font-size: 0.72rem; line-height: 1.6; }
+.privacy-blocked-row { display: flex; align-items: center; justify-content: space-between; min-height: 34px; border-bottom: 1px solid var(--control-line); color: var(--foreground); font-size: 0.8rem; }
+.privacy-blocked-row:last-child { border-bottom: 0; }
+.privacy-empty { margin: 0; color: var(--muted); font-size: 0.78rem; }
+.privacy-audit-list { display: grid; gap: 0; }
+.privacy-audit-list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; border-bottom: 1px solid var(--control-line); color: var(--muted-strong); font-size: 0.78rem; }
+.privacy-audit-list > div:last-child { border-bottom: 0; }
+.privacy-audit-list time { color: var(--muted); font-size: 0.7rem; white-space: nowrap; }
+.deleted-users-page .admin-search-field { display: flex; align-items: center; gap: 7px; }
+.deleted-users-page .admin-search-field input { min-width: min(360px, 45vw); }
+.deleted-user-modal { display: grid; width: min(760px, calc(100vw - 28px)); max-height: min(760px, calc(100vh - 40px)); overflow: hidden; border: 1px solid var(--control-line); border-radius: 9px; background: var(--panel); box-shadow: var(--panel-shadow); }
+.deleted-user-modal > header { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 16px 18px; }
+.deleted-user-modal h2 { margin: 4px 0; font-size: 1.05rem; }
+.deleted-user-modal p { margin: 0; color: var(--muted); font-size: 0.76rem; }
+.deleted-user-content { overflow: auto; border-top: 1px solid var(--control-line); padding: 12px 18px 18px; }
+.deleted-user-content h3 { margin: 12px 0 5px; color: var(--accent-strong); font-size: 0.78rem; }
+.deleted-user-content > div { display: grid; gap: 3px; border-bottom: 1px solid var(--control-line); padding: 8px 0; }
+.deleted-user-content strong { font-size: 0.8rem; font-weight: 560; }
+.deleted-user-content small { color: var(--muted); font-size: 0.68rem; }
+
+@media (max-width: 760px) {
+  .privacy-grid { grid-template-columns: minmax(0, 1fr); }
+  .privacy-page-header { align-items: start; flex-direction: column; }
+  .deleted-users-page .admin-search-field input { min-width: 0; width: 100%; }
+}
+
 @media (max-width: 1100px) {
   .profile-display-layout { grid-template-columns: minmax(0, 1fr); }
   .profile-policy-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

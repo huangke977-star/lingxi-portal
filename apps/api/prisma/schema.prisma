@@ -9,7 +9,16 @@ datasource db {
 
 enum UserStatus {
   active
+  deletion_pending
   disabled
+}
+
+enum DataExportJobStatus {
+  queued
+  processing
+  completed
+  failed
+  expired
 }
 
 enum PortalCategoryKind {
@@ -491,6 +500,12 @@ model User {
   isSuperAdmin               Boolean                         @default(false) @map("is_super_admin")
   isAdministrator            Boolean                         @default(false) @map("is_administrator")
   status                     UserStatus                      @default(active)
+  deletionRequestedAt        DateTime?                       @map("deletion_requested_at")
+  deletionScheduledAt        DateTime?                       @map("deletion_scheduled_at")
+  deletedAt                  DateTime?                       @map("deleted_at")
+  deletedOriginalUsername    String?                         @map("deleted_original_username") @db.VarChar(32)
+  deletedOriginalNickname    String?                         @map("deleted_original_nickname") @db.VarChar(32)
+  deletedOriginalEmail       String?                         @map("deleted_original_email") @db.VarChar(191)
   appearanceThemeId          String                          @default("cloud-blue") @map("appearance_theme_id") @db.VarChar(64)
   customAccent               String                          @default("#1814f0") @map("custom_accent") @db.VarChar(7)
   customSurface              String                          @default("#dfc8c8") @map("custom_surface") @db.VarChar(7)
@@ -609,6 +624,9 @@ model User {
   feedbackReviewed           UserFeedback[]                  @relation("UserFeedbackReviewer")
   feedbackReplies            UserFeedbackReply[]             @relation("UserFeedbackReplyAuthor")
   recommendationFeedback     RecommendationFeedback[]
+  dataExportJobs             DataExportJob[]
+  totpCredential              UserTotpCredential?
+  privacyAuditRecords        PrivacyAuditRecord[]
 
   @@index([roleId])
   @@index([createdAt])
@@ -2501,6 +2519,52 @@ model PasswordResetRequest {
 
   @@index([userId, status, createdAt])
   @@map("password_reset_requests")
+}
+
+model DataExportJob {
+  id           Int                @id @default(autoincrement())
+  userId       Int                @map("user_id")
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status       DataExportJobStatus @default(queued)
+  payload      Json?
+  errorMessage String?             @map("error_message") @db.VarChar(500)
+  expiresAt    DateTime            @map("expires_at")
+  completedAt  DateTime?           @map("completed_at")
+  downloadedAt DateTime?           @map("downloaded_at")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
+  @@map("data_export_jobs")
+}
+
+model UserTotpCredential {
+  userId             Int      @id @map("user_id")
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  encryptedSecret    String   @map("encrypted_secret") @db.Text
+  enabled            Boolean  @default(false)
+  recoveryCodeHashes Json?    @map("recovery_code_hashes")
+  confirmedAt        DateTime? @map("confirmed_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("user_totp_credentials")
+}
+
+model PrivacyAuditRecord {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   @db.VarChar(80)
+  metadata  Json?
+  ip        String?  @db.VarChar(80)
+  userAgent String?  @map("user_agent") @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@map("privacy_audit_records")
 }
 
 model MailJob {

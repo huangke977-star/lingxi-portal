@@ -25,6 +25,6 @@ import { TurnstileService } from "./turnstile.service";
     TurnstileService,
     UserManagementGuard,
   ],
-  exports: [AccountSecurityService, MailService, SecurityConfigurationService, TurnstileService],
+  exports: [AccountSecurityService, JwtAuthGuard, MailService, SecretCryptoService, SecurityConfigurationService, TurnstileService],
 })
 export class SecurityModule {}

@@ -59,6 +59,7 @@ export function formatArticleDate(value: string | null, locale: Locale = "zh-CN"
 export function ArticleAuthorLine({ author, interactive = false }: { author: ArticleAuthor; interactive?: boolean }) {
   const { locale } = useLanguage();
   const avatar = author.avatarUrl ? resolveApiUrl(author.avatarUrl) : null;
+  const displayName = author.isDeleted ? (locale === "en-US" ? "Deleted user" : "已注销用户") : author.nickname;
   return (
     <span className="article-author-line">
       {interactive ? <PublicProfilePopover author={author} /> : <span className="identity-badged-avatar">
@@ -67,7 +68,7 @@ export function ArticleAuthorLine({ author, interactive = false }: { author: Art
         </span>
         <AvatarManagementBadge user={author} />
       </span>}
-      <Link className="article-author-profile-link" href={localizedPath(`/users/${encodeURIComponent(author.username)}`, locale)} onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}>{author.nickname}</Link>
+      {author.isDeleted ? <span className="article-author-profile-link">{displayName}</span> : <Link className="article-author-profile-link" href={localizedPath(`/users/${encodeURIComponent(author.username)}`, locale)} onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}>{displayName}</Link>}
     </span>
   );
 }
