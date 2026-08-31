@@ -157,7 +157,7 @@ export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, 
           content: [{
             type: "text",
             text: attachment.name,
-            marks: [{ type: "link", attrs: { href: attachment.href, target: "_blank", rel: "noreferrer" } }],
+            marks: [{ type: "link", attrs: { href: attachment.href, rel: "noreferrer" } }],
           }],
         });
       }
