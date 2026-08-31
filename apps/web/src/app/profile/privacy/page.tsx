@@ -2,10 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Download, KeyRound, ShieldCheck, Trash2, UserRoundX } from "lucide-react";
+import { ArrowLeftRight, Download, KeyRound, ShieldCheck, Trash2, UserRoundX } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { AppToast } from "@/components/app-toast";
 import { PasswordInput } from "@/components/password-input";
+import { OtpCodeInput } from "@/components/otp-code-input";
 import { useLanguage } from "@/components/language-provider";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { isAuthExpiredError } from "@/lib/auth-api";
@@ -21,8 +22,11 @@ export default function AccountPrivacyPage() {
   const [audit, setAudit] = useState<Array<{ id: number; action: string; metadata: unknown; createdAt: string }>>([]);
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
   const [deletionPassword, setDeletionPassword] = useState("");
+  const [deletionOpen, setDeletionOpen] = useState(false);
   const [totpCode, setTotpCode] = useState("");
   const [totpDisableMethod, setTotpDisableMethod] = useState<"idle" | "authenticator" | "email">("idle");
+  const [totpDisableEntry, setTotpDisableEntry] = useState<"otp" | "recovery">("otp");
+  const [totpDisableCooldown, setTotpDisableCooldown] = useState(0);
   const [totpSecret, setTotpSecret] = useState("");
   const [totpUri, setTotpUri] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
@@ -50,6 +54,12 @@ export default function AccountPrivacyPage() {
     }, 1600);
     return () => window.clearInterval(timer);
   }, [exportJob, token]);
+
+  useEffect(() => {
+    if (totpDisableCooldown <= 0) return;
+    const timer = window.setInterval(() => setTotpDisableCooldown((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [totpDisableCooldown]);
 
   async function load(currentToken: string) {
     try {
@@ -115,6 +125,7 @@ export default function AccountPrivacyPage() {
     await run("delete", async () => {
       await requestAccountDeletion(token, deletionPassword);
       setDeletionPassword("");
+      setDeletionOpen(false);
       await load(token);
       setNotice(phrase("账号已进入 7 天注销冷静期，可在此期间撤回。", "Your account entered a 7-day deletion cooling-off period. You can cancel it during this period."));
     });
@@ -158,17 +169,27 @@ export default function AccountPrivacyPage() {
       await disableTotp(token, totpCode);
       setTotpCode("");
       setTotpDisableMethod("idle");
+      setTotpDisableEntry("otp");
       await load(token);
       setNotice(phrase("双因素认证已关闭。", "Two-factor authentication is disabled."));
     });
   }
 
-  async function handleRequestTotpDisableEmail() {
-    if (!token) return;
+  async function handleSwitchTotpDisableMethod() {
+    if (!token || busy || totpDisableCooldown > 0) return;
+    if (totpDisableMethod === "email") {
+      setTotpCode("");
+      setTotpDisableEntry("otp");
+      setTotpDisableMethod("authenticator");
+      setTotpDisableCooldown(60);
+      return;
+    }
     await run("send-disable-totp-email", async () => {
       await requestTotpDisableEmailVerification(token);
       setTotpCode("");
+      setTotpDisableEntry("otp");
       setTotpDisableMethod("email");
+      setTotpDisableCooldown(60);
       setNotice(phrase("解除验证码已发送至你的邮箱。", "A removal code was sent to your email."));
     });
   }
@@ -179,6 +200,7 @@ export default function AccountPrivacyPage() {
       await disableTotpWithEmail(token, totpCode);
       setTotpCode("");
       setTotpDisableMethod("idle");
+      setTotpDisableEntry("otp");
       await load(token);
       setNotice(phrase("双因素认证已关闭。", "Two-factor authentication is disabled."));
     });
@@ -275,12 +297,23 @@ export default function AccountPrivacyPage() {
               </button>
             </>
           ) : (
-            <div className="privacy-deletion-row">
-              <button className="button danger" disabled={busy !== "" || !deletionPassword} onClick={() => void handleDeletion()} type="button">
+            deletionOpen ? (
+              <div className="privacy-deletion-form">
+                <PasswordInput autoComplete="current-password" className="privacy-password-input" disabled={busy !== ""} onChange={(event) => setDeletionPassword(event.target.value)} placeholder={phrase("输入当前密码确认", "Enter your current password to confirm")} value={deletionPassword} />
+                <div className="privacy-deletion-actions">
+                  <button className="button danger" disabled={busy !== "" || !deletionPassword} onClick={() => void handleDeletion()} type="button">
+                    {phrase("确定", "Confirm")}
+                  </button>
+                  <button className="button secondary" disabled={busy !== ""} onClick={() => { setDeletionPassword(""); setDeletionOpen(false); }} type="button">
+                    {phrase("取消", "Cancel")}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button className="button danger" disabled={busy !== ""} onClick={() => setDeletionOpen(true)} type="button">
                 {phrase("申请注销", "Request deletion")}
               </button>
-              <PasswordInput autoComplete="current-password" className="privacy-password-input" disabled={busy !== ""} onChange={(event) => setDeletionPassword(event.target.value)} placeholder={phrase("输入当前密码确认", "Enter your current password to confirm")} value={deletionPassword} />
-            </div>
+            )
           )}
         </section>
         <section className="profile-panel privacy-card">
@@ -298,6 +331,7 @@ export default function AccountPrivacyPage() {
                 disabled={busy !== ""}
                 onClick={() => {
                   setTotpCode("");
+                  setTotpDisableEntry("otp");
                   setTotpDisableMethod("authenticator");
                 }}
                 type="button"
@@ -306,39 +340,42 @@ export default function AccountPrivacyPage() {
               </button>
             ) : (
               <div className="privacy-totp-disable">
-                <label className="privacy-inline-field">
-                  <span>{totpDisableMethod === "email" ? phrase("邮箱验证码", "Email verification code") : phrase("身份验证器验证码或恢复码", "Authenticator code or recovery code")}</span>
-                  <input autoFocus inputMode={totpDisableMethod === "email" ? "numeric" : "text"} maxLength={12} onChange={(event) => setTotpCode(totpDisableMethod === "email" ? event.target.value.replace(/\D/g, "").slice(0, 6) : event.target.value.replace(/\s/g, "").slice(0, 12))} placeholder={totpDisableMethod === "email" ? phrase("输入邮箱中的 6 位验证码", "Enter the 6-digit email code") : phrase("输入验证码或恢复码", "Enter a code or recovery code")} value={totpCode} />
-                </label>
-                <div className="privacy-totp-actions">
-                  <button className="button secondary" disabled={busy !== ""} onClick={() => void handleRequestTotpDisableEmail()} type="button">
-                    {totpDisableMethod === "email" ? phrase("重新发送邮箱验证码", "Resend email code") : phrase("使用邮箱验证码解除", "Remove with email code")}
-                  </button>
-                  {totpDisableMethod === "email" ? (
-                    <button
-                      className="text-action"
-                      disabled={busy !== ""}
-                      onClick={() => {
-                        setTotpCode("");
-                        setTotpDisableMethod("authenticator");
-                      }}
-                      type="button"
-                    >
-                      {phrase("使用身份验证器", "Use authenticator")}
-                    </button>
-                  ) : null}
-                  <button className="button" disabled={busy !== "" || !totpCode} onClick={() => void (totpDisableMethod === "email" ? handleDisableTotpWithEmail() : handleDisableTotp())} type="button">
-                    {phrase("确认解除", "Confirm removal")}
-                  </button>
+                <div className="privacy-totp-code-row">
+                  <div className="privacy-totp-code-field">
+                    <span>{totpDisableEntry === "recovery" ? phrase("恢复码", "Recovery code") : totpDisableMethod === "email" ? phrase("邮箱验证码", "Email verification code") : phrase("身份验证器验证码", "Authenticator code")}</span>
+                    {totpDisableEntry === "recovery" ? (
+                      <input autoFocus inputMode="text" maxLength={12} onChange={(event) => setTotpCode(event.target.value.replace(/\s/g, "").slice(0, 12))} placeholder={phrase("输入恢复码", "Enter recovery code")} value={totpCode} />
+                    ) : (
+                      <OtpCodeInput
+                        ariaLabel={totpDisableMethod === "email" ? phrase("邮箱验证码", "Email verification code") : phrase("身份验证器验证码", "Authenticator code")}
+                        autoFocus
+                        disabled={busy !== ""}
+                        onChange={setTotpCode}
+                        value={totpCode}
+                      />
+                    )}
+                  </div>
                   <button
-                    className="text-action"
-                    disabled={busy !== ""}
-                    onClick={() => {
-                      setTotpCode("");
-                      setTotpDisableMethod("idle");
-                    }}
+                    aria-label={totpDisableCooldown > 0 ? phrase(`${totpDisableCooldown} 秒后可切换验证方式`, `Switch verification method in ${totpDisableCooldown} seconds`) : phrase("切换验证方式", "Switch verification method")}
+                    className="table-icon-action privacy-totp-switch"
+                    disabled={busy !== "" || totpDisableCooldown > 0}
+                    onClick={() => void handleSwitchTotpDisableMethod()}
+                    title={totpDisableCooldown > 0 ? phrase(`${totpDisableCooldown} 秒后可切换验证方式`, `Switch verification method in ${totpDisableCooldown} seconds`) : phrase("切换验证方式", "Switch verification method")}
                     type="button"
                   >
+                    <ArrowLeftRight aria-hidden="true" size={16} />
+                  </button>
+                </div>
+                {totpDisableEntry === "otp" && totpDisableMethod === "authenticator" ? (
+                  <button className="text-action privacy-recovery-toggle" disabled={busy !== ""} onClick={() => { setTotpCode(""); setTotpDisableEntry("recovery"); }} type="button">
+                    {phrase("使用恢复码", "Use recovery code")}
+                  </button>
+                ) : null}
+                <div className="privacy-totp-actions">
+                  <button className="button" disabled={busy !== "" || (totpDisableEntry === "otp" ? !/^\d{6}$/.test(totpCode) : !totpCode.trim())} onClick={() => void (totpDisableMethod === "email" ? handleDisableTotpWithEmail() : handleDisableTotp())} type="button">
+                    {phrase("确定", "Confirm")}
+                  </button>
+                  <button className="button secondary" disabled={busy !== ""} onClick={() => { setTotpCode(""); setTotpDisableEntry("otp"); setTotpDisableMethod("idle"); }} type="button">
                     {phrase("取消", "Cancel")}
                   </button>
                 </div>
@@ -356,10 +393,10 @@ export default function AccountPrivacyPage() {
                   <small className="privacy-uri">{totpUri}</small>
                 </div>
               </div>
-              <label className="privacy-inline-field">
+              <div className="privacy-inline-field">
                 <span>{phrase("身份验证器验证码", "Authenticator code")}</span>
-                <input autoFocus inputMode="numeric" maxLength={6} onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} value={totpCode} />
-              </label>
+                <OtpCodeInput ariaLabel={phrase("身份验证器验证码", "Authenticator code")} autoFocus onChange={setTotpCode} value={totpCode} />
+              </div>
               <button className="button" disabled={busy !== "" || totpCode.length !== 6} onClick={() => void handleConfirmTotp()} type="button">
                 {phrase("确认并启用", "Confirm and enable")}
               </button>

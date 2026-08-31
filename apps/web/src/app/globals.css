@@ -19974,3 +19974,182 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .article-publish-preview-heading h1 { white-space: normal; }
   .article-publish-preview-grid { margin-top: 14px; }
 }
+
+/* Account verification controls use one compact, touch-friendly code treatment. */
+.otp-code-input {
+  display: grid;
+  width: min(100%, 330px);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.otp-code-input input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--surface-soft);
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1;
+  outline: none;
+  padding: 0;
+  text-align: center;
+  transition: background 150ms ease, box-shadow 150ms ease;
+}
+
+.otp-code-input input:focus {
+  background: color-mix(in srgb, var(--accent-soft) 42%, var(--surface-soft));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 32%, transparent);
+  outline: none;
+}
+
+.otp-code-input input:disabled { cursor: wait; opacity: 0.65; }
+
+.auth-totp-verification {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-totp-verification > span,
+.privacy-totp-code-field > span {
+  color: var(--muted-strong);
+  font-size: 0.78rem;
+  font-weight: 620;
+}
+
+.auth-totp-verification > input,
+.privacy-totp-code-field > input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--surface-soft);
+  color: var(--foreground);
+  font: inherit;
+  outline: none;
+  padding: 8px 10px;
+}
+
+.auth-totp-verification > input:focus,
+.privacy-totp-code-field > input:focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
+  outline: none;
+}
+
+.auth-totp-recovery-toggle,
+.privacy-recovery-toggle {
+  justify-self: start;
+  font-size: 0.72rem;
+}
+
+.deleted-users-page .admin-list-toolbar { align-items: center; }
+
+.deleted-users-page .deleted-users-search-field {
+  position: relative;
+  display: block;
+  width: min(100%, 360px);
+  margin-left: auto;
+}
+
+.deleted-users-page .deleted-users-search-field input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding-right: 36px;
+}
+
+.deleted-users-page .deleted-users-search-field > svg {
+  position: absolute;
+  top: 50%;
+  right: 11px;
+  color: var(--muted);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.privacy-deletion-form,
+.privacy-totp-disable {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.privacy-deletion-actions,
+.privacy-totp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.privacy-deletion-actions .button,
+.privacy-totp-actions .button {
+  min-height: 34px;
+  font-size: 0.78rem;
+}
+
+.privacy-totp-code-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.privacy-totp-code-field {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.privacy-totp-code-field .otp-code-input { width: 100%; }
+
+.privacy-totp-switch {
+  flex: 0 0 auto;
+  align-self: end;
+}
+
+@media (max-width: 520px) {
+  .otp-code-input { gap: 5px; }
+  .otp-code-input input { min-height: 40px; }
+  .privacy-totp-code-row { grid-template-columns: minmax(0, 1fr) 34px; }
+}
+
+/* Mobile popovers keep the same painted chat surface as their desktop counterparts. */
+@media (max-width: 760px) {
+  :is(
+    .level-popover,
+    .level-badge::after,
+    .public-profile-popover,
+    .portal-entry-tooltip,
+    .analytics-chart-tooltip,
+    .analytics-metric-tooltip,
+    .my-report-detail-tooltip,
+    .admin-report-popover,
+    .header-popover,
+    .account-menu,
+    .chat-message-sender > small,
+    .chat-emoji-picker,
+    .chat-friend-action-menu,
+    .chat-friend-action-menu-floating,
+    .chat-conversation-action-menu,
+    .chat-message-action-menu,
+    .chat-notification-action-menu,
+    .chat-notification-channel-menu,
+    .chat-mobile-tools-panel,
+    .chat-mobile-channel-sheet,
+    .chat-group-member-context,
+    .chat-call-mini,
+    .app-toast
+  ) {
+    background: var(--chat-conversation-background) !important;
+    backdrop-filter: blur(34px) saturate(146%) !important;
+    -webkit-backdrop-filter: blur(34px) saturate(146%) !important;
+  }
+}

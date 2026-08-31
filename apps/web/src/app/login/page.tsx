@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { useLanguage } from "@/components/language-provider";
+import { OtpCodeInput } from "@/components/otp-code-input";
 import { PasswordInput } from "@/components/password-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import { ApiRequestError, login, resendDeviceLoginVerification, type DeviceLoginVerificationRequired, type TotpVerificationRequired, verifyDeviceLogin, verifyTotpLogin } from "@/lib/auth-api";
@@ -28,6 +29,7 @@ export default function LoginPage() {
   const [deviceChallenge, setDeviceChallenge] = useState<DeviceLoginVerificationRequired | null>(null);
   const [totpChallenge, setTotpChallenge] = useState<TotpVerificationRequired | null>(null);
   const [totpCode, setTotpCode] = useState("");
+  const [totpRecoveryMode, setTotpRecoveryMode] = useState(false);
   const [deviceCode, setDeviceCode] = useState("");
   const [retryAfter, setRetryAfter] = useState(0);
   const isLeavingRef = useRef(false);
@@ -100,6 +102,7 @@ export default function LoginPage() {
       if ("totpVerificationRequired" in response) {
         setTotpChallenge(response);
         setTotpCode("");
+        setTotpRecoveryMode(false);
         setPassword("");
         setNotice(phrase("请输入身份验证器中的 6 位验证码。", "Enter the 6-digit code from your authenticator."));
         return;
@@ -150,6 +153,7 @@ export default function LoginPage() {
         setRetryAfter(0);
         setTotpChallenge(response);
         setTotpCode("");
+        setTotpRecoveryMode(false);
         setNotice(phrase("邮箱验证成功，请输入身份验证器中的 6 位验证码。", "Email verified. Enter the 6-digit code from your authenticator."));
         return;
       }
@@ -196,9 +200,8 @@ export default function LoginPage() {
     setNotice("");
   }
 
-  async function handleTotpVerification(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!totpChallenge || !totpCode.trim()) {
+  async function handleTotpVerification(code = totpCode) {
+    if (!totpChallenge || !code.trim()) {
       setError(phrase("请输入身份验证器验证码或恢复码。", "Enter an authenticator code or recovery code."));
       return;
     }
@@ -209,23 +212,17 @@ export default function LoginPage() {
     try {
       const response = await verifyTotpLogin({
         challengeToken: totpChallenge.challengeToken,
-        code: totpCode.trim(),
+        code: code.trim(),
       });
       if (isLeavingRef.current) return;
       saveAuthTokens(response);
       router.push(localizedPath("/dashboard", locale));
     } catch (verificationError) {
+      setTotpCode("");
       setError(verificationError instanceof Error ? verificationError.message : phrase("双因素认证失败。", "Two-factor verification failed."));
     } finally {
       if (!isLeavingRef.current) setIsSubmitting(false);
     }
-  }
-
-  function resetTotpVerification() {
-    setTotpChallenge(null);
-    setTotpCode("");
-    setError("");
-    setNotice("");
   }
 
   return (
@@ -239,7 +236,7 @@ export default function LoginPage() {
           <span className="section-label">HLOVET</span>
           <h1>{deviceChallenge ? t("auth.newDevice") : totpChallenge ? phrase("双因素验证", "Two-factor verification") : t("auth.accountLogin")}</h1>
         </div>
-        <form className="form-stack" onSubmit={deviceChallenge ? handleDeviceVerification : totpChallenge ? handleTotpVerification : handleSubmit}>
+        <form className="form-stack" onSubmit={totpChallenge ? (event) => event.preventDefault() : deviceChallenge ? handleDeviceVerification : handleSubmit}>
           {deviceChallenge ? (
             <>
               <label>
@@ -262,16 +259,41 @@ export default function LoginPage() {
             </>
           ) : totpChallenge ? (
             <>
-              <label>
-                <span>{phrase("身份验证器验证码", "Authenticator code")}</span>
-                <input autoComplete="one-time-code" autoFocus inputMode="numeric" maxLength={12} onChange={(event) => setTotpCode(event.target.value.replace(/\s/g, "").slice(0, 12))} placeholder={phrase("输入 6 位验证码或恢复码", "Enter a 6-digit code or recovery code")} value={totpCode} />
-              </label>
-              <div className="actions">
-                <button className="button" disabled={isSubmitting || !totpCode.trim()} type="submit">
-                  {isSubmitting ? t("auth.verifying") : t("auth.verifyAndLogin")}
-                </button>
-                <button className="button secondary" disabled={isSubmitting} onClick={resetTotpVerification} type="button">
-                  {t("auth.backToLogin")}
+              <div className="auth-totp-verification">
+                <span>{totpRecoveryMode ? phrase("恢复码", "Recovery code") : phrase("身份验证器验证码", "Authenticator code")}</span>
+                {totpRecoveryMode ? (
+                  <input
+                    autoComplete="one-time-code"
+                    autoFocus
+                    disabled={isSubmitting}
+                    onChange={(event) => setTotpCode(event.target.value.replace(/\s/g, "").slice(0, 12))}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void handleTotpVerification(event.currentTarget.value);
+                    }}
+                    placeholder={phrase("输入恢复码后按回车", "Enter a recovery code and press Enter")}
+                    value={totpCode}
+                  />
+                ) : (
+                  <OtpCodeInput
+                    ariaLabel={phrase("身份验证器验证码", "Authenticator code")}
+                    autoFocus
+                    disabled={isSubmitting}
+                    onChange={setTotpCode}
+                    onComplete={(code) => void handleTotpVerification(code)}
+                    value={totpCode}
+                  />
+                )}
+                <button
+                  className="text-action auth-totp-recovery-toggle"
+                  disabled={isSubmitting}
+                  onClick={() => {
+                    setTotpCode("");
+                    setTotpRecoveryMode((current) => !current);
+                    setError("");
+                  }}
+                  type="button"
+                >
+                  {totpRecoveryMode ? phrase("使用身份验证器", "Use authenticator") : phrase("使用恢复码", "Use recovery code")}
                 </button>
               </div>
             </>
