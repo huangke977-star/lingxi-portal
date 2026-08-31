@@ -828,17 +828,14 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
             <article className="article-reading-layout article-publish-preview-layout">
               <header className="article-reading-header">
                 <div className="article-publish-preview-heading">
-                  <div>
+                  <div className="article-publish-preview-title-line">
                     <h1 style={draft.titleColor ? { color: draft.titleColor } : undefined}>{draft.title || phrase("未命名文章", "Untitled article")}</h1>
-                    <div className="article-reading-author"><span>{user?.nickname || user?.username || phrase("当前用户", "Current user")}</span><span className="article-reading-divider" /><span>{phrase(`预览于 ${formatArticleDate(new Date().toISOString(), locale)}`, `Previewed ${formatArticleDate(new Date().toISOString(), locale)}`)}</span></div>
+                    <div aria-label={phrase("分类与标签", "Category and tags")} className="article-publish-preview-taxonomy">
+                      <span>{draft.category ? displayArticleTaxonomy(draft.category, locale) : phrase("随笔", "Essay")}</span>
+                      {selectedTags.map((tag) => <span key={tag}>#{displayArticleTaxonomy(tag, locale)}</span>)}
+                    </div>
                   </div>
-                  <div className="article-publish-preview-meta">
-                    <dl className="article-aside-meta">
-                      <div><dt>{phrase("分类", "Category")}</dt><dd>{draft.category ? displayArticleTaxonomy(draft.category, locale) : phrase("随笔", "Essay")}</dd></div>
-                      <div><dt>{phrase("阅读权限", "Visibility")}</dt><dd>{visibilityLabel(draft.visibility)}</dd></div>
-                    </dl>
-                    {selectedTags.length ? <div className="article-tag-list">{selectedTags.map((tag) => <span key={tag}>#{displayArticleTaxonomy(tag, locale)}</span>)}</div> : null}
-                  </div>
+                  <div className="article-reading-author"><span>{user?.nickname || user?.username || phrase("当前用户", "Current user")}</span><span className="article-reading-divider" /><span>{phrase(`预览于 ${formatArticleDate(new Date().toISOString(), locale)}`, `Previewed ${formatArticleDate(new Date().toISOString(), locale)}`)}</span><span className="article-reading-divider" /><span>{visibilityLabel(draft.visibility)}</span></div>
                 </div>
               </header>
               <div className="article-reading-grid preview article-publish-preview-grid">
