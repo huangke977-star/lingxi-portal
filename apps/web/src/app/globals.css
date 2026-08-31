@@ -19689,3 +19689,133 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 
 .article-version-detail > div:first-child > .button svg { width: 14px; height: 14px; }
+
+/* One reading rhythm for every ArticleBody surface: article detail, previews,
+   version history, templates, and report/admin dialogs. The rich-text input is
+   intentionally excluded because it has its own editing affordances. */
+.article-body {
+  font-size: 1rem;
+  line-height: 1.68;
+}
+
+.article-body p {
+  margin: 0 0 0.68em;
+  line-height: inherit;
+}
+
+.article-body h2,
+.article-body h3,
+.article-body h4 {
+  margin: 1.28em 0 0.42em;
+  line-height: 1.34;
+}
+
+.article-body ul,
+.article-body ol {
+  margin: 0 0 0.68em;
+  padding-left: 1.42em;
+}
+
+.article-body li { margin: 0.14em 0; }
+.article-body hr { margin: 1.05em 0; }
+.article-body blockquote { margin: 0.88em 0; }
+
+/* Existing surfaces carry local font sizes, but they share the same rhythm. */
+:is(
+  .article-detail-page,
+  .article-publish-preview,
+  .article-editor-preview,
+  .article-template-view-content,
+  .article-template-reading-layout
+) .article-body {
+  line-height: 1.68;
+}
+
+:is(
+  .article-detail-page,
+  .article-publish-preview,
+  .article-editor-preview,
+  .article-template-view-content,
+  .article-template-reading-layout
+) .article-body p {
+  margin-bottom: 0.68em;
+}
+
+/* Publish preview keeps metadata beside its title, leaving one centered body column. */
+.article-publish-preview {
+  width: min(980px, calc(100vw - 32px));
+}
+
+.article-publish-preview-layout {
+  padding: 18px 22px 30px;
+}
+
+.article-publish-preview .article-reading-header {
+  width: 100%;
+  padding: 0 0 14px;
+}
+
+.article-publish-preview-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 270px);
+  gap: 24px;
+  align-items: end;
+}
+
+.article-publish-preview-heading h1 { margin: 0 0 6px; }
+
+.article-publish-preview-meta {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.article-publish-preview-meta .article-aside-meta {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 14px;
+  padding: 0;
+}
+
+.article-publish-preview-meta .article-aside-meta div {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  padding: 0;
+  border: 0;
+}
+
+.article-publish-preview-meta .article-aside-meta dd {
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.article-publish-preview-meta .article-tag-list {
+  gap: 5px;
+  margin: 0;
+}
+
+.article-publish-preview-meta .article-tag-list span {
+  font-size: 0.7rem;
+  padding: 3px 6px;
+}
+
+.article-publish-preview-grid {
+  display: block;
+  width: 100%;
+  margin-top: 18px;
+}
+
+.article-publish-preview .article-reading-main {
+  width: min(100%, 740px);
+  margin: 0 auto;
+  padding: 0;
+}
+
+@media (max-width: 700px) {
+  .article-publish-preview { width: min(100vw - 20px, 980px); }
+  .article-publish-preview-layout { padding: 14px 15px 22px; }
+  .article-publish-preview-heading { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .article-publish-preview-meta .article-aside-meta { max-width: 310px; }
+  .article-publish-preview-grid { margin-top: 14px; }
+}
