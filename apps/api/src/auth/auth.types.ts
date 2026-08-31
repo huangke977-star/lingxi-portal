@@ -1,4 +1,4 @@
-export type UserStatus = 'active' | 'deletion_pending' | 'disabled';
+export type UserStatus = "active" | "deletion_pending" | "disabled";
 
 export interface UserAppearancePreference {
   themeId: string;
@@ -66,9 +66,13 @@ export interface DeviceLoginVerificationRequired {
 
 export interface TotpVerificationRequired {
   totpVerificationRequired: true;
+  challengeToken: string;
+  expiresAt: string;
 }
 
 export type LoginResponse = AuthResponse | DeviceLoginVerificationRequired | TotpVerificationRequired;
+
+export type DeviceLoginResponse = AuthResponse | TotpVerificationRequired;
 
 export interface AccessTokenPayload {
   sub: number;

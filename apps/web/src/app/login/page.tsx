@@ -8,13 +8,7 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { useLanguage } from "@/components/language-provider";
 import { PasswordInput } from "@/components/password-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
-import {
-  ApiRequestError,
-  login,
-  resendDeviceLoginVerification,
-  type DeviceLoginVerificationRequired,
-  verifyDeviceLogin,
-} from "@/lib/auth-api";
+import { ApiRequestError, login, resendDeviceLoginVerification, type DeviceLoginVerificationRequired, type TotpVerificationRequired, verifyDeviceLogin, verifyTotpLogin } from "@/lib/auth-api";
 import { saveAuthTokens } from "@/lib/auth-storage";
 import { getSecurityPolicy, type SecurityPolicy } from "@/lib/security-api";
 import { localizedPath } from "@/lib/i18n";
@@ -31,9 +25,8 @@ export default function LoginPage() {
   const [turnstileRequired, setTurnstileRequired] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
-  const [deviceChallenge, setDeviceChallenge] =
-    useState<DeviceLoginVerificationRequired | null>(null);
-  const [totpRequired, setTotpRequired] = useState(false);
+  const [deviceChallenge, setDeviceChallenge] = useState<DeviceLoginVerificationRequired | null>(null);
+  const [totpChallenge, setTotpChallenge] = useState<TotpVerificationRequired | null>(null);
   const [totpCode, setTotpCode] = useState("");
   const [deviceCode, setDeviceCode] = useState("");
   const [retryAfter, setRetryAfter] = useState(0);
@@ -53,10 +46,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (retryAfter <= 0) return;
-    const timer = window.setInterval(
-      () => setRetryAfter((value) => Math.max(0, value - 1)),
-      1000,
-    );
+    const timer = window.setInterval(() => setRetryAfter((value) => Math.max(0, value - 1)), 1000);
     return () => window.clearInterval(timer);
   }, [retryAfter]);
 
@@ -64,11 +54,7 @@ export default function LoginPage() {
     isLeavingRef.current = true;
     const returnTo = new URLSearchParams(window.location.search).get("from");
 
-    if (
-      returnTo?.startsWith("/") &&
-      !returnTo.startsWith("//") &&
-      returnTo !== "/login"
-    ) {
+    if (returnTo?.startsWith("/") && !returnTo.startsWith("//") && returnTo !== "/login") {
       router.push(returnTo);
       return;
     }
@@ -96,7 +82,6 @@ export default function LoginPage() {
         account,
         password,
         turnstileToken: turnstileToken || undefined,
-        totpCode: totpCode.trim() || undefined,
       });
       if (isLeavingRef.current) return;
 
@@ -113,8 +98,9 @@ export default function LoginPage() {
       }
 
       if ("totpVerificationRequired" in response) {
-        setTotpRequired(true);
+        setTotpChallenge(response);
         setTotpCode("");
+        setPassword("");
         setNotice(phrase("请输入身份验证器中的 6 位验证码。", "Enter the 6-digit code from your authenticator."));
         return;
       }
@@ -124,10 +110,7 @@ export default function LoginPage() {
     } catch (loginError) {
       if (isLeavingRef.current) return;
 
-      if (
-        loginError instanceof ApiRequestError &&
-        (loginError.code === "TURNSTILE_REQUIRED" || loginError.status === 428)
-      ) {
+      if (loginError instanceof ApiRequestError && (loginError.code === "TURNSTILE_REQUIRED" || loginError.status === 428)) {
         setTurnstileRequired(true);
         if (!policy) {
           void getSecurityPolicy()
@@ -139,11 +122,7 @@ export default function LoginPage() {
         setTurnstileToken("");
         setTurnstileResetKey((value) => value + 1);
       }
-      setError(
-        loginError instanceof Error
-          ? loginError.message
-          : t("auth.loginFailed"),
-      );
+      setError(loginError instanceof Error ? loginError.message : t("auth.loginFailed"));
     } finally {
       if (!isLeavingRef.current) setIsSubmitting(false);
     }
@@ -165,14 +144,19 @@ export default function LoginPage() {
         code: deviceCode.trim(),
       });
       if (isLeavingRef.current) return;
+      if ("totpVerificationRequired" in response) {
+        setDeviceChallenge(null);
+        setDeviceCode("");
+        setRetryAfter(0);
+        setTotpChallenge(response);
+        setTotpCode("");
+        setNotice(phrase("邮箱验证成功，请输入身份验证器中的 6 位验证码。", "Email verified. Enter the 6-digit code from your authenticator."));
+        return;
+      }
       saveAuthTokens(response);
       router.push(localizedPath("/dashboard", locale));
     } catch (verificationError) {
-      setError(
-        verificationError instanceof Error
-          ? verificationError.message
-          : t("auth.deviceFailed"),
-      );
+      setError(verificationError instanceof Error ? verificationError.message : t("auth.deviceFailed"));
     } finally {
       if (!isLeavingRef.current) setIsSubmitting(false);
     }
@@ -184,9 +168,7 @@ export default function LoginPage() {
     setError("");
     setNotice("");
     try {
-      const result = await resendDeviceLoginVerification(
-        deviceChallenge.challengeToken,
-      );
+      const result = await resendDeviceLoginVerification(deviceChallenge.challengeToken);
       setDeviceChallenge((current) =>
         current
           ? {
@@ -200,9 +182,7 @@ export default function LoginPage() {
       setRetryAfter(Math.max(1, result.retryAfterSeconds));
       setNotice(phrase(`验证码已重新发送至 ${result.emailHint}`, `Verification code resent to ${result.emailHint}`));
     } catch (resendError) {
-      setError(
-        resendError instanceof Error ? resendError.message : t("auth.loginFailed"),
-      );
+      setError(resendError instanceof Error ? resendError.message : t("auth.loginFailed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -216,68 +196,81 @@ export default function LoginPage() {
     setNotice("");
   }
 
+  async function handleTotpVerification(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!totpChallenge || !totpCode.trim()) {
+      setError(phrase("请输入身份验证器验证码或恢复码。", "Enter an authenticator code or recovery code."));
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await verifyTotpLogin({
+        challengeToken: totpChallenge.challengeToken,
+        code: totpCode.trim(),
+      });
+      if (isLeavingRef.current) return;
+      saveAuthTokens(response);
+      router.push(localizedPath("/dashboard", locale));
+    } catch (verificationError) {
+      setError(verificationError instanceof Error ? verificationError.message : phrase("双因素认证失败。", "Two-factor verification failed."));
+    } finally {
+      if (!isLeavingRef.current) setIsSubmitting(false);
+    }
+  }
+
+  function resetTotpVerification() {
+    setTotpChallenge(null);
+    setTotpCode("");
+    setError("");
+    setNotice("");
+  }
+
   return (
     <section className="auth-page">
-      <div className="auth-panel">
-        <div className="auth-language-control"><LanguageSwitcher /></div>
-        <button
-          aria-label={t("auth.back")}
-          className="auth-close"
-          onClick={handleCancel}
-          title={t("auth.back")}
-          type="button"
-        />
+      <div className={`auth-panel${totpChallenge ? " auth-panel--verification" : ""}`}>
+        <div className="auth-language-control">
+          <LanguageSwitcher />
+        </div>
+        <button aria-label={t("auth.back")} className="auth-close" onClick={handleCancel} title={t("auth.back")} type="button" />
         <div className="auth-panel-head">
           <span className="section-label">HLOVET</span>
-          <h1>{deviceChallenge ? t("auth.newDevice") : totpRequired ? phrase("双因素验证", "Two-factor verification") : t("auth.accountLogin")}</h1>
+          <h1>{deviceChallenge ? t("auth.newDevice") : totpChallenge ? phrase("双因素验证", "Two-factor verification") : t("auth.accountLogin")}</h1>
         </div>
-        <form
-          className="form-stack"
-          onSubmit={deviceChallenge ? handleDeviceVerification : handleSubmit}
-        >
+        <form className="form-stack" onSubmit={deviceChallenge ? handleDeviceVerification : totpChallenge ? handleTotpVerification : handleSubmit}>
           {deviceChallenge ? (
             <>
               <label>
                 <span>{t("auth.emailCode")}</span>
-                <input
-                  autoComplete="one-time-code"
-                  autoFocus
-                  inputMode="numeric"
-                  maxLength={6}
-                  name="device-code"
-                  onChange={(event) =>
-                    setDeviceCode(
-                      event.target.value.replace(/\D/g, "").slice(0, 6),
-                    )
-                  }
-                  placeholder={phrase(`已发送至 ${deviceChallenge.emailHint}`, `Sent to ${deviceChallenge.emailHint}`)}
-                  value={deviceCode}
-                />
+                <input autoComplete="one-time-code" autoFocus inputMode="numeric" maxLength={6} name="device-code" onChange={(event) => setDeviceCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder={phrase(`已发送至 ${deviceChallenge.emailHint}`, `Sent to ${deviceChallenge.emailHint}`)} value={deviceCode} />
               </label>
               <div className="auth-code-actions">
-                <button
-                  className="text-action primary"
-                  disabled={isSubmitting || retryAfter > 0}
-                  onClick={() => void handleResendDeviceCode()}
-                  type="button"
-                >
+                <button className="text-action primary" disabled={isSubmitting || retryAfter > 0} onClick={() => void handleResendDeviceCode()} type="button">
                   {retryAfter > 0 ? `${retryAfter}s` : t("auth.resend")}
                 </button>
               </div>
               <div className="actions">
-                <button
-                  className="button"
-                  disabled={isSubmitting}
-                  type="submit"
-                >
+                <button className="button" disabled={isSubmitting} type="submit">
                   {isSubmitting ? t("auth.verifying") : t("auth.verifyAndLogin")}
                 </button>
-                <button
-                  className="button secondary"
-                  disabled={isSubmitting}
-                  onClick={resetDeviceVerification}
-                  type="button"
-                >
+                <button className="button secondary" disabled={isSubmitting} onClick={resetDeviceVerification} type="button">
+                  {t("auth.backToLogin")}
+                </button>
+              </div>
+            </>
+          ) : totpChallenge ? (
+            <>
+              <label>
+                <span>{phrase("身份验证器验证码", "Authenticator code")}</span>
+                <input autoComplete="one-time-code" autoFocus inputMode="numeric" maxLength={12} onChange={(event) => setTotpCode(event.target.value.replace(/\s/g, "").slice(0, 12))} placeholder={phrase("输入 6 位验证码或恢复码", "Enter a 6-digit code or recovery code")} value={totpCode} />
+              </label>
+              <div className="actions">
+                <button className="button" disabled={isSubmitting || !totpCode.trim()} type="submit">
+                  {isSubmitting ? t("auth.verifying") : t("auth.verifyAndLogin")}
+                </button>
+                <button className="button secondary" disabled={isSubmitting} onClick={resetTotpVerification} type="button">
                   {t("auth.backToLogin")}
                 </button>
               </div>
@@ -286,56 +279,23 @@ export default function LoginPage() {
             <>
               <label>
                 <span>{t("auth.account")}</span>
-                <input
-                  autoComplete="username"
-                  name="account"
-                  onChange={(event) => setAccount(event.target.value)}
-                  value={account}
-                />
+                <input autoComplete="username" name="account" onChange={(event) => setAccount(event.target.value)} value={account} />
               </label>
               <label>
                 <span className="auth-label-row">
                   <span>{t("auth.password")}</span>
                   <Link href={localizedPath("/forgot-password", locale)}>{t("auth.forgotPassword")}</Link>
                 </span>
-                <PasswordInput
-                  autoComplete="current-password"
-                  name="password"
-                  onChange={(event) => setPassword(event.target.value)}
-                  value={password}
-                />
+                <PasswordInput autoComplete="current-password" name="password" onChange={(event) => setPassword(event.target.value)} value={password} />
               </label>
-              {totpRequired ? (
-                <label>
-                  <span>{phrase("身份验证器验证码", "Authenticator code")}</span>
-                  <input
-                    autoComplete="one-time-code"
-                    autoFocus
-                    inputMode="numeric"
-                    maxLength={6}
-                    onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder={phrase("输入 6 位验证码或恢复码", "Enter a 6-digit code or recovery code")}
-                    value={totpCode}
-                  />
-                </label>
-              ) : null}
               {turnstileRequired ? (
                 <div className="auth-turnstile-field">
                   <span>{t("auth.securityCheck")}</span>
-                  <TurnstileWidget
-                    action="login"
-                    onTokenChange={setTurnstileToken}
-                    resetKey={turnstileResetKey}
-                    siteKey={policy?.turnstile.siteKey ?? ""}
-                  />
+                  <TurnstileWidget action="login" onTokenChange={setTurnstileToken} resetKey={turnstileResetKey} siteKey={policy?.turnstile.siteKey ?? ""} />
                 </div>
               ) : null}
               <div className="actions">
-                <button
-                  className="button"
-                  disabled={isSubmitting}
-                  type="submit"
-                >
+                <button className="button" disabled={isSubmitting} type="submit">
                   {isSubmitting ? t("auth.loggingIn") : t("auth.login")}
                 </button>
                 <Link className="button secondary" href={localizedPath("/register", locale)}>

@@ -1,17 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Header,
-  Param,
-  ParseIntPipe,
-  Patch,
-  Post,
-  Query,
-  Req,
-  Res,
-  UseGuards,
-} from "@nestjs/common";
+import { Body, Controller, Get, Header, Param, ParseIntPipe, Patch, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { AuthenticatedUser, RefreshSessionContext } from "../auth/auth.types";
@@ -51,12 +38,7 @@ export class AccountPrivacyController {
 
   @Get("me/exports/:id/download")
   @Header("Content-Type", "application/json; charset=utf-8")
-  async downloadExport(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param("id", ParseIntPipe) id: number,
-    @Req() request: PrivacyRequest,
-    @Res({ passthrough: true }) response: Response,
-  ) {
+  async downloadExport(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number, @Req() request: PrivacyRequest, @Res({ passthrough: true }) response: Response) {
     response.setHeader("Content-Disposition", `attachment; filename="lingxi-data-export-${id}.json"`);
     return this.privacy.downloadExport(user, id, this.context(request));
   }
@@ -84,6 +66,21 @@ export class AccountPrivacyController {
   @Patch("me/totp/disable")
   disableTotp(@CurrentUser() user: AuthenticatedUser, @Body() dto: TotpCodeDto, @Req() request: PrivacyRequest) {
     return this.privacy.disableTotp(user, dto.code, this.context(request));
+  }
+
+  @Post("me/totp/disable/email")
+  requestTotpDisableVerification(@CurrentUser() user: AuthenticatedUser, @Req() request: PrivacyRequest) {
+    return this.privacy.requestTotpDisableVerification(user, this.context(request));
+  }
+
+  @Post("me/totp/disable/email/confirm")
+  disableTotpWithEmail(@CurrentUser() user: AuthenticatedUser, @Body() dto: TotpCodeDto, @Req() request: PrivacyRequest) {
+    return this.privacy.disableTotpWithEmail(user, dto.code, this.context(request));
+  }
+
+  @Patch("admin/users/:id/totp/reset")
+  resetTotpBySuperAdmin(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number, @Req() request: PrivacyRequest) {
+    return this.privacy.resetTotpBySuperAdmin(user, id, this.context(request));
   }
 
   @Get("admin/deleted-users")

@@ -1,39 +1,35 @@
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  UnauthorizedException,
-  forwardRef,
-  Inject,
-} from '@nestjs/common';
-import { JwtService, JwtSignOptions } from '@nestjs/jwt';
-import { RedisService } from '../redis/redis.service';
-import { SiteSettingsService } from '../site-settings/site-settings.service';
-import { UsersService } from '../users/users.service';
-import {
-  AuthenticatedUser,
-  AuthResponse,
-  AuthSessionSummary,
-  LoginResponse,
-  RefreshSessionContext,
-} from './auth.types';
-import { DeviceLoginVerificationDto, LoginDto } from './dto/login.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
-import { RegisterDto } from './dto/register.dto';
-import { PasswordService } from './password.service';
-import { RefreshTokenService } from './refresh-token.service';
-import { AccountSecurityService } from '../security/account-security.service';
-import { SecurityConfigurationService } from '../security/security-configuration.service';
-import { TurnstileService } from '../security/turnstile.service';
-import { PasswordRecoveryResetDto } from '../security/dto/security.dto';
-import { LoginSecurityEventType } from '../generated/prisma/client';
-import { AccountPrivacyService } from '../account-privacy/account-privacy.service';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException, forwardRef, Inject } from "@nestjs/common";
+import { createHash, randomBytes } from "node:crypto";
+import { JwtService, JwtSignOptions } from "@nestjs/jwt";
+import { RedisService } from "../redis/redis.service";
+import { SiteSettingsService } from "../site-settings/site-settings.service";
+import { UsersService } from "../users/users.service";
+import { AuthenticatedUser, AuthResponse, AuthSessionSummary, DeviceLoginResponse, LoginResponse, RefreshSessionContext } from "./auth.types";
+import { DeviceLoginVerificationDto, LoginDto, TotpLoginVerificationDto } from "./dto/login.dto";
+import { ChangePasswordDto } from "./dto/change-password.dto";
+import { RegisterDto } from "./dto/register.dto";
+import { PasswordService } from "./password.service";
+import { RefreshTokenService } from "./refresh-token.service";
+import { AccountSecurityService } from "../security/account-security.service";
+import { SecurityConfigurationService } from "../security/security-configuration.service";
+import { TurnstileService } from "../security/turnstile.service";
+import { PasswordRecoveryResetDto } from "../security/dto/security.dto";
+import { LoginSecurityEventType } from "../generated/prisma/client";
+import { AccountPrivacyService } from "../account-privacy/account-privacy.service";
+
+interface TotpLoginChallenge {
+  userId: number;
+  deviceFingerprint: string;
+  deviceVerifiedByEmail: boolean;
+  attempts: number;
+}
 
 @Injectable()
 export class AuthService {
   private readonly loginFailureTtlSeconds = 15 * 60;
   private readonly loginFailureLimit = 5;
+  private readonly totpLoginChallengeTtlSeconds = 5 * 60;
+  private readonly totpLoginAttemptLimit = 5;
 
   constructor(
     private readonly usersService: UsersService,
@@ -52,22 +48,21 @@ export class AuthService {
   async register(dto: RegisterDto, context: RefreshSessionContext): Promise<AuthResponse> {
     const registrationPolicy = await this.siteSettingsService.getRegistrationPolicy();
     if (!registrationPolicy.registrationOpen) {
-      throw new ForbiddenException('Registration is currently closed.');
+      throw new ForbiddenException("Registration is currently closed.");
     }
 
     const username = dto.username.trim();
     const nickname = dto.nickname.trim();
     const email = dto.email.trim().toLowerCase();
     const securityConfiguration = await this.securityConfiguration.getConfiguration();
-    const registrationEmailVerificationEnabled =
-      securityConfiguration.smtpEnabled && securityConfiguration.registrationEmailVerificationEnabled;
+    const registrationEmailVerificationEnabled = securityConfiguration.smtpEnabled && securityConfiguration.registrationEmailVerificationEnabled;
 
     if ((await this.usersService.findForLogin(username)) || (await this.usersService.findForLogin(email))) {
-      throw new ConflictException('Username or email already exists.');
+      throw new ConflictException("Username or email already exists.");
     }
 
     if (registrationEmailVerificationEnabled) {
-      if (!dto.verificationCode) throw new BadRequestException('请输入邮箱验证码。');
+      if (!dto.verificationCode) throw new BadRequestException("请输入邮箱验证码。");
       await this.accountSecurity.consumeRegistrationCode(email, dto.verificationCode);
     } else {
       await this.turnstile.verify(dto.turnstileToken, context.ip, securityConfiguration.turnstileRegistrationEnabled);
@@ -93,12 +88,9 @@ export class AuthService {
   async login(dto: LoginDto, context: RefreshSessionContext): Promise<LoginResponse> {
     const account = dto.account.trim();
     const failureKey = this.loginFailureKey(account, context.ip);
-    const failures = Number((await this.redis.get(failureKey)) ?? '0');
+    const failures = Number((await this.redis.get(failureKey)) ?? "0");
     const securityConfiguration = await this.securityConfiguration.getConfiguration();
-    if (
-      securityConfiguration.turnstileLoginEnabled &&
-      failures >= securityConfiguration.loginFailureTurnstileThreshold
-    ) {
+    if (securityConfiguration.turnstileLoginEnabled && failures >= securityConfiguration.loginFailureTurnstileThreshold) {
       await this.turnstile.verify(dto.turnstileToken, context.ip, true);
     }
     await this.assertNotLocked(failureKey);
@@ -108,8 +100,8 @@ export class AuthService {
       await this.recordLoginFailure(failureKey);
     }
 
-    if (user?.status !== 'active') {
-      throw new ForbiddenException('User is disabled.');
+    if (user?.status !== "active") {
+      throw new ForbiddenException("User is disabled.");
     }
 
     const passwordMatches = await this.passwordService.verifyPassword(dto.password, user.passwordHash);
@@ -118,27 +110,33 @@ export class AuthService {
     }
 
     await this.redis.del(failureKey);
-    const totpResult = await this.accountPrivacy.verifyTotpForLogin(user.id, dto.totpCode);
-    if (totpResult === "required") return { totpVerificationRequired: true };
-    if (!totpResult) throw new UnauthorizedException("双因素验证码无效。");
-    if (
-      securityConfiguration.smtpEnabled &&
-      securityConfiguration.untrustedDeviceEmailVerificationEnabled &&
-      !(await this.accountSecurity.isTrustedDevice(user.id, context))
-    ) {
+    if (securityConfiguration.smtpEnabled && securityConfiguration.untrustedDeviceEmailVerificationEnabled && !(await this.accountSecurity.isTrustedDevice(user.id, context))) {
       return this.accountSecurity.requestDeviceLoginVerification(user, context);
     }
-    await this.usersService.markLoginSuccess(user.id);
-    await this.accountSecurity.recordLogin(user, context);
-    return this.createAuthResponse(user, context);
+    if ((await this.accountPrivacy.verifyTotpForLogin(user.id)) === "required") {
+      return this.requestTotpLoginVerification(user.id, context, false);
+    }
+    return this.completeLogin(user.id, context, false);
   }
 
-  async verifyDeviceLogin(dto: DeviceLoginVerificationDto, context: RefreshSessionContext): Promise<AuthResponse> {
+  async verifyDeviceLogin(dto: DeviceLoginVerificationDto, context: RefreshSessionContext): Promise<DeviceLoginResponse> {
     const verified = await this.accountSecurity.consumeDeviceLoginVerification(dto.challengeToken, dto.code, context);
-    const user = await this.usersService.findActiveById(verified.userId);
-    await this.usersService.markLoginSuccess(user.id);
-    await this.accountSecurity.recordVerifiedDeviceLogin(user, context);
-    return this.createAuthResponse(user, context);
+    if ((await this.accountPrivacy.verifyTotpForLogin(verified.userId)) === "required") {
+      return this.requestTotpLoginVerification(verified.userId, context, true);
+    }
+    return this.completeLogin(verified.userId, context, true);
+  }
+
+  async verifyTotpLogin(dto: TotpLoginVerificationDto, context: RefreshSessionContext): Promise<AuthResponse> {
+    const challenge = await this.requireTotpLoginChallenge(dto.challengeToken, context);
+    const valid = await this.accountPrivacy.verifyTotpForLogin(challenge.userId, dto.code);
+    if (valid !== true) {
+      await this.recordTotpLoginFailure(dto.challengeToken, challenge);
+      throw new UnauthorizedException("双因素验证码无效。");
+    }
+
+    await this.redis.del(this.totpLoginChallengeKey(dto.challengeToken));
+    return this.completeLogin(challenge.userId, context, challenge.deviceVerifiedByEmail);
   }
 
   async refresh(refreshToken: string, context: RefreshSessionContext): Promise<AuthResponse> {
@@ -155,11 +153,7 @@ export class AuthService {
     return { success: true };
   }
 
-  async listSessions(
-    userId: number,
-    sessionId: string | null,
-    context: RefreshSessionContext,
-  ): Promise<{ sessions: AuthSessionSummary[] }> {
+  async listSessions(userId: number, sessionId: string | null, context: RefreshSessionContext): Promise<{ sessions: AuthSessionSummary[] }> {
     return {
       sessions: await this.refreshTokenService.listSessions(userId, sessionId, context),
     };
@@ -177,11 +171,7 @@ export class AuthService {
     };
   }
 
-  async revokeSession(
-    userId: number,
-    currentSessionId: string | null,
-    targetSessionId: string,
-  ): Promise<{ success: true; current: boolean }> {
+  async revokeSession(userId: number, currentSessionId: string | null, targetSessionId: string): Promise<{ success: true; current: boolean }> {
     return this.refreshTokenService.revokeSession(userId, currentSessionId, targetSessionId);
   }
 
@@ -189,28 +179,20 @@ export class AuthService {
     return user;
   }
 
-  async changePassword(
-    user: AuthenticatedUser,
-    sessionId: string | null,
-    dto: ChangePasswordDto,
-    context: RefreshSessionContext,
-  ): Promise<{ success: true; revokedSessions: number }> {
+  async changePassword(user: AuthenticatedUser, sessionId: string | null, dto: ChangePasswordDto, context: RefreshSessionContext): Promise<{ success: true; revokedSessions: number }> {
     const storedUser = await this.usersService.findForLogin(user.username);
     if (!storedUser) {
-      throw new BadRequestException('Current password is incorrect.');
+      throw new BadRequestException("Current password is incorrect.");
     }
 
-    const currentPasswordMatches = await this.passwordService.verifyPassword(
-      dto.currentPassword,
-      storedUser.passwordHash,
-    );
+    const currentPasswordMatches = await this.passwordService.verifyPassword(dto.currentPassword, storedUser.passwordHash);
     if (!currentPasswordMatches) {
-      throw new BadRequestException('Current password is incorrect.');
+      throw new BadRequestException("Current password is incorrect.");
     }
 
     const passwordIsUnchanged = await this.passwordService.verifyPassword(dto.newPassword, storedUser.passwordHash);
     if (passwordIsUnchanged) {
-      throw new BadRequestException('New password must be different.');
+      throw new BadRequestException("New password must be different.");
     }
 
     await this.usersService.updateOwnPassword(user.id, dto.newPassword);
@@ -219,13 +201,10 @@ export class AuthService {
     return { success: true, revokedSessions };
   }
 
-  async resetPassword(
-    dto: PasswordRecoveryResetDto,
-    context: RefreshSessionContext,
-  ): Promise<{ success: true; revokedSessions: number }> {
+  async resetPassword(dto: PasswordRecoveryResetDto, context: RefreshSessionContext): Promise<{ success: true; revokedSessions: number }> {
     const securityConfiguration = await this.securityConfiguration.getConfiguration();
     if (!securityConfiguration.smtpEnabled || !securityConfiguration.passwordRecoveryEnabled) {
-      throw new BadRequestException('密码找回当前未启用。');
+      throw new BadRequestException("密码找回当前未启用。");
     }
     await this.turnstile.verify(dto.turnstileToken, context.ip, securityConfiguration.turnstileRecoveryEnabled);
     const request = await this.accountSecurity.consumePasswordResetToken(dto.token);
@@ -244,6 +223,78 @@ export class AuthService {
     };
   }
 
+  private async completeLogin(userId: number, context: RefreshSessionContext, deviceVerifiedByEmail: boolean): Promise<AuthResponse> {
+    const user = await this.usersService.findActiveById(userId);
+    await this.usersService.markLoginSuccess(user.id);
+    if (deviceVerifiedByEmail) {
+      await this.accountSecurity.recordVerifiedDeviceLogin(user, context);
+    } else {
+      await this.accountSecurity.recordLogin(user, context);
+    }
+    return this.createAuthResponse(user, context);
+  }
+
+  private async requestTotpLoginVerification(
+    userId: number,
+    context: RefreshSessionContext,
+    deviceVerifiedByEmail: boolean,
+  ): Promise<{
+    totpVerificationRequired: true;
+    challengeToken: string;
+    expiresAt: string;
+  }> {
+    const challengeToken = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(Date.now() + this.totpLoginChallengeTtlSeconds * 1000);
+    const challenge: TotpLoginChallenge = {
+      userId,
+      deviceFingerprint: this.loginDeviceFingerprint(context),
+      deviceVerifiedByEmail,
+      attempts: 0,
+    };
+    await this.redis.set(this.totpLoginChallengeKey(challengeToken), JSON.stringify(challenge), this.totpLoginChallengeTtlSeconds);
+    return {
+      totpVerificationRequired: true,
+      challengeToken,
+      expiresAt: expiresAt.toISOString(),
+    };
+  }
+
+  private async requireTotpLoginChallenge(challengeToken: string, context: RefreshSessionContext): Promise<TotpLoginChallenge> {
+    const raw = await this.redis.get(this.totpLoginChallengeKey(challengeToken));
+    if (!raw) throw new BadRequestException("双因素认证已失效，请重新登录。");
+    let challenge: TotpLoginChallenge;
+    try {
+      challenge = JSON.parse(raw) as TotpLoginChallenge;
+    } catch {
+      await this.redis.del(this.totpLoginChallengeKey(challengeToken));
+      throw new BadRequestException("双因素认证已失效，请重新登录。");
+    }
+    if (challenge.deviceFingerprint !== this.loginDeviceFingerprint(context)) {
+      throw new BadRequestException("双因素认证信息不匹配，请重新登录。");
+    }
+    return challenge;
+  }
+
+  private async recordTotpLoginFailure(challengeToken: string, challenge: TotpLoginChallenge): Promise<void> {
+    const attempts = challenge.attempts + 1;
+    const key = this.totpLoginChallengeKey(challengeToken);
+    if (attempts >= this.totpLoginAttemptLimit) {
+      await this.redis.del(key);
+      return;
+    }
+    await this.redis.set(key, JSON.stringify({ ...challenge, attempts }), this.totpLoginChallengeTtlSeconds);
+  }
+
+  private loginDeviceFingerprint(context: RefreshSessionContext): string {
+    return createHash("sha256")
+      .update(context.trustedDeviceToken?.trim() || context.deviceId?.trim() || context.userAgent)
+      .digest("hex");
+  }
+
+  private totpLoginChallengeKey(challengeToken: string): string {
+    return `login_totp_challenge:${createHash("sha256").update(challengeToken).digest("hex")}`;
+  }
+
   private async signAccessToken(user: AuthenticatedUser, sessionId: string): Promise<string> {
     return this.jwtService.signAsync(
       {
@@ -253,8 +304,8 @@ export class AuthService {
         av: user.authVersion ?? 0,
       },
       {
-        secret: process.env.JWT_ACCESS_SECRET ?? 'dev-access-token-secret',
-        expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN ?? '15m') as JwtSignOptions['expiresIn'],
+        secret: process.env.JWT_ACCESS_SECRET ?? "dev-access-token-secret",
+        expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN ?? "15m") as JwtSignOptions["expiresIn"],
       },
     );
   }
@@ -279,17 +330,13 @@ export class AuthService {
   }
 
   private async assertNotLocked(failureKey: string): Promise<void> {
-    const failures = Number((await this.redis.get(failureKey)) ?? '0');
+    const failures = Number((await this.redis.get(failureKey)) ?? "0");
     if (failures >= this.loginFailureLimit) {
-      throw new ForbiddenException('Too many failed login attempts.');
+      throw new ForbiddenException("Too many failed login attempts.");
     }
   }
 
-  private async recordLoginFailure(
-    failureKey: string,
-    userId?: number,
-    context?: RefreshSessionContext,
-  ): Promise<never> {
+  private async recordLoginFailure(failureKey: string, userId?: number, context?: RefreshSessionContext): Promise<never> {
     const failures = await this.redis.incr(failureKey);
     if (failures === 1) {
       await this.redis.expire(failureKey, this.loginFailureTtlSeconds);
@@ -297,10 +344,10 @@ export class AuthService {
 
     if (failures >= this.loginFailureLimit) {
       if (userId && context) await this.accountSecurity.recordBlockedLogin(userId, context);
-      throw new ForbiddenException('Too many failed login attempts.');
+      throw new ForbiddenException("Too many failed login attempts.");
     }
 
-    throw new UnauthorizedException('Invalid credentials.');
+    throw new UnauthorizedException("Invalid credentials.");
   }
 
   private loginFailureKey(account: string, ip: string): string {

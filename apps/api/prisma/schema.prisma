@@ -279,6 +279,7 @@ enum EmailVerificationPurpose {
   registration
   account_email
   device_login
+  totp_disable
 }
 
 enum EmailVerificationStatus {

@@ -1,16 +1,6 @@
 import { BadRequestException, ConflictException, HttpException, Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
-import {
-  EmailVerificationPurpose,
-  EmailVerificationStatus,
-  LoginRiskLevel,
-  LoginSecurityEventType,
-  MailJobType,
-  PasswordResetStatus,
-  Prisma,
-  UserNotificationChannel,
-  UserNotificationType,
-} from "../generated/prisma/client";
+import { EmailVerificationPurpose, EmailVerificationStatus, LoginRiskLevel, LoginSecurityEventType, MailJobType, PasswordResetStatus, Prisma, UserNotificationChannel, UserNotificationType } from "../generated/prisma/client";
 import { AuthenticatedUser, RefreshSessionContext } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
@@ -166,6 +156,61 @@ export class AccountSecurityService {
       success: true as const,
       emailVerifiedAt: new Date().toISOString(),
     };
+  }
+
+  async requestTotpDisableVerification(user: AuthenticatedUser, context: RefreshSessionContext) {
+    const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled) throw new BadRequestException("邮件服务当前未启用。");
+    await this.assertCodeRateLimit(user.email, context.ip, "totp-disable");
+    const code = this.createCode();
+    await this.expirePendingCodes(user.email, EmailVerificationPurpose.totp_disable);
+    const request = await this.prisma.emailVerificationRequest.create({
+      data: {
+        userId: user.id,
+        purpose: EmailVerificationPurpose.totp_disable,
+        email: user.email,
+        codeHash: this.hashCode(user.email, code),
+        ip: context.ip,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
+    });
+    try {
+      await this.mail.send({
+        type: MailJobType.security_notice,
+        recipient: user.email,
+        subject: "HLOVET 解除双因素认证验证码",
+        text: `你正在解除 HLOVET 双因素认证。验证码是 ${code}，10 分钟内有效。若非本人操作，请立即修改密码。`,
+        html: `<p>${this.escapeHtml(user.nickname)}，你好：</p><p>你正在解除 HLOVET 双因素认证。</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>验证码 10 分钟内有效。若非本人操作，请立即修改密码。</p>`,
+        userId: user.id,
+        metadata: {
+          verificationRequestId: request.id,
+          purpose: "totp_disable",
+          ip: context.ip,
+        },
+      });
+    } catch (error) {
+      await this.prisma.emailVerificationRequest.update({
+        where: { id: request.id },
+        data: { status: EmailVerificationStatus.expired },
+      });
+      throw error;
+    }
+    return { success: true as const, retryAfterSeconds: 60 };
+  }
+
+  async consumeTotpDisableVerification(user: AuthenticatedUser, code: string): Promise<void> {
+    const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled) throw new BadRequestException("邮件服务当前未启用。");
+    const request = await this.requireValidCode(user.email, EmailVerificationPurpose.totp_disable, code, user.id);
+    const consumed = await this.prisma.emailVerificationRequest.updateMany({
+      where: { id: request.id, status: EmailVerificationStatus.pending },
+      data: {
+        status: EmailVerificationStatus.consumed,
+        verifiedAt: new Date(),
+        consumedAt: new Date(),
+      },
+    });
+    if (consumed.count !== 1) throw new BadRequestException("验证码已使用，请重新获取。");
   }
 
   async requestDeviceLoginVerification(user: AuthenticatedUser, context: RefreshSessionContext) {
@@ -516,12 +561,7 @@ export class AccountSecurityService {
         where: {
           userId: user.id,
           type: {
-            in: [
-              LoginSecurityEventType.login_success,
-              LoginSecurityEventType.new_device,
-              LoginSecurityEventType.new_ip,
-              LoginSecurityEventType.unusual_frequency,
-            ],
+            in: [LoginSecurityEventType.login_success, LoginSecurityEventType.new_device, LoginSecurityEventType.new_ip, LoginSecurityEventType.unusual_frequency],
           },
           createdAt: { gte: new Date(Date.now() - 10 * 60 * 1000) },
         },
@@ -531,16 +571,9 @@ export class AccountSecurityService {
     const isNewDevice = options.isNewDevice ?? !knownDevice;
     const isNewIp = knownIp === 0;
     const unusualFrequency = recentLogins >= 5;
-    const detectedType = unusualFrequency
-      ? LoginSecurityEventType.unusual_frequency
-      : isNewDevice
-        ? LoginSecurityEventType.new_device
-        : isNewIp
-          ? LoginSecurityEventType.new_ip
-          : LoginSecurityEventType.login_success;
+    const detectedType = unusualFrequency ? LoginSecurityEventType.unusual_frequency : isNewDevice ? LoginSecurityEventType.new_device : isNewIp ? LoginSecurityEventType.new_ip : LoginSecurityEventType.login_success;
     const type = options.type ?? detectedType;
-    const riskLevel =
-      options.riskLevel ?? (unusualFrequency ? LoginRiskLevel.high : isNewDevice ? LoginRiskLevel.medium : isNewIp ? LoginRiskLevel.low : LoginRiskLevel.info);
+    const riskLevel = options.riskLevel ?? (unusualFrequency ? LoginRiskLevel.high : isNewDevice ? LoginRiskLevel.medium : isNewIp ? LoginRiskLevel.low : LoginRiskLevel.info);
     const summary = options.summary ?? (unusualFrequency ? "短时间内出现多次登录" : isNewDevice ? "新设备登录" : isNewIp ? "陌生 IP 登录" : "账号登录成功");
     await this.prisma.$transaction([
       this.prisma.knownLoginDevice.upsert({
@@ -572,12 +605,7 @@ export class AccountSecurityService {
         },
       }),
     ]);
-    if (
-      !options.suppressSystemAlert &&
-      type !== LoginSecurityEventType.login_success &&
-      preferences.loginAlertsEnabled &&
-      (!isNewDevice || preferences.newDeviceAlertsEnabled)
-    ) {
+    if (!options.suppressSystemAlert && type !== LoginSecurityEventType.login_success && preferences.loginAlertsEnabled && (!isNewDevice || preferences.newDeviceAlertsEnabled)) {
       await this.prisma.userNotification.create({
         data: {
           userId: user.id,
@@ -589,12 +617,7 @@ export class AccountSecurityService {
         },
       });
     }
-    if (
-      !options.suppressEmailAlert &&
-      type !== LoginSecurityEventType.login_success &&
-      preferences.emailAlertsEnabled &&
-      (!isNewDevice || preferences.newDeviceAlertsEnabled)
-    ) {
+    if (!options.suppressEmailAlert && type !== LoginSecurityEventType.login_success && preferences.emailAlertsEnabled && (!isNewDevice || preferences.newDeviceAlertsEnabled)) {
       const config = await this.configuration.getConfiguration();
       if (config.smtpEnabled) {
         void this.mail
@@ -641,13 +664,7 @@ export class AccountSecurityService {
 
   async recordPasswordEvent(userId: number, type: LoginSecurityEventType, context: RefreshSessionContext): Promise<void> {
     await this.prisma.loginSecurityEvent.create({
-      data: this.eventData(
-        userId,
-        type,
-        LoginRiskLevel.medium,
-        type === LoginSecurityEventType.password_reset ? "通过邮箱重置密码" : "账号密码已修改",
-        context,
-      ),
+      data: this.eventData(userId, type, LoginRiskLevel.medium, type === LoginSecurityEventType.password_reset ? "通过邮箱重置密码" : "账号密码已修改", context),
     });
   }
 
@@ -740,12 +757,7 @@ export class AccountSecurityService {
     return this.page(items, total, query.page, query.pageSize);
   }
 
-  private async sendDeviceLoginCode(
-    user: { id: number; email: string; nickname: string },
-    verificationRequestId: number,
-    code: string,
-    context: RefreshSessionContext,
-  ): Promise<void> {
+  private async sendDeviceLoginCode(user: { id: number; email: string; nickname: string }, verificationRequestId: number, code: string, context: RefreshSessionContext): Promise<void> {
     const deviceLabel = this.deviceLabel(context.userAgent);
     await this.mail.send({
       type: MailJobType.device_login_verification,
@@ -778,14 +790,7 @@ export class AccountSecurityService {
         },
       },
     });
-    if (
-      !request ||
-      !request.user ||
-      !request.userId ||
-      !request.deviceFingerprint ||
-      request.purpose !== EmailVerificationPurpose.device_login ||
-      request.status !== EmailVerificationStatus.pending
-    ) {
+    if (!request || !request.user || !request.userId || !request.deviceFingerprint || request.purpose !== EmailVerificationPurpose.device_login || request.status !== EmailVerificationStatus.pending) {
       throw new BadRequestException("设备验证已失效，请重新登录。");
     }
     if (request.expiresAt.getTime() <= Date.now()) {
@@ -878,7 +883,11 @@ export class AccountSecurityService {
   }
 
   private preferenceResponse(
-    preferences: { loginAlertsEnabled: boolean; emailAlertsEnabled: boolean; newDeviceAlertsEnabled: boolean },
+    preferences: {
+      loginAlertsEnabled: boolean;
+      emailAlertsEnabled: boolean;
+      newDeviceAlertsEnabled: boolean;
+    },
     mailServiceEnabled = true,
   ) {
     return {
@@ -915,26 +924,8 @@ export class AccountSecurityService {
   }
 
   private deviceLabel(userAgent: string): string {
-    const browser = /Edg\//.test(userAgent)
-      ? "Edge"
-      : /Chrome\//.test(userAgent)
-        ? "Chrome"
-        : /Firefox\//.test(userAgent)
-          ? "Firefox"
-          : /Safari\//.test(userAgent)
-            ? "Safari"
-            : "未知浏览器";
-    const system = /Android/.test(userAgent)
-      ? "Android"
-      : /iPhone|iPad/.test(userAgent)
-        ? "iOS"
-        : /Windows/.test(userAgent)
-          ? "Windows"
-          : /Mac OS X/.test(userAgent)
-            ? "macOS"
-            : /Linux/.test(userAgent)
-              ? "Linux"
-              : "未知系统";
+    const browser = /Edg\//.test(userAgent) ? "Edge" : /Chrome\//.test(userAgent) ? "Chrome" : /Firefox\//.test(userAgent) ? "Firefox" : /Safari\//.test(userAgent) ? "Safari" : "未知浏览器";
+    const system = /Android/.test(userAgent) ? "Android" : /iPhone|iPad/.test(userAgent) ? "iOS" : /Windows/.test(userAgent) ? "Windows" : /Mac OS X/.test(userAgent) ? "macOS" : /Linux/.test(userAgent) ? "Linux" : "未知系统";
     return `${system} · ${browser}`;
   }
 

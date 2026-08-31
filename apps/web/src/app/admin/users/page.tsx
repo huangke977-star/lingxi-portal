@@ -2,36 +2,20 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  KeyRound,
-  ShieldCheck,
-  ShieldOff,
-  UserRoundCheck,
-  UserRoundPen,
-  UserRoundX,
-} from "lucide-react";
+import { KeyRound, ShieldCheck, ShieldOff, UserRoundCheck, UserRoundPen, UserRoundX } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { AdminPageHeader, AdminPageLoading } from "@/components/admin-page-header";
+import { useConfirm } from "@/components/confirm-dialog";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { PasswordInput } from "@/components/password-input";
 import { RoleSymbol } from "@/components/role-symbol";
 import { ManagementIdentitySymbol } from "@/components/user-identity-badges";
-import {
-  listAdminUsers,
-  resetUserNickname,
-  updateUserAdministrator,
-  updateUserPassword,
-  updateUserStatus,
-} from "@/lib/admin-api";
-import {
-  ApiRequestError,
-  AuthUser,
-  getMe,
-  isAuthExpiredError,
-} from "@/lib/auth-api";
+import { listAdminUsers, resetUserNickname, updateUserAdministrator, updateUserPassword, updateUserStatus } from "@/lib/admin-api";
+import { ApiRequestError, AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { resetUserTotp } from "@/lib/account-privacy-api";
 import { localizedPath } from "@/lib/i18n";
 import { growthLevelLabel } from "@/lib/system-labels";
 import { getManagementIdentity, isSiteManager } from "@/lib/user-permissions";
@@ -39,6 +23,7 @@ import { getManagementIdentity, isSiteManager } from "@/lib/user-permissions";
 export default function AdminPage() {
   const router = useRouter();
   const { locale, phrase } = useLanguage();
+  const { confirm } = useConfirm();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [users, setUsers] = useState<AuthUser[]>([]);
@@ -87,11 +72,7 @@ export default function AdminPage() {
         }
 
         if (isMounted) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : phrase("无法读取管理数据。", "Could not load management data."),
-          );
+          setError(loadError instanceof Error ? loadError.message : phrase("无法读取管理数据。", "Could not load management data."));
         }
       } finally {
         if (isMounted) {
@@ -153,11 +134,7 @@ export default function AdminPage() {
         }
 
         if (isMounted) {
-          setError(
-            listError instanceof Error
-              ? listError.message
-              : phrase("无法读取用户列表。", "Could not load user list."),
-          );
+          setError(listError instanceof Error ? listError.message : phrase("无法读取用户列表。", "Could not load user list."));
         }
       } finally {
         if (isMounted) {
@@ -171,17 +148,7 @@ export default function AdminPage() {
     return () => {
       isMounted = false;
     };
-  }, [
-    accessToken,
-    currentUser,
-    page,
-    pageSize,
-    reloadVersion,
-    locale,
-    phrase,
-    router,
-    searchQuery,
-  ]);
+  }, [accessToken, currentUser, page, pageSize, reloadVersion, locale, phrase, router, searchQuery]);
 
   async function handleAdministratorToggle(user: AuthUser) {
     if (!accessToken) {
@@ -193,23 +160,11 @@ export default function AdminPage() {
     setNotice("");
 
     try {
-      const updatedUser = await updateUserAdministrator(
-        accessToken,
-        user.id,
-        !user.isAdministrator,
-      );
+      const updatedUser = await updateUserAdministrator(accessToken, user.id, !user.isAdministrator);
       replaceUser(updatedUser);
-      setNotice(
-        updatedUser.isAdministrator
-          ? phrase(`已授予 ${updatedUser.username} 站点管理员身份。`, `${updatedUser.username} is now a site administrator.`)
-          : phrase(`已取消 ${updatedUser.username} 的站点管理员身份。`, `${updatedUser.username} is no longer a site administrator.`),
-      );
+      setNotice(updatedUser.isAdministrator ? phrase(`已授予 ${updatedUser.username} 站点管理员身份。`, `${updatedUser.username} is now a site administrator.`) : phrase(`已取消 ${updatedUser.username} 的站点管理员身份。`, `${updatedUser.username} is no longer a site administrator.`));
     } catch (administratorError) {
-      setError(
-        administratorError instanceof Error
-          ? administratorError.message
-          : phrase("管理员身份更新失败。", "Could not update administrator access."),
-      );
+      setError(administratorError instanceof Error ? administratorError.message : phrase("管理员身份更新失败。", "Could not update administrator access."));
     } finally {
       setBusyUserId(null);
     }
@@ -220,29 +175,20 @@ export default function AdminPage() {
       return;
     }
 
-    const nextStatus: AuthUser["status"] =
-      user.status === "active" ? "disabled" : "active";
+    const nextStatus: AuthUser["status"] = user.status === "active" ? "disabled" : "active";
     setBusyUserId(user.id);
     setError("");
     setNotice("");
 
     try {
-      const updatedUser = await updateUserStatus(
-        accessToken,
-        user.id,
-        nextStatus,
-      );
+      const updatedUser = await updateUserStatus(accessToken, user.id, nextStatus);
       replaceUser(updatedUser);
       if (updatedUser.status !== user.status) {
-        setActiveCount((count) =>
-          Math.max(0, count + (updatedUser.status === "active" ? 1 : -1)),
-        );
+        setActiveCount((count) => Math.max(0, count + (updatedUser.status === "active" ? 1 : -1)));
       }
       setNotice(nextStatus === "active" ? phrase(`已启用 ${updatedUser.username}。`, `${updatedUser.username} enabled.`) : phrase(`已停用 ${updatedUser.username}。`, `${updatedUser.username} disabled.`));
     } catch (statusError) {
-      setError(
-        statusError instanceof Error ? statusError.message : phrase("状态更新失败。", "Could not update account status."),
-      );
+      setError(statusError instanceof Error ? statusError.message : phrase("状态更新失败。", "Could not update account status."));
     } finally {
       setBusyUserId(null);
     }
@@ -263,11 +209,7 @@ export default function AdminPage() {
       setReloadVersion((version) => version + 1);
       setNotice(phrase(`已将 ${updatedUser.username} 的昵称重置为用户名。`, `${updatedUser.username}'s nickname was reset to the username.`));
     } catch (nicknameError) {
-      setError(
-        nicknameError instanceof Error
-          ? nicknameError.message
-          : phrase("昵称重置失败。", "Could not reset nickname."),
-      );
+      setError(nicknameError instanceof Error ? nicknameError.message : phrase("昵称重置失败。", "Could not reset nickname."));
     } finally {
       setBusyUserId(null);
     }
@@ -316,34 +258,41 @@ export default function AdminPage() {
     setNotice("");
 
     try {
-      const updatedUser = await updateUserPassword(
-        accessToken,
-        passwordTarget.id,
-        newPassword,
-      );
+      const updatedUser = await updateUserPassword(accessToken, passwordTarget.id, newPassword);
       replaceUser(updatedUser);
       setPasswordTarget(null);
       setNewPassword("");
       setPasswordConfirmation("");
       setNotice(phrase(`已更新 ${updatedUser.username} 的密码。`, `${updatedUser.username}'s password was updated.`));
     } catch (passwordError) {
-      setError(
-        passwordError instanceof Error
-          ? passwordError.message
-          : phrase("密码更新失败。", "Could not update password."),
-      );
+      setError(passwordError instanceof Error ? passwordError.message : phrase("密码更新失败。", "Could not update password."));
     } finally {
       setIsPasswordSaving(false);
       setBusyUserId(null);
     }
   }
 
+  async function handleTotpReset(user: AuthUser) {
+    if (!accessToken || !currentUser || !user.totpEnabled) return;
+    const confirmed = await confirm(phrase(`确定解除 ${user.username} 的双因素认证吗？该操作会让其现有登录会话失效。`, `Remove two-factor authentication for ${user.username}? Their active sessions will be revoked.`), { danger: true });
+    if (!confirmed) return;
+
+    setBusyUserId(user.id);
+    setError("");
+    setNotice("");
+    try {
+      const result = await resetUserTotp(accessToken, user.id);
+      setUsers((currentUsers) => currentUsers.map((item) => (item.id === user.id ? { ...item, totpEnabled: false } : item)));
+      setNotice(phrase(`已解除 ${user.username} 的双因素认证，并撤销 ${result.revokedSessions} 个会话。`, `Two-factor authentication was removed for ${user.username}; ${result.revokedSessions} sessions were revoked.`));
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : phrase("解除双因素认证失败。", "Could not remove two-factor authentication."));
+    } finally {
+      setBusyUserId(null);
+    }
+  }
+
   function replaceUser(updatedUser: AuthUser) {
-    setUsers((currentUsers) =>
-      currentUsers.map((user) =>
-        user.id === updatedUser.id ? updatedUser : user,
-      ),
-    );
+    setUsers((currentUsers) => currentUsers.map((user) => (user.id === updatedUser.id ? updatedUser : user)));
   }
 
   const pageDescription = phrase("管理用户账号、角色和状态。", "Manage user accounts, roles, and status.");
@@ -382,7 +331,7 @@ export default function AdminPage() {
 
   return (
     <section className="page-shell admin-shell">
-      <AdminPageHeader actions={<Link className="text-action" href={localizedPath("/admin/deleted-users", locale)}>{phrase("已注销账号", "Deleted accounts")}</Link>} description={pageDescription} title={phrase("用户管理", "User management")} />
+      <AdminPageHeader description={pageDescription} title={phrase("用户管理", "User management")} />
       <div className="admin-list-toolbar">
         <div className="admin-summary" aria-label={phrase("用户概览", "User summary")}>
           <span>{phrase(`${total} 个账号`, `${total} accounts`)}</span>
@@ -390,17 +339,22 @@ export default function AdminPage() {
         </div>
         <label className="admin-search-field">
           <span>{phrase("搜索用户", "Search users")}</span>
-          <input
-            maxLength={64}
-            onChange={(event) => setSearchDraft(event.target.value)}
-            placeholder={phrase("输入昵称或用户名", "Enter nickname or username")}
-            type="search"
-            value={searchDraft}
-          />
+          <input maxLength={64} onChange={(event) => setSearchDraft(event.target.value)} placeholder={phrase("输入昵称或用户名", "Enter nickname or username")} type="search" value={searchDraft} />
         </label>
         <label className="admin-page-size">
           <span>{phrase("每页显示", "Per page")}</span>
-          <GlassSelect ariaLabel={phrase("每页显示", "Per page")} onChange={(value) => { setPage(1); setPageSize(Number(value)); }} options={[10, 20, 50].map((value) => ({ value: String(value), label: phrase(`${value} 条`, `${value} items`) }))} value={String(pageSize)} />
+          <GlassSelect
+            ariaLabel={phrase("每页显示", "Per page")}
+            onChange={(value) => {
+              setPage(1);
+              setPageSize(Number(value));
+            }}
+            options={[10, 20, 50].map((value) => ({
+              value: String(value),
+              label: phrase(`${value} 条`, `${value} items`),
+            }))}
+            value={String(pageSize)}
+          />
         </label>
       </div>
       <AppToast
@@ -439,19 +393,11 @@ export default function AdminPage() {
             ) : (
               users.map((user) => {
                 const isBusy = busyUserId === user.id;
-                const canChangeAdministrator = canChangeUserAdministrator(
-                  currentUser,
-                  user,
-                );
+                const canChangeAdministrator = canChangeUserAdministrator(currentUser, user);
                 const canChangeStatus = canChangeUserStatus(currentUser, user);
-                const canChangePassword = canChangeUserPassword(
-                  currentUser,
-                  user,
-                );
-                const canResetNickname = canResetUserNickname(
-                  currentUser,
-                  user,
-                );
+                const canChangePassword = canChangeUserPassword(currentUser, user);
+                const canResetNickname = canResetUserNickname(currentUser, user);
+                const canResetTotp = currentUser.isSuperAdmin && !user.isSuperAdmin && user.totpEnabled === true;
                 return (
                   <tr key={user.id}>
                     <td>
@@ -478,66 +424,36 @@ export default function AdminPage() {
                       </div>
                     </td>
                     <td>
-                      <span className={`status-badge ${user.status}`}>
-                        {user.status === "active" ? phrase("启用", "Active") : phrase("停用", "Disabled")}
-                      </span>
+                      <span className={`status-badge ${user.status}`}>{user.status === "active" ? phrase("启用", "Active") : phrase("停用", "Disabled")}</span>
                     </td>
                     <td>
                       <div className="table-actions">
                         {canChangeAdministrator ? (
-                          <button
-                            aria-label={user.isAdministrator ? phrase("取消站点管理员", "Remove site administrator") : phrase("授予站点管理员", "Grant site administrator")}
-                            className="table-icon-action"
-                            disabled={isBusy}
-                            onClick={() => void handleAdministratorToggle(user)}
-                            title={user.isAdministrator ? phrase("取消站点管理员", "Remove site administrator") : phrase("授予站点管理员", "Grant site administrator")}
-                            type="button"
-                          >
+                          <button aria-label={user.isAdministrator ? phrase("取消站点管理员", "Remove site administrator") : phrase("授予站点管理员", "Grant site administrator")} className="table-icon-action" disabled={isBusy} onClick={() => void handleAdministratorToggle(user)} title={user.isAdministrator ? phrase("取消站点管理员", "Remove site administrator") : phrase("授予站点管理员", "Grant site administrator")} type="button">
                             {user.isAdministrator ? <ShieldOff aria-hidden="true" size={16} /> : <ShieldCheck aria-hidden="true" size={16} />}
                           </button>
                         ) : null}
                         {canChangeStatus ? (
-                          <button
-                            aria-label={user.status === "active" ? phrase("停用账号", "Disable account") : phrase("启用账号", "Enable account")}
-                            className="table-icon-action"
-                            disabled={isBusy}
-                            onClick={() => void handleStatusToggle(user)}
-                            title={user.status === "active" ? phrase("停用账号", "Disable account") : phrase("启用账号", "Enable account")}
-                            type="button"
-                          >
+                          <button aria-label={user.status === "active" ? phrase("停用账号", "Disable account") : phrase("启用账号", "Enable account")} className="table-icon-action" disabled={isBusy} onClick={() => void handleStatusToggle(user)} title={user.status === "active" ? phrase("停用账号", "Disable account") : phrase("启用账号", "Enable account")} type="button">
                             {user.status === "active" ? <UserRoundX aria-hidden="true" size={16} /> : <UserRoundCheck aria-hidden="true" size={16} />}
                           </button>
                         ) : null}
                         {canChangePassword ? (
-                          <button
-                            aria-label={phrase("修改密码", "Change password")}
-                            className="table-icon-action"
-                            disabled={isBusy}
-                            onClick={() => openPasswordDialog(user)}
-                            title={phrase("修改密码", "Change password")}
-                            type="button"
-                          >
+                          <button aria-label={phrase("修改密码", "Change password")} className="table-icon-action" disabled={isBusy} onClick={() => openPasswordDialog(user)} title={phrase("修改密码", "Change password")} type="button">
                             <KeyRound aria-hidden="true" size={16} />
                           </button>
                         ) : null}
                         {canResetNickname ? (
-                          <button
-                            aria-label={phrase("重置昵称", "Reset nickname")}
-                            className="table-icon-action"
-                            disabled={isBusy}
-                            onClick={() => void handleNicknameReset(user)}
-                            title={phrase("重置昵称", "Reset nickname")}
-                            type="button"
-                          >
+                          <button aria-label={phrase("重置昵称", "Reset nickname")} className="table-icon-action" disabled={isBusy} onClick={() => void handleNicknameReset(user)} title={phrase("重置昵称", "Reset nickname")} type="button">
                             <UserRoundPen aria-hidden="true" size={16} />
                           </button>
                         ) : null}
-                        {!canChangeAdministrator &&
-                        !canChangeStatus &&
-                        !canChangePassword &&
-                        !canResetNickname ? (
-                          <span className="table-no-action">—</span>
+                        {canResetTotp ? (
+                          <button aria-label={phrase("解除双因素认证", "Remove two-factor authentication")} className="table-icon-action" disabled={isBusy} onClick={() => void handleTotpReset(user)} title={phrase("解除双因素认证", "Remove two-factor authentication")} type="button">
+                            <ShieldOff aria-hidden="true" size={16} />
+                          </button>
                         ) : null}
+                        {!canChangeAdministrator && !canChangeStatus && !canChangePassword && !canResetNickname && !canResetTotp ? <span className="table-no-action">—</span> : null}
                       </div>
                     </td>
                   </tr>
@@ -548,22 +464,12 @@ export default function AdminPage() {
         </table>
       </div>
       <nav aria-label={phrase("用户列表分页", "User list pagination")} className="admin-pagination">
-        <span>
-          {phrase(`第 ${page} / ${totalPages} 页`, `Page ${page} of ${totalPages}`)}
-        </span>
+        <span>{phrase(`第 ${page} / ${totalPages} 页`, `Page ${page} of ${totalPages}`)}</span>
         <div>
-          <button
-            disabled={isListLoading || page <= 1}
-            onClick={() => setPage((value) => value - 1)}
-            type="button"
-          >
+          <button disabled={isListLoading || page <= 1} onClick={() => setPage((value) => value - 1)} type="button">
             {phrase("上一页", "Previous")}
           </button>
-          <button
-            disabled={isListLoading || page >= totalPages}
-            onClick={() => setPage((value) => value + 1)}
-            type="button"
-          >
+          <button disabled={isListLoading || page >= totalPages} onClick={() => setPage((value) => value + 1)} type="button">
             {phrase("下一页", "Next")}
           </button>
         </div>
@@ -578,57 +484,26 @@ export default function AdminPage() {
           }}
           role="presentation"
         >
-          <div
-            aria-labelledby="password-modal-title"
-            aria-modal="true"
-            className="modal-panel"
-            role="dialog"
-          >
+          <div aria-labelledby="password-modal-title" aria-modal="true" className="modal-panel" role="dialog">
             <div className="modal-heading">
               <span className="eyebrow">{phrase("密码", "Password")}</span>
               <h2 id="password-modal-title">{phrase("修改密码", "Change password")}</h2>
               <p>{phrase(`目标账号：${passwordTarget.username}`, `Target account: ${passwordTarget.username}`)}</p>
             </div>
-            <form
-              className="form-stack modal-form"
-              onSubmit={(event) => void handlePasswordSubmit(event)}
-            >
+            <form className="form-stack modal-form" onSubmit={(event) => void handlePasswordSubmit(event)}>
               <label>
                 {phrase("新密码", "New password")}
-                <PasswordInput
-                  autoComplete="new-password"
-                  disabled={isPasswordSaving}
-                  minLength={8}
-                  onChange={(event) => setNewPassword(event.target.value)}
-                  value={newPassword}
-                />
+                <PasswordInput autoComplete="new-password" disabled={isPasswordSaving} minLength={8} onChange={(event) => setNewPassword(event.target.value)} value={newPassword} />
               </label>
               <label>
                 {phrase("确认密码", "Confirm password")}
-                <PasswordInput
-                  autoComplete="new-password"
-                  disabled={isPasswordSaving}
-                  minLength={8}
-                  onChange={(event) =>
-                    setPasswordConfirmation(event.target.value)
-                  }
-                  value={passwordConfirmation}
-                />
+                <PasswordInput autoComplete="new-password" disabled={isPasswordSaving} minLength={8} onChange={(event) => setPasswordConfirmation(event.target.value)} value={passwordConfirmation} />
               </label>
               <div className="actions">
-                <button
-                  className="button"
-                  disabled={isPasswordSaving}
-                  type="submit"
-                >
+                <button className="button" disabled={isPasswordSaving} type="submit">
                   {isPasswordSaving ? phrase("保存中", "Saving") : phrase("保存", "Save")}
                 </button>
-                <button
-                  className="button secondary"
-                  disabled={isPasswordSaving}
-                  onClick={closePasswordDialog}
-                  type="button"
-                >
+                <button className="button secondary" disabled={isPasswordSaving} onClick={closePasswordDialog} type="button">
                   {phrase("取消", "Cancel")}
                 </button>
               </div>

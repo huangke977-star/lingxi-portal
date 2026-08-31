@@ -1,11 +1,5 @@
 import type { ThemeId } from "./theme-preferences";
-import {
-  AUTH_STATE_CHANGE_EVENT,
-  clearAuthTokens,
-  readAccessToken,
-  readRefreshToken,
-  saveAuthTokens,
-} from "./auth-storage";
+import { AUTH_STATE_CHANGE_EVENT, clearAuthTokens, readAccessToken, readRefreshToken, saveAuthTokens } from "./auth-storage";
 
 const CONFIGURED_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "auto";
 
@@ -41,6 +35,7 @@ export interface AuthUser {
   createdAt: string;
   appearance: AuthAppearance;
   role: AuthRole;
+  totpEnabled?: boolean;
 }
 
 export interface AuthResponse {
@@ -59,9 +54,13 @@ export interface DeviceLoginVerificationRequired {
 
 export interface TotpVerificationRequired {
   totpVerificationRequired: true;
+  challengeToken: string;
+  expiresAt: string;
 }
 
 export type LoginResponse = AuthResponse | DeviceLoginVerificationRequired | TotpVerificationRequired;
+
+export type DeviceLoginResponse = AuthResponse | TotpVerificationRequired;
 
 export interface AuthSession {
   id: string;
@@ -92,33 +91,28 @@ export function isAuthExpiredError(error: unknown): boolean {
   return error instanceof ApiRequestError && error.status === 401;
 }
 
-export async function login(input: {
-  account: string;
-  password: string;
-  turnstileToken?: string;
-  totpCode?: string;
-}): Promise<LoginResponse> {
+export async function login(input: { account: string; password: string; turnstileToken?: string }): Promise<LoginResponse> {
   const response = await requestJson<LoginResponse>("/auth/login", {
     method: "POST",
     body: JSON.stringify(input),
   });
 
-  return "deviceVerificationRequired" in response || "totpVerificationRequired" in response
-    ? response
-    : normalizeAuthResponse(response);
+  return "deviceVerificationRequired" in response || "totpVerificationRequired" in response ? response : normalizeAuthResponse(response);
 }
 
-export async function verifyDeviceLogin(input: {
-  challengeToken: string;
-  code: string;
-}): Promise<AuthResponse> {
-  const response = await requestJson<AuthResponse>(
-    "/auth/login/device-verification",
-    {
-      method: "POST",
-      body: JSON.stringify(input),
-    },
-  );
+export async function verifyDeviceLogin(input: { challengeToken: string; code: string }): Promise<DeviceLoginResponse> {
+  const response = await requestJson<DeviceLoginResponse>("/auth/login/device-verification", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return "totpVerificationRequired" in response ? response : normalizeAuthResponse(response);
+}
+
+export async function verifyTotpLogin(input: { challengeToken: string; code: string }): Promise<AuthResponse> {
+  const response = await requestJson<AuthResponse>("/auth/login/totp-verification", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
   return normalizeAuthResponse(response);
 }
 
@@ -135,15 +129,7 @@ export function resendDeviceLoginVerification(challengeToken: string): Promise<{
   });
 }
 
-export async function register(input: {
-  username: string;
-  nickname: string;
-  email: string;
-  password: string;
-  verificationCode?: string;
-  turnstileToken?: string;
-  deviceId?: string;
-}): Promise<AuthResponse> {
+export async function register(input: { username: string; nickname: string; email: string; password: string; verificationCode?: string; turnstileToken?: string; deviceId?: string }): Promise<AuthResponse> {
   const response = await requestJson<AuthResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify({
@@ -171,47 +157,31 @@ export async function logout(refreshToken: string): Promise<void> {
   });
 }
 
-export async function listMySessions(
-  accessToken: string,
-): Promise<AuthSession[]> {
-  const result = await requestJson<{ sessions: AuthSession[] }>(
-    "/auth/sessions",
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    },
-  );
+export async function listMySessions(accessToken: string): Promise<AuthSession[]> {
+  const result = await requestJson<{ sessions: AuthSession[] }>("/auth/sessions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
   return result.sessions;
 }
 
-export async function revokeOtherSessions(
-  accessToken: string,
-): Promise<number> {
-  const result = await requestJson<{ revokedSessions: number }>(
-    "/auth/sessions/revoke-others",
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    },
-  );
+export async function revokeOtherSessions(accessToken: string): Promise<number> {
+  const result = await requestJson<{ revokedSessions: number }>("/auth/sessions/revoke-others", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
   return result.revokedSessions;
 }
 
 export async function revokeAllSessions(accessToken: string): Promise<number> {
-  const result = await requestJson<{ revokedSessions: number }>(
-    "/auth/sessions/revoke-all",
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    },
-  );
+  const result = await requestJson<{ revokedSessions: number }>("/auth/sessions/revoke-all", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
   return result.revokedSessions;
 }
 
-export function revokeSession(
-  accessToken: string,
-  sessionId: string,
-): Promise<{ success: true; current: boolean }> {
+export function revokeSession(accessToken: string, sessionId: string): Promise<{ success: true; current: boolean }> {
   return requestJson(`/auth/sessions/${encodeURIComponent(sessionId)}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -228,10 +198,7 @@ export async function getMe(accessToken: string): Promise<AuthUser> {
   return normalizeAuthUser(user);
 }
 
-export async function updateMyAppearance(
-  accessToken: string,
-  appearance: AuthAppearance,
-): Promise<AuthUser> {
+export async function updateMyAppearance(accessToken: string, appearance: AuthAppearance): Promise<AuthUser> {
   const user = await requestJson<AuthUser>("/auth/me/appearance", {
     method: "PATCH",
     headers: {
@@ -243,10 +210,7 @@ export async function updateMyAppearance(
   return normalizeAuthUser(user);
 }
 
-export async function updateMyLocale(
-  accessToken: string,
-  locale: "zh-CN" | "en-US",
-): Promise<AuthUser> {
+export async function updateMyLocale(accessToken: string, locale: "zh-CN" | "en-US"): Promise<AuthUser> {
   const user = await requestJson<AuthUser>("/auth/me/locale", {
     method: "PATCH",
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -255,10 +219,7 @@ export async function updateMyLocale(
   return normalizeAuthUser(user);
 }
 
-export async function updateMyProfile(
-  accessToken: string,
-  input: { nickname: string; email: string; profileBio: string },
-): Promise<AuthUser> {
+export async function updateMyProfile(accessToken: string, input: { nickname: string; email: string; profileBio: string }): Promise<AuthUser> {
   const user = await requestJson<AuthUser>("/auth/me/profile", {
     method: "PATCH",
     headers: {
@@ -271,20 +232,14 @@ export async function updateMyProfile(
   const expectedNickname = input.nickname.trim();
   const expectedEmail = input.email.trim().toLowerCase();
 
-  if (
-    normalizedUser.nickname !== expectedNickname ||
-    normalizedUser.email.toLowerCase() !== expectedEmail
-  ) {
+  if (normalizedUser.nickname !== expectedNickname || normalizedUser.email.toLowerCase() !== expectedEmail) {
     throw new Error("当前服务器尚未更新个人资料接口，请部署新版后端后再重试。");
   }
 
   return normalizedUser;
 }
 
-export async function changeMyPassword(
-  accessToken: string,
-  input: { currentPassword: string; newPassword: string },
-): Promise<{ success: true; revokedSessions: number }> {
+export async function changeMyPassword(accessToken: string, input: { currentPassword: string; newPassword: string }): Promise<{ success: true; revokedSessions: number }> {
   return requestJson("/auth/me/password", {
     method: "PATCH",
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -292,10 +247,7 @@ export async function changeMyPassword(
   });
 }
 
-export async function uploadMyAvatar(
-  accessToken: string,
-  file: File,
-): Promise<AuthUser> {
+export async function uploadMyAvatar(accessToken: string, file: File): Promise<AuthUser> {
   const body = new FormData();
   body.append("file", file);
 
@@ -326,13 +278,9 @@ function normalizeAuthResponse(response: AuthResponse): AuthResponse {
   };
 }
 
-export async function requestJson<T>(
-  path: string,
-  init: RequestInit = {},
-): Promise<T> {
+export async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  const isFormData =
-    typeof FormData !== "undefined" && init.body instanceof FormData;
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
 
   if (!isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -345,12 +293,7 @@ export async function requestJson<T>(
     headers,
   });
 
-  if (
-    response.status === 401 &&
-    path !== "/auth/refresh" &&
-    headers.has("Authorization") &&
-    readRefreshToken()
-  ) {
+  if (response.status === 401 && path !== "/auth/refresh" && headers.has("Authorization") && readRefreshToken()) {
     const session = await refreshStoredSession();
     if (session) {
       headers.set("Authorization", `Bearer ${session.accessToken}`);
@@ -370,10 +313,7 @@ export async function requestJson<T>(
   return response.json() as Promise<T>;
 }
 
-export async function requestBlob(
-  path: string,
-  init: RequestInit = {},
-): Promise<Blob> {
+export async function requestBlob(path: string, init: RequestInit = {}): Promise<Blob> {
   const headers = new Headers(init.headers);
   appendDeviceIdHeader(headers);
   let response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
@@ -382,12 +322,7 @@ export async function requestBlob(
     headers,
   });
 
-  if (
-    response.status === 401 &&
-    path !== "/auth/refresh" &&
-    headers.has("Authorization") &&
-    readRefreshToken()
-  ) {
+  if (response.status === 401 && path !== "/auth/refresh" && headers.has("Authorization") && readRefreshToken()) {
     const session = await refreshStoredSession();
     if (session) {
       headers.set("Authorization", `Bearer ${session.accessToken}`);
@@ -466,10 +401,7 @@ async function performStoredSessionRefresh(): Promise<StoredSessionTokens | null
         refreshToken: response.refreshToken,
       };
     } catch (error) {
-      if (
-        error instanceof ApiRequestError &&
-        (error.status === 401 || error.status === 403)
-      ) {
+      if (error instanceof ApiRequestError && (error.status === 401 || error.status === 403)) {
         // Another tab may have rotated the refresh token while this request
         // was in flight. Its newly saved session must remain authoritative.
         if (readRefreshToken() !== latestRefreshToken) {
@@ -495,10 +427,7 @@ function readStoredSessionTokens(): StoredSessionTokens | null {
 
 function getRefreshOwnerId(): string {
   if (!refreshOwnerId) {
-    refreshOwnerId =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    refreshOwnerId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
   return refreshOwnerId;
 }
@@ -532,27 +461,19 @@ function readRefreshLock(): RefreshLock | null {
   }
   try {
     const parsed = JSON.parse(value) as RefreshLock;
-    return typeof parsed.owner === "string" &&
-      typeof parsed.expiresAt === "number"
-      ? parsed
-      : null;
+    return typeof parsed.owner === "string" && typeof parsed.expiresAt === "number" ? parsed : null;
   } catch {
     return null;
   }
 }
 
-function waitForAnotherTabRefresh(
-  previousRefreshToken: string,
-): Promise<StoredSessionTokens | null> {
+function waitForAnotherTabRefresh(previousRefreshToken: string): Promise<StoredSessionTokens | null> {
   return new Promise((resolve) => {
     let settled = false;
     const finish = () => {
       if (settled) return;
       const currentRefreshToken = readRefreshToken();
-      if (
-        currentRefreshToken === previousRefreshToken &&
-        Date.now() < (readRefreshLock()?.expiresAt ?? 0)
-      ) {
+      if (currentRefreshToken === previousRefreshToken && Date.now() < (readRefreshLock()?.expiresAt ?? 0)) {
         return;
       }
       settled = true;
@@ -560,11 +481,7 @@ function waitForAnotherTabRefresh(
       window.clearTimeout(timeout);
       window.removeEventListener("storage", check);
       window.removeEventListener(AUTH_STATE_CHANGE_EVENT, check);
-      resolve(
-        currentRefreshToken !== previousRefreshToken
-          ? readStoredSessionTokens()
-          : null,
-      );
+      resolve(currentRefreshToken !== previousRefreshToken ? readStoredSessionTokens() : null);
     };
     const check = () => finish();
     const interval = window.setInterval(finish, 250);
@@ -612,10 +529,7 @@ export function getOrCreateDeviceId(): string | null {
     return storedDeviceId;
   }
 
-  const deviceId =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `device-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
+  const deviceId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `device-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
   window.localStorage.setItem(DEVICE_ID_STORAGE_KEY, deviceId);
   return deviceId;
 }
@@ -635,9 +549,7 @@ export async function readErrorMessage(response: Response): Promise<string> {
   return (await readApiError(response)).message;
 }
 
-async function readApiError(
-  response: Response,
-): Promise<{ message: string; code?: string }> {
+async function readApiError(response: Response): Promise<{ message: string; code?: string }> {
   const fallback = `请求失败，状态码 ${response.status}`;
 
   try {

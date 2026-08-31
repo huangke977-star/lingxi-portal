@@ -1,12 +1,4 @@
-import {
-  ForbiddenException,
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  InternalServerErrorException,
-  NotFoundException,
-  UnauthorizedException,
-} from "@nestjs/common";
+import { ForbiddenException, BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { access, mkdir, unlink, writeFile } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
@@ -14,10 +6,7 @@ import { AuthenticatedUser, UserStatus } from "../auth/auth.types";
 import { PasswordService } from "../auth/password.service";
 import { buildSearchFields } from "../search/search-normalization";
 import { PrismaService } from "../prisma/prisma.service";
-import {
-  FALLBACK_PROFILE_BIO,
-  pickDefaultProfileBio,
-} from "./default-profile-bios";
+import { FALLBACK_PROFILE_BIO, pickDefaultProfileBio } from "./default-profile-bios";
 import { UpdateUserAppearanceDto } from "./dto/update-user-appearance.dto";
 import { UpdateUserLocaleDto } from "./dto/update-user-locale.dto";
 import { ListUsersQueryDto } from "./dto/list-users-query.dto";
@@ -74,7 +63,7 @@ interface SupportedAvatarFormat {
 }
 
 export interface UserListResult {
-  items: AuthenticatedUser[];
+  items: Array<AuthenticatedUser & { totpEnabled: boolean }>;
   total: number;
   activeCount: number;
   page: number;
@@ -87,62 +76,34 @@ const SUPPORTED_AVATAR_FORMATS: SupportedAvatarFormat[] = [
     extension: ".jpg",
     extensions: [".jpg", ".jpeg"],
     mimeType: "image/jpeg",
-    matches: (buffer) =>
-      buffer.length >= 3 &&
-      buffer[0] === 0xff &&
-      buffer[1] === 0xd8 &&
-      buffer[2] === 0xff,
+    matches: (buffer) => buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff,
   },
   {
     extension: ".png",
     extensions: [".png"],
     mimeType: "image/png",
-    matches: (buffer) =>
-      buffer.length >= 8 &&
-      buffer
-        .subarray(0, 8)
-        .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+    matches: (buffer) => buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
   },
   {
     extension: ".webp",
     extensions: [".webp"],
     mimeType: "image/webp",
-    matches: (buffer) =>
-      buffer.length >= 12 &&
-      buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
-      buffer.subarray(8, 12).toString("ascii") === "WEBP",
+    matches: (buffer) => buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP",
   },
 ];
 
-const RESERVED_NICKNAMES = new Set([
-  "admin",
-  "administrator",
-  "hlovet",
-  "system",
-  "管理员",
-  "超级管理员",
-  "系统",
-]);
+const RESERVED_NICKNAMES = new Set(["admin", "administrator", "hlovet", "system", "管理员", "超级管理员", "系统"]);
 
 @Injectable()
 export class UsersService {
-  private readonly avatarUploadDirectory = resolve(
-    process.env.AVATAR_UPLOAD_DIR ?? join(process.cwd(), "uploads", "avatars"),
-  );
+  private readonly avatarUploadDirectory = resolve(process.env.AVATAR_UPLOAD_DIR ?? join(process.cwd(), "uploads", "avatars"));
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly passwordService: PasswordService,
   ) {}
 
-  async createUser(input: {
-    username: string;
-    nickname: string;
-    email: string;
-    passwordHash: string;
-    roleCode?: string;
-    emailVerifiedAt?: Date | null;
-  }): Promise<AuthenticatedUser & { passwordHash: string }> {
+  async createUser(input: { username: string; nickname: string; email: string; passwordHash: string; roleCode?: string; emailVerifiedAt?: Date | null }): Promise<AuthenticatedUser & { passwordHash: string }> {
     const username = input.username.trim();
     const roleCode = input.roleCode?.trim() || "qi_refining";
     const role = await this.prisma.role.findUnique({
@@ -173,9 +134,7 @@ export class UsersService {
     return this.toAuthenticatedUserWithPassword(user);
   }
 
-  async findForLogin(
-    account: string,
-  ): Promise<(AuthenticatedUser & { passwordHash: string }) | null> {
+  async findForLogin(account: string): Promise<(AuthenticatedUser & { passwordHash: string }) | null> {
     const normalized = account.trim();
     const user = await this.prisma.user.findFirst({
       where: {
@@ -215,18 +174,13 @@ export class UsersService {
     const search = query.search?.trim();
     const where = search
       ? {
-          OR: [
-            { username: { contains: search } },
-            { nickname: { contains: search } },
-          ],
+          OR: [{ username: { contains: search } }, { nickname: { contains: search } }],
         }
       : undefined;
     const [total, activeCount] = await Promise.all([
       this.prisma.user.count({ where }),
       this.prisma.user.count({
-        where: where
-          ? { AND: [where, { status: "active" as const }] }
-          : { status: "active" as const },
+        where: where ? { AND: [where, { status: "active" as const }] } : { status: "active" as const },
       }),
     ]);
     const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
@@ -236,11 +190,14 @@ export class UsersService {
       orderBy: { id: "asc" },
       skip: (page - 1) * query.pageSize,
       take: query.pageSize,
-      select: this.userSelect(),
+      select: this.adminUserSelect(),
     });
 
     return {
-      items: users.map((user) => this.toAuthenticatedUser(user)),
+      items: users.map((user) => ({
+        ...this.toAuthenticatedUser(user),
+        totpEnabled: Boolean(user.totpCredential?.enabled),
+      })),
       total,
       activeCount,
       page,
@@ -249,11 +206,7 @@ export class UsersService {
     };
   }
 
-  async setAdministrator(
-    actor: AuthenticatedUser,
-    id: number,
-    isAdministrator: boolean,
-  ): Promise<AuthenticatedUser> {
+  async setAdministrator(actor: AuthenticatedUser, id: number, isAdministrator: boolean): Promise<AuthenticatedUser> {
     const target = await this.findUserForManagement(id);
     if (!actor.isSuperAdmin) throw new ForbiddenException("Only the super admin may change administrator identity.");
     if (target.isSuperAdmin) throw new ForbiddenException("The super admin identity cannot be changed here.");
@@ -268,11 +221,7 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
-  async setStatus(
-    actor: AuthenticatedUser,
-    id: number,
-    status: UserStatus,
-  ): Promise<AuthenticatedUser> {
+  async setStatus(actor: AuthenticatedUser, id: number, status: UserStatus): Promise<AuthenticatedUser> {
     const target = await this.findUserForManagement(id);
     this.assertCanSetStatus(actor, target);
 
@@ -289,11 +238,7 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
-  async updatePassword(
-    actor: AuthenticatedUser,
-    id: number,
-    password: string,
-  ): Promise<AuthenticatedUser> {
+  async updatePassword(actor: AuthenticatedUser, id: number, password: string): Promise<AuthenticatedUser> {
     const target = await this.findUserForManagement(id);
     this.assertCanUpdatePassword(actor, target);
 
@@ -318,10 +263,7 @@ export class UsersService {
     });
   }
 
-  async resetNickname(
-    actor: AuthenticatedUser,
-    id: number,
-  ): Promise<AuthenticatedUser> {
+  async resetNickname(actor: AuthenticatedUser, id: number): Promise<AuthenticatedUser> {
     const target = await this.findUserForManagement(id);
     this.assertCanResetNickname(actor, target);
 
@@ -341,10 +283,7 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
-  async updateOwnAppearance(
-    id: number,
-    appearance: UpdateUserAppearanceDto,
-  ): Promise<AuthenticatedUser> {
+  async updateOwnAppearance(id: number, appearance: UpdateUserAppearanceDto): Promise<AuthenticatedUser> {
     const user = await this.prisma.user.update({
       where: { id },
       data: {
@@ -374,10 +313,7 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
-  async updateOwnProfile(
-    id: number,
-    profile: UpdateUserProfileDto,
-  ): Promise<AuthenticatedUser> {
+  async updateOwnProfile(id: number, profile: UpdateUserProfileDto): Promise<AuthenticatedUser> {
     const current = await this.prisma.user.findUnique({
       where: { id },
       select: { username: true, nickname: true, email: true },
@@ -416,10 +352,7 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
-  async updateOwnAvatar(
-    id: number,
-    file: UploadedAvatarFile | undefined,
-  ): Promise<AuthenticatedUser> {
+  async updateOwnAvatar(id: number, file: UploadedAvatarFile | undefined): Promise<AuthenticatedUser> {
     if (!file) {
       throw new BadRequestException("An avatar image file is required.");
     }
@@ -449,9 +382,7 @@ export class UsersService {
       });
 
       if (previousStoredName) {
-        await unlink(this.resolveAvatarPath(previousStoredName)).catch(
-          () => undefined,
-        );
+        await unlink(this.resolveAvatarPath(previousStoredName)).catch(() => undefined);
       }
 
       return this.toAuthenticatedUser(user);
@@ -461,9 +392,7 @@ export class UsersService {
     }
   }
 
-  async getAvatarFile(
-    storedName: string,
-  ): Promise<{ filePath: string; mimeType: string }> {
+  async getAvatarFile(storedName: string): Promise<{ filePath: string; mimeType: string }> {
     const filePath = this.resolveAvatarPath(storedName);
     const user = await this.prisma.user.findUnique({
       where: { avatarStoredName: storedName },
@@ -525,6 +454,17 @@ export class UsersService {
     };
   }
 
+  private adminUserSelect() {
+    return {
+      ...this.userSelect(),
+      totpCredential: {
+        select: {
+          enabled: true,
+        },
+      },
+    };
+  }
+
   private toAuthenticatedUser(user: UserRecord): AuthenticatedUser {
     return {
       id: user.id,
@@ -536,9 +476,7 @@ export class UsersService {
       status: user.status as UserStatus,
       isSuperAdmin: user.isSuperAdmin,
       isAdministrator: user.isAdministrator,
-      avatarUrl: user.avatarStoredName
-        ? `/auth/avatars/${user.avatarStoredName}`
-        : null,
+      avatarUrl: user.avatarStoredName ? `/auth/avatars/${user.avatarStoredName}` : null,
       profileBio: user.profileBio?.trim() || FALLBACK_PROFILE_BIO,
       locale: user.preferredLocale === "en-US" ? "en-US" : "zh-CN",
       createdAt: user.createdAt,
@@ -561,9 +499,7 @@ export class UsersService {
     };
   }
 
-  private toAuthenticatedUserWithPassword(
-    user: UserRecord,
-  ): AuthenticatedUser & { passwordHash: string } {
+  private toAuthenticatedUserWithPassword(user: UserRecord): AuthenticatedUser & { passwordHash: string } {
     if (!user.passwordHash) {
       throw new InternalServerErrorException("Password hash was not selected.");
     }
@@ -587,54 +523,33 @@ export class UsersService {
     return this.toAuthenticatedUser(user);
   }
 
-  private assertCanSetStatus(
-    actor: AuthenticatedUser,
-    target: AuthenticatedUser,
-  ): void {
+  private assertCanSetStatus(actor: AuthenticatedUser, target: AuthenticatedUser): void {
     if (target.isSuperAdmin) {
-      throw new ForbiddenException(
-        "The super admin account cannot be disabled.",
-      );
+      throw new ForbiddenException("The super admin account cannot be disabled.");
     }
 
     if (!actor.isSuperAdmin && target.isAdministrator) {
-      throw new ForbiddenException(
-        "Administrators cannot change another administrator account.",
-      );
+      throw new ForbiddenException("Administrators cannot change another administrator account.");
     }
   }
 
-  private assertCanUpdatePassword(
-    actor: AuthenticatedUser,
-    target: AuthenticatedUser,
-  ): void {
+  private assertCanUpdatePassword(actor: AuthenticatedUser, target: AuthenticatedUser): void {
     if (!actor.isSuperAdmin) {
-      throw new ForbiddenException(
-        "Only the super admin may update account passwords.",
-      );
+      throw new ForbiddenException("Only the super admin may update account passwords.");
     }
 
     if (target.isSuperAdmin && target.id !== actor.id) {
-      throw new ForbiddenException(
-        "A super admin may only update their own super admin password.",
-      );
+      throw new ForbiddenException("A super admin may only update their own super admin password.");
     }
   }
 
-  private assertCanResetNickname(
-    actor: AuthenticatedUser,
-    target: AuthenticatedUser,
-  ): void {
+  private assertCanResetNickname(actor: AuthenticatedUser, target: AuthenticatedUser): void {
     if (target.isSuperAdmin) {
-      throw new ForbiddenException(
-        "The super admin nickname cannot be reset from user management.",
-      );
+      throw new ForbiddenException("The super admin nickname cannot be reset from user management.");
     }
 
     if (!actor.isSuperAdmin && target.isAdministrator) {
-      throw new ForbiddenException(
-        "Administrators cannot reset another administrator nickname.",
-      );
+      throw new ForbiddenException("Administrators cannot reset another administrator nickname.");
     }
   }
 
@@ -648,9 +563,7 @@ export class UsersService {
     });
 
     if (length < 1 || containsControlCharacter) {
-      throw new BadRequestException(
-        "Nickname must contain between 1 and 24 visible characters.",
-      );
+      throw new BadRequestException("Nickname must contain between 1 and 24 visible characters.");
     }
 
     if (nickname === currentNickname) {
@@ -658,9 +571,7 @@ export class UsersService {
     }
 
     if (length > 24) {
-      throw new BadRequestException(
-        "Nickname must contain between 1 and 24 visible characters.",
-      );
+      throw new BadRequestException("Nickname must contain between 1 and 24 visible characters.");
     }
 
     if (RESERVED_NICKNAMES.has(nickname.toLocaleLowerCase("en-US"))) {
@@ -673,37 +584,22 @@ export class UsersService {
   private validateAvatarFile(file: UploadedAvatarFile): SupportedAvatarFormat {
     const normalizedMimeType = file.mimetype.toLowerCase();
     const originalExtension = extname(file.originalname).toLowerCase();
-    const format = SUPPORTED_AVATAR_FORMATS.find((candidate) =>
-      candidate.matches(file.buffer),
-    );
+    const format = SUPPORTED_AVATAR_FORMATS.find((candidate) => candidate.matches(file.buffer));
 
-    if (
-      !format ||
-      normalizedMimeType !== format.mimeType ||
-      !format.extensions.includes(originalExtension)
-    ) {
-      throw new BadRequestException(
-        "Only valid JPEG, PNG, or WebP avatar images are accepted.",
-      );
+    if (!format || normalizedMimeType !== format.mimeType || !format.extensions.includes(originalExtension)) {
+      throw new BadRequestException("Only valid JPEG, PNG, or WebP avatar images are accepted.");
     }
 
     return format;
   }
 
   private resolveAvatarPath(storedName: string): string {
-    if (
-      !/^[0-9a-f-]{36}\.(?:jpg|png|webp)$/i.test(storedName) ||
-      basename(storedName) !== storedName
-    ) {
+    if (!/^[0-9a-f-]{36}\.(?:jpg|png|webp)$/i.test(storedName) || basename(storedName) !== storedName) {
       throw new NotFoundException("Avatar not found.");
     }
 
     const filePath = resolve(this.avatarUploadDirectory, storedName);
-    if (
-      !filePath.startsWith(
-        `${this.avatarUploadDirectory}${process.platform === "win32" ? "\\" : "/"}`,
-      )
-    ) {
+    if (!filePath.startsWith(`${this.avatarUploadDirectory}${process.platform === "win32" ? "\\" : "/"}`)) {
       throw new NotFoundException("Avatar not found.");
     }
 

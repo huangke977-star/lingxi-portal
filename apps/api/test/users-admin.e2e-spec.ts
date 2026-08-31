@@ -112,17 +112,11 @@ function createPrismaMock() {
       return true;
     }
 
-    if (
-      where.AND &&
-      !where.AND.every((condition) => matchesWhere(user, condition))
-    ) {
+    if (where.AND && !where.AND.every((condition) => matchesWhere(user, condition))) {
       return false;
     }
 
-    if (
-      where.OR &&
-      !where.OR.some((condition) => matchesWhere(user, condition))
-    ) {
+    if (where.OR && !where.OR.some((condition) => matchesWhere(user, condition))) {
       return false;
     }
 
@@ -130,21 +124,11 @@ function createPrismaMock() {
       return false;
     }
 
-    if (
-      where.username?.contains &&
-      !user.username
-        .toLowerCase()
-        .includes(where.username.contains.toLowerCase())
-    ) {
+    if (where.username?.contains && !user.username.toLowerCase().includes(where.username.contains.toLowerCase())) {
       return false;
     }
 
-    if (
-      where.nickname?.contains &&
-      !user.nickname
-        .toLowerCase()
-        .includes(where.nickname.contains.toLowerCase())
-    ) {
+    if (where.nickname?.contains && !user.nickname.toLowerCase().includes(where.nickname.contains.toLowerCase())) {
       return false;
     }
 
@@ -163,43 +147,25 @@ function createPrismaMock() {
         count: jest.fn(async ({ where }: { where?: MockUserWhere }) => {
           return users.filter((user) => matchesWhere(user, where)).length;
         }),
-        findMany: jest.fn(
-          async ({
-            where,
-            skip = 0,
-            take = users.length,
-          }: {
-            where?: MockUserWhere;
-            skip?: number;
-            take?: number;
-          }) => {
-            return users
-              .filter((user) => matchesWhere(user, where))
-              .slice(skip, skip + take)
-              .map(withRole);
-          },
-        ),
+        findMany: jest.fn(async ({ where, skip = 0, take = users.length }: { where?: MockUserWhere; skip?: number; take?: number }) => {
+          return users
+            .filter((user) => matchesWhere(user, where))
+            .slice(skip, skip + take)
+            .map(withRole);
+        }),
         findUnique: jest.fn(async ({ where }: { where: { id?: number } }) => {
           const user = users.find((item) => item.id === where.id);
           return user ? withRole(user) : null;
         }),
-        update: jest.fn(
-          async ({
-            where,
-            data,
-          }: {
-            where: { id: number };
-            data: Partial<StoredUser>;
-          }) => {
-            const user = users.find((item) => item.id === where.id);
-            if (!user) {
-              throw new Error("User not found");
-            }
+        update: jest.fn(async ({ where, data }: { where: { id: number }; data: Partial<StoredUser> }) => {
+          const user = users.find((item) => item.id === where.id);
+          if (!user) {
+            throw new Error("User not found");
+          }
 
-            Object.assign(user, data);
-            return withRole(user);
-          },
-        ),
+          Object.assign(user, data);
+          return withRole(user);
+        }),
       },
     },
   };
@@ -245,19 +211,13 @@ describe("admin user management (e2e)", () => {
       throw new Error(`Missing user ${userId}`);
     }
 
-    return jwt.signAsync(
-      { sub: user.id, username: user.username },
-      { secret: process.env.JWT_ACCESS_SECRET, expiresIn: "15m" },
-    );
+    return jwt.signAsync({ sub: user.id, username: user.username }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: "15m" });
   }
 
   it("allows super admin to list users without password hashes", async () => {
     const token = await tokenFor(1);
 
-    const response = await request(app.getHttpServer())
-      .get("/users")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
+    const response = await request(app.getHttpServer()).get("/users").set("Authorization", `Bearer ${token}`).expect(200);
 
     expect(response.body).toMatchObject({
       total: 3,
@@ -279,20 +239,12 @@ describe("admin user management (e2e)", () => {
   it("searches users by nickname or username", async () => {
     const token = await tokenFor(1);
 
-    const nicknameResponse = await request(app.getHttpServer())
-      .get("/users?search=云间")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
+    const nicknameResponse = await request(app.getHttpServer()).get("/users?search=云间").set("Authorization", `Bearer ${token}`).expect(200);
 
     expect(nicknameResponse.body.total).toBe(1);
-    expect(
-      nicknameResponse.body.items.map((user: StoredUser) => user.username),
-    ).toEqual(["normal"]);
+    expect(nicknameResponse.body.items.map((user: StoredUser) => user.username)).toEqual(["normal"]);
 
-    const usernameResponse = await request(app.getHttpServer())
-      .get("/users?search=mana")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
+    const usernameResponse = await request(app.getHttpServer()).get("/users?search=mana").set("Authorization", `Bearer ${token}`).expect(200);
 
     expect(usernameResponse.body.total).toBe(1);
     expect(usernameResponse.body.items[0].nickname).toBe("值守管理员");
@@ -317,10 +269,7 @@ describe("admin user management (e2e)", () => {
       });
     }
 
-    const response = await request(app.getHttpServer())
-      .get("/users?page=2&pageSize=10")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
+    const response = await request(app.getHttpServer()).get("/users?page=2&pageSize=10").set("Authorization", `Bearer ${token}`).expect(200);
 
     expect(response.body).toMatchObject({
       total: 13,
@@ -335,20 +284,12 @@ describe("admin user management (e2e)", () => {
   it("allows the super admin to grant and revoke administrator identity", async () => {
     const token = await tokenFor(1);
 
-    await request(app.getHttpServer())
-      .patch("/users/2/administrator")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ isAdministrator: true })
-      .expect(200);
+    await request(app.getHttpServer()).patch("/users/2/administrator").set("Authorization", `Bearer ${token}`).send({ isAdministrator: true }).expect(200);
 
     expect(state.users[1].isAdministrator).toBe(true);
     expect(state.users[1].roleId).toBe(3);
 
-    await request(app.getHttpServer())
-      .patch("/users/2/administrator")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ isAdministrator: false })
-      .expect(200);
+    await request(app.getHttpServer()).patch("/users/2/administrator").set("Authorization", `Bearer ${token}`).send({ isAdministrator: false }).expect(200);
 
     expect(state.users[1].isAdministrator).toBe(false);
   });
@@ -356,11 +297,7 @@ describe("admin user management (e2e)", () => {
   it("allows super admin to update user status", async () => {
     const token = await tokenFor(1);
 
-    await request(app.getHttpServer())
-      .patch("/users/2/status")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ status: "disabled" })
-      .expect(200);
+    await request(app.getHttpServer()).patch("/users/2/status").set("Authorization", `Bearer ${token}`).send({ status: "disabled" }).expect(200);
 
     expect(state.users[1].status).toBe("disabled");
   });
@@ -368,10 +305,7 @@ describe("admin user management (e2e)", () => {
   it("allows super admin to reset other user nicknames", async () => {
     const token = await tokenFor(1);
 
-    await request(app.getHttpServer())
-      .patch("/users/2/nickname/reset")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
+    await request(app.getHttpServer()).patch("/users/2/nickname/reset").set("Authorization", `Bearer ${token}`).expect(200);
 
     expect(state.users[1].nickname).toBe("normal");
   });
@@ -380,11 +314,7 @@ describe("admin user management (e2e)", () => {
     const token = await tokenFor(1);
     const previousHash = state.users[1].passwordHash;
 
-    const response = await request(app.getHttpServer())
-      .patch("/users/2/password")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ password: "NewSecret123!" })
-      .expect(200);
+    const response = await request(app.getHttpServer()).patch("/users/2/password").set("Authorization", `Bearer ${token}`).send({ password: "NewSecret123!" }).expect(200);
 
     expect(state.users[1].passwordHash).not.toBe(previousHash);
     expect(state.users[1].passwordHash).not.toBe("NewSecret123!");
@@ -398,28 +328,16 @@ describe("admin user management (e2e)", () => {
   it("protects the super admin identity and status", async () => {
     const token = await tokenFor(1);
 
-    await request(app.getHttpServer())
-      .patch("/users/1/administrator")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ isAdministrator: false })
-      .expect(403);
+    await request(app.getHttpServer()).patch("/users/1/administrator").set("Authorization", `Bearer ${token}`).send({ isAdministrator: false }).expect(403);
 
-    await request(app.getHttpServer())
-      .patch("/users/1/status")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ status: "disabled" })
-      .expect(403);
+    await request(app.getHttpServer()).patch("/users/1/status").set("Authorization", `Bearer ${token}`).send({ status: "disabled" }).expect(403);
   });
 
   it("allows the super admin to update their own password", async () => {
     const token = await tokenFor(1);
     const previousHash = state.users[0].passwordHash;
 
-    await request(app.getHttpServer())
-      .patch("/users/1/password")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ password: "OwnSecret123!" })
-      .expect(200);
+    await request(app.getHttpServer()).patch("/users/1/password").set("Authorization", `Bearer ${token}`).send({ password: "OwnSecret123!" }).expect(200);
 
     expect(state.users[0].passwordHash).not.toBe(previousHash);
   });
@@ -427,20 +345,20 @@ describe("admin user management (e2e)", () => {
   it("allows administrators to list users", async () => {
     const token = await tokenFor(3);
 
+    await request(app.getHttpServer()).get("/users").set("Authorization", `Bearer ${token}`).expect(200);
+  });
+
+  it("does not allow a normal administrator to reset a user's TOTP", async () => {
     await request(app.getHttpServer())
-      .get("/users")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
+      .patch("/account-privacy/admin/users/2/totp/reset")
+      .set("Authorization", `Bearer ${await tokenFor(3)}`)
+      .expect(403);
   });
 
   it("allows a low-growth administrator to manage a higher-growth ordinary user", async () => {
     const token = await tokenFor(3);
 
-    await request(app.getHttpServer())
-      .patch("/users/2/status")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ status: "disabled" })
-      .expect(200);
+    await request(app.getHttpServer()).patch("/users/2/status").set("Authorization", `Bearer ${token}`).send({ status: "disabled" }).expect(200);
 
     expect(state.users[2].roleId).toBe(1);
     expect(state.users[1].roleId).toBe(3);
@@ -450,10 +368,7 @@ describe("admin user management (e2e)", () => {
   it("allows administrators to reset lower-level nicknames", async () => {
     const token = await tokenFor(3);
 
-    await request(app.getHttpServer())
-      .patch("/users/2/nickname/reset")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(200);
+    await request(app.getHttpServer()).patch("/users/2/nickname/reset").set("Authorization", `Bearer ${token}`).expect(200);
 
     expect(state.users[1].nickname).toBe("normal");
   });
@@ -461,60 +376,34 @@ describe("admin user management (e2e)", () => {
   it("prevents administrators from granting administrator identity", async () => {
     const token = await tokenFor(3);
 
-    await request(app.getHttpServer())
-      .patch("/users/2/administrator")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ isAdministrator: true })
-      .expect(403);
+    await request(app.getHttpServer()).patch("/users/2/administrator").set("Authorization", `Bearer ${token}`).send({ isAdministrator: true }).expect(403);
   });
 
   it("prevents administrators from changing administrator or super-admin accounts", async () => {
     const token = await tokenFor(3);
 
-    await request(app.getHttpServer())
-      .patch("/users/3/status")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ status: "disabled" })
-      .expect(403);
+    await request(app.getHttpServer()).patch("/users/3/status").set("Authorization", `Bearer ${token}`).send({ status: "disabled" }).expect(403);
 
-    await request(app.getHttpServer())
-      .patch("/users/1/administrator")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ isAdministrator: true })
-      .expect(403);
+    await request(app.getHttpServer()).patch("/users/1/administrator").set("Authorization", `Bearer ${token}`).send({ isAdministrator: true }).expect(403);
 
-    await request(app.getHttpServer())
-      .patch("/users/1/nickname/reset")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(403);
+    await request(app.getHttpServer()).patch("/users/1/nickname/reset").set("Authorization", `Bearer ${token}`).expect(403);
   });
 
   it("rejects administrators from updating user passwords", async () => {
     const token = await tokenFor(3);
 
-    await request(app.getHttpServer())
-      .patch("/users/2/password")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ password: "OtherSecret123!" })
-      .expect(403);
+    await request(app.getHttpServer()).patch("/users/2/password").set("Authorization", `Bearer ${token}`).send({ password: "OtherSecret123!" }).expect(403);
   });
 
   it("rejects short password updates", async () => {
     const token = await tokenFor(1);
 
-    await request(app.getHttpServer())
-      .patch("/users/2/password")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ password: "short" })
-      .expect(400);
+    await request(app.getHttpServer()).patch("/users/2/password").set("Authorization", `Bearer ${token}`).send({ password: "short" }).expect(400);
   });
 
   it("rejects ordinary users regardless of growth level", async () => {
     const token = await tokenFor(2);
 
-    await request(app.getHttpServer())
-      .get("/users")
-      .set("Authorization", `Bearer ${token}`)
-      .expect(403);
+    await request(app.getHttpServer()).get("/users").set("Authorization", `Bearer ${token}`).expect(403);
   });
 });
