@@ -3,7 +3,6 @@
 /* eslint-disable @next/next/no-img-element */
 
 import type { ComponentType, CSSProperties, FormEvent } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -1150,15 +1149,6 @@ export default function ProfilePage() {
           </section>
 
           <AccountSecurityPanel email={user.email} />
-
-          <section className="profile-panel privacy-entry-panel">
-            <div className="panel-heading">
-              <span className="section-label">{phrase("账号控制", "Account controls")}</span>
-              <strong>{phrase("隐私与数据", "Privacy and data")}</strong>
-            </div>
-            <p>{phrase("导出数据、注销账号、屏蔽关系和双因素认证。", "Manage data exports, account deletion, blocked users, and two-factor authentication.")}</p>
-            <Link className="text-action" href={localizedPath("/profile/privacy", locale)}>{phrase("打开隐私与数据", "Open privacy and data")}</Link>
-          </section>
 
           <section className="profile-panel profile-display-panel">
             <div className="panel-heading profile-display-heading">

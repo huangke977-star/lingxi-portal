@@ -221,6 +221,9 @@ importers:
       next:
         specifier: latest
         version: 16.3.3(@babel/core@7.29.7(supports-color@8.1.1))(@types/node@26.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      qrcode.react:
+        specifier: ^4.2.0
+        version: 4.2.0(react@19.2.8)
       react:
         specifier: latest
         version: 19.2.8
@@ -5516,6 +5519,11 @@ packages:
 
   pure-rand@7.0.0:
     resolution: {integrity: sha512-P+yQSnu0T0M3g9Wlwq9ZBA3iOTQ/i4H/RnpSc9VvM1nCnQTs1lQpK/kAU5kHJoWn5Gv7310+mV63hwwWy+UUqg==}
+
+  qrcode.react@4.2.0:
+    resolution: {integrity: sha512-QpgqWi8rD9DsS9EP3z7BT+5lY5SFhsqGjpgW5DY/i3mK4M9DTBNz3ErMi8BWYEfI3L0d8GIbGmcdFAS1uIRGjA==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   qs@6.15.3:
     resolution: {integrity: sha512-O9gl3zCl5h5blw1KGUzQKhA5oUXSl8rwUIM5o0S3nCXMliSvy5Dzx7/DJcI+SwgICv+IneSZwhBh1oSyEHA71A==}
@@ -12639,6 +12647,10 @@ snapshots:
   pure-rand@6.1.0: {}
 
   pure-rand@7.0.0: {}
+
+  qrcode.react@4.2.0(react@19.2.8):
+    dependencies:
+      react: 19.2.8
 
   qs@6.15.3:
     dependencies:

@@ -305,8 +305,6 @@
 .profile-featured-collection > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile-featured-collection > small { color: var(--muted); }
 
-.privacy-entry-panel { grid-column: 1 / -1; }
-.privacy-entry-panel > p { margin: 0; color: var(--muted); font-size: 0.84rem; }
 .account-privacy-page { display: grid; gap: 16px; }
 .privacy-page-header { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
 .privacy-page-header h1 { margin: 4px 0 5px; font-size: 1.45rem; }
@@ -322,11 +320,20 @@
 .privacy-job-status small { color: var(--muted); }
 .privacy-job-status .text-action { justify-self: start; display: inline-flex; align-items: center; gap: 5px; }
 .privacy-warning { margin: 0; color: var(--danger); font-size: 0.78rem; line-height: 1.5; }
+.privacy-deletion-row { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; }
+.privacy-deletion-row > .button { min-height: 35px; white-space: nowrap; }
+.privacy-deletion-row .password-input { min-width: 0; }
+.privacy-deletion-row .password-input > input { box-sizing: border-box; width: 100%; min-height: 35px; border: 0; border-radius: 6px; background: var(--surface-soft); color: var(--foreground); font: inherit; outline: none; padding: 7px 44px 7px 9px; }
+.privacy-deletion-row .password-input > input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
 .privacy-inline-field { display: grid; gap: 5px; color: var(--muted-strong); font-size: 0.76rem; }
 .privacy-inline-field input, .privacy-card > input { min-height: 35px; border: 0; border-radius: 6px; background: var(--surface-soft); color: var(--foreground); font: inherit; outline: none; padding: 7px 9px; }
 .privacy-inline-field input:focus, .privacy-card > input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
 .privacy-secret { overflow-wrap: anywhere; border-radius: 6px; background: var(--surface-soft); padding: 8px; color: var(--accent-strong); font-size: 0.8rem; }
 .privacy-uri { overflow-wrap: anywhere; color: var(--muted); font-size: 0.68rem; line-height: 1.4; }
+.privacy-totp-enrollment { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 12px; }
+.privacy-qr-code { display: grid; width: 184px; height: 184px; place-items: center; border-radius: 8px; background: var(--surface-soft); color: var(--foreground); }
+.privacy-qr-code svg { display: block; max-width: 100%; }
+.privacy-totp-details { display: grid; min-width: 0; gap: 7px; color: var(--muted); font-size: 0.72rem; line-height: 1.5; }
 .privacy-recovery-codes { display: grid; gap: 6px; border-radius: 7px; background: color-mix(in srgb, var(--accent-soft) 60%, transparent); padding: 9px; color: var(--accent-strong); font-size: 0.76rem; }
 .privacy-recovery-codes code { overflow-wrap: anywhere; font-size: 0.72rem; line-height: 1.6; }
 .privacy-blocked-row { display: flex; align-items: center; justify-content: space-between; min-height: 34px; border-bottom: 1px solid var(--control-line); color: var(--foreground); font-size: 0.8rem; }
@@ -336,6 +343,15 @@
 .privacy-audit-list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; border-bottom: 1px solid var(--control-line); color: var(--muted-strong); font-size: 0.78rem; }
 .privacy-audit-list > div:last-child { border-bottom: 0; }
 .privacy-audit-list time { color: var(--muted); font-size: 0.7rem; white-space: nowrap; }
+.admin-overview-page { display: grid; gap: 16px; }
+.admin-overview-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.admin-overview-item { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 1px solid var(--control-line); border-radius: 8px; background: color-mix(in srgb, var(--panel) 84%, transparent); color: var(--foreground); padding: 12px; text-decoration: none; transition: border-color 140ms ease, background 140ms ease, transform 140ms ease; }
+.admin-overview-item:hover { border-color: color-mix(in srgb, var(--accent) 58%, var(--control-line)); background: color-mix(in srgb, var(--accent-soft) 35%, var(--panel)); transform: translateY(-1px); }
+.admin-overview-item-icon { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 7px; background: var(--surface-soft); color: var(--accent-strong); }
+.admin-overview-item-copy { display: grid; min-width: 0; gap: 3px; }
+.admin-overview-item-copy strong { overflow: hidden; font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
+.admin-overview-item-copy small { overflow: hidden; color: var(--muted); font-size: 0.66rem; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.admin-overview-item-arrow { color: var(--muted); transform: rotate(90deg); }
 .deleted-users-page .admin-search-field { display: flex; align-items: center; gap: 7px; }
 .deleted-users-page .admin-search-field input { min-width: min(360px, 45vw); }
 .deleted-user-modal { display: grid; width: min(760px, calc(100vw - 28px)); max-height: min(760px, calc(100vh - 40px)); overflow: hidden; border: 1px solid var(--control-line); border-radius: 9px; background: var(--panel); box-shadow: var(--panel-shadow); }
@@ -351,7 +367,14 @@
 @media (max-width: 760px) {
   .privacy-grid { grid-template-columns: minmax(0, 1fr); }
   .privacy-page-header { align-items: start; flex-direction: column; }
+  .privacy-totp-enrollment { grid-template-columns: minmax(0, 1fr); }
+  .privacy-qr-code { justify-self: center; }
+  .admin-overview-grid { grid-template-columns: minmax(0, 1fr); }
   .deleted-users-page .admin-search-field input { min-width: 0; width: 100%; }
+}
+
+@media (min-width: 761px) and (max-width: 1080px) {
+  .admin-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 1100px) {

@@ -30,6 +30,7 @@
     "lucide-react": "^1.24.0",
     "marked": "^18.0.11",
     "next": "latest",
+    "qrcode.react": "^4.2.0",
     "react": "latest",
     "react-dom": "latest",
     "react-easy-crop": "^6.2.2",
