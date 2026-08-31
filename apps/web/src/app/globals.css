@@ -19847,6 +19847,24 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   padding: 0;
 }
 
+/* Final typography defaults: keep new editor text at 14px and tighten every
+   ArticleBody surface without changing user-selected inline font sizes. */
+.article-rich-editor .article-rich-editor-content {
+  font-size: 14px;
+  line-height: 1.35;
+}
+.article-rich-editor .article-rich-editor-content p {
+  min-height: 1.35em;
+  line-height: 1.35;
+}
+.article-body {
+  line-height: 1.28;
+}
+.article-body p {
+  margin-bottom: 0.2em;
+  line-height: inherit;
+}
+
 @media (max-width: 700px) {
   .article-publish-preview { width: min(100vw - 20px, 980px); }
   .article-publish-preview-layout { padding: 14px 15px 22px; }

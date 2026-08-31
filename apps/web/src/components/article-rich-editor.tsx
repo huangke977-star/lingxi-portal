@@ -107,10 +107,15 @@ export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, 
       ResourceBlock,
     ],
     content: format === "markdown" ? markdownToHtml(value) : value,
+    onCreate: ({ editor: createdEditor }) => {
+      // Keep newly typed text at the editor default without rewriting existing marks.
+      createdEditor.commands.setFontSize(DEFAULT_EDITOR_FONT_SIZE);
+    },
     onUpdate: ({ editor: updatedEditor }) => onChange(normalizeEditorHtml(updatedEditor.getHTML()), "html"),
     editorProps: {
       attributes: {
         class: "article-rich-editor-content",
+        style: `font-size: ${DEFAULT_EDITOR_FONT_SIZE}`,
         spellcheck: "true",
       },
       handlePaste: (_view, event) => {
