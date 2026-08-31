@@ -19780,7 +19780,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 /* The editor preview has a more specific legacy rule; keep its reading rhythm
    aligned with the detail and dialog previews as well. */
 .article-editor-page .article-editor-workspace .article-editor-preview .article-body {
-  line-height: 1.32;
+  line-height: 1.24;
 }
 
 /* Publish preview keeps metadata beside its title, leaving one centered body column. */
@@ -19851,18 +19851,38 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
    ArticleBody surface without changing user-selected inline font sizes. */
 .article-rich-editor .article-rich-editor-content {
   font-size: 14px;
-  line-height: 1.35;
+  line-height: 1.25;
 }
 .article-rich-editor .article-rich-editor-content p {
-  min-height: 1.35em;
-  line-height: 1.35;
+  min-height: 1.25em;
+  line-height: 1.25;
 }
+.article-rich-editor .article-rich-editor-content > * + * { margin-top: 0.24em; }
 .article-body {
-  line-height: 1.28;
+  line-height: 1.24;
 }
 .article-body p {
-  margin-bottom: 0.2em;
+  margin-bottom: 0.14em;
   line-height: inherit;
+}
+:is(
+  .article-detail-page,
+  .article-publish-preview,
+  .article-editor-preview,
+  .article-template-view-content,
+  .article-template-reading-layout
+) .article-body {
+  line-height: 1.24;
+}
+
+:is(
+  .article-detail-page,
+  .article-publish-preview,
+  .article-editor-preview,
+  .article-template-view-content,
+  .article-template-reading-layout
+) .article-body p {
+  margin-bottom: 0.14em;
 }
 
 @media (max-width: 700px) {
