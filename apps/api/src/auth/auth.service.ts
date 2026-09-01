@@ -28,7 +28,7 @@ interface TotpLoginChallenge {
   attempts: number;
 }
 
-type PasskeyChallengeKind = "registration" | "login" | "delete";
+type PasskeyChallengeKind = "registration" | "login" | "delete" | "totp-disable";
 
 interface PasskeyChallenge {
   userId?: number;
@@ -421,6 +421,97 @@ export class AuthService {
     await this.requirePasskey(user.id, targetId);
     await this.accountSecurity.consumePasskeyDeletionVerification(user, targetId, challengeToken, code);
     return this.deletePasskeyAfterVerification(user.id, targetId);
+  }
+
+  async beginTotpDisablePasskey(user: AuthenticatedUser, context: RefreshSessionContext): Promise<{
+    options: PublicKeyCredentialRequestOptionsJSON;
+    challengeToken: string;
+    expiresAt: string;
+  }> {
+    const overview = await this.accountPrivacy.getOverview(user);
+    if (!overview.totp.enabled) throw new BadRequestException("当前未启用双因素认证。\nTwo-factor authentication is not enabled.");
+    const credentials = await this.prismaService!.webAuthnCredential.findMany({
+      where: { userId: user.id },
+      select: { credentialId: true, transports: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    const options = await generateAuthenticationOptions({
+      rpID: this.passkeyRpId(),
+      userVerification: "required",
+      timeout: 60_000,
+      allowCredentials: credentials.map((credential) => ({
+        id: credential.credentialId,
+        transports: this.passkeyTransports(credential.transports),
+      })),
+    });
+    const challengeToken = randomBytes(32).toString("base64url");
+    await this.redis.set(
+      this.passkeyChallengeKey("totp-disable", challengeToken),
+      JSON.stringify({
+        userId: user.id,
+        expectedChallenge: options.challenge,
+        deviceFingerprint: this.loginDeviceFingerprint(context),
+        attempts: 0,
+      } satisfies PasskeyChallenge),
+      this.passkeyChallengeTtlSeconds,
+    );
+    return {
+      options,
+      challengeToken,
+      expiresAt: new Date(Date.now() + this.passkeyChallengeTtlSeconds * 1000).toISOString(),
+    };
+  }
+
+  async finishTotpDisablePasskey(
+    user: AuthenticatedUser,
+    dto: VerifyPasskeyDeletionDto,
+    context: RefreshSessionContext,
+  ) {
+    const challenge = await this.requirePasskeyChallenge("totp-disable", dto.challengeToken, context, user.id);
+    const credentialId = typeof (dto.response as { id?: unknown }).id === "string" ? (dto.response as { id: string }).id : "";
+    if (!credentialId) {
+      await this.recordPasskeyFailure("totp-disable", dto.challengeToken, challenge);
+      throw new BadRequestException("通行密钥验证失败，请重试。\nPasskey verification failed. Please try again.");
+    }
+    const stored = await this.prismaService!.webAuthnCredential.findFirst({
+      where: { credentialId, userId: user.id },
+    });
+    if (!stored) {
+      await this.recordPasskeyFailure("totp-disable", dto.challengeToken, challenge);
+      throw new UnauthorizedException("通行密钥验证失败。\nPasskey verification failed.");
+    }
+    let verified;
+    try {
+      verified = await verifyAuthenticationResponse({
+        response: dto.response as unknown as AuthenticationResponseJSON,
+        expectedChallenge: challenge.expectedChallenge,
+        expectedOrigin: this.passkeyExpectedOrigins(),
+        expectedRPID: this.passkeyRpId(),
+        requireUserVerification: true,
+        credential: {
+          id: stored.credentialId,
+          publicKey: Buffer.from(stored.publicKey, "base64url"),
+          counter: stored.counter,
+          transports: this.passkeyTransports(stored.transports),
+        },
+      });
+    } catch {
+      await this.recordPasskeyFailure("totp-disable", dto.challengeToken, challenge);
+      throw new UnauthorizedException("通行密钥验证失败，请重试。\nPasskey verification failed. Please try again.");
+    }
+    if (!verified.verified) {
+      await this.recordPasskeyFailure("totp-disable", dto.challengeToken, challenge);
+      throw new UnauthorizedException("通行密钥验证失败。\nPasskey verification failed.");
+    }
+    await this.prismaService!.webAuthnCredential.update({
+      where: { id: stored.id },
+      data: {
+        counter: Math.max(stored.counter, verified.authenticationInfo.newCounter),
+        lastUsedAt: new Date(),
+      },
+    });
+    await this.redis.del(this.passkeyChallengeKey("totp-disable", dto.challengeToken));
+    return this.accountPrivacy.disableTotpAfterVerification(user, context);
   }
 
   private async requirePasskey(userId: number, id: number) {

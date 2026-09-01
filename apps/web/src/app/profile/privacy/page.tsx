@@ -10,9 +10,9 @@ import { PasswordInput } from "@/components/password-input";
 import { OtpCodeInput } from "@/components/otp-code-input";
 import { useLanguage } from "@/components/language-provider";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
-import { deletePasskeyWithEmail, deletePasskeyWithPassword, deletePasskeyWithTotp, getPasskeyDeletionOptions, getPasskeyRegistrationOptions, isAuthExpiredError, listPasskeys, renamePasskey, requestPasskeyDeletionEmail, verifyPasskeyDeletion, verifyPasskeyRegistration, type PasskeySummary } from "@/lib/auth-api";
+import { deletePasskeyWithEmail, deletePasskeyWithPassword, deletePasskeyWithTotp, getPasskeyDeletionOptions, getPasskeyRegistrationOptions, getTotpDisablePasskeyOptions, isAuthExpiredError, listPasskeys, renamePasskey, requestPasskeyDeletionEmail, verifyPasskeyDeletion, verifyPasskeyRegistration, verifyTotpDisablePasskey, type PasskeySummary } from "@/lib/auth-api";
 import { localizedPath } from "@/lib/i18n";
-import { beginTotpEnrollment, cancelAccountDeletion, confirmTotp, disableTotp, disableTotpWithEmail, downloadDataExport, getAccountPrivacyOverview, getDataExport, listPrivacyAudit, requestAccountDeletion, requestDataExport, requestTotpDisableEmailVerification, type AccountPrivacyOverview, type ExportJob } from "@/lib/account-privacy-api";
+import { beginTotpEnrollment, cancelAccountDeletion, confirmTotp, disableTotp, disableTotpWithEmail, disableTotpWithPassword, downloadDataExport, getAccountPrivacyOverview, getDataExport, listPrivacyAudit, requestAccountDeletion, requestDataExport, requestTotpDisableEmailVerification, type AccountPrivacyOverview, type ExportJob } from "@/lib/account-privacy-api";
 import { unblockFriendship } from "@/lib/social-api";
 
 export default function AccountPrivacyPage() {
@@ -25,9 +25,6 @@ export default function AccountPrivacyPage() {
   const [deletionPassword, setDeletionPassword] = useState("");
   const [deletionOpen, setDeletionOpen] = useState(false);
   const [totpCode, setTotpCode] = useState("");
-  const [totpDisableMethod, setTotpDisableMethod] = useState<"idle" | "authenticator" | "email">("idle");
-  const [totpDisableEntry, setTotpDisableEntry] = useState<"otp" | "recovery">("otp");
-  const [totpDisableCooldown, setTotpDisableCooldown] = useState(0);
   const [totpSecret, setTotpSecret] = useState("");
   const [totpUri, setTotpUri] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
@@ -35,13 +32,14 @@ export default function AccountPrivacyPage() {
   const [passkeyName, setPasskeyName] = useState("");
   const [editingPasskeyId, setEditingPasskeyId] = useState<number | null>(null);
   const [editingPasskeyName, setEditingPasskeyName] = useState("");
-  const [passkeyDeleteStep, setPasskeyDeleteStep] = useState<"choose" | "passkey" | "email" | "password" | "totp" | null>(null);
-  const [passkeyDeleteId, setPasskeyDeleteId] = useState<number | null>(null);
-  const [passkeyDeleteCode, setPasskeyDeleteCode] = useState("");
-  const [passkeyDeletePassword, setPasskeyDeletePassword] = useState("");
-  const [passkeyDeleteEmailChallenge, setPasskeyDeleteEmailChallenge] = useState("");
-  const [passkeyDeleteEmailCooldown, setPasskeyDeleteEmailCooldown] = useState(0);
-  const passkeyDeleteSubmitRef = useRef(false);
+  const [securityVerificationTarget, setSecurityVerificationTarget] = useState<"passkey" | "totp" | null>(null);
+  const [securityVerificationStep, setSecurityVerificationStep] = useState<"choose" | "passkey" | "email" | "password" | "totp" | null>(null);
+  const [securityVerificationId, setSecurityVerificationId] = useState<number | null>(null);
+  const [securityVerificationCode, setSecurityVerificationCode] = useState("");
+  const [securityVerificationPassword, setSecurityVerificationPassword] = useState("");
+  const [securityVerificationEmailChallenge, setSecurityVerificationEmailChallenge] = useState("");
+  const [securityVerificationEmailCooldown, setSecurityVerificationEmailCooldown] = useState(0);
+  const securityVerificationSubmitRef = useRef(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
@@ -68,16 +66,10 @@ export default function AccountPrivacyPage() {
   }, [exportJob, token]);
 
   useEffect(() => {
-    if (totpDisableCooldown <= 0) return;
-    const timer = window.setInterval(() => setTotpDisableCooldown((value) => Math.max(0, value - 1)), 1000);
+    if (securityVerificationEmailCooldown <= 0) return;
+    const timer = window.setInterval(() => setSecurityVerificationEmailCooldown((value) => Math.max(0, value - 1)), 1000);
     return () => window.clearInterval(timer);
-  }, [totpDisableCooldown]);
-
-  useEffect(() => {
-    if (passkeyDeleteEmailCooldown <= 0) return;
-    const timer = window.setInterval(() => setPasskeyDeleteEmailCooldown((value) => Math.max(0, value - 1)), 1000);
-    return () => window.clearInterval(timer);
-  }, [passkeyDeleteEmailCooldown]);
+  }, [securityVerificationEmailCooldown]);
 
   async function load(currentToken: string) {
     try {
@@ -209,50 +201,80 @@ export default function AccountPrivacyPage() {
     if (!token) return;
     setError("");
     setNotice("");
-    setPasskeyDeleteId(id);
-    setPasskeyDeleteStep("choose");
-    setPasskeyDeleteCode("");
-    setPasskeyDeletePassword("");
-    setPasskeyDeleteEmailChallenge("");
-    setPasskeyDeleteEmailCooldown(0);
+    setSecurityVerificationTarget("passkey");
+    setSecurityVerificationId(id);
+    setSecurityVerificationStep("choose");
+    setSecurityVerificationCode("");
+    setSecurityVerificationPassword("");
+    setSecurityVerificationEmailChallenge("");
+    setSecurityVerificationEmailCooldown(0);
   }
 
-  function closePasskeyDelete() {
-    setPasskeyDeleteStep(null);
-    setPasskeyDeleteId(null);
-    setPasskeyDeleteCode("");
-    setPasskeyDeletePassword("");
-    setPasskeyDeleteEmailChallenge("");
-    setPasskeyDeleteEmailCooldown(0);
-  }
-
-  async function completePasskeyDeletion() {
-    if (!token) return;
-    closePasskeyDelete();
-    await load(token);
-    setNotice(phrase("通行密钥已移除。", "Passkey removed."));
-  }
-
-  async function handleSelectPasskeyDeleteMethod(method: "passkey" | "email" | "password" | "totp") {
-    if (!token || passkeyDeleteId === null || busy) return;
+  function openTotpDisable() {
     setError("");
-    setPasskeyDeleteStep(method);
-    setPasskeyDeleteCode("");
+    setNotice("");
+    setSecurityVerificationTarget("totp");
+    setSecurityVerificationId(null);
+    setSecurityVerificationStep("choose");
+    setSecurityVerificationCode("");
+    setSecurityVerificationPassword("");
+    setSecurityVerificationEmailChallenge("");
+    setSecurityVerificationEmailCooldown(0);
+  }
+
+  function closeSecurityVerification() {
+    setSecurityVerificationTarget(null);
+    setSecurityVerificationStep(null);
+    setSecurityVerificationId(null);
+    setSecurityVerificationCode("");
+    setSecurityVerificationPassword("");
+    setSecurityVerificationEmailChallenge("");
+    setSecurityVerificationEmailCooldown(0);
+  }
+
+  async function completeSecurityVerification() {
+    if (!token) return;
+    const target = securityVerificationTarget;
+    closeSecurityVerification();
+    await load(token);
+    setNotice(target === "totp" ? phrase("双因素认证已关闭。", "Two-factor authentication is disabled.") : phrase("通行密钥已移除。", "Passkey removed."));
+  }
+
+  async function handleSelectSecurityVerificationMethod(method: "passkey" | "email" | "password" | "totp") {
+    if (!token || !securityVerificationTarget || busy) return;
+    const target = securityVerificationTarget;
+    const passkeyId = securityVerificationId;
+    setError("");
+    setSecurityVerificationStep(method);
+    setSecurityVerificationCode("");
+    setSecurityVerificationPassword("");
+    if (method === "passkey") {
+      void handleVerifySecurityPasskey(target, passkeyId);
+      return;
+    }
     if (method === "email") {
-      await run("passkey-delete-email", async () => {
-        const result = await requestPasskeyDeletionEmail(token, passkeyDeleteId);
-        setPasskeyDeleteEmailChallenge(result.challengeToken);
-        setPasskeyDeleteEmailCooldown(result.retryAfterSeconds);
+      await run(`${target}-disable-email`, async () => {
+        if (target === "passkey" && passkeyId !== null) {
+          const result = await requestPasskeyDeletionEmail(token, passkeyId);
+          setSecurityVerificationEmailChallenge(result.challengeToken);
+          setSecurityVerificationEmailCooldown(result.retryAfterSeconds);
+        } else {
+          const result = await requestTotpDisableEmailVerification(token);
+          setSecurityVerificationEmailCooldown(result.retryAfterSeconds);
+        }
         setNotice(phrase("验证码已发送至你的邮箱。", "A verification code was sent to your email."));
       });
     }
   }
 
-  async function handleVerifyPasskeyDeletion() {
-    if (!token || passkeyDeleteId === null || passkeyDeleteSubmitRef.current) return;
-    passkeyDeleteSubmitRef.current = true;
-    await run("delete-passkey-passkey", async () => {
-      const challenge = await getPasskeyDeletionOptions(token, passkeyDeleteId);
+  async function handleVerifySecurityPasskey(target: "passkey" | "totp", passkeyId: number | null) {
+    if (!token || securityVerificationSubmitRef.current) return;
+    if (target === "passkey" && passkeyId === null) return;
+    securityVerificationSubmitRef.current = true;
+    await run(`${target}-disable-passkey`, async () => {
+      const challenge = target === "passkey" && passkeyId !== null
+        ? await getPasskeyDeletionOptions(token, passkeyId)
+        : await getTotpDisablePasskeyOptions(token);
       let response;
       try {
         response = await startAuthentication({ optionsJSON: challenge.options });
@@ -263,32 +285,54 @@ export default function AccountPrivacyPage() {
         }
         throw verificationError;
       }
-      await verifyPasskeyDeletion(token, passkeyDeleteId, { challengeToken: challenge.challengeToken, response });
-      await completePasskeyDeletion();
-    });
-    passkeyDeleteSubmitRef.current = false;
-  }
-
-  async function handleVerifyPasskeyDeletionCode(method: "email" | "totp", code: string) {
-    if (!token || passkeyDeleteId === null || passkeyDeleteSubmitRef.current) return;
-    if (method === "email" && !passkeyDeleteEmailChallenge) return;
-    passkeyDeleteSubmitRef.current = true;
-    await run(`delete-passkey-${method}`, async () => {
-      if (method === "email") {
-        await deletePasskeyWithEmail(token, passkeyDeleteId, passkeyDeleteEmailChallenge, code);
+      if (target === "passkey" && passkeyId !== null) {
+        await verifyPasskeyDeletion(token, passkeyId, { challengeToken: challenge.challengeToken, response });
       } else {
-        await deletePasskeyWithTotp(token, passkeyDeleteId, code);
+        await verifyTotpDisablePasskey(token, { challengeToken: challenge.challengeToken, response });
       }
-      await completePasskeyDeletion();
+      await completeSecurityVerification();
     });
-    passkeyDeleteSubmitRef.current = false;
+    securityVerificationSubmitRef.current = false;
   }
 
-  async function handleVerifyPasskeyDeletionPassword() {
-    if (!token || passkeyDeleteId === null || !passkeyDeletePassword.trim()) return;
-    await run("delete-passkey-password", async () => {
-      await deletePasskeyWithPassword(token, passkeyDeleteId, passkeyDeletePassword);
-      await completePasskeyDeletion();
+  async function handleVerifySecurityCode(method: "email" | "totp", code: string) {
+    if (!token || !securityVerificationTarget || securityVerificationSubmitRef.current) return;
+    if (method === "email" && securityVerificationTarget === "passkey" && !securityVerificationEmailChallenge) return;
+    const target = securityVerificationTarget;
+    const passkeyId = securityVerificationId;
+    if (target === "passkey" && passkeyId === null) return;
+    securityVerificationSubmitRef.current = true;
+    await run(`${target}-disable-${method}`, async () => {
+      if (target === "passkey" && passkeyId !== null) {
+        if (method === "email") {
+          await deletePasskeyWithEmail(token, passkeyId, securityVerificationEmailChallenge, code);
+        } else {
+          await deletePasskeyWithTotp(token, passkeyId, code);
+        }
+      } else {
+        if (method === "email") {
+          await disableTotpWithEmail(token, code);
+        } else {
+          await disableTotp(token, code);
+        }
+      }
+      await completeSecurityVerification();
+    });
+    securityVerificationSubmitRef.current = false;
+  }
+
+  async function handleVerifySecurityPassword() {
+    if (!token || !securityVerificationTarget || !securityVerificationPassword.trim()) return;
+    const target = securityVerificationTarget;
+    const passkeyId = securityVerificationId;
+    if (target === "passkey" && passkeyId === null) return;
+    await run(`${target}-disable-password`, async () => {
+      if (target === "passkey" && passkeyId !== null) {
+        await deletePasskeyWithPassword(token, passkeyId, securityVerificationPassword);
+      } else {
+        await disableTotpWithPassword(token, securityVerificationPassword);
+      }
+      await completeSecurityVerification();
     });
   }
 
@@ -302,42 +346,6 @@ export default function AccountPrivacyPage() {
       setTotpUri("");
       await load(token);
       setNotice(phrase("双因素认证已启用，请保存恢复码。", "Two-factor authentication is enabled. Save your recovery codes."));
-    });
-  }
-
-  async function handleDisableTotp() {
-    if (!token || !totpCode) return;
-    await run("disable-totp", async () => {
-      await disableTotp(token, totpCode);
-      setTotpCode("");
-      setTotpDisableMethod("idle");
-      setTotpDisableEntry("otp");
-      await load(token);
-      setNotice(phrase("双因素认证已关闭。", "Two-factor authentication is disabled."));
-    });
-  }
-
-  async function handleRequestTotpDisableEmail() {
-    if (!token || busy || totpDisableCooldown > 0) return;
-    await run("send-disable-totp-email", async () => {
-      await requestTotpDisableEmailVerification(token);
-      setTotpCode("");
-      setTotpDisableEntry("otp");
-      setTotpDisableMethod("email");
-      setTotpDisableCooldown(60);
-      setNotice(phrase("解除验证码已发送至你的邮箱。", "A removal code was sent to your email."));
-    });
-  }
-
-  async function handleDisableTotpWithEmail() {
-    if (!token || !totpCode) return;
-    await run("disable-totp-email", async () => {
-      await disableTotpWithEmail(token, totpCode);
-      setTotpCode("");
-      setTotpDisableMethod("idle");
-      setTotpDisableEntry("otp");
-      await load(token);
-      setNotice(phrase("双因素认证已关闭。", "Two-factor authentication is disabled."));
     });
   }
 
@@ -601,79 +609,9 @@ export default function AccountPrivacyPage() {
             </div>
           </div>
           {overview.totp.enabled ? (
-            totpDisableMethod === "idle" ? (
-              <button
-                className="button secondary"
-                disabled={busy !== ""}
-                onClick={() => {
-                  setTotpCode("");
-                  setTotpDisableEntry("otp");
-                  setTotpDisableMethod("authenticator");
-                }}
-                type="button"
-              >
-                {phrase("解除双因素认证", "Remove 2FA")}
-              </button>
-            ) : (
-              <div className="privacy-totp-disable">
-                <div className="privacy-totp-code-row">
-                  <div className="privacy-totp-code-field">
-                    <span>{totpDisableEntry === "recovery" ? phrase("恢复码", "Recovery code") : totpDisableMethod === "email" ? phrase("邮箱验证码", "Email verification code") : phrase("身份验证器验证码", "Authenticator code")}</span>
-                    {totpDisableEntry === "recovery" ? (
-                      <OtpCodeInput
-                        allowLetters
-                        ariaLabel={phrase("恢复码", "Recovery code")}
-                        autoFocus
-                        disabled={busy !== ""}
-                        onChange={setTotpCode}
-                        value={totpCode}
-                      />
-                    ) : (
-                      <OtpCodeInput
-                        ariaLabel={totpDisableMethod === "email" ? phrase("邮箱验证码", "Email verification code") : phrase("身份验证器验证码", "Authenticator code")}
-                        autoFocus
-                        disabled={busy !== ""}
-                        onChange={setTotpCode}
-                        value={totpCode}
-                      />
-                    )}
-                  </div>
-                  {totpDisableMethod === "email" ? (
-                    <button className="text-action privacy-email-code-button" disabled={busy !== "" || totpDisableCooldown > 0} onClick={() => void handleRequestTotpDisableEmail()} type="button">
-                      {totpDisableCooldown > 0 ? `${totpDisableCooldown}s` : phrase("获取验证码", "Get code")}
-                    </button>
-                  ) : null}
-                </div>
-                <div className="privacy-totp-method-actions">
-                  {totpDisableEntry === "recovery" ? (
-                    <button className="text-action privacy-recovery-toggle" disabled={busy !== ""} onClick={() => { setTotpCode(""); setTotpDisableEntry("otp"); setTotpDisableMethod("authenticator"); }} type="button">
-                      {phrase("使用身份验证器", "Use authenticator")}
-                    </button>
-                  ) : (
-                    <button className="text-action privacy-recovery-toggle" disabled={busy !== ""} onClick={() => { setTotpCode(""); setTotpDisableEntry("recovery"); setTotpDisableMethod("authenticator"); }} type="button">
-                      {phrase("使用恢复码", "Use recovery code")}
-                    </button>
-                  )}
-                  {totpDisableMethod === "email" ? (
-                    <button className="text-action privacy-email-method" disabled={busy !== ""} onClick={() => { setTotpCode(""); setTotpDisableEntry("otp"); setTotpDisableMethod("authenticator"); }} type="button">
-                      {phrase("使用身份验证器", "Use authenticator")}
-                    </button>
-                  ) : (
-                    <button className="text-action privacy-email-method" disabled={busy !== ""} onClick={() => { setTotpCode(""); setTotpDisableEntry("otp"); setTotpDisableMethod("email"); setError(""); }} type="button">
-                      {phrase("邮箱验证", "Email verification")}
-                    </button>
-                  )}
-                </div>
-                <div className="privacy-totp-actions">
-                  <button className="button" disabled={busy !== "" || (totpDisableEntry === "otp" ? !/^\d{6}$/.test(totpCode) : !/^[A-Z0-9]{6}$/.test(totpCode))} onClick={() => void (totpDisableMethod === "email" ? handleDisableTotpWithEmail() : handleDisableTotp())} type="button">
-                    {phrase("确定", "Confirm")}
-                  </button>
-                  <button className="button secondary" disabled={busy !== ""} onClick={() => { setTotpCode(""); setTotpDisableEntry("otp"); setTotpDisableMethod("idle"); }} type="button">
-                    {phrase("取消", "Cancel")}
-                  </button>
-                </div>
-              </div>
-            )
+            <button className="button secondary" disabled={busy !== ""} onClick={openTotpDisable} type="button">
+              {phrase("解除双因素认证", "Remove 2FA")}
+            </button>
           ) : totpSecret ? (
             <>
               <div className="privacy-totp-enrollment">
@@ -750,96 +688,97 @@ export default function AccountPrivacyPage() {
           ))}
         </div>
       </section>
-      {passkeyDeleteStep && passkeyDeleteId !== null ? (
+      {securityVerificationStep && securityVerificationTarget ? (
         <div className="modal-backdrop passkey-delete-backdrop">
           <section aria-labelledby="passkey-delete-title" aria-modal="true" className="modal-panel passkey-delete-dialog" role="dialog">
             <header className="passkey-delete-heading">
               <div>
                 <span className="section-label">{phrase("安全验证", "Security verification")}</span>
                 <h2 id="passkey-delete-title">
-                  {passkeyDeleteStep === "choose"
+                  {securityVerificationStep === "choose"
                     ? phrase("选择验证方式", "Choose a verification method")
-                    : phrase("验证后移除通行密钥", "Verify to remove passkey")}
+                    : securityVerificationTarget === "totp"
+                      ? phrase("验证后解除双因素认证", "Verify to remove 2FA")
+                      : phrase("验证后移除通行密钥", "Verify to remove passkey")}
                 </h2>
                 <p>
-                  {passkeyDeleteStep === "choose"
+                  {securityVerificationStep === "choose"
                     ? phrase("任选一种方式验证即可，不需要重复验证。", "Use any one method. Additional verification is not required.")
-                    : phrase("验证成功后只会移除当前选中的通行密钥。", "Only the selected passkey will be removed after verification.")}
+                    : securityVerificationTarget === "totp"
+                      ? phrase("验证成功后将关闭当前账号的双因素认证。", "Two-factor authentication will be disabled after verification.")
+                      : phrase("验证成功后只会移除当前选中的通行密钥。", "Only the selected passkey will be removed after verification.")}
                 </p>
               </div>
-              <button aria-label={phrase("关闭", "Close")} className="table-icon-action" disabled={busy !== ""} onClick={closePasskeyDelete} title={phrase("关闭", "Close")} type="button">
-                <XIcon size={16} />
-              </button>
-            </header>
-            {passkeyDeleteStep === "choose" ? (
-              <div className="passkey-delete-methods">
-                <button className="passkey-delete-method" disabled={busy !== ""} onClick={() => void handleSelectPasskeyDeleteMethod("passkey")} type="button">
-                  <Fingerprint size={18} />
-                  <span><strong>{phrase("通行密钥", "Passkey")}</strong><small>{phrase("使用设备验证", "Use device verification")}</small></span>
+              <div className="passkey-delete-heading-actions">
+                {securityVerificationStep !== "choose" ? (
+                  <button aria-label={phrase("换一种方式", "Choose another method")} className="table-icon-action" disabled={busy !== ""} onClick={() => setSecurityVerificationStep("choose")} title={phrase("换一种方式", "Choose another method")} type="button">
+                    <ArrowLeft size={16} />
+                  </button>
+                ) : null}
+                <button aria-label={phrase("关闭", "Close")} className="table-icon-action" disabled={busy !== ""} onClick={closeSecurityVerification} title={phrase("关闭", "Close")} type="button">
+                  <XIcon size={16} />
                 </button>
-                <button className="passkey-delete-method" disabled={busy !== ""} onClick={() => void handleSelectPasskeyDeleteMethod("email")} type="button">
+              </div>
+            </header>
+            {securityVerificationStep === "choose" ? (
+              <div className="passkey-delete-methods">
+                {securityVerificationTarget === "passkey" || passkeys.length ? (
+                  <button className="passkey-delete-method" disabled={busy !== ""} onClick={() => void handleSelectSecurityVerificationMethod("passkey")} type="button">
+                    <Fingerprint size={18} />
+                    <span><strong>{phrase("通行密钥", "Passkey")}</strong><small>{phrase("使用设备验证", "Use device verification")}</small></span>
+                  </button>
+                ) : null}
+                <button className="passkey-delete-method" disabled={busy !== ""} onClick={() => void handleSelectSecurityVerificationMethod("email")} type="button">
                   <Mail size={18} />
                   <span><strong>{phrase("邮箱验证码", "Email code")}</strong><small>{phrase("发送 6 位验证码", "Send a 6-digit code")}</small></span>
                 </button>
-                <button className="passkey-delete-method" disabled={busy !== ""} onClick={() => void handleSelectPasskeyDeleteMethod("password")} type="button">
+                <button className="passkey-delete-method" disabled={busy !== ""} onClick={() => void handleSelectSecurityVerificationMethod("password")} type="button">
                   <KeyRound size={18} />
                   <span><strong>{phrase("当前密码", "Current password")}</strong><small>{phrase("输入当前账号密码", "Enter your account password")}</small></span>
                 </button>
                 {overview.totp.enabled ? (
-                  <button className="passkey-delete-method" disabled={busy !== ""} onClick={() => void handleSelectPasskeyDeleteMethod("totp")} type="button">
+                  <button className="passkey-delete-method" disabled={busy !== ""} onClick={() => void handleSelectSecurityVerificationMethod("totp")} type="button">
                     <ShieldCheck size={18} />
-                    <span><strong>{phrase("双因素认证", "Authenticator")}</strong><small>{phrase("输入身份验证器验证码", "Enter an authenticator code")}</small></span>
+                    <span><strong>{phrase("双因素认证", "Authenticator")}</strong><small>{phrase("输入身份验证器验证码或恢复码", "Enter an authenticator code or recovery code")}</small></span>
                   </button>
                 ) : null}
               </div>
             ) : (
               <div className="passkey-delete-verification">
-                {passkeyDeleteStep === "passkey" ? (
+                {securityVerificationStep === "passkey" ? (
                   <>
-                    <p>{phrase("点击下方按钮，然后在设备或浏览器窗口中完成通行密钥验证。", "Click below and complete passkey verification in your device or browser prompt.")}</p>
-                    <button className="button" disabled={busy !== ""} onClick={() => void handleVerifyPasskeyDeletion()} type="button">
-                      <Fingerprint size={16} />
-                      {busy === "delete-passkey-passkey" ? phrase("验证中", "Verifying") : phrase("验证通行密钥", "Verify passkey")}
-                    </button>
+                    <p>{busy ? phrase("正在等待设备完成通行密钥验证。", "Complete passkey verification in your device prompt.") : phrase("请在设备或浏览器窗口中完成通行密钥验证。", "Complete passkey verification in your device or browser prompt.")}</p>
                   </>
-                ) : passkeyDeleteStep === "password" ? (
+                ) : securityVerificationStep === "password" ? (
                   <>
-                    <PasswordInput aria-label={phrase("当前密码", "Current password")} autoComplete="current-password" className="passkey-delete-password-input" disabled={busy !== ""} onChange={(event) => setPasskeyDeletePassword(event.target.value)} placeholder={phrase("输入当前密码", "Enter your current password")} value={passkeyDeletePassword} />
-                    <button className="button" disabled={busy !== "" || !passkeyDeletePassword.trim()} onClick={() => void handleVerifyPasskeyDeletionPassword()} type="button">
-                      {busy === "delete-passkey-password" ? phrase("验证中", "Verifying") : phrase("确定移除", "Confirm removal")}
+                    <PasswordInput aria-label={phrase("当前密码", "Current password")} autoComplete="current-password" className="passkey-delete-password-input" disabled={busy !== ""} onChange={(event) => setSecurityVerificationPassword(event.target.value)} placeholder={phrase("输入当前密码", "Enter your current password")} value={securityVerificationPassword} />
+                    <button className="button passkey-delete-confirm-button" disabled={busy !== "" || !securityVerificationPassword.trim()} onClick={() => void handleVerifySecurityPassword()} type="button">
+                      {busy ? phrase("验证中", "Verifying") : securityVerificationTarget === "totp" ? phrase("确定解除", "Confirm removal") : phrase("确定移除", "Confirm removal")}
                     </button>
                   </>
                 ) : (
                   <>
                     <span className="passkey-delete-code-label">
-                      {passkeyDeleteStep === "email"
+                      {securityVerificationStep === "email"
                         ? phrase("输入邮箱中的 6 位验证码，输入完成后自动验证。", "Enter the 6-digit email code. It will verify automatically when complete.")
-                        : phrase("输入身份验证器中的 6 位验证码，输入完成后自动验证。", "Enter the 6-digit authenticator code. It will verify automatically when complete.")}
+                        : phrase("输入身份验证器验证码或 6 位恢复码，输入完成后自动验证。", "Enter the authenticator code or 6-character recovery code. It will verify automatically when complete.")}
                     </span>
                     <OtpCodeInput
-                      ariaLabel={passkeyDeleteStep === "email" ? phrase("邮箱验证码", "Email verification code") : phrase("身份验证器验证码", "Authenticator code")}
+                      allowLetters={securityVerificationStep === "totp"}
+                      ariaLabel={securityVerificationStep === "email" ? phrase("邮箱验证码", "Email verification code") : phrase("身份验证器验证码或恢复码", "Authenticator code or recovery code")}
                       autoFocus
                       disabled={busy !== ""}
-                      onChange={setPasskeyDeleteCode}
-                      onComplete={(code) => void handleVerifyPasskeyDeletionCode(passkeyDeleteStep, code)}
-                      value={passkeyDeleteCode}
+                      onChange={setSecurityVerificationCode}
+                      onComplete={(code) => void handleVerifySecurityCode(securityVerificationStep, code)}
+                      value={securityVerificationCode}
                     />
-                    {passkeyDeleteStep === "email" ? (
-                      <button className="text-action passkey-delete-resend" disabled={busy !== "" || passkeyDeleteEmailCooldown > 0} onClick={() => void handleSelectPasskeyDeleteMethod("email")} type="button">
-                        {passkeyDeleteEmailCooldown > 0 ? `${passkeyDeleteEmailCooldown}s` : phrase("重新发送验证码", "Resend code")}
+                    {securityVerificationStep === "email" ? (
+                      <button className="text-action passkey-delete-resend" disabled={busy !== "" || securityVerificationEmailCooldown > 0} onClick={() => void handleSelectSecurityVerificationMethod("email")} type="button">
+                        {securityVerificationEmailCooldown > 0 ? `${securityVerificationEmailCooldown}s` : phrase("重新发送验证码", "Resend code")}
                       </button>
                     ) : null}
                   </>
                 )}
-                <div className="passkey-delete-footer">
-                  <button className="text-action" disabled={busy !== ""} onClick={() => setPasskeyDeleteStep("choose")} type="button">
-                    <ArrowLeft size={15} />
-                    {phrase("换一种方式", "Choose another method")}
-                  </button>
-                  <button className="button secondary" disabled={busy !== ""} onClick={closePasskeyDelete} type="button">
-                    {phrase("取消", "Cancel")}
-                  </button>
-                </div>
               </div>
             )}
           </section>

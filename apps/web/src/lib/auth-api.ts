@@ -238,6 +238,22 @@ export function deletePasskeyWithEmail(accessToken: string, id: number, challeng
   });
 }
 
+export function getTotpDisablePasskeyOptions(accessToken: string): Promise<PasskeyOptionsResponse<PublicKeyCredentialRequestOptionsJSON>> {
+  return requestJson("/auth/me/totp/disable/passkey/options", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({}),
+  });
+}
+
+export function verifyTotpDisablePasskey(accessToken: string, input: { challengeToken: string; response: AuthenticationResponseJSON }): Promise<{ enabled: false }> {
+  return requestJson("/auth/me/totp/disable/passkey/verify", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function verifyDeviceLogin(input: { challengeToken: string; code: string }): Promise<DeviceLoginResponse> {
   const response = await requestJson<DeviceLoginResponse>("/auth/login/device-verification", {
     method: "POST",

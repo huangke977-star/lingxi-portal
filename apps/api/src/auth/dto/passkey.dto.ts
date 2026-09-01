@@ -58,11 +58,15 @@ export class PasskeyDeletionPasswordDto {
 
 export class PasskeyDeletionCodeDto {
   @IsString()
-  @Matches(/^\d{6}$/)
+  @Matches(/^[A-Za-z0-9]{6}$/)
   code!: string;
 }
 
-export class PasskeyDeletionEmailVerifyDto extends PasskeyDeletionCodeDto {
+export class PasskeyDeletionEmailVerifyDto {
+  @IsString()
+  @Matches(/^\d{6}$/)
+  code!: string;
+
   @IsString()
   @MinLength(20)
   @MaxLength(512)

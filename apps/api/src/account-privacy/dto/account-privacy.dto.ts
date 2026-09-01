@@ -8,6 +8,13 @@ export class RequestAccountDeletionDto {
   currentPassword!: string;
 }
 
+export class TotpDisablePasswordDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(256)
+  currentPassword!: string;
+}
+
 export class TotpCodeDto {
   @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
   @IsString()

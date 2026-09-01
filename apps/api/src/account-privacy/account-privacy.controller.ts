@@ -4,7 +4,7 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import { AuthenticatedUser, RefreshSessionContext } from "../auth/auth.types";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { AccountPrivacyService } from "./account-privacy.service";
-import { ListDeletedUsersQueryDto, PrivacyAuditQueryDto, RequestAccountDeletionDto, TotpCodeDto } from "./dto/account-privacy.dto";
+import { ListDeletedUsersQueryDto, PrivacyAuditQueryDto, RequestAccountDeletionDto, TotpCodeDto, TotpDisablePasswordDto } from "./dto/account-privacy.dto";
 
 @Controller("account-privacy")
 @UseGuards(JwtAuthGuard)
@@ -66,6 +66,11 @@ export class AccountPrivacyController {
   @Patch("me/totp/disable")
   disableTotp(@CurrentUser() user: AuthenticatedUser, @Body() dto: TotpCodeDto, @Req() request: PrivacyRequest) {
     return this.privacy.disableTotp(user, dto.code, this.context(request));
+  }
+
+  @Patch("me/totp/disable/password")
+  disableTotpWithPassword(@CurrentUser() user: AuthenticatedUser, @Body() dto: TotpDisablePasswordDto, @Req() request: PrivacyRequest) {
+    return this.privacy.disableTotpWithPassword(user, dto.currentPassword, this.context(request));
   }
 
   @Post("me/totp/disable/email")

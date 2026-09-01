@@ -223,6 +223,20 @@ export class AuthController {
     return this.authService.deletePasskeyWithEmail(user, id, dto.challengeToken, dto.code);
   }
 
+  @Post("me/totp/disable/passkey/options")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  totpDisablePasskeyOptions(@CurrentUser() user: AuthenticatedUser, @Req() request: SessionRequest) {
+    return this.authService.beginTotpDisablePasskey(user, this.sessionContext(request));
+  }
+
+  @Post("me/totp/disable/passkey/verify")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  totpDisablePasskeyVerify(@CurrentUser() user: AuthenticatedUser, @Body() dto: VerifyPasskeyDeletionDto, @Req() request: SessionRequest) {
+    return this.authService.finishTotpDisablePasskey(user, dto, this.sessionContext(request));
+  }
+
   @Post("login/device-verification")
   @HttpCode(200)
   verifyDeviceLogin(@Body() dto: DeviceLoginVerificationDto, @Req() request: SessionRequest): Promise<DeviceLoginResponse> {

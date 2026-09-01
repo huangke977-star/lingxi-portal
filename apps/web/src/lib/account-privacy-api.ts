@@ -137,6 +137,14 @@ export function disableTotp(accessToken: string, code: string) {
   });
 }
 
+export function disableTotpWithPassword(accessToken: string, currentPassword: string) {
+  return requestJson<{ enabled: false }>("/account-privacy/me/totp/disable/password", {
+    method: "PATCH",
+    headers: auth(accessToken),
+    body: JSON.stringify({ currentPassword }),
+  });
+}
+
 export function requestTotpDisableEmailVerification(accessToken: string) {
   return requestJson<{ success: true; retryAfterSeconds: number }>("/account-privacy/me/totp/disable/email", { method: "POST", headers: auth(accessToken) });
 }

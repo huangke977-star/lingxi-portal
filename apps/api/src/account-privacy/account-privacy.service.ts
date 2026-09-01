@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, GoneException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, forwardRef, Inject } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, GoneException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, UnauthorizedException, forwardRef, Inject } from "@nestjs/common";
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { Prisma, UserStatus, DataExportJobStatus } from "../generated/prisma/client";
 import { AuthenticatedUser, RefreshSessionContext } from "../auth/auth.types";
@@ -247,6 +247,33 @@ export class AccountPrivacyService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.userTotpCredential.delete({ where: { userId: user.id } });
     await this.recordAudit(user.id, "totp_disabled", undefined, context);
     return { enabled: false };
+  }
+
+  async disableTotpWithPassword(user: AuthenticatedUser, currentPassword: string, context: RefreshSessionContext) {
+    const credential = await this.prisma.userTotpCredential.findUnique({
+      where: { userId: user.id },
+      select: { enabled: true },
+    });
+    if (!credential?.enabled) return { enabled: false };
+    const account = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { passwordHash: true },
+    });
+    if (!account || !(await this.passwordService.verifyPassword(currentPassword, account.passwordHash))) {
+      throw new UnauthorizedException("当前密码不正确。\nThe current password is incorrect.");
+    }
+    return this.disableTotpAfterVerification(user, context);
+  }
+
+  async disableTotpAfterVerification(user: AuthenticatedUser, context: RefreshSessionContext) {
+    const credential = await this.prisma.userTotpCredential.findUnique({
+      where: { userId: user.id },
+      select: { enabled: true },
+    });
+    if (!credential?.enabled) return { enabled: false as const };
+    await this.prisma.userTotpCredential.delete({ where: { userId: user.id } });
+    await this.recordAudit(user.id, "totp_disabled", undefined, context);
+    return { enabled: false as const };
   }
 
   async requestTotpDisableVerification(user: AuthenticatedUser, context: RefreshSessionContext) {

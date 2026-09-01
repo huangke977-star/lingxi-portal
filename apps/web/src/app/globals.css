@@ -354,6 +354,7 @@
 .passkey-delete-heading { display: flex; min-width: 0; align-items: start; justify-content: space-between; gap: 12px; }
 .passkey-delete-heading h2 { margin: 5px 0 4px; font-size: 1rem; }
 .passkey-delete-heading p { margin: 0; color: var(--muted); font-size: 0.72rem; line-height: 1.5; }
+.passkey-delete-heading-actions { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; }
 .passkey-delete-methods { display: grid; gap: 7px; }
 .passkey-delete-method { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; border: 1px solid var(--control-line); border-radius: 7px; background: color-mix(in srgb, var(--surface-soft) 72%, transparent); color: var(--accent-strong); cursor: pointer; padding: 9px 10px; text-align: left; transition: background 140ms ease, border-color 140ms ease; }
 .passkey-delete-method:hover { border-color: color-mix(in srgb, var(--accent) 58%, var(--control-line)); background: color-mix(in srgb, var(--accent-soft) 34%, var(--surface-soft)); }
@@ -367,7 +368,8 @@
 .passkey-delete-password-input > input { box-sizing: border-box; width: 100%; min-height: 38px; border: 0; border-radius: 6px; background: var(--surface-soft); color: var(--foreground); font: inherit; outline: none; padding: 8px 43px 8px 10px; }
 .passkey-delete-password-input > input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
 .passkey-delete-verification .otp-code-input { width: min(100%, 330px); }
-.passkey-delete-resend { justify-self: start; }
+.passkey-delete-resend { justify-self: start; min-height: 24px; font-size: 0.66rem; }
+.passkey-delete-confirm-button { min-height: 31px; font-size: 0.72rem; padding: 0 10px; }
 .passkey-delete-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 2px; }
 .passkey-delete-footer .text-action { display: inline-flex; align-items: center; gap: 5px; }
 .admin-overview-page { display: grid; gap: 16px; }
