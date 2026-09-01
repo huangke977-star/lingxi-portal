@@ -20,6 +20,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from "@simplewebauthn/server";
 import type { AuthenticatorTransportFuture, AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
 import { RenamePasskeyDto, VerifyPasskeyDeletionDto, VerifyPasskeyLoginDto, VerifyPasskeyRegistrationDto } from "./dto/passkey.dto";
+import { parseSensitiveAction, SensitiveAction } from "../security/sensitive-action";
 
 interface TotpLoginChallenge {
   userId: number;
@@ -28,11 +29,12 @@ interface TotpLoginChallenge {
   attempts: number;
 }
 
-type PasskeyChallengeKind = "registration" | "login" | "delete" | "totp-disable";
+type PasskeyChallengeKind = "registration" | "login" | "delete" | "totp-disable" | "sensitive";
 
 interface PasskeyChallenge {
   userId?: number;
   targetPasskeyId?: number;
+  action?: SensitiveAction;
   expectedChallenge: string;
   deviceFingerprint: string;
   attempts: number;
@@ -139,11 +141,13 @@ export class AuthService {
   async beginPasskeyRegistration(
     user: AuthenticatedUser,
     context: RefreshSessionContext,
+    verificationToken: string,
   ): Promise<{
     options: PublicKeyCredentialCreationOptionsJSON;
     challengeToken: string;
     expiresAt: string;
   }> {
+    await this.accountSecurity.consumeSensitiveActionGrant(user.id, "passkey_registration", verificationToken, context);
     const credentials = await this.prismaService!.webAuthnCredential.findMany({
       where: { userId: user.id },
       select: { credentialId: true, transports: true },
@@ -514,6 +518,99 @@ export class AuthService {
     return this.accountPrivacy.disableTotpAfterVerification(user, context);
   }
 
+  async beginSensitiveActionPasskey(user: AuthenticatedUser, action: string, context: RefreshSessionContext): Promise<{
+    options: PublicKeyCredentialRequestOptionsJSON;
+    challengeToken: string;
+    expiresAt: string;
+  }> {
+    const normalizedAction = this.requireSensitiveAction(action);
+    const credentials = await this.prismaService!.webAuthnCredential.findMany({
+      where: { userId: user.id },
+      select: { credentialId: true, transports: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    if (!credentials.length) throw new BadRequestException("当前账号没有可用的通行密钥。\nNo passkey is available for this account.");
+    const options = await generateAuthenticationOptions({
+      rpID: this.passkeyRpId(),
+      userVerification: "required",
+      timeout: 60_000,
+      allowCredentials: credentials.map((credential) => ({
+        id: credential.credentialId,
+        transports: this.passkeyTransports(credential.transports),
+      })),
+    });
+    const challengeToken = randomBytes(32).toString("base64url");
+    await this.redis.set(
+      this.passkeyChallengeKey("sensitive", challengeToken),
+      JSON.stringify({
+        userId: user.id,
+        action: normalizedAction,
+        expectedChallenge: options.challenge,
+        deviceFingerprint: this.loginDeviceFingerprint(context),
+        attempts: 0,
+      } satisfies PasskeyChallenge),
+      this.passkeyChallengeTtlSeconds,
+    );
+    return {
+      options,
+      challengeToken,
+      expiresAt: new Date(Date.now() + this.passkeyChallengeTtlSeconds * 1000).toISOString(),
+    };
+  }
+
+  async finishSensitiveActionPasskey(user: AuthenticatedUser, action: string, dto: VerifyPasskeyDeletionDto, context: RefreshSessionContext) {
+    const normalizedAction = this.requireSensitiveAction(action);
+    const challenge = await this.requirePasskeyChallenge("sensitive", dto.challengeToken, context, user.id);
+    if (challenge.action !== normalizedAction) {
+      throw new BadRequestException("安全验证信息不匹配，请重试。\nThe security verification does not match this action.");
+    }
+    const credentialId = typeof (dto.response as { id?: unknown }).id === "string" ? (dto.response as { id: string }).id : "";
+    if (!credentialId) {
+      await this.recordPasskeyFailure("sensitive", dto.challengeToken, challenge);
+      throw new BadRequestException("通行密钥验证失败，请重试。\nPasskey verification failed. Please try again.");
+    }
+    const stored = await this.prismaService!.webAuthnCredential.findFirst({ where: { credentialId, userId: user.id } });
+    if (!stored) {
+      await this.recordPasskeyFailure("sensitive", dto.challengeToken, challenge);
+      throw new UnauthorizedException("通行密钥验证失败。\nPasskey verification failed.");
+    }
+    let verified;
+    try {
+      verified = await verifyAuthenticationResponse({
+        response: dto.response as unknown as AuthenticationResponseJSON,
+        expectedChallenge: challenge.expectedChallenge,
+        expectedOrigin: this.passkeyExpectedOrigins(),
+        expectedRPID: this.passkeyRpId(),
+        requireUserVerification: true,
+        credential: {
+          id: stored.credentialId,
+          publicKey: Buffer.from(stored.publicKey, "base64url"),
+          counter: stored.counter,
+          transports: this.passkeyTransports(stored.transports),
+        },
+      });
+    } catch {
+      await this.recordPasskeyFailure("sensitive", dto.challengeToken, challenge);
+      throw new UnauthorizedException("通行密钥验证失败，请重试。\nPasskey verification failed. Please try again.");
+    }
+    if (!verified.verified) {
+      await this.recordPasskeyFailure("sensitive", dto.challengeToken, challenge);
+      throw new UnauthorizedException("通行密钥验证失败。\nPasskey verification failed.");
+    }
+    await this.prismaService!.webAuthnCredential.update({
+      where: { id: stored.id },
+      data: {
+        counter: Math.max(stored.counter, verified.authenticationInfo.newCounter),
+        lastUsedAt: new Date(),
+      },
+    });
+    await this.redis.del(this.passkeyChallengeKey("sensitive", dto.challengeToken));
+    return {
+      success: true as const,
+      verificationToken: await this.accountSecurity.issueSensitiveActionGrant(user.id, normalizedAction, context),
+    };
+  }
+
   private async requirePasskey(userId: number, id: number) {
     const credential = await this.prismaService!.webAuthnCredential.findFirst({
       where: { id, userId },
@@ -762,6 +859,14 @@ export class AuthService {
   private normalizePasskeyName(value: string | undefined): string {
     const name = value?.trim() || "通行密钥";
     return Array.from(name).slice(0, 120).join("");
+  }
+
+  private requireSensitiveAction(value: string): SensitiveAction {
+    try {
+      return parseSensitiveAction(value);
+    } catch {
+      throw new BadRequestException("不支持的安全操作。\nUnsupported sensitive action.");
+    }
   }
 
   private isPrismaUniqueError(error: unknown): boolean {

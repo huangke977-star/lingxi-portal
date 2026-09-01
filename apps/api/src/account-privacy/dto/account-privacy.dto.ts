@@ -3,9 +3,36 @@ import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } 
 
 export class RequestAccountDeletionDto {
   @IsString()
-  @MinLength(8)
-  @MaxLength(128)
+  @MinLength(20)
+  @MaxLength(512)
+  verificationToken!: string;
+}
+
+export class SensitiveActionPasswordDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(256)
   currentPassword!: string;
+}
+
+export class SensitiveActionCodeDto {
+  @IsString()
+  @Matches(/^[A-Za-z0-9]{6}$/)
+  code!: string;
+}
+
+export class SensitiveActionEmailVerifyDto extends SensitiveActionCodeDto {
+  @IsString()
+  @MinLength(20)
+  @MaxLength(512)
+  challengeToken!: string;
+}
+
+export class SensitiveActionTokenDto {
+  @IsString()
+  @MinLength(20)
+  @MaxLength(512)
+  verificationToken!: string;
 }
 
 export class TotpDisablePasswordDto {

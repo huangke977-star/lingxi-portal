@@ -12,10 +12,11 @@
 - 登录失败限制、新设备、陌生 IP 和异常频率检测
 - 非信任设备邮箱验证、浏览器安装级信任管理和活动会话退出
 - 站内与邮件安全提醒及用户偏好
-- 邮件任务、验证码请求和风险事件的后台分页查询
+- 双因素认证、恢复码和通行密钥
+- 敏感操作的统一二次验证与后台分页查询
 - SMTP 与 Turnstile 凭据加密保存
 
-当前不包含短信验证码、第三方账号登录、双因素认证和强制所有历史账号重新验证邮箱。
+当前不包含短信验证码、第三方账号登录和强制所有历史账号重新验证邮箱。
 
 ## 架构与数据
 
@@ -37,7 +38,7 @@
 | `user_security_preferences`   | 每个用户的安全提醒偏好                                      | 默认开启登录提醒、邮件提醒和新设备提醒                                                |
 | `known_login_devices`         | 用户已出现过的浏览器/PWA 安装、设备名称、首末 IP 和信任时间 | 信任身份只保存服务端随机设备凭据的 SHA-256 哈希；取消信任会清空信任时间但保留审计记录 |
 | `login_security_events`       | 登录、风险、密码和邮箱验证事件                              | 保存风险级别、IP、User-Agent、设备标签和必要元数据                                    |
-| `email_verification_requests` | 注册、账号邮箱和新设备登录验证码请求                        | 验证码只保存 HMAC 哈希；新设备挑战只保存随机令牌的 SHA-256 哈希并绑定设备指纹         |
+| `email_verification_requests` | 注册、账号邮箱、新设备登录和敏感操作验证码请求              | 验证码只保存 HMAC 哈希；挑战只保存随机令牌的 SHA-256 哈希，并按用途、操作和设备绑定      |
 | `password_reset_requests`     | 一次性密码重置请求                                          | 只保存令牌 SHA-256 哈希，不保存重置链接中的明文令牌                                   |
 | `mail_jobs`                   | 邮件投递状态和失败原因                                      | 保存收件人、主题、类型、状态、次数和错误，不保存邮件正文                              |
 
@@ -81,6 +82,12 @@ Redis 中的限流键是临时状态。清空 Redis 会同时清除限流计数�
 - `PATCH /auth/me/password`：校验旧密码后修改密码，并撤销当前会话之外的 Refresh Session。
 - `DELETE /auth/me/security/trusted-devices/:deviceId`：取消指定浏览器/PWA 安装的信任；保留当前会话，下次登录要求邮箱验证。
 - `DELETE /auth/sessions/:sessionId`：退出当前账号的一条活动登录会话；可以退出当前设备或其他设备。
+- `POST /account-privacy/me/security-verification/:action/email`：为注销账号、添加通行密钥或绑定双因素认证发送一次性邮箱验证码。
+- `POST /account-privacy/me/security-verification/:action/email/verify`：验证对应操作的邮箱验证码并签发一次性敏感操作授权凭据。
+- `POST /account-privacy/me/security-verification/:action/password`：用当前密码验证对应敏感操作并签发一次性授权凭据。
+- `POST /account-privacy/me/security-verification/:action/totp`：用身份验证器验证码或恢复码验证对应敏感操作并签发一次性授权凭据。
+- `POST /auth/me/security-verification/:action/passkey/options` 和 `/verify`：用通行密钥验证对应敏感操作并签发一次性授权凭据。
+- `POST /account-privacy/me/deletion`、`POST /account-privacy/me/totp/enroll` 和 `POST /auth/me/passkeys/registration/options`：只接受匹配当前用户、操作和设备的一次性授权凭据。
 
 Web 端已提供 `/register`、`/login`、`/forgot-password`、个人中心账号安全区域和 `/admin/security` 安全管理页。管理员与超级管理员可以从头像菜单进入安全管理；后端权限不会依赖前端隐藏。
 
@@ -94,6 +101,14 @@ Web 端已提供 `/register`、`/login`、`/forgot-password`、个人中心账�
 | `POST /security-admin/smtp/test` | 不可执行       | 可执行         |
 
 这里的“管理员”由角色等级 `>= 90` 判断；超级管理员还必须满足 `isSuperAdmin=true`。配置读取只返回 `smtpPasswordConfigured`、`turnstileSecretConfigured` 等状态，不返回两个 Secret 的明文。
+
+## 敏感操作验证与输入规范
+
+注销账号、添加通行密钥和绑定双因素认证都必须先完成一次敏感操作验证。用户可任选已配置的通行密钥、邮箱验证码、当前密码或双因素验证码/恢复码；验证成功后服务端签发只允许用于当前操作的授权凭据，凭据有效期 5 分钟、只能消费一次，并绑定当前用户、IP 和 User-Agent 指纹。操作类型不匹配、设备指纹变化、过期或重复使用都会被拒绝。邮箱验证码仍遵守 60 秒发送间隔和最多 5 次错误尝试限制。
+
+通行密钥验证会先生成独立挑战，要求用户验证设备；成功后才可继续注册新的通行密钥。绑定双因素认证会先验证身份，再生成二维码/密钥和确认验证码。客户端取消通行密钥流程只结束当前流程，不应当被当作系统错误。
+
+密码校验输入框统一使用以下规范：无边框、6px 圆角、`var(--surface-soft)` 背景、35px 最小高度、左侧 9px 内边距，右侧为密码显示按钮预留 44px 空间；获取焦点时只使用淡色 accent 阴影，不显示黑色边框。密码显示按钮位于输入框内部右侧，其他敏感验证码使用六个等宽小输入框，输入完成后自动校验。
 
 ## SMTP 配置
 

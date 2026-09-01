@@ -4,7 +4,7 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import { AuthenticatedUser, RefreshSessionContext } from "../auth/auth.types";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { AccountPrivacyService } from "./account-privacy.service";
-import { ListDeletedUsersQueryDto, PrivacyAuditQueryDto, RequestAccountDeletionDto, TotpCodeDto, TotpDisablePasswordDto } from "./dto/account-privacy.dto";
+import { ListDeletedUsersQueryDto, PrivacyAuditQueryDto, RequestAccountDeletionDto, SensitiveActionCodeDto, SensitiveActionEmailVerifyDto, SensitiveActionPasswordDto, SensitiveActionTokenDto, TotpCodeDto, TotpDisablePasswordDto } from "./dto/account-privacy.dto";
 
 @Controller("account-privacy")
 @UseGuards(JwtAuthGuard)
@@ -45,7 +45,27 @@ export class AccountPrivacyController {
 
   @Post("me/deletion")
   requestDeletion(@CurrentUser() user: AuthenticatedUser, @Body() dto: RequestAccountDeletionDto, @Req() request: PrivacyRequest) {
-    return this.privacy.requestDeletion(user, dto.currentPassword, this.context(request));
+    return this.privacy.requestDeletionAfterVerification(user, dto.verificationToken, this.context(request));
+  }
+
+  @Post("me/security-verification/:action/email")
+  requestSensitiveActionEmail(@CurrentUser() user: AuthenticatedUser, @Param("action") action: string, @Req() request: PrivacyRequest) {
+    return this.privacy.requestSensitiveActionEmail(user, action, this.context(request));
+  }
+
+  @Post("me/security-verification/:action/email/verify")
+  verifySensitiveActionEmail(@CurrentUser() user: AuthenticatedUser, @Param("action") action: string, @Body() dto: SensitiveActionEmailVerifyDto, @Req() request: PrivacyRequest) {
+    return this.privacy.verifySensitiveActionEmail(user, action, dto.challengeToken, dto.code, this.context(request));
+  }
+
+  @Post("me/security-verification/:action/password")
+  verifySensitiveActionPassword(@CurrentUser() user: AuthenticatedUser, @Param("action") action: string, @Body() dto: SensitiveActionPasswordDto, @Req() request: PrivacyRequest) {
+    return this.privacy.verifySensitiveActionPassword(user, action, dto.currentPassword, this.context(request));
+  }
+
+  @Post("me/security-verification/:action/totp")
+  verifySensitiveActionTotp(@CurrentUser() user: AuthenticatedUser, @Param("action") action: string, @Body() dto: SensitiveActionCodeDto, @Req() request: PrivacyRequest) {
+    return this.privacy.verifySensitiveActionTotp(user, action, dto.code, this.context(request));
   }
 
   @Patch("me/deletion/cancel")
@@ -54,8 +74,8 @@ export class AccountPrivacyController {
   }
 
   @Post("me/totp/enroll")
-  enrollTotp(@CurrentUser() user: AuthenticatedUser, @Req() request: PrivacyRequest) {
-    return this.privacy.beginTotpEnrollment(user, this.context(request));
+  enrollTotp(@CurrentUser() user: AuthenticatedUser, @Body() dto: SensitiveActionTokenDto, @Req() request: PrivacyRequest) {
+    return this.privacy.beginTotpEnrollmentAfterVerification(user, dto.verificationToken, this.context(request));
   }
 
   @Post("me/totp/confirm")

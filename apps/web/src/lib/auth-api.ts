@@ -142,11 +142,12 @@ export async function verifyPasskeyLogin(input: {
 
 export function getPasskeyRegistrationOptions(
   accessToken: string,
+  verificationToken: string,
 ): Promise<PasskeyOptionsResponse<PublicKeyCredentialCreationOptionsJSON>> {
   return requestJson("/auth/me/passkeys/registration/options", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
-    body: JSON.stringify({}),
+    body: JSON.stringify({ verificationToken }),
   });
 }
 
@@ -252,6 +253,16 @@ export function verifyTotpDisablePasskey(accessToken: string, input: { challenge
     headers: { Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify(input),
   });
+}
+
+export type SensitiveAction = "account_deletion" | "passkey_registration" | "totp_enrollment";
+
+export function getSensitiveActionPasskeyOptions(accessToken: string, action: SensitiveAction): Promise<PasskeyOptionsResponse<PublicKeyCredentialRequestOptionsJSON>> {
+  return requestJson(`/auth/me/security-verification/${encodeURIComponent(action)}/passkey/options`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({}) });
+}
+
+export function verifySensitiveActionPasskey(accessToken: string, action: SensitiveAction, input: { challengeToken: string; response: AuthenticationResponseJSON }): Promise<{ success: true; verificationToken: string }> {
+  return requestJson(`/auth/me/security-verification/${encodeURIComponent(action)}/passkey/verify`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: JSON.stringify(input) });
 }
 
 export async function verifyDeviceLogin(input: { challengeToken: string; code: string }): Promise<DeviceLoginResponse> {

@@ -10,9 +10,9 @@ import { PasswordInput } from "@/components/password-input";
 import { OtpCodeInput } from "@/components/otp-code-input";
 import { useLanguage } from "@/components/language-provider";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
-import { deletePasskeyWithEmail, deletePasskeyWithPassword, deletePasskeyWithTotp, getPasskeyDeletionOptions, getPasskeyRegistrationOptions, getTotpDisablePasskeyOptions, isAuthExpiredError, listPasskeys, renamePasskey, requestPasskeyDeletionEmail, verifyPasskeyDeletion, verifyPasskeyRegistration, verifyTotpDisablePasskey, type PasskeySummary } from "@/lib/auth-api";
+import { deletePasskeyWithEmail, deletePasskeyWithPassword, deletePasskeyWithTotp, getPasskeyDeletionOptions, getPasskeyRegistrationOptions, getSensitiveActionPasskeyOptions, getTotpDisablePasskeyOptions, isAuthExpiredError, listPasskeys, renamePasskey, requestPasskeyDeletionEmail, verifyPasskeyDeletion, verifyPasskeyRegistration, verifySensitiveActionPasskey, verifyTotpDisablePasskey, type PasskeySummary } from "@/lib/auth-api";
 import { localizedPath } from "@/lib/i18n";
-import { beginTotpEnrollment, cancelAccountDeletion, confirmTotp, disableTotp, disableTotpWithEmail, disableTotpWithPassword, downloadDataExport, getAccountPrivacyOverview, getDataExport, listPrivacyAudit, requestAccountDeletion, requestDataExport, requestTotpDisableEmailVerification, type AccountPrivacyOverview, type ExportJob } from "@/lib/account-privacy-api";
+import { beginTotpEnrollment, cancelAccountDeletion, confirmTotp, disableTotp, disableTotpWithEmail, disableTotpWithPassword, downloadDataExport, getAccountPrivacyOverview, getDataExport, listPrivacyAudit, requestAccountDeletion, requestDataExport, requestSensitiveActionEmailVerification, verifySensitiveActionEmail, verifySensitiveActionPassword, verifySensitiveActionTotp, requestTotpDisableEmailVerification, type AccountPrivacyOverview, type ExportJob, type SensitiveAction } from "@/lib/account-privacy-api";
 import { unblockFriendship } from "@/lib/social-api";
 
 export default function AccountPrivacyPage() {
@@ -22,8 +22,6 @@ export default function AccountPrivacyPage() {
   const [overview, setOverview] = useState<AccountPrivacyOverview | null>(null);
   const [audit, setAudit] = useState<Array<{ id: number; action: string; metadata: unknown; createdAt: string }>>([]);
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
-  const [deletionPassword, setDeletionPassword] = useState("");
-  const [deletionOpen, setDeletionOpen] = useState(false);
   const [totpCode, setTotpCode] = useState("");
   const [totpSecret, setTotpSecret] = useState("");
   const [totpUri, setTotpUri] = useState("");
@@ -32,7 +30,7 @@ export default function AccountPrivacyPage() {
   const [passkeyName, setPasskeyName] = useState("");
   const [editingPasskeyId, setEditingPasskeyId] = useState<number | null>(null);
   const [editingPasskeyName, setEditingPasskeyName] = useState("");
-  const [securityVerificationTarget, setSecurityVerificationTarget] = useState<"passkey" | "totp" | null>(null);
+  const [securityVerificationTarget, setSecurityVerificationTarget] = useState<"passkey" | "totp" | SensitiveAction | null>(null);
   const [securityVerificationStep, setSecurityVerificationStep] = useState<"choose" | "passkey" | "email" | "password" | "totp" | null>(null);
   const [securityVerificationId, setSecurityVerificationId] = useState<number | null>(null);
   const [securityVerificationCode, setSecurityVerificationCode] = useState("");
@@ -131,17 +129,6 @@ export default function AccountPrivacyPage() {
     });
   }
 
-  async function handleDeletion() {
-    if (!token || !deletionPassword) return;
-    await run("delete", async () => {
-      await requestAccountDeletion(token, deletionPassword);
-      setDeletionPassword("");
-      setDeletionOpen(false);
-      await load(token);
-      setNotice(phrase("账号已进入 7 天注销冷静期，可在此期间撤回。", "Your account entered a 7-day deletion cooling-off period. You can cancel it during this period."));
-    });
-  }
-
   async function handleCancelDeletion() {
     if (!token) return;
     await run("cancel-delete", async () => {
@@ -151,39 +138,17 @@ export default function AccountPrivacyPage() {
     });
   }
 
-  async function handleEnroll() {
-    if (!token) return;
-    await run("enroll", async () => {
-      const result = await beginTotpEnrollment(token);
-      setTotpSecret(result.secret);
-      setTotpUri(result.otpAuthUri);
-      setNotice(phrase("请将密钥添加到身份验证器后输入验证码确认。", "Add the secret to your authenticator, then enter a code to confirm."));
-    });
-  }
-
-  async function handleRegisterPasskey() {
-    if (!token) return;
-    await run("register-passkey", async () => {
-      const challenge = await getPasskeyRegistrationOptions(token);
-      let response;
-      try {
-        response = await startRegistration({ optionsJSON: challenge.options });
-      } catch (registrationError) {
-        if (isPasskeyCancellation(registrationError)) {
-          setNotice(phrase("已取消添加通行密钥。", "Passkey enrollment was cancelled."));
-          return;
-        }
-        throw registrationError;
-      }
-      await verifyPasskeyRegistration(token, {
-        challengeToken: challenge.challengeToken,
-        response,
-        name: passkeyName.trim() || undefined,
-      });
-      setPasskeyName("");
-      await load(token);
-      setNotice(phrase("通行密钥已添加。", "Passkey added."));
-    });
+  function openSensitiveAction(target: SensitiveAction) {
+    if (!token || busy) return;
+    setError("");
+    setNotice("");
+    setSecurityVerificationTarget(target);
+    setSecurityVerificationId(null);
+    setSecurityVerificationStep("choose");
+    setSecurityVerificationCode("");
+    setSecurityVerificationPassword("");
+    setSecurityVerificationEmailChallenge("");
+    setSecurityVerificationEmailCooldown(0);
   }
 
   async function handleRenamePasskey(id: number) {
@@ -232,6 +197,44 @@ export default function AccountPrivacyPage() {
     setSecurityVerificationEmailCooldown(0);
   }
 
+  async function executeSensitiveAction(verificationToken: string) {
+    if (!token || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget)) return;
+    const target = securityVerificationTarget;
+    closeSecurityVerification();
+    if (target === "account_deletion") {
+      await requestAccountDeletion(token, verificationToken);
+      await load(token);
+      setNotice(phrase("账号已进入 7 天注销冷静期，可在此期间撤回。", "Your account entered a 7-day deletion cooling-off period. You can cancel it during this period."));
+      return;
+    }
+    if (target === "totp_enrollment") {
+      const result = await beginTotpEnrollment(token, verificationToken);
+      setTotpSecret(result.secret);
+      setTotpUri(result.otpAuthUri);
+      setNotice(phrase("请将密钥添加到身份验证器后输入验证码确认。", "Add the secret to your authenticator, then enter a code to confirm."));
+      return;
+    }
+    const challenge = await getPasskeyRegistrationOptions(token, verificationToken);
+    let response;
+    try {
+      response = await startRegistration({ optionsJSON: challenge.options });
+    } catch (registrationError) {
+      if (isPasskeyCancellation(registrationError)) {
+        setNotice(phrase("已取消添加通行密钥。", "Passkey enrollment was cancelled."));
+        return;
+      }
+      throw registrationError;
+    }
+    await verifyPasskeyRegistration(token, {
+      challengeToken: challenge.challengeToken,
+      response,
+      name: passkeyName.trim() || undefined,
+    });
+    setPasskeyName("");
+    await load(token);
+    setNotice(phrase("通行密钥已添加。", "Passkey added."));
+  }
+
   async function completeSecurityVerification() {
     if (!token) return;
     const target = securityVerificationTarget;
@@ -248,6 +251,22 @@ export default function AccountPrivacyPage() {
     setSecurityVerificationStep(method);
     setSecurityVerificationCode("");
     setSecurityVerificationPassword("");
+    if (isSensitiveActionTarget(target)) {
+      if (method === "passkey") {
+        void handleVerifySensitiveActionPasskey(target);
+        return;
+      }
+      if (method === "email") {
+        await run(`${target}-email`, async () => {
+          const result = await requestSensitiveActionEmailVerification(token, target);
+          setSecurityVerificationEmailChallenge(result.challengeToken);
+          setSecurityVerificationEmailCooldown(result.retryAfterSeconds);
+          setNotice(phrase("验证码已发送至你的邮箱。", "A verification code was sent to your email."));
+        });
+        return;
+      }
+      return;
+    }
     if (method === "passkey") {
       void handleVerifySecurityPasskey(target, passkeyId);
       return;
@@ -265,6 +284,50 @@ export default function AccountPrivacyPage() {
         setNotice(phrase("验证码已发送至你的邮箱。", "A verification code was sent to your email."));
       });
     }
+  }
+
+  async function handleVerifySensitiveActionPasskey(action: SensitiveAction) {
+    if (!token || securityVerificationSubmitRef.current) return;
+    securityVerificationSubmitRef.current = true;
+    await run(`${action}-passkey`, async () => {
+      const challenge = await getSensitiveActionPasskeyOptions(token, action);
+      let response;
+      try {
+        response = await startAuthentication({ optionsJSON: challenge.options });
+      } catch (verificationError) {
+        if (isPasskeyCancellation(verificationError)) {
+          setNotice(phrase("已取消验证通行密钥。", "Passkey verification was cancelled."));
+          return;
+        }
+        throw verificationError;
+      }
+      const result = await verifySensitiveActionPasskey(token, action, { challengeToken: challenge.challengeToken, response });
+      await executeSensitiveAction(result.verificationToken);
+    });
+    securityVerificationSubmitRef.current = false;
+  }
+
+  async function handleVerifySensitiveActionCode(method: "email" | "totp", code: string) {
+    if (!token || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget) || securityVerificationSubmitRef.current) return;
+    if (method === "email" && !securityVerificationEmailChallenge) return;
+    const action = securityVerificationTarget;
+    securityVerificationSubmitRef.current = true;
+    await run(`${action}-${method}`, async () => {
+      const result = method === "email"
+        ? await verifySensitiveActionEmail(token, action, securityVerificationEmailChallenge, code)
+        : await verifySensitiveActionTotp(token, action, code);
+      await executeSensitiveAction(result.verificationToken);
+    });
+    securityVerificationSubmitRef.current = false;
+  }
+
+  async function handleVerifySensitiveActionPassword() {
+    if (!token || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget) || !securityVerificationPassword.trim()) return;
+    const action = securityVerificationTarget;
+    await run(`${action}-password`, async () => {
+      const result = await verifySensitiveActionPassword(token, action, securityVerificationPassword);
+      await executeSensitiveAction(result.verificationToken);
+    });
   }
 
   async function handleVerifySecurityPasskey(target: "passkey" | "totp", passkeyId: number | null) {
@@ -440,23 +503,9 @@ export default function AccountPrivacyPage() {
               </button>
             </>
           ) : (
-            deletionOpen ? (
-              <div className="privacy-deletion-form">
-                <PasswordInput autoComplete="current-password" className="privacy-password-input" disabled={busy !== ""} onChange={(event) => setDeletionPassword(event.target.value)} placeholder={phrase("输入当前密码确认", "Enter your current password to confirm")} value={deletionPassword} />
-                <div className="privacy-deletion-actions">
-                  <button className="button danger" disabled={busy !== "" || !deletionPassword} onClick={() => void handleDeletion()} type="button">
-                    {phrase("确定", "Confirm")}
-                  </button>
-                  <button className="button secondary" disabled={busy !== ""} onClick={() => { setDeletionPassword(""); setDeletionOpen(false); }} type="button">
-                    {phrase("取消", "Cancel")}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button className="button danger" disabled={busy !== ""} onClick={() => setDeletionOpen(true)} type="button">
-                {phrase("申请注销", "Request deletion")}
-              </button>
-            )
+            <button className="button danger" disabled={busy !== ""} onClick={() => openSensitiveAction("account_deletion")} type="button">
+              {phrase("申请注销", "Request deletion")}
+            </button>
           )}
         </section>
         <section className="profile-panel privacy-card">
@@ -483,7 +532,7 @@ export default function AccountPrivacyPage() {
             <button
               className="button"
               disabled={busy !== ""}
-              onClick={() => void handleRegisterPasskey()}
+              onClick={() => openSensitiveAction("passkey_registration")}
               type="button"
             >
               <Fingerprint size={16} />
@@ -633,7 +682,7 @@ export default function AccountPrivacyPage() {
               </button>
             </>
           ) : (
-            <button className="button" disabled={busy !== ""} onClick={() => void handleEnroll()} type="button">
+            <button className="button" disabled={busy !== ""} onClick={() => openSensitiveAction("totp_enrollment")} type="button">
               {phrase("开始绑定", "Start enrollment")}
             </button>
           )}
@@ -699,14 +748,26 @@ export default function AccountPrivacyPage() {
                     ? phrase("选择验证方式", "Choose a verification method")
                     : securityVerificationTarget === "totp"
                       ? phrase("验证后解除双因素认证", "Verify to remove 2FA")
-                      : phrase("验证后移除通行密钥", "Verify to remove passkey")}
+                      : securityVerificationTarget === "account_deletion"
+                        ? phrase("验证后申请注销账号", "Verify to request account deletion")
+                        : securityVerificationTarget === "passkey_registration"
+                          ? phrase("验证后添加通行密钥", "Verify to add a passkey")
+                          : securityVerificationTarget === "totp_enrollment"
+                            ? phrase("验证后绑定双因素认证", "Verify to enable two-factor authentication")
+                            : phrase("验证后移除通行密钥", "Verify to remove passkey")}
                 </h2>
                 <p>
                   {securityVerificationStep === "choose"
                     ? phrase("任选一种方式验证即可，不需要重复验证。", "Use any one method. Additional verification is not required.")
                     : securityVerificationTarget === "totp"
                       ? phrase("验证成功后将关闭当前账号的双因素认证。", "Two-factor authentication will be disabled after verification.")
-                      : phrase("验证成功后只会移除当前选中的通行密钥。", "Only the selected passkey will be removed after verification.")}
+                      : securityVerificationTarget === "account_deletion"
+                        ? phrase("验证成功后账号将进入 7 天注销冷静期。", "After verification, the account will enter a 7-day deletion cooling-off period.")
+                        : securityVerificationTarget === "passkey_registration"
+                          ? phrase("验证成功后继续使用当前设备添加通行密钥。", "After verification, continue adding a passkey on this device.")
+                          : securityVerificationTarget === "totp_enrollment"
+                            ? phrase("验证成功后生成双因素认证绑定信息。", "After verification, enrollment details for two-factor authentication will be generated.")
+                            : phrase("验证成功后只会移除当前选中的通行密钥。", "Only the selected passkey will be removed after verification.")}
                 </p>
               </div>
               <div className="passkey-delete-heading-actions">
@@ -751,9 +812,9 @@ export default function AccountPrivacyPage() {
                   </>
                 ) : securityVerificationStep === "password" ? (
                   <>
-                    <PasswordInput aria-label={phrase("当前密码", "Current password")} autoComplete="current-password" className="passkey-delete-password-input" disabled={busy !== ""} onChange={(event) => setSecurityVerificationPassword(event.target.value)} placeholder={phrase("输入当前密码", "Enter your current password")} value={securityVerificationPassword} />
-                    <button className="button passkey-delete-confirm-button" disabled={busy !== "" || !securityVerificationPassword.trim()} onClick={() => void handleVerifySecurityPassword()} type="button">
-                      {busy ? phrase("验证中", "Verifying") : securityVerificationTarget === "totp" ? phrase("确定解除", "Confirm removal") : phrase("确定移除", "Confirm removal")}
+                    <PasswordInput aria-label={phrase("当前密码", "Current password")} autoComplete="current-password" className="security-verification-password-input" disabled={busy !== ""} onChange={(event) => setSecurityVerificationPassword(event.target.value)} placeholder={phrase("输入当前密码", "Enter your current password")} value={securityVerificationPassword} />
+                    <button className="button passkey-delete-confirm-button" disabled={busy !== "" || !securityVerificationPassword.trim()} onClick={() => void (isSensitiveActionTarget(securityVerificationTarget) ? handleVerifySensitiveActionPassword() : handleVerifySecurityPassword())} type="button">
+                      {busy ? phrase("验证中", "Verifying") : securityVerificationTarget === "totp" ? phrase("确定解除", "Confirm removal") : securityVerificationTarget === "passkey" ? phrase("确定移除", "Confirm removal") : phrase("继续", "Continue")}
                     </button>
                   </>
                 ) : (
@@ -769,7 +830,7 @@ export default function AccountPrivacyPage() {
                       autoFocus
                       disabled={busy !== ""}
                       onChange={setSecurityVerificationCode}
-                      onComplete={(code) => void handleVerifySecurityCode(securityVerificationStep, code)}
+                      onComplete={(code) => void (isSensitiveActionTarget(securityVerificationTarget) ? handleVerifySensitiveActionCode(securityVerificationStep, code) : handleVerifySecurityCode(securityVerificationStep, code))}
                       value={securityVerificationCode}
                     />
                     {securityVerificationStep === "email" ? (
@@ -798,4 +859,8 @@ export default function AccountPrivacyPage() {
 
 function isPasskeyCancellation(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { name?: unknown }).name === "NotAllowedError";
+}
+
+function isSensitiveActionTarget(target: "passkey" | "totp" | SensitiveAction | null): target is SensitiveAction {
+  return target === "account_deletion" || target === "passkey_registration" || target === "totp_enrollment";
 }

@@ -12,7 +12,7 @@ import { CurrentSessionId } from "./current-session-id.decorator";
 import { CurrentUser } from "./current-user.decorator";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { DeviceLoginVerificationDto, DeviceLoginVerificationResendDto, LoginDto, TotpLoginVerificationDto } from "./dto/login.dto";
-import { PasskeyDeletionCodeDto, PasskeyDeletionEmailVerifyDto, PasskeyDeletionPasswordDto, RenamePasskeyDto, VerifyPasskeyDeletionDto, VerifyPasskeyLoginDto, VerifyPasskeyRegistrationDto } from "./dto/passkey.dto";
+import { PasskeyDeletionCodeDto, PasskeyDeletionEmailVerifyDto, PasskeyDeletionPasswordDto, RenamePasskeyDto, SensitiveActionVerificationTokenDto, VerifyPasskeyDeletionDto, VerifyPasskeyLoginDto, VerifyPasskeyRegistrationDto } from "./dto/passkey.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { RegisterDto } from "./dto/register.dto";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
@@ -112,6 +112,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   passkeyRegistrationOptions(
     @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SensitiveActionVerificationTokenDto,
     @Req() request: SessionRequest,
   ): Promise<{
     options: PublicKeyCredentialCreationOptionsJSON;
@@ -121,6 +122,7 @@ export class AuthController {
     return this.authService.beginPasskeyRegistration(
       user,
       this.sessionContext(request),
+      dto.verificationToken,
     );
   }
 
@@ -221,6 +223,20 @@ export class AuthController {
     @Body() dto: PasskeyDeletionEmailVerifyDto,
   ) {
     return this.authService.deletePasskeyWithEmail(user, id, dto.challengeToken, dto.code);
+  }
+
+  @Post("me/security-verification/:action/passkey/options")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  sensitiveActionPasskeyOptions(@CurrentUser() user: AuthenticatedUser, @Param("action") action: string, @Req() request: SessionRequest) {
+    return this.authService.beginSensitiveActionPasskey(user, action, this.sessionContext(request));
+  }
+
+  @Post("me/security-verification/:action/passkey/verify")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  sensitiveActionPasskeyVerify(@CurrentUser() user: AuthenticatedUser, @Param("action") action: string, @Body() dto: VerifyPasskeyDeletionDto, @Req() request: SessionRequest) {
+    return this.authService.finishSensitiveActionPasskey(user, action, dto, this.sessionContext(request));
   }
 
   @Post("me/totp/disable/passkey/options")

@@ -49,6 +49,13 @@ export class VerifyPasskeyDeletionDto {
   response!: Record<string, unknown>;
 }
 
+export class SensitiveActionVerificationTokenDto {
+  @IsString()
+  @MinLength(20)
+  @MaxLength(512)
+  verificationToken!: string;
+}
+
 export class PasskeyDeletionPasswordDto {
   @IsString()
   @MinLength(1)

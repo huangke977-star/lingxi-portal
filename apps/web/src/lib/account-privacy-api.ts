@@ -101,7 +101,7 @@ export function downloadDataExport(accessToken: string, id: number): Promise<Blo
   });
 }
 
-export function requestAccountDeletion(accessToken: string, currentPassword: string) {
+export function requestAccountDeletion(accessToken: string, verificationToken: string) {
   return requestJson<{
     pending: true;
     scheduledAt: string;
@@ -109,7 +109,7 @@ export function requestAccountDeletion(accessToken: string, currentPassword: str
   }>("/account-privacy/me/deletion", {
     method: "POST",
     headers: auth(accessToken),
-    body: JSON.stringify({ currentPassword }),
+    body: JSON.stringify({ verificationToken }),
   });
 }
 
@@ -117,8 +117,26 @@ export function cancelAccountDeletion(accessToken: string) {
   return requestJson<{ pending: false }>("/account-privacy/me/deletion/cancel", { method: "PATCH", headers: auth(accessToken) });
 }
 
-export function beginTotpEnrollment(accessToken: string) {
-  return requestJson<{ secret: string; otpAuthUri: string }>("/account-privacy/me/totp/enroll", { method: "POST", headers: auth(accessToken) });
+export function beginTotpEnrollment(accessToken: string, verificationToken: string) {
+  return requestJson<{ secret: string; otpAuthUri: string }>("/account-privacy/me/totp/enroll", { method: "POST", headers: auth(accessToken), body: JSON.stringify({ verificationToken }) });
+}
+
+export type SensitiveAction = "account_deletion" | "passkey_registration" | "totp_enrollment";
+
+export function requestSensitiveActionEmailVerification(accessToken: string, action: SensitiveAction) {
+  return requestJson<{ success: true; challengeToken: string; retryAfterSeconds: number }>(`/account-privacy/me/security-verification/${encodeURIComponent(action)}/email`, { method: "POST", headers: auth(accessToken) });
+}
+
+export function verifySensitiveActionEmail(accessToken: string, action: SensitiveAction, challengeToken: string, code: string) {
+  return requestJson<{ success: true; verificationToken: string }>(`/account-privacy/me/security-verification/${encodeURIComponent(action)}/email/verify`, { method: "POST", headers: auth(accessToken), body: JSON.stringify({ challengeToken, code }) });
+}
+
+export function verifySensitiveActionPassword(accessToken: string, action: SensitiveAction, currentPassword: string) {
+  return requestJson<{ success: true; verificationToken: string }>(`/account-privacy/me/security-verification/${encodeURIComponent(action)}/password`, { method: "POST", headers: auth(accessToken), body: JSON.stringify({ currentPassword }) });
+}
+
+export function verifySensitiveActionTotp(accessToken: string, action: SensitiveAction, code: string) {
+  return requestJson<{ success: true; verificationToken: string }>(`/account-privacy/me/security-verification/${encodeURIComponent(action)}/totp`, { method: "POST", headers: auth(accessToken), body: JSON.stringify({ code }) });
 }
 
 export function confirmTotp(accessToken: string, code: string) {

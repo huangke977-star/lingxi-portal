@@ -12,10 +12,11 @@ The current capability includes:
 - Login throttling plus new-device, unfamiliar-IP, and unusual-frequency detection
 - Email verification for untrusted devices, browser-installation trust management, and active-session sign-out
 - In-app and email security alerts with user preferences
-- Paginated administration queries for mail jobs, verification requests, and risk events
+- Two-factor authentication, recovery codes, and passkeys
+- Unified step-up verification for sensitive actions and paginated administration queries
 - Encrypted SMTP and Turnstile credentials
 
-SMS codes, third-party login, two-factor authentication, and mandatory re-verification of all historical accounts are not included.
+SMS codes, third-party login, and mandatory re-verification of all historical accounts are not included.
 
 ## Architecture And Data
 
@@ -37,7 +38,7 @@ SMS codes, third-party login, two-factor authentication, and mandatory re-verifi
 | `user_security_preferences`   | Per-user security-alert preferences                                              | Login, email, and new-device alerts default to enabled                                                                                                    |
 | `known_login_devices`         | Known browser/PWA installations, labels, first/last IP addresses, and trust time | Trusted identity stores only the SHA-256 hash of a random server-issued credential; cancelling trust clears the trust time while preserving audit history |
 | `login_security_events`       | Login, risk, password, and email-verification events                             | Stores risk level, IP, User-Agent, device label, and limited metadata                                                                                     |
-| `email_verification_requests` | Registration, account-email, and new-device login code requests                  | Codes are HMAC-hashed; device challenges store only a SHA-256 random-token hash bound to a device fingerprint                                             |
+| `email_verification_requests` | Registration, account-email, new-device, and sensitive-action code requests    | Codes are HMAC-hashed; challenges store only a SHA-256 random-token hash bound to purpose, action, and device fingerprint                             |
 | `password_reset_requests`     | Single-use password-reset requests                                               | Stores a SHA-256 token hash, never the plaintext token from the URL                                                                                       |
 | `mail_jobs`                   | Delivery state and failure reason                                                | Stores recipient, subject, type, state, attempts, and errors, but not the message body                                                                    |
 
@@ -81,6 +82,12 @@ Rate-limit keys are temporary state. Flushing Redis also removes refresh session
 - `PATCH /auth/me/password`: verifies the current password, changes it, and revokes refresh sessions other than the current session.
 - `DELETE /auth/me/security/trusted-devices/:deviceId`: cancels trust for one browser/PWA installation; the current session remains active, while the next sign-in requires email verification.
 - `DELETE /auth/sessions/:sessionId`: signs out one active session for the current account, including either the current device or another device.
+- `POST /account-privacy/me/security-verification/:action/email`: sends a one-time email code for account deletion, passkey registration, or two-factor enrollment.
+- `POST /account-privacy/me/security-verification/:action/email/verify`: verifies the code for that action and issues a one-time sensitive-action grant.
+- `POST /account-privacy/me/security-verification/:action/password`: verifies the current password for that action and issues a one-time grant.
+- `POST /account-privacy/me/security-verification/:action/totp`: verifies an authenticator code or recovery code for that action and issues a one-time grant.
+- `POST /auth/me/security-verification/:action/passkey/options` and `/verify`: verify the action with a passkey and issue a one-time grant.
+- `POST /account-privacy/me/deletion`, `POST /account-privacy/me/totp/enroll`, and `POST /auth/me/passkeys/registration/options`: accept only a one-time grant matching the current user, action, and device.
 
 The Web app provides `/register`, `/login`, `/forgot-password`, the account-security area in Profile, and the `/admin/security` administration page. Administrators and the super administrator can open Security Management from the avatar menu. Backend authorization never depends on hiding a frontend link.
 
@@ -94,6 +101,14 @@ The Web app provides `/register`, `/login`, `/forgot-password`, the account-secu
 | `POST /security-admin/smtp/test` | Denied                      | Run connection test         |
 
 An administrator is determined by role level `>= 90`. A super administrator must also have `isSuperAdmin=true`. Configuration reads return flags such as `smtpPasswordConfigured` and `turnstileSecretConfigured`, never either secret in plaintext.
+
+## Sensitive-Action Verification And Input Standards
+
+Account deletion, passkey registration, and two-factor enrollment require step-up verification first. The user may choose one configured passkey, an email code, the current password, or an authenticator code/recovery code. After success, the server issues a grant that is valid only for the selected action; it expires after 5 minutes, can be consumed once, and is bound to the current user, IP, and User-Agent fingerprint. A different action, device fingerprint, expired grant, or replay is rejected. Email codes still use the 60-second send interval and five-attempt limit.
+
+Passkey verification creates a separate challenge and requires user verification before a new passkey can be registered. Two-factor enrollment verifies the account first, then generates the secret/QR data and confirmation code. Cancelling a passkey ceremony only ends the current flow and is not a system error.
+
+Password verification inputs follow one standard: borderless, 6px radius, `var(--surface-soft)` background, 35px minimum height, 9px left padding, and 44px right padding reserved for the reveal control. Focus uses a soft accent shadow instead of a black border. The reveal control sits inside the input on the right. Sensitive verification codes use six equal compact cells and verify automatically when complete.
 
 ## SMTP Configuration
 

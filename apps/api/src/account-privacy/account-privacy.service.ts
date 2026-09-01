@@ -9,6 +9,7 @@ import { FriendshipStatus } from "../generated/prisma/client";
 import { TotpService } from "./totp.service";
 import { AccountSecurityService } from "../security/account-security.service";
 import { RefreshTokenService } from "../auth/refresh-token.service";
+import { parseSensitiveAction, SensitiveAction } from "../security/sensitive-action";
 
 const DELETION_COOLING_OFF_MS = 7 * 24 * 60 * 60 * 1000;
 const EXPORT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -147,32 +148,10 @@ export class AccountPrivacyService implements OnModuleInit, OnModuleDestroy {
     return job.payload as Record<string, unknown>;
   }
 
-  async requestDeletion(user: AuthenticatedUser, currentPassword: string, context: RefreshSessionContext) {
+  async requestDeletionAfterVerification(user: AuthenticatedUser, verificationToken: string, context: RefreshSessionContext) {
+    await this.accountSecurity.consumeSensitiveActionGrant(user.id, "account_deletion", verificationToken, context);
     await this.assertNotDeletionPending(user.id);
-    const stored = await this.prisma.user.findUnique({
-      where: { id: user.id },
-      select: { passwordHash: true, status: true },
-    });
-    if (!stored || stored.status !== UserStatus.active || !(await this.passwordService.verifyPassword(currentPassword, stored.passwordHash))) {
-      throw new BadRequestException("当前密码不正确。");
-    }
-    const requestedAt = new Date();
-    const scheduledAt = new Date(requestedAt.getTime() + DELETION_COOLING_OFF_MS);
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        status: UserStatus.deletion_pending,
-        deletionRequestedAt: requestedAt,
-        deletionScheduledAt: scheduledAt,
-      },
-    });
-    await this.recordAudit(user.id, "account_deletion_requested", { scheduledAt: scheduledAt.toISOString() }, context);
-    return {
-      pending: true,
-      requestedAt: requestedAt.toISOString(),
-      scheduledAt: scheduledAt.toISOString(),
-      coolingOffDays: 7,
-    };
+    return this.scheduleDeletion(user, context);
   }
 
   async cancelDeletion(user: AuthenticatedUser, context: RefreshSessionContext) {
@@ -216,6 +195,38 @@ export class AccountPrivacyService implements OnModuleInit, OnModuleDestroy {
       secret,
       otpAuthUri: this.totp.buildOtpAuthUri(secret, user.email || user.username),
     };
+  }
+
+  async beginTotpEnrollmentAfterVerification(user: AuthenticatedUser, verificationToken: string, context: RefreshSessionContext) {
+    await this.accountSecurity.consumeSensitiveActionGrant(user.id, "totp_enrollment", verificationToken, context);
+    return this.beginTotpEnrollment(user, context);
+  }
+
+  async requestSensitiveActionEmail(user: AuthenticatedUser, action: string, context: RefreshSessionContext) {
+    return this.accountSecurity.requestSensitiveActionVerification(user, this.requireSensitiveAction(action), context);
+  }
+
+  async verifySensitiveActionEmail(user: AuthenticatedUser, action: string, challengeToken: string, code: string, context: RefreshSessionContext) {
+    const normalizedAction = this.requireSensitiveAction(action);
+    const verificationToken = await this.accountSecurity.consumeSensitiveActionVerification(user, normalizedAction, challengeToken, code, context);
+    return { success: true as const, verificationToken };
+  }
+
+  async verifySensitiveActionPassword(user: AuthenticatedUser, action: string, currentPassword: string, context: RefreshSessionContext) {
+    const normalizedAction = this.requireSensitiveAction(action);
+    const stored = await this.prisma.user.findUnique({ where: { id: user.id }, select: { passwordHash: true, status: true } });
+    if (!stored || stored.status !== UserStatus.active || !(await this.passwordService.verifyPassword(currentPassword, stored.passwordHash))) {
+      throw new UnauthorizedException("当前密码不正确。\nThe current password is incorrect.");
+    }
+    return { success: true as const, verificationToken: await this.accountSecurity.issueSensitiveActionGrant(user.id, normalizedAction, context) };
+  }
+
+  async verifySensitiveActionTotp(user: AuthenticatedUser, action: string, code: string, context: RefreshSessionContext) {
+    const normalizedAction = this.requireSensitiveAction(action);
+    if ((await this.verifyTotpForLogin(user.id, code)) !== true) {
+      throw new UnauthorizedException("双因素验证码不正确。\nThe authenticator code is incorrect.");
+    }
+    return { success: true as const, verificationToken: await this.accountSecurity.issueSensitiveActionGrant(user.id, normalizedAction, context) };
   }
 
   async confirmTotp(user: AuthenticatedUser, code: string, context: RefreshSessionContext) {
@@ -756,6 +767,34 @@ export class AccountPrivacyService implements OnModuleInit, OnModuleDestroy {
       data: { recoveryCodeHashes: remaining as Prisma.InputJsonValue },
     });
     return true;
+  }
+
+  private async scheduleDeletion(user: AuthenticatedUser, context: RefreshSessionContext) {
+    const requestedAt = new Date();
+    const scheduledAt = new Date(requestedAt.getTime() + DELETION_COOLING_OFF_MS);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        status: UserStatus.deletion_pending,
+        deletionRequestedAt: requestedAt,
+        deletionScheduledAt: scheduledAt,
+      },
+    });
+    await this.recordAudit(user.id, "account_deletion_requested", { scheduledAt: scheduledAt.toISOString() }, context);
+    return {
+      pending: true,
+      requestedAt: requestedAt.toISOString(),
+      scheduledAt: scheduledAt.toISOString(),
+      coolingOffDays: 7,
+    };
+  }
+
+  private requireSensitiveAction(value: string): SensitiveAction {
+    try {
+      return parseSensitiveAction(value);
+    } catch {
+      throw new BadRequestException("不支持的安全操作。");
+    }
   }
 
   private async assertNotDeletionPending(userId: number): Promise<void> {

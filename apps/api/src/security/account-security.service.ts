@@ -8,6 +8,7 @@ import { ConfirmEmailVerificationDto, UpdateSecurityPreferencesDto } from "./dto
 import { MailService } from "./mail.service";
 import { SecurityConfigurationService } from "./security-configuration.service";
 import { TurnstileService } from "./turnstile.service";
+import { SensitiveAction, parseSensitiveAction } from "./sensitive-action";
 
 interface LoginRecordOptions {
   type?: LoginSecurityEventType;
@@ -21,6 +22,8 @@ interface LoginRecordOptions {
 
 @Injectable()
 export class AccountSecurityService {
+  private readonly sensitiveActionGrantTtlSeconds = 5 * 60;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
@@ -281,6 +284,105 @@ export class AccountSecurityService {
       },
     });
     if (consumed.count !== 1) throw new BadRequestException("验证码已使用，请重新获取。");
+  }
+
+  async requestSensitiveActionVerification(user: AuthenticatedUser, action: SensitiveAction, context: RefreshSessionContext) {
+    const normalizedAction = parseSensitiveAction(action);
+    const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled) throw new BadRequestException("邮件服务当前未启用。");
+    await this.assertCodeRateLimit(user.email, context.ip, `sensitive-action-${normalizedAction}`);
+    const code = this.createCode();
+    const challengeToken = randomBytes(32).toString("base64url");
+    await this.expirePendingCodes(user.email, EmailVerificationPurpose.sensitive_action);
+    const request = await this.prisma.emailVerificationRequest.create({
+      data: {
+        userId: user.id,
+        purpose: EmailVerificationPurpose.sensitive_action,
+        email: user.email,
+        codeHash: this.hashCode(user.email, code),
+        challengeTokenHash: this.hashToken(challengeToken),
+        action: normalizedAction,
+        ip: context.ip,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
+    });
+    const actionLabel = normalizedAction === "account_deletion"
+      ? "注销账号"
+      : normalizedAction === "passkey_registration"
+        ? "添加通行密钥"
+        : "绑定双因素认证";
+    try {
+      await this.mail.send({
+        type: MailJobType.security_notice,
+        recipient: user.email,
+        subject: `HLOVET ${actionLabel}验证码`,
+        text: `你正在进行 HLOVET ${actionLabel}操作。验证码是 ${code}，10 分钟内有效。若非本人操作，请立即修改密码。`,
+        html: `<p>${this.escapeHtml(user.nickname)}，你好：</p><p>你正在进行 HLOVET ${this.escapeHtml(actionLabel)}操作。</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>验证码 10 分钟内有效。若非本人操作，请立即修改密码。</p>`,
+        userId: user.id,
+        metadata: {
+          verificationRequestId: request.id,
+          purpose: "sensitive_action",
+          action: normalizedAction,
+          ip: context.ip,
+        },
+      });
+    } catch (error) {
+      await this.prisma.emailVerificationRequest.update({
+        where: { id: request.id },
+        data: { status: EmailVerificationStatus.expired },
+      });
+      throw error;
+    }
+    return { success: true as const, challengeToken, retryAfterSeconds: 60 };
+  }
+
+  async consumeSensitiveActionVerification(user: AuthenticatedUser, action: SensitiveAction, challengeToken: string, code: string, context: RefreshSessionContext): Promise<string> {
+    const normalizedAction = parseSensitiveAction(action);
+    const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled) throw new BadRequestException("邮件服务当前未启用。");
+    const request = await this.requireValidCode(
+      user.email,
+      EmailVerificationPurpose.sensitive_action,
+      code,
+      user.id,
+      { challengeToken, action: normalizedAction },
+    );
+    const consumed = await this.prisma.emailVerificationRequest.updateMany({
+      where: { id: request.id, status: EmailVerificationStatus.pending },
+      data: {
+        status: EmailVerificationStatus.consumed,
+        verifiedAt: new Date(),
+        consumedAt: new Date(),
+      },
+    });
+    if (consumed.count !== 1) throw new BadRequestException("验证码已使用，请重新获取。");
+    return this.issueSensitiveActionGrant(user.id, normalizedAction, context);
+  }
+
+  async issueSensitiveActionGrant(userId: number, action: SensitiveAction, context: RefreshSessionContext): Promise<string> {
+    const normalizedAction = parseSensitiveAction(action);
+    const token = randomBytes(32).toString("base64url");
+    await this.redis.set(
+      this.sensitiveActionGrantKey(token),
+      JSON.stringify({ userId, action: normalizedAction, deviceFingerprint: this.sensitiveActionFingerprint(context) }),
+      this.sensitiveActionGrantTtlSeconds,
+    );
+    return token;
+  }
+
+  async consumeSensitiveActionGrant(userId: number, action: SensitiveAction, token: string, context: RefreshSessionContext): Promise<void> {
+    const normalizedAction = parseSensitiveAction(action);
+    const raw = await this.redis.getdel(this.sensitiveActionGrantKey(token));
+    if (!raw) throw new BadRequestException("安全验证已失效，请重新验证。\nThe security verification has expired. Please try again.");
+    let grant: { userId?: number; action?: string; deviceFingerprint?: string };
+    try {
+      grant = JSON.parse(raw) as typeof grant;
+    } catch {
+      throw new BadRequestException("安全验证已失效，请重新验证。\nThe security verification has expired. Please try again.");
+    }
+    if (grant.userId !== userId || grant.action !== normalizedAction || grant.deviceFingerprint !== this.sensitiveActionFingerprint(context)) {
+      throw new BadRequestException("安全验证信息不匹配，请重新验证。\nThe security verification does not match this session.");
+    }
   }
 
   async requestDeviceLoginVerification(user: AuthenticatedUser, context: RefreshSessionContext) {
@@ -889,7 +991,7 @@ export class AccountSecurityService {
     purpose: EmailVerificationPurpose,
     code: string,
     userId?: number,
-    options?: { challengeToken?: string; targetId?: number },
+    options?: { challengeToken?: string; targetId?: number; action?: SensitiveAction },
   ) {
     const request = await this.prisma.emailVerificationRequest.findFirst({
       where: {
@@ -899,6 +1001,7 @@ export class AccountSecurityService {
         ...(userId ? { userId } : {}),
         ...(options?.challengeToken ? { challengeTokenHash: this.hashToken(options.challengeToken) } : {}),
         ...(options?.targetId !== undefined ? { targetId: options.targetId } : {}),
+        ...(options?.action ? { action: options.action } : {}),
       },
       orderBy: { createdAt: "desc" },
     });
@@ -939,6 +1042,14 @@ export class AccountSecurityService {
   private async assertCodeRateLimit(email: string, ip: string, purpose: string): Promise<void> {
     await this.assertRate(`security:code:email:${purpose}:${email}`, 1, 60);
     await this.assertRate(`security:code:ip:${purpose}:${ip}`, 10, 3600);
+  }
+
+  private sensitiveActionGrantKey(token: string): string {
+    return `sensitive_action_grant:${this.hashToken(token)}`;
+  }
+
+  private sensitiveActionFingerprint(context: RefreshSessionContext): string {
+    return createHash("sha256").update(`${context.ip}|${context.userAgent}`).digest("hex");
   }
 
   private async assertRecoveryRateLimit(email: string, ip: string): Promise<void> {

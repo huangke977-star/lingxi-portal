@@ -45,6 +45,8 @@ function service(
     accountSecurity?: {
       requestTotpDisableVerification?: jest.Mock;
       consumeTotpDisableVerification?: jest.Mock;
+      consumeSensitiveActionGrant?: jest.Mock;
+      issueSensitiveActionGrant?: jest.Mock;
     };
     refreshTokens?: { revokeAllSessions?: jest.Mock };
   } = {},
@@ -61,6 +63,8 @@ function service(
     {
       requestTotpDisableVerification: dependencies.accountSecurity?.requestTotpDisableVerification ?? jest.fn(),
       consumeTotpDisableVerification: dependencies.accountSecurity?.consumeTotpDisableVerification ?? jest.fn(),
+      consumeSensitiveActionGrant: dependencies.accountSecurity?.consumeSensitiveActionGrant ?? jest.fn().mockResolvedValue(undefined),
+      issueSensitiveActionGrant: dependencies.accountSecurity?.issueSensitiveActionGrant ?? jest.fn().mockResolvedValue("test-sensitive-grant"),
     } as never,
     {
       revokeAllSessions: dependencies.refreshTokens?.revokeAllSessions ?? jest.fn().mockResolvedValue(0),
@@ -70,22 +74,22 @@ function service(
 
 describe("account privacy", () => {
   it("starts and cancels the account deletion cooling-off period", async () => {
-    const passwordService = new PasswordService();
-    const passwordHash = await passwordService.hashPassword("Secret123!");
     const update = jest.fn().mockResolvedValue(undefined);
     const audit = jest.fn().mockResolvedValue(undefined);
+    const consumeSensitiveActionGrant = jest.fn().mockResolvedValue(undefined);
     const prisma = {
       user: {
-        findUnique: jest.fn().mockResolvedValueOnce({ status: UserStatus.active }).mockResolvedValueOnce({ status: UserStatus.active, passwordHash }),
+        findUnique: jest.fn().mockResolvedValueOnce({ status: UserStatus.active }),
         update,
       },
       privacyAuditRecord: { create: audit },
     };
     const account = user();
-    const instance = service(prisma);
+    const instance = service(prisma, { accountSecurity: { consumeSensitiveActionGrant } });
 
-    const requested = await instance.requestDeletion(account, "Secret123!", context);
+    const requested = await instance.requestDeletionAfterVerification(account, "one-time-grant", context);
 
+    expect(consumeSensitiveActionGrant).toHaveBeenCalledWith(account.id, "account_deletion", "one-time-grant", context);
     expect(requested).toMatchObject({ pending: true, coolingOffDays: 7 });
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -239,20 +243,34 @@ describe("account privacy", () => {
     });
   });
 
-  it("rejects an incorrect deletion password", async () => {
-    const passwordService = new PasswordService();
+  it("does not schedule deletion without a sensitive-action grant", async () => {
+    const consumeSensitiveActionGrant = jest.fn().mockRejectedValue(new BadRequestException("安全验证已失效"));
+    const update = jest.fn();
     const prisma = {
       user: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValueOnce({ status: UserStatus.active })
-          .mockResolvedValueOnce({
-            status: UserStatus.active,
-            passwordHash: await passwordService.hashPassword("Secret123!"),
-          }),
+        update,
       },
     };
-    await expect(service(prisma).requestDeletion(user(), "wrong-password", context)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service(prisma, { accountSecurity: { consumeSensitiveActionGrant } }).requestDeletionAfterVerification(user(), "missing-grant", context)).rejects.toBeInstanceOf(BadRequestException);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("issues a scoped grant after verifying the current password", async () => {
+    const passwordService = new PasswordService();
+    const issueSensitiveActionGrant = jest.fn().mockResolvedValue("password-grant");
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          status: UserStatus.active,
+          passwordHash: await passwordService.hashPassword("Secret123!"),
+        }),
+      },
+    };
+
+    await expect(
+      service(prisma, { accountSecurity: { issueSensitiveActionGrant } }).verifySensitiveActionPassword(user(), "totp_enrollment", "Secret123!", context),
+    ).resolves.toEqual({ success: true, verificationToken: "password-grant" });
+    expect(issueSensitiveActionGrant).toHaveBeenCalledWith(7, "totp_enrollment", context);
   });
 });
 

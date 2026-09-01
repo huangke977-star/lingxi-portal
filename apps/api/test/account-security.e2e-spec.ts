@@ -30,6 +30,7 @@ interface VerificationWhere {
   status?: EmailVerificationStatus;
   userId?: number;
   challengeTokenHash?: string;
+  action?: string;
 }
 
 interface VerificationData {
@@ -122,7 +123,8 @@ function matchesVerification(request: EmailVerificationRequest, where: Verificat
     (where.purpose === undefined || request.purpose === where.purpose) &&
     (where.status === undefined || request.status === where.status) &&
     (where.userId === undefined || request.userId === where.userId) &&
-    (where.challengeTokenHash === undefined || request.challengeTokenHash === where.challengeTokenHash)
+    (where.challengeTokenHash === undefined || request.challengeTokenHash === where.challengeTokenHash) &&
+    (where.action === undefined || request.action === where.action)
   );
 }
 
@@ -148,6 +150,7 @@ function createAccountSecurityHarness(options?: {
   const verificationRequests: EmailVerificationRequest[] = [];
   const passwordResetRequests: PasswordResetRequest[] = [];
   const counters = new Map<string, number>();
+  const redisValues = new Map<string, string>();
   const expire = jest.fn(async () => 1);
   const redis = {
     incr: jest.fn(async (key: string) => {
@@ -156,6 +159,14 @@ function createAccountSecurityHarness(options?: {
       return next;
     }),
     expire,
+    set: jest.fn(async (key: string, value: string) => {
+      redisValues.set(key, value);
+    }),
+    getdel: jest.fn(async (key: string) => {
+      const value = redisValues.get(key) ?? null;
+      redisValues.delete(key);
+      return value;
+    }),
   };
   const sendMail = jest.fn(async () => undefined);
   const verifyTurnstile = jest.fn(async () => undefined);
@@ -187,6 +198,7 @@ function createAccountSecurityHarness(options?: {
           codeHash: string;
           challengeTokenHash?: string;
           targetId?: number;
+          action?: string;
           deviceFingerprint?: string;
           ip: string;
           expiresAt: Date;
@@ -197,6 +209,7 @@ function createAccountSecurityHarness(options?: {
           id: verificationRequests.length + 1,
           userId: data.userId ?? null,
           purpose: data.purpose,
+          action: data.action ?? null,
           email: data.email,
           codeHash: data.codeHash,
           challengeTokenHash: data.challengeTokenHash ?? null,
@@ -545,6 +558,47 @@ describe("P2 account security", () => {
         attempts: 0,
       });
       await expect(harness.service.consumeRegistrationCode(email, code)).rejects.toThrow("验证码无效或已过期");
+    });
+
+    it("binds sensitive-action email codes to the requested action", async () => {
+      const harness = createAccountSecurityHarness();
+      const account = authenticatedUser();
+      const challenge = await harness.service.requestSensitiveActionVerification(account, "account_deletion", sessionContext);
+      const code = verificationCodeFrom(latestMailText(harness.sendMail));
+
+      await expect(
+        harness.service.consumeSensitiveActionVerification(account, "passkey_registration", challenge.challengeToken, code, sessionContext),
+      ).rejects.toThrow("验证码无效或已过期");
+      expect(harness.verificationRequests[0]).toMatchObject({
+        purpose: EmailVerificationPurpose.sensitive_action,
+        action: "account_deletion",
+        status: EmailVerificationStatus.pending,
+      });
+
+      const verificationToken = await harness.service.consumeSensitiveActionVerification(account, "account_deletion", challenge.challengeToken, code, sessionContext);
+      expect(verificationToken).toEqual(expect.any(String));
+      expect(harness.verificationRequests[0].status).toBe(EmailVerificationStatus.consumed);
+    });
+
+    it("consumes sensitive-action grants once and binds them to action and device", async () => {
+      const harness = createAccountSecurityHarness();
+      const account = authenticatedUser();
+      const grant = await harness.service.issueSensitiveActionGrant(account.id, "account_deletion", sessionContext);
+
+      await expect(
+        harness.service.consumeSensitiveActionGrant(account.id, "passkey_registration", grant, sessionContext),
+      ).rejects.toThrow("安全验证信息不匹配");
+      await expect(
+        harness.service.consumeSensitiveActionGrant(account.id, "account_deletion", grant, sessionContext),
+      ).rejects.toThrow("安全验证已失效");
+
+      const deviceBoundGrant = await harness.service.issueSensitiveActionGrant(account.id, "account_deletion", sessionContext);
+      await expect(
+        harness.service.consumeSensitiveActionGrant(account.id, "account_deletion", deviceBoundGrant, {
+          ...sessionContext,
+          userAgent: "another-browser",
+        }),
+      ).rejects.toThrow("安全验证信息不匹配");
     });
 
     it("expires an elapsed verification code", async () => {

@@ -281,6 +281,7 @@ enum EmailVerificationPurpose {
   device_login
   totp_disable
   passkey_delete
+  sensitive_action
 }
 
 enum EmailVerificationStatus {
@@ -2494,6 +2495,7 @@ model EmailVerificationRequest {
   codeHash           String                   @map("code_hash") @db.Char(64)
   challengeTokenHash String?                  @unique @map("challenge_token_hash") @db.Char(64)
   targetId           Int?                     @map("target_id")
+  action             String?                  @db.VarChar(64)
   deviceFingerprint  String?                  @map("device_fingerprint") @db.Char(64)
   status             EmailVerificationStatus  @default(pending)
   attempts           Int                      @default(0)
@@ -2507,6 +2509,7 @@ model EmailVerificationRequest {
   @@index([email, purpose, status, createdAt])
   @@index([userId, createdAt])
   @@index([userId, purpose, targetId, status, createdAt])
+  @@index([userId, purpose, action, status, createdAt])
   @@map("email_verification_requests")
 }
 

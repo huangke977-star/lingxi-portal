@@ -308,11 +308,11 @@
 .profile-featured-collection > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile-featured-collection > small { color: var(--muted); }
 
-.account-privacy-page { display: grid; gap: 16px; }
+.account-privacy-page { display: grid; gap: 8px; }
 .privacy-page-header { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
 .privacy-page-header h1 { margin: 4px 0 5px; font-size: 1.45rem; }
 .privacy-page-header p { margin: 0; color: var(--muted); font-size: 0.82rem; }
-.privacy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.privacy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .privacy-card, .privacy-audit-card { min-width: 0; align-content: start; }
 .privacy-card-heading { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px; color: var(--accent-strong); }
 .privacy-card-heading h2 { margin: 0; color: var(--foreground); font-size: 1rem; }
@@ -364,9 +364,10 @@
 .passkey-delete-verification { display: grid; gap: 11px; }
 .passkey-delete-verification > p, .passkey-delete-code-label { margin: 0; color: var(--muted); font-size: 0.74rem; line-height: 1.55; }
 .passkey-delete-verification > .button { justify-self: start; }
-.passkey-delete-password-input { width: 100%; }
-.passkey-delete-password-input > input { box-sizing: border-box; width: 100%; min-height: 38px; border: 0; border-radius: 6px; background: var(--surface-soft); color: var(--foreground); font: inherit; outline: none; padding: 8px 43px 8px 10px; }
-.passkey-delete-password-input > input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+.passkey-delete-password-input,
+.security-verification-password-input { box-sizing: border-box; width: 100%; min-height: 35px; border: 0; border-radius: 6px; background: var(--surface-soft); color: var(--foreground); font: inherit; outline: none; padding: 7px 44px 7px 9px; }
+.passkey-delete-password-input:focus,
+.security-verification-password-input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
 .passkey-delete-verification .otp-code-input { width: min(100%, 330px); }
 .passkey-delete-resend { justify-self: start; min-height: 24px; font-size: 0.66rem; }
 .passkey-delete-confirm-button { min-height: 31px; font-size: 0.72rem; padding: 0 10px; }
