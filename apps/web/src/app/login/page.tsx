@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Fingerprint } from "lucide-react";
+import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -9,7 +11,7 @@ import { useLanguage } from "@/components/language-provider";
 import { OtpCodeInput } from "@/components/otp-code-input";
 import { PasswordInput } from "@/components/password-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
-import { ApiRequestError, login, resendDeviceLoginVerification, type DeviceLoginVerificationRequired, type TotpVerificationRequired, verifyDeviceLogin, verifyTotpLogin } from "@/lib/auth-api";
+import { ApiRequestError, getPasskeyLoginOptions, login, resendDeviceLoginVerification, type DeviceLoginVerificationRequired, type TotpVerificationRequired, verifyDeviceLogin, verifyPasskeyLogin, verifyTotpLogin } from "@/lib/auth-api";
 import { saveAuthTokens } from "@/lib/auth-storage";
 import { getSecurityPolicy, type SecurityPolicy } from "@/lib/security-api";
 import { localizedPath } from "@/lib/i18n";
@@ -32,6 +34,7 @@ export default function LoginPage() {
   const [totpRecoveryMode, setTotpRecoveryMode] = useState(false);
   const [deviceCode, setDeviceCode] = useState("");
   const [retryAfter, setRetryAfter] = useState(0);
+  const [passkeySupported, setPasskeySupported] = useState(false);
   const isLeavingRef = useRef(false);
 
   useEffect(() => {
@@ -44,6 +47,14 @@ export default function LoginPage() {
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setPasskeySupported(browserSupportsWebAuthn()),
+      0,
+    );
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -126,6 +137,61 @@ export default function LoginPage() {
         setTurnstileResetKey((value) => value + 1);
       }
       setError(loginError instanceof Error ? loginError.message : t("auth.loginFailed"));
+    } finally {
+      if (!isLeavingRef.current) setIsSubmitting(false);
+    }
+  }
+
+  async function handlePasskeyLogin() {
+    if (isSubmitting || !passkeySupported) return;
+    setIsSubmitting(true);
+    setError("");
+    setNotice("");
+    try {
+      const challenge = await getPasskeyLoginOptions();
+      const response = await startAuthentication({
+        optionsJSON: challenge.options,
+      });
+      const result = await verifyPasskeyLogin({
+        challengeToken: challenge.challengeToken,
+        response,
+      });
+      if (isLeavingRef.current) return;
+      if ("deviceVerificationRequired" in result) {
+        setDeviceChallenge(result);
+        setDeviceCode("");
+        setRetryAfter(Math.max(1, result.retryAfterSeconds));
+        setTotpChallenge(null);
+        setNotice(
+          phrase(
+            `验证码已发送至 ${result.emailHint}`,
+            `Verification code sent to ${result.emailHint}`,
+          ),
+        );
+        return;
+      }
+      if ("totpVerificationRequired" in result) {
+        setTotpChallenge(result);
+        setTotpCode("");
+        setTotpRecoveryMode(false);
+        setDeviceChallenge(null);
+        setNotice(
+          phrase(
+            "请输入身份验证器中的 6 位验证码。",
+            "Enter the 6-digit code from your authenticator.",
+          ),
+        );
+        return;
+      }
+      saveAuthTokens(result);
+      router.push(localizedPath("/dashboard", locale));
+    } catch (passkeyError) {
+      if (!isLeavingRef.current)
+        setError(
+          passkeyError instanceof Error
+            ? passkeyError.message
+            : phrase("通行密钥登录失败。", "Passkey sign-in failed."),
+        );
     } finally {
       if (!isLeavingRef.current) setIsSubmitting(false);
     }
@@ -322,6 +388,17 @@ export default function LoginPage() {
                   {t("auth.register")}
                 </Link>
               </div>
+              {passkeySupported ? (
+                <button
+                  className="auth-passkey-button"
+                  disabled={isSubmitting}
+                  onClick={() => void handlePasskeyLogin()}
+                  type="button"
+                >
+                  <Fingerprint aria-hidden="true" size={17} />
+                  {phrase("使用通行密钥登录", "Sign in with a passkey")}
+                </button>
+              ) : null}
             </>
           )}
         </form>

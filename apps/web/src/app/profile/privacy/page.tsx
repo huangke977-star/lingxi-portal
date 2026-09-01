@@ -2,14 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Download, KeyRound, ShieldCheck, Trash2, UserRoundX } from "lucide-react";
+import { Download, Fingerprint, KeyRound, Pencil, ShieldCheck, Trash2, UserRoundX, X as XIcon } from "lucide-react";
+import { startRegistration } from "@simplewebauthn/browser";
 import { QRCodeSVG } from "qrcode.react";
 import { AppToast } from "@/components/app-toast";
 import { PasswordInput } from "@/components/password-input";
 import { OtpCodeInput } from "@/components/otp-code-input";
 import { useLanguage } from "@/components/language-provider";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
-import { isAuthExpiredError } from "@/lib/auth-api";
+import { deletePasskey, getPasskeyRegistrationOptions, isAuthExpiredError, listPasskeys, renamePasskey, verifyPasskeyRegistration, type PasskeySummary } from "@/lib/auth-api";
 import { localizedPath } from "@/lib/i18n";
 import { beginTotpEnrollment, cancelAccountDeletion, confirmTotp, disableTotp, disableTotpWithEmail, downloadDataExport, getAccountPrivacyOverview, getDataExport, listPrivacyAudit, requestAccountDeletion, requestDataExport, requestTotpDisableEmailVerification, type AccountPrivacyOverview, type ExportJob } from "@/lib/account-privacy-api";
 import { unblockFriendship } from "@/lib/social-api";
@@ -30,6 +31,10 @@ export default function AccountPrivacyPage() {
   const [totpSecret, setTotpSecret] = useState("");
   const [totpUri, setTotpUri] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [passkeys, setPasskeys] = useState<PasskeySummary[]>([]);
+  const [passkeyName, setPasskeyName] = useState("");
+  const [editingPasskeyId, setEditingPasskeyId] = useState<number | null>(null);
+  const [editingPasskeyName, setEditingPasskeyName] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
@@ -63,9 +68,10 @@ export default function AccountPrivacyPage() {
 
   async function load(currentToken: string) {
     try {
-      const [nextOverview, nextAudit] = await Promise.all([getAccountPrivacyOverview(currentToken), listPrivacyAudit(currentToken)]);
+      const [nextOverview, nextAudit, nextPasskeys] = await Promise.all([getAccountPrivacyOverview(currentToken), listPrivacyAudit(currentToken), listPasskeys(currentToken)]);
       setOverview(nextOverview);
       setAudit(nextAudit);
+      setPasskeys(nextPasskeys);
     } catch (loadError) {
       handleAuthError(loadError);
     }
@@ -147,6 +153,44 @@ export default function AccountPrivacyPage() {
       setTotpSecret(result.secret);
       setTotpUri(result.otpAuthUri);
       setNotice(phrase("请将密钥添加到身份验证器后输入验证码确认。", "Add the secret to your authenticator, then enter a code to confirm."));
+    });
+  }
+
+  async function handleRegisterPasskey() {
+    if (!token) return;
+    await run("register-passkey", async () => {
+      const challenge = await getPasskeyRegistrationOptions(token);
+      const response = await startRegistration({
+        optionsJSON: challenge.options,
+      });
+      await verifyPasskeyRegistration(token, {
+        challengeToken: challenge.challengeToken,
+        response,
+        name: passkeyName.trim() || undefined,
+      });
+      setPasskeyName("");
+      await load(token);
+      setNotice(phrase("通行密钥已添加。", "Passkey added."));
+    });
+  }
+
+  async function handleRenamePasskey(id: number) {
+    if (!token || !editingPasskeyName.trim()) return;
+    await run(`rename-passkey-${id}`, async () => {
+      await renamePasskey(token, id, editingPasskeyName);
+      setEditingPasskeyId(null);
+      setEditingPasskeyName("");
+      await load(token);
+      setNotice(phrase("通行密钥名称已更新。", "Passkey name updated."));
+    });
+  }
+
+  async function handleDeletePasskey(id: number) {
+    if (!token) return;
+    await run(`delete-passkey-${id}`, async () => {
+      await deletePasskey(token, id);
+      await load(token);
+      setNotice(phrase("通行密钥已移除。", "Passkey removed."));
     });
   }
 
@@ -308,6 +352,147 @@ export default function AccountPrivacyPage() {
               </button>
             )
           )}
+        </section>
+        <section className="profile-panel privacy-card">
+          <div className="privacy-card-heading">
+            <Fingerprint size={18} />
+            <div>
+              <h2>{phrase("通行密钥", "Passkeys")}</h2>
+              <p>
+                {phrase(
+                  "使用设备指纹、面容或安全密钥登录，无需输入密码。若账号启用了邮箱验证或双因素认证，仍会继续验证。",
+                  "Sign in with your device, face, or security key without typing a password. Email and two-factor checks still apply when enabled.",
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="privacy-passkey-add">
+            <input
+              aria-label={phrase("通行密钥名称", "Passkey name")}
+              maxLength={120}
+              onChange={(event) => setPasskeyName(event.target.value)}
+              placeholder={phrase("例如：工作电脑", "For example: Work laptop")}
+              value={passkeyName}
+            />
+            <button
+              className="button"
+              disabled={busy !== ""}
+              onClick={() => void handleRegisterPasskey()}
+              type="button"
+            >
+              <Fingerprint size={16} />
+              {busy === "register-passkey"
+                ? phrase("绑定中", "Adding")
+                : phrase("添加通行密钥", "Add passkey")}
+            </button>
+          </div>
+          <div className="privacy-passkey-list">
+            {passkeys.map((passkey) => (
+              <div className="privacy-passkey-row" key={passkey.id}>
+                {editingPasskeyId === passkey.id ? (
+                  <input
+                    aria-label={phrase("编辑通行密钥名称", "Edit passkey name")}
+                    autoFocus
+                    maxLength={120}
+                    onChange={(event) =>
+                      setEditingPasskeyName(event.target.value)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter")
+                        void handleRenamePasskey(passkey.id);
+                      if (event.key === "Escape") setEditingPasskeyId(null);
+                    }}
+                    value={editingPasskeyName}
+                  />
+                ) : (
+                  <span>
+                    <strong>{passkey.name}</strong>
+                    <small>
+                      {phrase(
+                        `添加于 ${new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(passkey.createdAt))}`,
+                        `Added ${new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(passkey.createdAt))}`,
+                      )}
+                      {passkey.lastUsedAt
+                        ? phrase(
+                            ` · 最近使用 ${new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(passkey.lastUsedAt))}`,
+                            ` · Last used ${new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(passkey.lastUsedAt))}`,
+                          )
+                        : ""}
+                    </small>
+                  </span>
+                )}
+                <div className="privacy-passkey-actions">
+                  {editingPasskeyId === passkey.id ? (
+                    <>
+                      <button
+                        aria-label={phrase(
+                          "保存通行密钥名称",
+                          "Save passkey name",
+                        )}
+                        className="table-icon-action"
+                        disabled={busy !== "" || !editingPasskeyName.trim()}
+                        onClick={() => void handleRenamePasskey(passkey.id)}
+                        title={phrase("保存", "Save")}
+                        type="button"
+                      >
+                        <ShieldCheck size={15} />
+                      </button>
+                      <button
+                        aria-label={phrase(
+                          "取消编辑通行密钥名称",
+                          "Cancel passkey name edit",
+                        )}
+                        className="table-icon-action"
+                        disabled={busy !== ""}
+                        onClick={() => setEditingPasskeyId(null)}
+                        title={phrase("取消", "Cancel")}
+                        type="button"
+                      >
+                        <XIcon size={15} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        aria-label={phrase(
+                          "编辑通行密钥名称",
+                          "Edit passkey name",
+                        )}
+                        className="table-icon-action"
+                        disabled={busy !== ""}
+                        onClick={() => {
+                          setEditingPasskeyId(passkey.id);
+                          setEditingPasskeyName(passkey.name);
+                        }}
+                        title={phrase("编辑", "Edit")}
+                        type="button"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        aria-label={phrase("移除通行密钥", "Remove passkey")}
+                        className="table-icon-action danger"
+                        disabled={busy !== ""}
+                        onClick={() => void handleDeletePasskey(passkey.id)}
+                        title={phrase("移除", "Remove")}
+                        type="button"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+            {!passkeys.length ? (
+              <p className="privacy-empty">
+                {phrase(
+                  "还没有绑定通行密钥。",
+                  "No passkeys have been added yet.",
+                )}
+              </p>
+            ) : null}
+          </div>
         </section>
         <section className="profile-panel privacy-card">
           <div className="privacy-card-heading">

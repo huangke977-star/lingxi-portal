@@ -14,6 +14,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/noto-sans-sc": "5.2.10",
+    "@simplewebauthn/browser": "^13.3.0",
     "@tiptap/core": "^3.30.5",
     "@tiptap/extension-color": "^3.30.5",
     "@tiptap/extension-highlight": "^3.30.5",
@@ -29,10 +30,10 @@
     "@tiptap/starter-kit": "^3.30.5",
     "lucide-react": "^1.24.0",
     "marked": "^18.0.11",
-    "next": "latest",
+    "next": "16.3.3",
     "qrcode.react": "^4.2.0",
-    "react": "latest",
-    "react-dom": "latest",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "react-easy-crop": "^6.2.2",
     "react-markdown": "^10.1.0",
     "rehype-sanitize": "^6.0.0",
@@ -41,12 +42,12 @@
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
+    "@types/node": "26.4.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
     "eslint": "9.39.4",
-    "eslint-config-next": "latest",
-    "prettier": "latest",
+    "eslint-config-next": "16.3.3",
+    "prettier": "3.9.6",
     "typescript": "6.0.3"
   }
 }

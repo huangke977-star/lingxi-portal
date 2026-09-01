@@ -627,6 +627,7 @@ model User {
   recommendationFeedback     RecommendationFeedback[]
   dataExportJobs             DataExportJob[]
   totpCredential              UserTotpCredential?
+  webauthnCredentials         WebAuthnCredential[]
   privacyAuditRecords        PrivacyAuditRecord[]
 
   @@index([roleId])
@@ -2551,6 +2552,22 @@ model UserTotpCredential {
   updatedAt          DateTime @updatedAt @map("updated_at")
 
   @@map("user_totp_credentials")
+}
+
+model WebAuthnCredential {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String   @unique @map("credential_id") @db.VarChar(512)
+  publicKey    String   @map("public_key") @db.Text
+  counter      Int      @default(0)
+  transports   Json?
+  name         String   @db.VarChar(120)
+  createdAt    DateTime @default(now()) @map("created_at")
+  lastUsedAt   DateTime? @map("last_used_at")
+
+  @@index([userId, createdAt])
+  @@map("webauthn_credentials")
 }
 
 model PrivacyAuditRecord {

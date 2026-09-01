@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException, forwardRef, Inject } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException, forwardRef, Inject, Optional } from "@nestjs/common";
 import { createHash, randomBytes } from "node:crypto";
 import { JwtService, JwtSignOptions } from "@nestjs/jwt";
 import { RedisService } from "../redis/redis.service";
@@ -16,11 +16,22 @@ import { TurnstileService } from "../security/turnstile.service";
 import { PasswordRecoveryResetDto } from "../security/dto/security.dto";
 import { LoginSecurityEventType } from "../generated/prisma/client";
 import { AccountPrivacyService } from "../account-privacy/account-privacy.service";
+import { PrismaService } from "../prisma/prisma.service";
+import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from "@simplewebauthn/server";
+import type { AuthenticatorTransportFuture, AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
+import { RenamePasskeyDto, VerifyPasskeyLoginDto, VerifyPasskeyRegistrationDto } from "./dto/passkey.dto";
 
 interface TotpLoginChallenge {
   userId: number;
   deviceFingerprint: string;
   deviceVerifiedByEmail: boolean;
+  attempts: number;
+}
+
+interface PasskeyChallenge {
+  userId?: number;
+  expectedChallenge: string;
+  deviceFingerprint: string;
   attempts: number;
 }
 
@@ -30,6 +41,8 @@ export class AuthService {
   private readonly loginFailureLimit = 5;
   private readonly totpLoginChallengeTtlSeconds = 5 * 60;
   private readonly totpLoginAttemptLimit = 5;
+  private readonly passkeyChallengeTtlSeconds = 5 * 60;
+  private readonly passkeyAttemptLimit = 5;
 
   constructor(
     private readonly usersService: UsersService,
@@ -43,6 +56,7 @@ export class AuthService {
     private readonly turnstile: TurnstileService,
     @Inject(forwardRef(() => AccountPrivacyService))
     private readonly accountPrivacy: AccountPrivacyService,
+    @Optional() private readonly prismaService?: PrismaService,
   ) {}
 
   async register(dto: RegisterDto, context: RefreshSessionContext): Promise<AuthResponse> {
@@ -117,6 +131,406 @@ export class AuthService {
       return this.requestTotpLoginVerification(user.id, context, false);
     }
     return this.completeLogin(user.id, context, false);
+  }
+
+  async beginPasskeyRegistration(
+    user: AuthenticatedUser,
+    context: RefreshSessionContext,
+  ): Promise<{
+    options: PublicKeyCredentialCreationOptionsJSON;
+    challengeToken: string;
+    expiresAt: string;
+  }> {
+    const credentials = await this.prismaService!.webAuthnCredential.findMany({
+      where: { userId: user.id },
+      select: { credentialId: true, transports: true },
+      orderBy: { createdAt: "asc" },
+    });
+    const options = await generateRegistrationOptions({
+      rpName: this.passkeyRpName(),
+      rpID: this.passkeyRpId(),
+      userName: user.username,
+      userID: new Uint8Array(Buffer.from(String(user.id))),
+      userDisplayName: user.nickname || user.username,
+      attestationType: "none",
+      timeout: 60_000,
+      excludeCredentials: credentials.map((credential) => ({
+        id: credential.credentialId,
+        transports: this.passkeyTransports(credential.transports),
+      })),
+      authenticatorSelection: {
+        residentKey: "required",
+        requireResidentKey: true,
+        userVerification: "required",
+      },
+    });
+    const challengeToken = randomBytes(32).toString("base64url");
+    await this.redis.set(
+      this.passkeyChallengeKey("registration", challengeToken),
+      JSON.stringify({
+        userId: user.id,
+        expectedChallenge: options.challenge,
+        deviceFingerprint: this.loginDeviceFingerprint(context),
+        attempts: 0,
+      } satisfies PasskeyChallenge),
+      this.passkeyChallengeTtlSeconds,
+    );
+    return {
+      options,
+      challengeToken,
+      expiresAt: new Date(
+        Date.now() + this.passkeyChallengeTtlSeconds * 1000,
+      ).toISOString(),
+    };
+  }
+
+  async finishPasskeyRegistration(
+    user: AuthenticatedUser,
+    dto: VerifyPasskeyRegistrationDto,
+    context: RefreshSessionContext,
+  ) {
+    const challenge = await this.requirePasskeyChallenge(
+      "registration",
+      dto.challengeToken,
+      context,
+      user.id,
+    );
+    let verified;
+    try {
+      verified = await verifyRegistrationResponse({
+        response: dto.response as unknown as RegistrationResponseJSON,
+        expectedChallenge: challenge.expectedChallenge,
+        expectedOrigin: this.passkeyExpectedOrigins(),
+        expectedRPID: this.passkeyRpId(),
+        requireUserVerification: true,
+      });
+    } catch {
+      await this.recordPasskeyFailure(
+        "registration",
+        dto.challengeToken,
+        challenge,
+      );
+      throw new BadRequestException(
+        "通行密钥注册失败，请重试。\nPasskey registration failed. Please try again.",
+      );
+    }
+    if (!verified.verified || !verified.registrationInfo) {
+      await this.recordPasskeyFailure(
+        "registration",
+        dto.challengeToken,
+        challenge,
+      );
+      throw new BadRequestException(
+        "通行密钥注册失败，请重试。\nPasskey registration failed. Please try again.",
+      );
+    }
+    const credential = verified.registrationInfo.credential;
+    try {
+      await this.prismaService!.webAuthnCredential.create({
+        data: {
+          userId: user.id,
+          credentialId: credential.id,
+          publicKey: Buffer.from(credential.publicKey).toString("base64url"),
+          counter: credential.counter,
+          transports: credential.transports ?? undefined,
+          name: this.normalizePasskeyName(dto.name),
+        },
+      });
+    } catch (error) {
+      if (this.isPrismaUniqueError(error)) {
+        throw new ConflictException(
+          "该通行密钥已经绑定。\nThis passkey is already registered.",
+        );
+      }
+      throw error;
+    }
+    await this.redis.del(
+      this.passkeyChallengeKey("registration", dto.challengeToken),
+    );
+    return { success: true as const };
+  }
+
+  async listPasskeys(user: AuthenticatedUser) {
+    const credentials = await this.prismaService!.webAuthnCredential.findMany({
+      where: { userId: user.id },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, name: true, createdAt: true, lastUsedAt: true },
+    });
+    return credentials.map((credential) => ({
+      id: credential.id,
+      name: credential.name,
+      createdAt: credential.createdAt.toISOString(),
+      lastUsedAt: credential.lastUsedAt?.toISOString() ?? null,
+    }));
+  }
+
+  async renamePasskey(
+    user: AuthenticatedUser,
+    id: number,
+    dto: RenamePasskeyDto,
+  ) {
+    const credential = await this.prismaService!.webAuthnCredential.findFirst({
+      where: { id, userId: user.id },
+      select: { id: true },
+    });
+    if (!credential)
+      throw new BadRequestException("通行密钥不存在。\nPasskey not found.");
+    await this.prismaService!.webAuthnCredential.update({
+      where: { id },
+      data: { name: this.normalizePasskeyName(dto.name) },
+    });
+    return { success: true as const };
+  }
+
+  async deletePasskey(user: AuthenticatedUser, id: number) {
+    const deleted = await this.prismaService!.webAuthnCredential.deleteMany({
+      where: { id, userId: user.id },
+    });
+    if (!deleted.count)
+      throw new BadRequestException("通行密钥不存在。\nPasskey not found.");
+    return { success: true as const };
+  }
+
+  async beginPasskeyLogin(context: RefreshSessionContext): Promise<{
+    options: PublicKeyCredentialRequestOptionsJSON;
+    challengeToken: string;
+    expiresAt: string;
+  }> {
+    const options = await generateAuthenticationOptions({
+      rpID: this.passkeyRpId(),
+      userVerification: "required",
+      timeout: 60_000,
+    });
+    const challengeToken = randomBytes(32).toString("base64url");
+    await this.redis.set(
+      this.passkeyChallengeKey("login", challengeToken),
+      JSON.stringify({
+        expectedChallenge: options.challenge,
+        deviceFingerprint: this.loginDeviceFingerprint(context),
+        attempts: 0,
+      } satisfies PasskeyChallenge),
+      this.passkeyChallengeTtlSeconds,
+    );
+    return {
+      options,
+      challengeToken,
+      expiresAt: new Date(
+        Date.now() + this.passkeyChallengeTtlSeconds * 1000,
+      ).toISOString(),
+    };
+  }
+
+  async finishPasskeyLogin(
+    dto: VerifyPasskeyLoginDto,
+    context: RefreshSessionContext,
+  ): Promise<LoginResponse> {
+    const challenge = await this.requirePasskeyChallenge(
+      "login",
+      dto.challengeToken,
+      context,
+    );
+    const credentialId =
+      typeof (dto.response as { id?: unknown }).id === "string"
+        ? (dto.response as { id: string }).id
+        : "";
+    if (!credentialId) {
+      await this.recordPasskeyFailure("login", dto.challengeToken, challenge);
+      throw new BadRequestException(
+        "通行密钥验证失败，请重试。\nPasskey verification failed. Please try again.",
+      );
+    }
+    const stored = await this.prismaService!.webAuthnCredential.findUnique({
+      where: { credentialId },
+      include: { user: { select: { id: true, status: true } } },
+    });
+    if (!stored || stored.user.status !== "active") {
+      await this.recordPasskeyFailure("login", dto.challengeToken, challenge);
+      throw new UnauthorizedException(
+        "通行密钥验证失败。\nPasskey verification failed.",
+      );
+    }
+    let verified;
+    try {
+      verified = await verifyAuthenticationResponse({
+        response: dto.response as unknown as AuthenticationResponseJSON,
+        expectedChallenge: challenge.expectedChallenge,
+        expectedOrigin: this.passkeyExpectedOrigins(),
+        expectedRPID: this.passkeyRpId(),
+        requireUserVerification: true,
+        credential: {
+          id: stored.credentialId,
+          publicKey: Buffer.from(stored.publicKey, "base64url"),
+          counter: stored.counter,
+          transports: this.passkeyTransports(stored.transports),
+        },
+      });
+    } catch {
+      await this.recordPasskeyFailure("login", dto.challengeToken, challenge);
+      throw new UnauthorizedException(
+        "通行密钥验证失败，请重试。\nPasskey verification failed. Please try again.",
+      );
+    }
+    if (!verified.verified) {
+      await this.recordPasskeyFailure("login", dto.challengeToken, challenge);
+      throw new UnauthorizedException(
+        "通行密钥验证失败，请重试。\nPasskey verification failed. Please try again.",
+      );
+    }
+    await this.prismaService!.webAuthnCredential.update({
+      where: { id: stored.id },
+      data: {
+        counter: Math.max(
+          stored.counter,
+          verified.authenticationInfo.newCounter,
+        ),
+        lastUsedAt: new Date(),
+      },
+    });
+    await this.redis.del(this.passkeyChallengeKey("login", dto.challengeToken));
+    return this.completePasskeyLogin(stored.user.id, context);
+  }
+
+  private async completePasskeyLogin(
+    userId: number,
+    context: RefreshSessionContext,
+  ): Promise<LoginResponse> {
+    const user = await this.usersService.findActiveById(userId);
+    const securityConfiguration =
+      await this.securityConfiguration.getConfiguration();
+    if (
+      securityConfiguration.smtpEnabled &&
+      securityConfiguration.untrustedDeviceEmailVerificationEnabled &&
+      !(await this.accountSecurity.isTrustedDevice(user.id, context))
+    ) {
+      return this.accountSecurity.requestDeviceLoginVerification(user, context);
+    }
+    if (
+      (await this.accountPrivacy.verifyTotpForLogin(user.id)) === "required"
+    ) {
+      return this.requestTotpLoginVerification(user.id, context, false);
+    }
+    return this.completeLogin(user.id, context, false);
+  }
+
+  private async requirePasskeyChallenge(
+    kind: "registration" | "login",
+    token: string,
+    context: RefreshSessionContext,
+    userId?: number,
+  ): Promise<PasskeyChallenge> {
+    const raw = await this.redis.get(this.passkeyChallengeKey(kind, token));
+    if (!raw)
+      throw new BadRequestException(
+        "通行密钥操作已失效，请重试。\nThis passkey operation has expired. Please try again.",
+      );
+    let challenge: PasskeyChallenge;
+    try {
+      challenge = JSON.parse(raw) as PasskeyChallenge;
+    } catch {
+      await this.redis.del(this.passkeyChallengeKey(kind, token));
+      throw new BadRequestException(
+        "通行密钥操作已失效，请重试。\nThis passkey operation has expired. Please try again.",
+      );
+    }
+    if (
+      challenge.deviceFingerprint !== this.loginDeviceFingerprint(context) ||
+      (userId !== undefined && challenge.userId !== userId)
+    ) {
+      throw new BadRequestException(
+        "通行密钥信息不匹配，请重试。\nThis passkey request does not match this session.",
+      );
+    }
+    return challenge;
+  }
+
+  private async recordPasskeyFailure(
+    kind: "registration" | "login",
+    token: string,
+    challenge: PasskeyChallenge,
+  ): Promise<void> {
+    const attempts = challenge.attempts + 1;
+    const key = this.passkeyChallengeKey(kind, token);
+    if (attempts >= this.passkeyAttemptLimit) {
+      await this.redis.del(key);
+      return;
+    }
+    await this.redis.set(
+      key,
+      JSON.stringify({ ...challenge, attempts }),
+      this.passkeyChallengeTtlSeconds,
+    );
+  }
+
+  private passkeyChallengeKey(
+    kind: "registration" | "login",
+    token: string,
+  ): string {
+    return `passkey_${kind}_challenge:${createHash("sha256").update(token).digest("hex")}`;
+  }
+
+  private passkeyRpName(): string {
+    return process.env.PASSKEY_RP_NAME?.trim() || "HLOVET";
+  }
+
+  private passkeyRpId(): string {
+    const configured = process.env.PASSKEY_RP_ID?.trim();
+    if (configured) return configured.replace(/^https?:\/\//, "").split("/")[0];
+    try {
+      return new URL(
+        (process.env.WEB_ORIGIN ?? "http://localhost:3000")
+          .split(",")[0]
+          .trim(),
+      ).hostname;
+    } catch {
+      const siteDomain = process.env.SITE_DOMAIN?.trim();
+      if (siteDomain)
+        return siteDomain.replace(/^https?:\/\//, "").split("/")[0];
+      return "localhost";
+    }
+  }
+
+  private passkeyExpectedOrigins(): string[] {
+    const configured = [process.env.PASSKEY_ORIGIN, process.env.WEB_ORIGIN]
+      .flatMap((value) => (value ?? "").split(","))
+      .map((value) => value.trim().replace(/\/$/, ""))
+      .filter(Boolean);
+    const origins = new Set(configured);
+    const rpId = this.passkeyRpId();
+    origins.add(`https://${rpId}`);
+    if (rpId === "localhost") origins.add("http://localhost:3000");
+    return [...origins];
+  }
+
+  private passkeyTransports(
+    value: unknown,
+  ): AuthenticatorTransportFuture[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const allowed = new Set<AuthenticatorTransportFuture>([
+      "ble",
+      "hybrid",
+      "internal",
+      "nfc",
+      "usb",
+      "smart-card",
+    ]);
+    return value.filter(
+      (item): item is AuthenticatorTransportFuture =>
+        typeof item === "string" &&
+        allowed.has(item as AuthenticatorTransportFuture),
+    );
+  }
+
+  private normalizePasskeyName(value: string | undefined): string {
+    const name = value?.trim() || "通行密钥";
+    return Array.from(name).slice(0, 120).join("");
+  }
+
+  private isPrismaUniqueError(error: unknown): boolean {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      (error as { code?: unknown }).code === "P2002"
+    );
   }
 
   async verifyDeviceLogin(dto: DeviceLoginVerificationDto, context: RefreshSessionContext): Promise<DeviceLoginResponse> {

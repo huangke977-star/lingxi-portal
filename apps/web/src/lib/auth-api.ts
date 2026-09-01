@@ -1,4 +1,5 @@
 import type { ThemeId } from "./theme-preferences";
+import type { AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from "@simplewebauthn/browser";
 import { AUTH_STATE_CHANGE_EVENT, clearAuthTokens, readAccessToken, readRefreshToken, saveAuthTokens } from "./auth-storage";
 
 const CONFIGURED_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "auto";
@@ -71,6 +72,19 @@ export interface AuthSession {
   current: boolean;
 }
 
+export interface PasskeyOptionsResponse<T> {
+  options: T;
+  challengeToken: string;
+  expiresAt: string;
+}
+
+export interface PasskeySummary {
+  id: number;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
 interface ApiErrorBody {
   message?: string | string[];
   code?: string;
@@ -98,6 +112,85 @@ export async function login(input: { account: string; password: string; turnstil
   });
 
   return "deviceVerificationRequired" in response || "totpVerificationRequired" in response ? response : normalizeAuthResponse(response);
+}
+
+export function getPasskeyLoginOptions(): Promise<
+  PasskeyOptionsResponse<PublicKeyCredentialRequestOptionsJSON>
+> {
+  return requestJson("/auth/passkeys/login/options", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function verifyPasskeyLogin(input: {
+  challengeToken: string;
+  response: AuthenticationResponseJSON;
+}): Promise<LoginResponse> {
+  const response = await requestJson<LoginResponse>(
+    "/auth/passkeys/login/verify",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  return "deviceVerificationRequired" in response ||
+    "totpVerificationRequired" in response
+    ? response
+    : normalizeAuthResponse(response);
+}
+
+export function getPasskeyRegistrationOptions(
+  accessToken: string,
+): Promise<PasskeyOptionsResponse<PublicKeyCredentialCreationOptionsJSON>> {
+  return requestJson("/auth/me/passkeys/registration/options", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({}),
+  });
+}
+
+export function verifyPasskeyRegistration(
+  accessToken: string,
+  input: {
+    challengeToken: string;
+    response: RegistrationResponseJSON;
+    name?: string;
+  },
+): Promise<{ success: true }> {
+  return requestJson("/auth/me/passkeys/registration/verify", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+  });
+}
+
+export function listPasskeys(accessToken: string): Promise<PasskeySummary[]> {
+  return requestJson("/auth/me/passkeys", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function renamePasskey(
+  accessToken: string,
+  id: number,
+  name: string,
+): Promise<{ success: true }> {
+  return requestJson(`/auth/me/passkeys/${encodeURIComponent(String(id))}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deletePasskey(
+  accessToken: string,
+  id: number,
+): Promise<{ success: true }> {
+  return requestJson(`/auth/me/passkeys/${encodeURIComponent(String(id))}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
 }
 
 export async function verifyDeviceLogin(input: { challengeToken: string; code: string }): Promise<DeviceLoginResponse> {

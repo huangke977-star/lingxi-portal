@@ -12,6 +12,7 @@ import { CurrentSessionId } from "./current-session-id.decorator";
 import { CurrentUser } from "./current-user.decorator";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { DeviceLoginVerificationDto, DeviceLoginVerificationResendDto, LoginDto, TotpLoginVerificationDto } from "./dto/login.dto";
+import { RenamePasskeyDto, VerifyPasskeyLoginDto, VerifyPasskeyRegistrationDto } from "./dto/passkey.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { RegisterDto } from "./dto/register.dto";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
@@ -19,6 +20,7 @@ import { AccountSecurityService } from "../security/account-security.service";
 import { SecurityConfigurationService } from "../security/security-configuration.service";
 import { ConfirmEmailVerificationDto, PasswordRecoveryRequestDto, PasswordRecoveryResetDto, RegistrationCodeDto, UpdateSecurityPreferencesDto } from "../security/dto/security.dto";
 import { createTrustedDeviceToken, readTrustedDeviceToken, setTrustedDeviceCookie } from "./trusted-device-cookie";
+import type { PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/server";
 
 @Controller("auth")
 export class AuthController {
@@ -72,6 +74,96 @@ export class AuthController {
     const result = await this.authService.login(dto, context);
     if (shouldSetCookie) setTrustedDeviceCookie(response, context.trustedDeviceToken);
     return result;
+  }
+
+  @Post("passkeys/login/options")
+  @HttpCode(200)
+  async passkeyLoginOptions(
+    @Req() request: SessionRequest,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<{
+    options: PublicKeyCredentialRequestOptionsJSON;
+    challengeToken: string;
+    expiresAt: string;
+  }> {
+    const context = this.sessionContext(request);
+    const shouldSetCookie = !context.trustedDeviceToken;
+    context.trustedDeviceToken ??= createTrustedDeviceToken();
+    const result = await this.authService.beginPasskeyLogin(context);
+    if (shouldSetCookie)
+      setTrustedDeviceCookie(response, context.trustedDeviceToken);
+    return result;
+  }
+
+  @Post("passkeys/login/verify")
+  @HttpCode(200)
+  passkeyLoginVerify(
+    @Body() dto: VerifyPasskeyLoginDto,
+    @Req() request: SessionRequest,
+  ): Promise<LoginResponse> {
+    return this.authService.finishPasskeyLogin(
+      dto,
+      this.sessionContext(request),
+    );
+  }
+
+  @Post("me/passkeys/registration/options")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  passkeyRegistrationOptions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: SessionRequest,
+  ): Promise<{
+    options: PublicKeyCredentialCreationOptionsJSON;
+    challengeToken: string;
+    expiresAt: string;
+  }> {
+    return this.authService.beginPasskeyRegistration(
+      user,
+      this.sessionContext(request),
+    );
+  }
+
+  @Post("me/passkeys/registration/verify")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  passkeyRegistrationVerify(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: VerifyPasskeyRegistrationDto,
+    @Req() request: SessionRequest,
+  ) {
+    return this.authService.finishPasskeyRegistration(
+      user,
+      dto,
+      this.sessionContext(request),
+    );
+  }
+
+  @Get("me/passkeys")
+  @UseGuards(JwtAuthGuard)
+  listPasskeys(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.listPasskeys(user);
+  }
+
+  @Patch("me/passkeys/:id")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  renamePasskey(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: RenamePasskeyDto,
+  ) {
+    return this.authService.renamePasskey(user, id, dto);
+  }
+
+  @Delete("me/passkeys/:id")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  deletePasskey(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+  ) {
+    return this.authService.deletePasskey(user, id);
   }
 
   @Post("login/device-verification")
