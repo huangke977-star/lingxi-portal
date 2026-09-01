@@ -349,6 +349,27 @@
 .privacy-audit-list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; border-bottom: 1px solid var(--control-line); color: var(--muted-strong); font-size: 0.78rem; }
 .privacy-audit-list > div:last-child { border-bottom: 0; }
 .privacy-audit-list time { color: var(--muted); font-size: 0.7rem; white-space: nowrap; }
+.passkey-delete-backdrop { z-index: 1850; padding: 14px; }
+.modal-panel.passkey-delete-dialog { width: min(440px, calc(100vw - 28px)); gap: 14px; border: 1px solid color-mix(in srgb, var(--control-line) 58%, transparent); background: color-mix(in srgb, var(--popover-surface) 82%, transparent); box-shadow: 0 24px 64px rgba(20, 27, 39, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.28); backdrop-filter: blur(28px) saturate(138%); -webkit-backdrop-filter: blur(28px) saturate(138%); }
+.passkey-delete-heading { display: flex; min-width: 0; align-items: start; justify-content: space-between; gap: 12px; }
+.passkey-delete-heading h2 { margin: 5px 0 4px; font-size: 1rem; }
+.passkey-delete-heading p { margin: 0; color: var(--muted); font-size: 0.72rem; line-height: 1.5; }
+.passkey-delete-methods { display: grid; gap: 7px; }
+.passkey-delete-method { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; border: 1px solid var(--control-line); border-radius: 7px; background: color-mix(in srgb, var(--surface-soft) 72%, transparent); color: var(--accent-strong); cursor: pointer; padding: 9px 10px; text-align: left; transition: background 140ms ease, border-color 140ms ease; }
+.passkey-delete-method:hover { border-color: color-mix(in srgb, var(--accent) 58%, var(--control-line)); background: color-mix(in srgb, var(--accent-soft) 34%, var(--surface-soft)); }
+.passkey-delete-method > span { display: grid; min-width: 0; gap: 2px; }
+.passkey-delete-method strong { color: var(--foreground); font-size: 0.78rem; font-weight: 620; }
+.passkey-delete-method small { color: var(--muted); font-size: 0.66rem; }
+.passkey-delete-verification { display: grid; gap: 11px; }
+.passkey-delete-verification > p, .passkey-delete-code-label { margin: 0; color: var(--muted); font-size: 0.74rem; line-height: 1.55; }
+.passkey-delete-verification > .button { justify-self: start; }
+.passkey-delete-password-input { width: 100%; }
+.passkey-delete-password-input > input { box-sizing: border-box; width: 100%; min-height: 38px; border: 0; border-radius: 6px; background: var(--surface-soft); color: var(--foreground); font: inherit; outline: none; padding: 8px 43px 8px 10px; }
+.passkey-delete-password-input > input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+.passkey-delete-verification .otp-code-input { width: min(100%, 330px); }
+.passkey-delete-resend { justify-self: start; }
+.passkey-delete-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 2px; }
+.passkey-delete-footer .text-action { display: inline-flex; align-items: center; gap: 5px; }
 .admin-overview-page { display: grid; gap: 16px; }
 .admin-overview-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .admin-overview-item { display: grid; min-width: 0; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 1px solid var(--control-line); border-radius: 8px; background: color-mix(in srgb, var(--panel) 84%, transparent); color: var(--foreground); padding: 12px; text-decoration: none; transition: border-color 140ms ease, background 140ms ease, transform 140ms ease; }

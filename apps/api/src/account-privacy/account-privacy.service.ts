@@ -334,6 +334,15 @@ export class AccountPrivacyService implements OnModuleInit, OnModuleDestroy {
     return this.consumeRecoveryCode(credential.userId, credential.recoveryCodeHashes, code);
   }
 
+  async verifyCurrentTotp(userId: number, code: string): Promise<boolean> {
+    const credential = await this.prisma.userTotpCredential.findUnique({
+      where: { userId },
+      select: { enabled: true, encryptedSecret: true },
+    });
+    if (!credential?.enabled) return false;
+    return this.totp.verify(this.secretCrypto.decrypt(credential.encryptedSecret), code);
+  }
+
   async listAudit(user: AuthenticatedUser, limit: number) {
     const records = await this.prisma.privacyAuditRecord.findMany({
       where: { userId: user.id },

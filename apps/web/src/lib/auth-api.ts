@@ -183,13 +183,58 @@ export function renamePasskey(
   });
 }
 
-export function deletePasskey(
+export function getPasskeyDeletionOptions(
   accessToken: string,
   id: number,
-): Promise<{ success: true }> {
-  return requestJson(`/auth/me/passkeys/${encodeURIComponent(String(id))}`, {
-    method: "DELETE",
+): Promise<PasskeyOptionsResponse<PublicKeyCredentialRequestOptionsJSON>> {
+  return requestJson(`/auth/me/passkeys/${encodeURIComponent(String(id))}/delete/passkey/options`, {
+    method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({}),
+  });
+}
+
+export function verifyPasskeyDeletion(
+  accessToken: string,
+  id: number,
+  input: { challengeToken: string; response: AuthenticationResponseJSON },
+): Promise<{ success: true }> {
+  return requestJson(`/auth/me/passkeys/${encodeURIComponent(String(id))}/delete/passkey/verify`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
+  });
+}
+
+export function deletePasskeyWithPassword(accessToken: string, id: number, currentPassword: string): Promise<{ success: true }> {
+  return requestJson(`/auth/me/passkeys/${encodeURIComponent(String(id))}/delete/password`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ currentPassword }),
+  });
+}
+
+export function deletePasskeyWithTotp(accessToken: string, id: number, code: string): Promise<{ success: true }> {
+  return requestJson(`/auth/me/passkeys/${encodeURIComponent(String(id))}/delete/totp`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ code }),
+  });
+}
+
+export function requestPasskeyDeletionEmail(accessToken: string, id: number): Promise<{ success: true; challengeToken: string; retryAfterSeconds: number }> {
+  return requestJson(`/auth/me/passkeys/${encodeURIComponent(String(id))}/delete/email`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({}),
+  });
+}
+
+export function deletePasskeyWithEmail(accessToken: string, id: number, challengeToken: string, code: string): Promise<{ success: true }> {
+  return requestJson(`/auth/me/passkeys/${encodeURIComponent(String(id))}/delete/email/verify`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ challengeToken, code }),
   });
 }
 

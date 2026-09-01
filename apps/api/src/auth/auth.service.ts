@@ -19,7 +19,7 @@ import { AccountPrivacyService } from "../account-privacy/account-privacy.servic
 import { PrismaService } from "../prisma/prisma.service";
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from "@simplewebauthn/server";
 import type { AuthenticatorTransportFuture, AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
-import { RenamePasskeyDto, VerifyPasskeyLoginDto, VerifyPasskeyRegistrationDto } from "./dto/passkey.dto";
+import { RenamePasskeyDto, VerifyPasskeyDeletionDto, VerifyPasskeyLoginDto, VerifyPasskeyRegistrationDto } from "./dto/passkey.dto";
 
 interface TotpLoginChallenge {
   userId: number;
@@ -28,8 +28,11 @@ interface TotpLoginChallenge {
   attempts: number;
 }
 
+type PasskeyChallengeKind = "registration" | "login" | "delete";
+
 interface PasskeyChallenge {
   userId?: number;
+  targetPasskeyId?: number;
   expectedChallenge: string;
   deviceFingerprint: string;
   attempts: number;
@@ -282,12 +285,157 @@ export class AuthService {
     return { success: true as const };
   }
 
-  async deletePasskey(user: AuthenticatedUser, id: number) {
-    const deleted = await this.prismaService!.webAuthnCredential.deleteMany({
-      where: { id, userId: user.id },
+  async beginPasskeyDeletion(
+    user: AuthenticatedUser,
+    targetId: number,
+    context: RefreshSessionContext,
+  ): Promise<{
+    options: PublicKeyCredentialRequestOptionsJSON;
+    challengeToken: string;
+    expiresAt: string;
+  }> {
+    await this.requirePasskey(user.id, targetId);
+    const credentials = await this.prismaService!.webAuthnCredential.findMany({
+      where: { userId: user.id },
+      select: { credentialId: true, transports: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
-    if (!deleted.count)
-      throw new BadRequestException("通行密钥不存在。\nPasskey not found.");
+    const options = await generateAuthenticationOptions({
+      rpID: this.passkeyRpId(),
+      userVerification: "required",
+      timeout: 60_000,
+      allowCredentials: credentials.map((credential) => ({
+        id: credential.credentialId,
+        transports: this.passkeyTransports(credential.transports),
+      })),
+    });
+    const challengeToken = randomBytes(32).toString("base64url");
+    await this.redis.set(
+      this.passkeyChallengeKey("delete", challengeToken),
+      JSON.stringify({
+        userId: user.id,
+        targetPasskeyId: targetId,
+        expectedChallenge: options.challenge,
+        deviceFingerprint: this.loginDeviceFingerprint(context),
+        attempts: 0,
+      } satisfies PasskeyChallenge),
+      this.passkeyChallengeTtlSeconds,
+    );
+    return {
+      options,
+      challengeToken,
+      expiresAt: new Date(Date.now() + this.passkeyChallengeTtlSeconds * 1000).toISOString(),
+    };
+  }
+
+  async finishPasskeyDeletion(
+    user: AuthenticatedUser,
+    targetId: number,
+    dto: VerifyPasskeyDeletionDto,
+    context: RefreshSessionContext,
+  ) {
+    const challenge = await this.requirePasskeyChallenge("delete", dto.challengeToken, context, user.id);
+    if (challenge.targetPasskeyId !== targetId) {
+      throw new BadRequestException("通行密钥信息不匹配，请重试。\nThis passkey request does not match this session.");
+    }
+    const credentialId = typeof (dto.response as { id?: unknown }).id === "string" ? (dto.response as { id: string }).id : "";
+    if (!credentialId) {
+      await this.recordPasskeyFailure("delete", dto.challengeToken, challenge);
+      throw new BadRequestException("通行密钥验证失败，请重试。\nPasskey verification failed. Please try again.");
+    }
+    const stored = await this.prismaService!.webAuthnCredential.findFirst({
+      where: { credentialId, userId: user.id },
+    });
+    if (!stored) {
+      await this.recordPasskeyFailure("delete", dto.challengeToken, challenge);
+      throw new UnauthorizedException("通行密钥验证失败。\nPasskey verification failed.");
+    }
+    let verified;
+    try {
+      verified = await verifyAuthenticationResponse({
+        response: dto.response as unknown as AuthenticationResponseJSON,
+        expectedChallenge: challenge.expectedChallenge,
+        expectedOrigin: this.passkeyExpectedOrigins(),
+        expectedRPID: this.passkeyRpId(),
+        requireUserVerification: true,
+        credential: {
+          id: stored.credentialId,
+          publicKey: Buffer.from(stored.publicKey, "base64url"),
+          counter: stored.counter,
+          transports: this.passkeyTransports(stored.transports),
+        },
+      });
+    } catch {
+      await this.recordPasskeyFailure("delete", dto.challengeToken, challenge);
+      throw new UnauthorizedException("通行密钥验证失败，请重试。\nPasskey verification failed. Please try again.");
+    }
+    if (!verified.verified) {
+      await this.recordPasskeyFailure("delete", dto.challengeToken, challenge);
+      throw new UnauthorizedException("通行密钥验证失败，请重试。\nPasskey verification failed.");
+    }
+    await this.prismaService!.$transaction(async (transaction) => {
+      await transaction.webAuthnCredential.update({
+        where: { id: stored.id },
+        data: {
+          counter: Math.max(stored.counter, verified.authenticationInfo.newCounter),
+          lastUsedAt: new Date(),
+        },
+      });
+      const deleted = await transaction.webAuthnCredential.deleteMany({
+        where: { id: targetId, userId: user.id },
+      });
+      if (!deleted.count) throw new BadRequestException("通行密钥不存在。\nPasskey not found.");
+    });
+    await this.redis.del(this.passkeyChallengeKey("delete", dto.challengeToken));
+    return { success: true as const };
+  }
+
+  async deletePasskeyWithPassword(user: AuthenticatedUser, targetId: number, currentPassword: string) {
+    await this.requirePasskey(user.id, targetId);
+    const storedUser = await this.usersService.findForLogin(user.username);
+    if (!storedUser || !(await this.passwordService.verifyPassword(currentPassword, storedUser.passwordHash))) {
+      throw new UnauthorizedException("当前密码不正确。\nThe current password is incorrect.");
+    }
+    return this.deletePasskeyAfterVerification(user.id, targetId);
+  }
+
+  async deletePasskeyWithTotp(user: AuthenticatedUser, targetId: number, code: string) {
+    await this.requirePasskey(user.id, targetId);
+    if (!(await this.accountPrivacy.verifyCurrentTotp(user.id, code))) {
+      throw new UnauthorizedException("双因素验证码不正确。\nThe authenticator code is incorrect.");
+    }
+    return this.deletePasskeyAfterVerification(user.id, targetId);
+  }
+
+  async requestPasskeyDeletionEmail(user: AuthenticatedUser, targetId: number, context: RefreshSessionContext) {
+    await this.requirePasskey(user.id, targetId);
+    return this.accountSecurity.requestPasskeyDeletionVerification(user, targetId, context);
+  }
+
+  async deletePasskeyWithEmail(
+    user: AuthenticatedUser,
+    targetId: number,
+    challengeToken: string,
+    code: string,
+  ) {
+    await this.requirePasskey(user.id, targetId);
+    await this.accountSecurity.consumePasskeyDeletionVerification(user, targetId, challengeToken, code);
+    return this.deletePasskeyAfterVerification(user.id, targetId);
+  }
+
+  private async requirePasskey(userId: number, id: number) {
+    const credential = await this.prismaService!.webAuthnCredential.findFirst({
+      where: { id, userId },
+      select: { id: true },
+    });
+    if (!credential) throw new BadRequestException("通行密钥不存在。\nPasskey not found.");
+  }
+
+  private async deletePasskeyAfterVerification(userId: number, id: number) {
+    const deleted = await this.prismaService!.webAuthnCredential.deleteMany({
+      where: { id, userId },
+    });
+    if (!deleted.count) throw new BadRequestException("通行密钥不存在。\nPasskey not found.");
     return { success: true as const };
   }
 
@@ -413,7 +561,7 @@ export class AuthService {
   }
 
   private async requirePasskeyChallenge(
-    kind: "registration" | "login",
+    kind: PasskeyChallengeKind,
     token: string,
     context: RefreshSessionContext,
     userId?: number,
@@ -444,7 +592,7 @@ export class AuthService {
   }
 
   private async recordPasskeyFailure(
-    kind: "registration" | "login",
+    kind: PasskeyChallengeKind,
     token: string,
     challenge: PasskeyChallenge,
   ): Promise<void> {
@@ -462,7 +610,7 @@ export class AuthService {
   }
 
   private passkeyChallengeKey(
-    kind: "registration" | "login",
+    kind: PasskeyChallengeKind,
     token: string,
   ): string {
     return `passkey_${kind}_challenge:${createHash("sha256").update(token).digest("hex")}`;

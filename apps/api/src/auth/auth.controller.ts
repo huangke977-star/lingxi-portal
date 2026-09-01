@@ -12,7 +12,7 @@ import { CurrentSessionId } from "./current-session-id.decorator";
 import { CurrentUser } from "./current-user.decorator";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { DeviceLoginVerificationDto, DeviceLoginVerificationResendDto, LoginDto, TotpLoginVerificationDto } from "./dto/login.dto";
-import { RenamePasskeyDto, VerifyPasskeyLoginDto, VerifyPasskeyRegistrationDto } from "./dto/passkey.dto";
+import { PasskeyDeletionCodeDto, PasskeyDeletionEmailVerifyDto, PasskeyDeletionPasswordDto, RenamePasskeyDto, VerifyPasskeyDeletionDto, VerifyPasskeyLoginDto, VerifyPasskeyRegistrationDto } from "./dto/passkey.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { RegisterDto } from "./dto/register.dto";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
@@ -156,14 +156,71 @@ export class AuthController {
     return this.authService.renamePasskey(user, id, dto);
   }
 
-  @Delete("me/passkeys/:id")
+  @Post("me/passkeys/:id/delete/passkey/options")
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
-  deletePasskey(
+  passkeyDeletionOptions(
     @CurrentUser() user: AuthenticatedUser,
     @Param("id", ParseIntPipe) id: number,
+    @Req() request: SessionRequest,
   ) {
-    return this.authService.deletePasskey(user, id);
+    return this.authService.beginPasskeyDeletion(user, id, this.sessionContext(request));
+  }
+
+  @Post("me/passkeys/:id/delete/passkey/verify")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  passkeyDeletionVerify(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: VerifyPasskeyDeletionDto,
+    @Req() request: SessionRequest,
+  ) {
+    return this.authService.finishPasskeyDeletion(user, id, dto, this.sessionContext(request));
+  }
+
+  @Post("me/passkeys/:id/delete/password")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  passkeyDeletionPassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: PasskeyDeletionPasswordDto,
+  ) {
+    return this.authService.deletePasskeyWithPassword(user, id, dto.currentPassword);
+  }
+
+  @Post("me/passkeys/:id/delete/totp")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  passkeyDeletionTotp(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: PasskeyDeletionCodeDto,
+  ) {
+    return this.authService.deletePasskeyWithTotp(user, id, dto.code);
+  }
+
+  @Post("me/passkeys/:id/delete/email")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  passkeyDeletionEmail(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @Req() request: SessionRequest,
+  ) {
+    return this.authService.requestPasskeyDeletionEmail(user, id, this.sessionContext(request));
+  }
+
+  @Post("me/passkeys/:id/delete/email/verify")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  passkeyDeletionEmailVerify(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: PasskeyDeletionEmailVerifyDto,
+  ) {
+    return this.authService.deletePasskeyWithEmail(user, id, dto.challengeToken, dto.code);
   }
 
   @Post("login/device-verification")

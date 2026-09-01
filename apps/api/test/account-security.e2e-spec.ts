@@ -186,6 +186,7 @@ function createAccountSecurityHarness(options?: {
           email: string;
           codeHash: string;
           challengeTokenHash?: string;
+          targetId?: number;
           deviceFingerprint?: string;
           ip: string;
           expiresAt: Date;
@@ -199,6 +200,7 @@ function createAccountSecurityHarness(options?: {
           email: data.email,
           codeHash: data.codeHash,
           challengeTokenHash: data.challengeTokenHash ?? null,
+          targetId: data.targetId ?? null,
           deviceFingerprint: data.deviceFingerprint ?? null,
           status: EmailVerificationStatus.pending,
           attempts: 0,

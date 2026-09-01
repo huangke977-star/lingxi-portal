@@ -213,6 +213,76 @@ export class AccountSecurityService {
     if (consumed.count !== 1) throw new BadRequestException("验证码已使用，请重新获取。");
   }
 
+  async requestPasskeyDeletionVerification(user: AuthenticatedUser, targetId: number, context: RefreshSessionContext) {
+    const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled) throw new BadRequestException("邮件服务当前未启用。");
+    await this.assertCodeRateLimit(user.email, context.ip, "passkey-delete");
+    const code = this.createCode();
+    const challengeToken = randomBytes(32).toString("base64url");
+    await this.expirePendingCodes(user.email, EmailVerificationPurpose.passkey_delete);
+    const request = await this.prisma.emailVerificationRequest.create({
+      data: {
+        userId: user.id,
+        purpose: EmailVerificationPurpose.passkey_delete,
+        email: user.email,
+        codeHash: this.hashCode(user.email, code),
+        challengeTokenHash: this.hashToken(challengeToken),
+        targetId,
+        ip: context.ip,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
+    });
+    try {
+      await this.mail.send({
+        type: MailJobType.security_notice,
+        recipient: user.email,
+        subject: "HLOVET 删除通行密钥验证码",
+        text: `你正在删除 HLOVET 通行密钥。验证码是 ${code}，10 分钟内有效。若非本人操作，请立即修改密码。`,
+        html: `<p>${this.escapeHtml(user.nickname)}，你好：</p><p>你正在删除 HLOVET 通行密钥。</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>验证码 10 分钟内有效。若非本人操作，请立即修改密码。</p>`,
+        userId: user.id,
+        metadata: {
+          verificationRequestId: request.id,
+          purpose: "passkey_delete",
+          targetId,
+          ip: context.ip,
+        },
+      });
+    } catch (error) {
+      await this.prisma.emailVerificationRequest.update({
+        where: { id: request.id },
+        data: { status: EmailVerificationStatus.expired },
+      });
+      throw error;
+    }
+    return { success: true as const, challengeToken, retryAfterSeconds: 60 };
+  }
+
+  async consumePasskeyDeletionVerification(
+    user: AuthenticatedUser,
+    targetId: number,
+    challengeToken: string,
+    code: string,
+  ): Promise<void> {
+    const config = await this.configuration.getConfiguration();
+    if (!config.smtpEnabled) throw new BadRequestException("邮件服务当前未启用。");
+    const request = await this.requireValidCode(
+      user.email,
+      EmailVerificationPurpose.passkey_delete,
+      code,
+      user.id,
+      { challengeToken, targetId },
+    );
+    const consumed = await this.prisma.emailVerificationRequest.updateMany({
+      where: { id: request.id, status: EmailVerificationStatus.pending },
+      data: {
+        status: EmailVerificationStatus.consumed,
+        verifiedAt: new Date(),
+        consumedAt: new Date(),
+      },
+    });
+    if (consumed.count !== 1) throw new BadRequestException("验证码已使用，请重新获取。");
+  }
+
   async requestDeviceLoginVerification(user: AuthenticatedUser, context: RefreshSessionContext) {
     const config = await this.configuration.getConfiguration();
     if (!config.smtpEnabled || !config.untrustedDeviceEmailVerificationEnabled) {
@@ -814,13 +884,21 @@ export class AccountSecurityService {
     };
   }
 
-  private async requireValidCode(email: string, purpose: EmailVerificationPurpose, code: string, userId?: number) {
+  private async requireValidCode(
+    email: string,
+    purpose: EmailVerificationPurpose,
+    code: string,
+    userId?: number,
+    options?: { challengeToken?: string; targetId?: number },
+  ) {
     const request = await this.prisma.emailVerificationRequest.findFirst({
       where: {
         email,
         purpose,
         status: EmailVerificationStatus.pending,
         ...(userId ? { userId } : {}),
+        ...(options?.challengeToken ? { challengeTokenHash: this.hashToken(options.challengeToken) } : {}),
+        ...(options?.targetId !== undefined ? { targetId: options.targetId } : {}),
       },
       orderBy: { createdAt: "desc" },
     });
