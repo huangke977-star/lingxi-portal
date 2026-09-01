@@ -1,9 +1,10 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 RUN corepack enable
+RUN corepack prepare pnpm@11.10.0 --activate
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json apps/web/package.json
-RUN pnpm install --filter @lingxi/web... --frozen-lockfile
+RUN pnpm install --filter @lingxi/web... --frozen-lockfile --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=60000
 
 FROM node:22-alpine AS builder
 WORKDIR /app
