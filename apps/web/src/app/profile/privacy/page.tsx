@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowLeftRight, Download, KeyRound, ShieldCheck, Trash2, UserRoundX } from "lucide-react";
+import { Download, KeyRound, ShieldCheck, Trash2, UserRoundX } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { AppToast } from "@/components/app-toast";
 import { PasswordInput } from "@/components/password-input";
@@ -175,15 +175,8 @@ export default function AccountPrivacyPage() {
     });
   }
 
-  async function handleSwitchTotpDisableMethod() {
+  async function handleRequestTotpDisableEmail() {
     if (!token || busy || totpDisableCooldown > 0) return;
-    if (totpDisableMethod === "email") {
-      setTotpCode("");
-      setTotpDisableEntry("otp");
-      setTotpDisableMethod("authenticator");
-      setTotpDisableCooldown(60);
-      return;
-    }
     await run("send-disable-totp-email", async () => {
       await requestTotpDisableEmailVerification(token);
       setTotpCode("");
@@ -344,7 +337,14 @@ export default function AccountPrivacyPage() {
                   <div className="privacy-totp-code-field">
                     <span>{totpDisableEntry === "recovery" ? phrase("恢复码", "Recovery code") : totpDisableMethod === "email" ? phrase("邮箱验证码", "Email verification code") : phrase("身份验证器验证码", "Authenticator code")}</span>
                     {totpDisableEntry === "recovery" ? (
-                      <input autoFocus inputMode="text" maxLength={12} onChange={(event) => setTotpCode(event.target.value.replace(/\s/g, "").slice(0, 12))} placeholder={phrase("输入恢复码", "Enter recovery code")} value={totpCode} />
+                      <OtpCodeInput
+                        allowLetters
+                        ariaLabel={phrase("恢复码", "Recovery code")}
+                        autoFocus
+                        disabled={busy !== ""}
+                        onChange={setTotpCode}
+                        value={totpCode}
+                      />
                     ) : (
                       <OtpCodeInput
                         ariaLabel={totpDisableMethod === "email" ? phrase("邮箱验证码", "Email verification code") : phrase("身份验证器验证码", "Authenticator code")}
@@ -355,24 +355,34 @@ export default function AccountPrivacyPage() {
                       />
                     )}
                   </div>
-                  <button
-                    aria-label={totpDisableCooldown > 0 ? phrase(`${totpDisableCooldown} 秒后可切换验证方式`, `Switch verification method in ${totpDisableCooldown} seconds`) : phrase("切换验证方式", "Switch verification method")}
-                    className="table-icon-action privacy-totp-switch"
-                    disabled={busy !== "" || totpDisableCooldown > 0}
-                    onClick={() => void handleSwitchTotpDisableMethod()}
-                    title={totpDisableCooldown > 0 ? phrase(`${totpDisableCooldown} 秒后可切换验证方式`, `Switch verification method in ${totpDisableCooldown} seconds`) : phrase("切换验证方式", "Switch verification method")}
-                    type="button"
-                  >
-                    <ArrowLeftRight aria-hidden="true" size={16} />
-                  </button>
+                  {totpDisableMethod === "email" ? (
+                    <button className="text-action privacy-email-code-button" disabled={busy !== "" || totpDisableCooldown > 0} onClick={() => void handleRequestTotpDisableEmail()} type="button">
+                      {totpDisableCooldown > 0 ? `${totpDisableCooldown}s` : phrase("获取验证码", "Get code")}
+                    </button>
+                  ) : null}
                 </div>
-                {totpDisableEntry === "otp" && totpDisableMethod === "authenticator" ? (
-                  <button className="text-action privacy-recovery-toggle" disabled={busy !== ""} onClick={() => { setTotpCode(""); setTotpDisableEntry("recovery"); }} type="button">
-                    {phrase("使用恢复码", "Use recovery code")}
-                  </button>
-                ) : null}
+                <div className="privacy-totp-method-actions">
+                  {totpDisableEntry === "recovery" ? (
+                    <button className="text-action privacy-recovery-toggle" disabled={busy !== ""} onClick={() => { setTotpCode(""); setTotpDisableEntry("otp"); setTotpDisableMethod("authenticator"); }} type="button">
+                      {phrase("使用身份验证器", "Use authenticator")}
+                    </button>
+                  ) : (
+                    <button className="text-action privacy-recovery-toggle" disabled={busy !== ""} onClick={() => { setTotpCode(""); setTotpDisableEntry("recovery"); setTotpDisableMethod("authenticator"); }} type="button">
+                      {phrase("使用恢复码", "Use recovery code")}
+                    </button>
+                  )}
+                  {totpDisableMethod === "email" ? (
+                    <button className="text-action privacy-email-method" disabled={busy !== ""} onClick={() => { setTotpCode(""); setTotpDisableEntry("otp"); setTotpDisableMethod("authenticator"); }} type="button">
+                      {phrase("使用身份验证器", "Use authenticator")}
+                    </button>
+                  ) : (
+                    <button className="text-action privacy-email-method" disabled={busy !== ""} onClick={() => { setTotpCode(""); setTotpDisableEntry("otp"); setTotpDisableMethod("email"); setError(""); }} type="button">
+                      {phrase("邮箱验证", "Email verification")}
+                    </button>
+                  )}
+                </div>
                 <div className="privacy-totp-actions">
-                  <button className="button" disabled={busy !== "" || (totpDisableEntry === "otp" ? !/^\d{6}$/.test(totpCode) : !totpCode.trim())} onClick={() => void (totpDisableMethod === "email" ? handleDisableTotpWithEmail() : handleDisableTotp())} type="button">
+                  <button className="button" disabled={busy !== "" || (totpDisableEntry === "otp" ? !/^\d{6}$/.test(totpCode) : !/^[A-Z0-9]{6}$/.test(totpCode))} onClick={() => void (totpDisableMethod === "email" ? handleDisableTotpWithEmail() : handleDisableTotp())} type="button">
                     {phrase("确定", "Confirm")}
                   </button>
                   <button className="button secondary" disabled={busy !== ""} onClick={() => { setTotpCode(""); setTotpDisableEntry("otp"); setTotpDisableMethod("idle"); }} type="button">

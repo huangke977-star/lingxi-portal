@@ -26,7 +26,7 @@ export function PwaController() {
     const syncBrandIcons = async () => {
       const settings = await getPublicSiteSettings().catch(() => null);
       if (!isMounted || !settings) return;
-      currentIconPath = versionedIconPath(settings.pwaIconPath || "/pwa-logo.png", settings.updatedAt);
+      currentIconPath = versionedIconPath(normalizeConfiguredIconPath(settings.pwaIconPath || "/pwa-logo.png"), settings.updatedAt);
       syncHeadIcon("icon", currentIconPath);
       syncHeadIcon("shortcut icon", currentIconPath);
       if (settings.browserTitle) document.title = settings.browserTitle;
@@ -99,6 +99,10 @@ export function PwaController() {
 function versionedIconPath(path: string, updatedAt: string): string {
   if (!updatedAt) return path;
   return `${path}${path.includes("?") ? "&" : "?"}v=${encodeURIComponent(updatedAt)}`;
+}
+
+function normalizeConfiguredIconPath(path: string): string {
+  return path.startsWith("/site-settings/") ? `/api${path}` : path;
 }
 
 function syncHeadIcon(rel: "icon" | "shortcut icon" | "apple-touch-icon", href: string): void {

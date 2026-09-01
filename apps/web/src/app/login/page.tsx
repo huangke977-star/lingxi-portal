@@ -260,17 +260,15 @@ export default function LoginPage() {
           ) : totpChallenge ? (
             <>
               <div className="auth-totp-verification">
-                <span>{totpRecoveryMode ? phrase("恢复码", "Recovery code") : phrase("身份验证器验证码", "Authenticator code")}</span>
+                <span>{totpRecoveryMode ? phrase("恢复码（6 位）", "Recovery code (6 characters)") : phrase("身份验证器验证码", "Authenticator code")}</span>
                 {totpRecoveryMode ? (
-                  <input
-                    autoComplete="one-time-code"
+                  <OtpCodeInput
+                    allowLetters
                     autoFocus
+                    ariaLabel={phrase("恢复码", "Recovery code")}
                     disabled={isSubmitting}
-                    onChange={(event) => setTotpCode(event.target.value.replace(/\s/g, "").slice(0, 12))}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") void handleTotpVerification(event.currentTarget.value);
-                    }}
-                    placeholder={phrase("输入恢复码后按回车", "Enter a recovery code and press Enter")}
+                    onChange={setTotpCode}
+                    onComplete={(code) => void handleTotpVerification(code)}
                     value={totpCode}
                   />
                 ) : (

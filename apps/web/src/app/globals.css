@@ -325,6 +325,9 @@
 .privacy-deletion-row .password-input { min-width: 0; }
 .privacy-deletion-row .password-input > input { box-sizing: border-box; width: 100%; min-height: 35px; border: 0; border-radius: 6px; background: var(--surface-soft); color: var(--foreground); font: inherit; outline: none; padding: 7px 44px 7px 9px; }
 .privacy-deletion-row .password-input > input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+.privacy-deletion-form .password-input { display: block; min-width: 0; width: 100%; }
+.privacy-deletion-form .password-input > input { box-sizing: border-box; width: 100%; min-height: 35px; border: 0; border-radius: 6px; background: var(--surface-soft); color: var(--foreground); font: inherit; outline: none; padding: 7px 44px 7px 9px; }
+.privacy-deletion-form .password-input > input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
 .privacy-inline-field { display: grid; gap: 5px; color: var(--muted-strong); font-size: 0.76rem; }
 .privacy-inline-field input, .privacy-card > input { min-height: 35px; border: 0; border-radius: 6px; background: var(--surface-soft); color: var(--foreground); font: inherit; outline: none; padding: 7px 9px; }
 .privacy-inline-field input:focus, .privacy-card > input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
@@ -20094,6 +20097,19 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   font-size: 0.78rem;
 }
 
+.privacy-totp-method-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.privacy-email-code-button {
+  align-self: end;
+  min-width: 64px;
+  white-space: nowrap;
+}
+
 .privacy-totp-code-row {
   display: grid;
   min-width: 0;
@@ -20110,15 +20126,10 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 .privacy-totp-code-field .otp-code-input { width: 100%; }
 
-.privacy-totp-switch {
-  flex: 0 0 auto;
-  align-self: end;
-}
-
 @media (max-width: 520px) {
   .otp-code-input { gap: 5px; }
   .otp-code-input input { min-height: 40px; }
-  .privacy-totp-code-row { grid-template-columns: minmax(0, 1fr) 34px; }
+  .privacy-totp-code-row { grid-template-columns: minmax(0, 1fr) auto; }
 }
 
 /* Mobile popovers keep the same painted chat surface as their desktop counterparts. */
@@ -20152,4 +20163,43 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
     backdrop-filter: blur(34px) saturate(146%) !important;
     -webkit-backdrop-filter: blur(34px) saturate(146%) !important;
   }
+}
+
+/* Keep every floating bubble on the same painted surface at every viewport size. */
+:is(
+  .level-popover,
+  .public-profile-popover,
+  .portal-entry-tooltip,
+  .analytics-chart-tooltip,
+  .analytics-metric-tooltip,
+  .my-report-detail-tooltip,
+  .admin-report-popover,
+  .header-popover,
+  .account-menu,
+  .chat-message-sender > small,
+  .chat-emoji-picker,
+  .chat-friend-action-menu,
+  .chat-friend-action-menu-floating,
+  .chat-conversation-action-menu,
+  .chat-message-action-menu,
+  .chat-notification-action-menu,
+  .chat-notification-channel-menu,
+  .chat-mobile-tools-panel,
+  .chat-mobile-channel-sheet,
+  .chat-group-member-context,
+  .chat-call-mini,
+  .app-toast
+) {
+  background: var(--chat-conversation-background) !important;
+  background-image: none !important;
+  border-color: var(--chat-bubble-border) !important;
+  box-shadow: var(--chat-bubble-shadow) !important;
+  backdrop-filter: blur(22px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(125%) !important;
+}
+
+:is(.level-badge::after, .portal-entry-tooltip::before, .level-popover::before) {
+  background: var(--chat-conversation-background) !important;
+  backdrop-filter: blur(22px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(125%) !important;
 }

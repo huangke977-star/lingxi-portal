@@ -32,7 +32,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const settings = await readPublicBrandSettings();
   const siteName = settings.siteName?.trim() || "HLOVET";
   const browserTitle = settings.browserTitle?.trim() || siteName;
-  const iconPath = versionedAssetPath(settings.pwaIconPath?.trim() || "/pwa-logo.png", settings.updatedAt);
+  const iconPath = versionedAssetPath(normalizeConfiguredIconPath(settings.pwaIconPath?.trim() || "/pwa-logo.png"), settings.updatedAt);
   return {
     applicationName: siteName,
     title: browserTitle,
@@ -67,6 +67,10 @@ async function readPublicBrandSettings(): Promise<PublicBrandSettings> {
 function versionedAssetPath(path: string, updatedAt?: string): string {
   if (!updatedAt) return path;
   return `${path}${path.includes("?") ? "&" : "?"}v=${encodeURIComponent(updatedAt)}`;
+}
+
+function normalizeConfiguredIconPath(path: string): string {
+  return path.startsWith("/site-settings/") ? `/api${path}` : path;
 }
 
 export const viewport: Viewport = {

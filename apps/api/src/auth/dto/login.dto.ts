@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
 
 export class LoginDto {
   @IsString()
@@ -42,6 +42,7 @@ export class TotpLoginVerificationDto {
 
   @IsString()
   @MinLength(6)
-  @MaxLength(12)
+  @MaxLength(6)
+  @Matches(/^[A-Za-z0-9]{6}$/)
   code!: string;
 }

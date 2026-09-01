@@ -15,7 +15,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const settings = await readPublicSettings();
   const name = settings.siteName?.trim() || "HLOVET";
-  const iconPath = versionedAssetPath(settings.pwaIconPath?.trim() || "/pwa-logo.png", settings.updatedAt);
+  const iconPath = versionedAssetPath(normalizeConfiguredIconPath(settings.pwaIconPath?.trim() || "/pwa-logo.png"), settings.updatedAt);
+  const iconType = getIconMimeType(iconPath);
   const isEnglish = request.headers.get("x-lingxi-locale") === "en-US";
   const startUrl = isEnglish ? "/en" : "/";
 
@@ -36,8 +37,15 @@ export async function GET(request: Request) {
     icons: [
       {
         src: iconPath,
-        sizes: "any",
-        purpose: "any",
+        sizes: "192x192",
+        ...(iconType ? { type: iconType } : {}),
+        purpose: "any maskable",
+      },
+      {
+        src: iconPath,
+        sizes: "512x512",
+        ...(iconType ? { type: iconType } : {}),
+        purpose: "any maskable",
       },
     ],
     shortcuts: [
@@ -45,13 +53,13 @@ export async function GET(request: Request) {
         name: isEnglish ? "Discover" : "发现",
         short_name: isEnglish ? "Discover" : "发现",
         url: isEnglish ? "/en/articles" : "/articles",
-        icons: [{ src: iconPath, sizes: "any" }],
+        icons: [{ src: iconPath, sizes: "192x192", ...(iconType ? { type: iconType } : {}) }],
       },
       {
         name: isEnglish ? "Navigation" : "导航",
         short_name: isEnglish ? "Navigation" : "导航",
         url: isEnglish ? "/en/nav" : "/nav",
-        icons: [{ src: iconPath, sizes: "any" }],
+        icons: [{ src: iconPath, sizes: "192x192", ...(iconType ? { type: iconType } : {}) }],
       },
     ],
     theme_color: "#eef8ff",
@@ -62,6 +70,18 @@ export async function GET(request: Request) {
 function versionedAssetPath(path: string, updatedAt?: string): string {
   if (!updatedAt) return path;
   return `${path}${path.includes("?") ? "&" : "?"}v=${encodeURIComponent(updatedAt)}`;
+}
+
+function normalizeConfiguredIconPath(path: string): string {
+  return path.startsWith("/site-settings/") ? `/api${path}` : path;
+}
+
+function getIconMimeType(path: string): string | null {
+  const extension = path.split("?")[0].split("#")[0].toLowerCase().split(".").pop();
+  if (extension === "png") return "image/png";
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "webp") return "image/webp";
+  return null;
 }
 
 async function readPublicSettings(): Promise<PublicSiteSettingsSnapshot> {

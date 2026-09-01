@@ -1,5 +1,5 @@
 import { Transform, Type } from "class-transformer";
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from "class-validator";
+import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from "class-validator";
 
 export class RequestAccountDeletionDto {
   @IsString()
@@ -12,7 +12,8 @@ export class TotpCodeDto {
   @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
   @IsString()
   @MinLength(6)
-  @MaxLength(12)
+  @MaxLength(6)
+  @Matches(/^[A-Za-z0-9]{6}$/)
   code!: string;
 }
 
@@ -48,6 +49,8 @@ export class PrivacyAuditQueryDto {
 export class TotpLoginDto {
   @IsOptional()
   @IsString()
-  @MaxLength(12)
+  @MinLength(6)
+  @MaxLength(6)
+  @Matches(/^[A-Za-z0-9]{6}$/)
   code?: string;
 }

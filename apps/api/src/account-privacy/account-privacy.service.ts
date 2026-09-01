@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, GoneException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, forwardRef, Inject } from "@nestjs/common";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomInt } from "node:crypto";
 import { Prisma, UserStatus, DataExportJobStatus } from "../generated/prisma/client";
 import { AuthenticatedUser, RefreshSessionContext } from "../auth/auth.types";
 import { PasswordService } from "../auth/password.service";
@@ -13,6 +13,8 @@ import { RefreshTokenService } from "../auth/refresh-token.service";
 const DELETION_COOLING_OFF_MS = 7 * 24 * 60 * 60 * 1000;
 const EXPORT_TTL_MS = 24 * 60 * 60 * 1000;
 const EXPORT_RATE_LIMIT_MS = 10 * 60 * 1000;
+const RECOVERY_CODE_LENGTH = 6;
+const RECOVERY_CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 @Injectable()
 export class AccountPrivacyService implements OnModuleInit, OnModuleDestroy {
@@ -222,7 +224,7 @@ export class AccountPrivacyService implements OnModuleInit, OnModuleDestroy {
     });
     if (!credential) throw new BadRequestException("请先开始双因素认证绑定。");
     if (!this.totp.verify(this.secretCrypto.decrypt(credential.encryptedSecret), code)) throw new BadRequestException("验证码无效或已过期。");
-    const recoveryCodes = Array.from({ length: 8 }, () => randomBytes(5).toString("hex"));
+    const recoveryCodes = Array.from({ length: 8 }, () => this.generateRecoveryCode());
     await this.prisma.userTotpCredential.update({
       where: { userId: user.id },
       data: {
@@ -708,7 +710,9 @@ export class AccountPrivacyService implements OnModuleInit, OnModuleDestroy {
 
   private async consumeRecoveryCode(id: number, hashes: Prisma.JsonValue | null, code: string): Promise<boolean> {
     if (!Array.isArray(hashes)) return false;
-    const hash = this.hash(code);
+    const normalizedCode = code.trim().toUpperCase();
+    if (!/^[A-Z0-9]{6}$/.test(normalizedCode)) return false;
+    const hash = this.hash(normalizedCode);
     const remaining = hashes.filter((item): item is string => typeof item === "string" && item !== hash);
     if (remaining.length === hashes.length) return false;
     await this.prisma.userTotpCredential.update({
@@ -740,6 +744,10 @@ export class AccountPrivacyService implements OnModuleInit, OnModuleDestroy {
 
   private hash(value: string): string {
     return createHash("sha256").update(value).digest("hex");
+  }
+
+  private generateRecoveryCode(): string {
+    return Array.from({ length: RECOVERY_CODE_LENGTH }, () => RECOVERY_CODE_ALPHABET[randomInt(RECOVERY_CODE_ALPHABET.length)]).join("");
   }
 
   private assertManager(actor: AuthenticatedUser): void {

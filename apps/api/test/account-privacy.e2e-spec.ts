@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { BadRequestException, ForbiddenException, GoneException } from "@nestjs/common";
 import { AccountPrivacyService } from "../src/account-privacy/account-privacy.service";
 import { PasswordService } from "../src/auth/password.service";
@@ -256,6 +257,51 @@ describe("account privacy", () => {
 });
 
 describe("TOTP", () => {
+  it("generates eight six-character recovery codes", async () => {
+    const update = jest.fn().mockResolvedValue(undefined);
+    const audit = jest.fn().mockResolvedValue(undefined);
+    const instance = service({
+      userTotpCredential: {
+        findUnique: jest.fn().mockResolvedValue({ encryptedSecret: "secret", enabled: false }),
+        update,
+      },
+      privacyAuditRecord: { create: audit },
+    });
+    const verify = jest.spyOn(TotpService.prototype, "verify").mockReturnValue(true);
+    const result = await instance.confirmTotp(user(), "123456", context);
+    verify.mockRestore();
+
+    expect(result.recoveryCodes).toHaveLength(8);
+    expect(result.recoveryCodes.every((code) => /^[A-Z0-9]{6}$/.test(code))).toBe(true);
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          recoveryCodeHashes: expect.arrayContaining(result.recoveryCodes.map((code) => createHash("sha256").update(code).digest("hex"))),
+        }),
+      }),
+    );
+  });
+
+  it("rejects legacy ten-character recovery codes", async () => {
+    const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+    const update = jest.fn().mockResolvedValue(undefined);
+    const instance = service({
+      userTotpCredential: {
+        findUnique: jest.fn().mockResolvedValue({
+          userId: 7,
+          enabled: true,
+          encryptedSecret: "secret",
+          recoveryCodeHashes: [hash("ABC123"), hash("abcdef1234")],
+        }),
+        update,
+      },
+    });
+
+    await expect(instance.verifyTotpForLogin(7, "abc123")).resolves.toBe(true);
+    await expect(instance.verifyTotpForLogin(7, "abcdef1234")).resolves.toBe(false);
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
   it("matches RFC 6238 SHA-1 vectors and accepts only a one-step clock window", () => {
     const instance = new TotpService();
     const secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
