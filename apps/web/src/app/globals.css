@@ -25,6 +25,7 @@
   --surface-soft: rgba(255, 255, 255, 0.38);
   --popover-surface: rgba(255, 255, 255, 0.92);
   --chat-conversation-background: color-mix(in srgb, var(--popover-surface) 34%, transparent);
+  --chat-floating-background: color-mix(in srgb, var(--popover-surface) 68%, transparent);
   --chat-bubble-background: rgba(255, 255, 255, 0.48);
   --chat-bubble-border: color-mix(in srgb, var(--control-line) 44%, transparent);
   --chat-bubble-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
@@ -20104,6 +20105,10 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   gap: 12px;
 }
 
+.privacy-totp-disable .text-action {
+  font-size: 0.72rem;
+}
+
 .privacy-email-code-button {
   align-self: end;
   min-width: 64px;
@@ -20113,9 +20118,10 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .privacy-totp-code-row {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 330px) auto;
   align-items: end;
   gap: 8px;
+  justify-content: start;
 }
 
 .privacy-totp-code-field {
@@ -20124,12 +20130,13 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   gap: 5px;
 }
 
-.privacy-totp-code-field .otp-code-input { width: 100%; }
+.privacy-totp-code-field .otp-code-input { width: min(100%, 330px); }
 
 @media (max-width: 520px) {
   .otp-code-input { gap: 5px; }
   .otp-code-input input { min-height: 40px; }
-  .privacy-totp-code-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .privacy-totp-code-row { grid-template-columns: minmax(0, 1fr); }
+  .privacy-email-code-button { justify-self: start; }
 }
 
 /* Mobile popovers keep the same painted chat surface as their desktop counterparts. */
@@ -20159,7 +20166,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
     .chat-call-mini,
     .app-toast
   ) {
-    background: var(--chat-conversation-background) !important;
+    background: var(--chat-floating-background) !important;
     backdrop-filter: blur(34px) saturate(146%) !important;
     -webkit-backdrop-filter: blur(34px) saturate(146%) !important;
   }
@@ -20190,7 +20197,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .chat-call-mini,
   .app-toast
 ) {
-  background: var(--chat-conversation-background) !important;
+  background: var(--chat-floating-background) !important;
   background-image: none !important;
   border-color: var(--chat-bubble-border) !important;
   box-shadow: var(--chat-bubble-shadow) !important;
@@ -20199,7 +20206,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 
 :is(.level-badge::after, .portal-entry-tooltip::before, .level-popover::before) {
-  background: var(--chat-conversation-background) !important;
+  background: var(--chat-floating-background) !important;
   backdrop-filter: blur(22px) saturate(125%) !important;
   -webkit-backdrop-filter: blur(22px) saturate(125%) !important;
 }
