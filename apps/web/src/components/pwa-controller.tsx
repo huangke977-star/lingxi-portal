@@ -29,7 +29,6 @@ export function PwaController() {
       currentIconPath = versionedIconPath(settings.pwaIconPath || "/pwa-logo.png", settings.updatedAt);
       syncHeadIcon("icon", currentIconPath);
       syncHeadIcon("shortcut icon", currentIconPath);
-      syncHeadIcon("apple-touch-icon", currentIconPath);
       if (settings.browserTitle) document.title = settings.browserTitle;
       registration?.active?.postMessage({ type: PWA_ICON_MESSAGE, icon: currentIconPath });
     };

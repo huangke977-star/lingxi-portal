@@ -18,6 +18,7 @@ import "./misans.css";
 import "./globals.css";
 
 const API_BASE_URL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+const IOS_TOUCH_ICON_PATH = "/icon-192.png";
 
 interface PublicBrandSettings {
   siteName?: string;
@@ -39,7 +40,11 @@ export async function generateMetadata(): Promise<Metadata> {
       ? `${siteName} personal portal, navigation, toolbox, and account workspace`
       : `${siteName} 个人门户、导航、工具与账号工作台`,
     manifest: locale === "en-US" ? "/en/manifest.webmanifest" : "/manifest.webmanifest",
-    icons: { icon: [{ url: iconPath }], shortcut: [{ url: iconPath }], apple: [{ url: iconPath }] },
+    icons: {
+      icon: [{ url: iconPath }],
+      shortcut: [{ url: iconPath }],
+      apple: [{ url: IOS_TOUCH_ICON_PATH, sizes: "192x192", type: "image/png" }],
+    },
     appleWebApp: { capable: true, statusBarStyle: "default", title: siteName },
     other: {
       "mobile-web-app-capable": "yes",

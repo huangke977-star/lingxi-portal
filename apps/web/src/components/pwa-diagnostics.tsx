@@ -339,22 +339,24 @@ export function PwaDiagnostics() {
       const icons = manifestData.icons;
       const icon192 = icons.find((icon) => icon.sizes?.includes("192"));
       const icon512 = icons.find((icon) => icon.sizes?.includes("512"));
-      const iconUrls = [icon192, icon512].flatMap((icon) => {
-        const iconUrl = icon ? resolveManifestIcon(icon) : null;
-        return iconUrl ? [iconUrl] : [];
-      });
+      const iconAny = icons.find((icon) => icon.sizes?.split(/\s+/).includes("any") || !icon.sizes);
+      const configuredIcon = icon192 ?? icon512 ?? iconAny;
+      const iconUrl = configuredIcon ? resolveManifestIcon(configuredIcon) : null;
+      const iconUrls = iconUrl ? [iconUrl] : [];
       const iconResults = await Promise.all(iconUrls.map((url) => checkUrl(url).catch(() => false)));
-      const hasRequiredIconConfig = Boolean(icon192 && icon512);
+      const hasRequiredIconConfig = Boolean(icon192 && icon512 || iconAny);
       const iconsOk = Boolean(hasRequiredIconConfig && iconResults.every(Boolean));
       next.push({
         id: "icons",
         title: phrase("应用图标", "App icons"),
         value: iconsOk ? phrase("图标正常", "Icons ready") : hasRequiredIconConfig ? phrase("访问超时", "Access timed out") : phrase("图标缺失", "Icons missing"),
         detail: iconsOk
-          ? phrase("192 和 512 图标都可以访问。", "Both 192 and 512 icons are reachable.")
+          ? iconAny && !icon192 && !icon512
+            ? phrase("已使用站点设置中的图标作为 PWA 安装图标。", "The site-configured icon is used for PWA installation.")
+            : phrase("192 和 512 图标都可以访问。", "Both 192 and 512 icons are reachable.")
           : hasRequiredIconConfig
-            ? phrase("manifest 已配置 192 和 512 图标，但浏览器这次没有及时读取成功。", "The manifest defines both icons, but the browser did not retrieve them in time.")
-            : phrase("需要同时提供可访问的 192 和 512 图标。", "Both reachable 192 and 512 icons are required."),
+            ? phrase("manifest 中的配置图标暂时无法访问。", "The configured manifest icon is not reachable right now.")
+            : phrase("manifest 中没有发现可用的图标配置。", "No usable icon configuration was found in the manifest."),
         status: iconsOk ? "ok" : hasRequiredIconConfig ? "warn" : "error",
       });
     } else {

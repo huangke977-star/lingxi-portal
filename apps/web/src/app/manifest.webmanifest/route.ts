@@ -36,13 +36,8 @@ export async function GET(request: Request) {
     icons: [
       {
         src: iconPath,
-        sizes: "192x192",
-        purpose: "any maskable",
-      },
-      {
-        src: iconPath,
-        sizes: "512x512",
-        purpose: "any maskable",
+        sizes: "any",
+        purpose: "any",
       },
     ],
     shortcuts: [
@@ -50,13 +45,13 @@ export async function GET(request: Request) {
         name: isEnglish ? "Discover" : "发现",
         short_name: isEnglish ? "Discover" : "发现",
         url: isEnglish ? "/en/articles" : "/articles",
-        icons: [{ src: iconPath, sizes: "192x192" }],
+        icons: [{ src: iconPath, sizes: "any" }],
       },
       {
         name: isEnglish ? "Navigation" : "导航",
         short_name: isEnglish ? "Navigation" : "导航",
         url: isEnglish ? "/en/nav" : "/nav",
-        icons: [{ src: iconPath, sizes: "192x192" }],
+        icons: [{ src: iconPath, sizes: "any" }],
       },
     ],
     theme_color: "#eef8ff",

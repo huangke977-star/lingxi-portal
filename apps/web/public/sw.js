@@ -1,4 +1,4 @@
-const VERSION = "hlovet-pwa-v5";
+const VERSION = "hlovet-pwa-v6";
 const PUSH_IDENTITY_CACHE = `${VERSION}-identity`;
 const PUSH_IDENTITY_KEY = "/__hlovet_push_identity__";
 const PWA_ICON_KEY = "/__hlovet_pwa_icon__";
