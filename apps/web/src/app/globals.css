@@ -1412,6 +1412,11 @@ body:has(.auth-page) .topbar {
   font-size: 0.76rem;
 }
 
+.account-menu-head strong {
+  font-size: 0.88rem;
+  line-height: 1.25;
+}
+
 .account-menu a,
 .account-menu button {
   min-height: 31px;
