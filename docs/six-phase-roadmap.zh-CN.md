@@ -595,6 +595,9 @@
 - 订阅管理支持作者、专题和标签的即时、日报、静音设置，以及作者、专题、标签和合集的取消订阅；订阅日报只汇总当前仍可见且符合用户权限的内容。
 - 聊天端接入搜索、引用预览、置顶消息区、置顶操作和消息定位；文章评论接入引用展示；中英文固定文案使用现有 `phrase()` 机制同步。
 - API 全量测试 44 个套件、315 项通过；API/Web lint、API/Web 生产构建、Prisma schema 校验和 `git diff --check` 均通过。
+- 提交 `4e400d5` 已推送，GitHub Actions 运行 `33584601648` 的 API/Web 镜像构建成功。生产于 2026-09-02 应用迁移 `20260902100000_add_p16_interaction_features`；备份 `backups/pre-4e400d5-20260902-105513.sql.gz` 已生成并通过 gzip 校验，大小为 173315 字节。
+- 生产 API 镜像摘要为 `sha256:619952fea3e5bee23952e6ccfa2b3a8ffb6146aa73de441b04d09bb9587e6e09`，Web 镜像摘要为 `sha256:af5a24cf3d6e2d58c34c7e16116f4f42277eee3dbdedb46c44359608dfb26baf`；仅重建 API/Web，MySQL、Redis、Caddy 和 TURN 未重启。
+- 生产验收中本机 API `/health`、本机 Web、公开 `https://5200918.xyz/api/health` 均返回成功，MySQL/Redis 保持健康，API/Web 最近 5 分钟无 error-like 日志。旧 API/Web 镜像和停止的 Lingxi 容器已清理，未删除任何数据卷。
 
 ### 第十七阶段：内容分发与公开传播
 

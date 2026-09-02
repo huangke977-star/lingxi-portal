@@ -595,6 +595,9 @@ Acceptance focus: notifications are neither unauthorized nor duplicated; quotes 
 - Subscription management supports instant, daily, and muted delivery for authors, topics, and tags, plus unsubscribe actions for authors, topics, tags, and collections. Digest generation includes only currently visible, authorized content.
 - The chat client now has search, quote previews, a pinned-message area, pin actions, and message location; article comments render quote previews; fixed bilingual copy uses the existing `phrase()` mechanism.
 - The complete API suite passed 44 suites and 315 tests. API/Web lint, API/Web production builds, Prisma schema validation, and `git diff --check` passed.
+- Commit `4e400d5` was pushed, and GitHub Actions run `33584601648` built both API and Web images successfully. Production applied migration `20260902100000_add_p16_interaction_features` on 2026-09-02; backup `backups/pre-4e400d5-20260902-105513.sql.gz` was created and passed gzip validation with a size of 173315 bytes.
+- The production API image digest is `sha256:619952fea3e5bee23952e6ccfa2b3a8ffb6146aa73de441b04d09bb9587e6e09`, and the Web image digest is `sha256:af5a24cf3d6e2d58c34c7e16116f4f42277eee3dbdedb46c44359608dfb26baf`. Only API/Web were recreated; MySQL, Redis, Caddy, and TURN were not restarted.
+- Production acceptance returned success for the local API `/health`, local Web, and public `https://5200918.xyz/api/health`; MySQL/Redis remained healthy, and API/Web logs had no error-like entries in the last five minutes. Old API/Web images and stopped Lingxi containers were cleaned, and no data volumes were deleted.
 
 ### Phase 17: Content Distribution And Public Sharing
 
