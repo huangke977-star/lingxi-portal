@@ -1780,8 +1780,8 @@ export class SocialService {
   async markAllNotificationsRead(user: AuthenticatedUser, channel?: "system" | "subscription" | "interaction"): Promise<{ count: number; readAt: string }> {
     const readAt = new Date();
     const result = await this.prisma.userNotification.updateMany({
-      where: { userId: user.id, readAt: null, ...(channel ? { channel: channel as UserNotificationChannel } : {}) },
-      data: { readAt },
+      where: { userId: user.id, OR: [{ readAt: null }, { openedAt: null }], ...(channel ? { channel: channel as UserNotificationChannel } : {}) },
+      data: { readAt, openedAt: readAt },
     });
     return { count: result.count, readAt: readAt.toISOString() };
   }

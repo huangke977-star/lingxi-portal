@@ -26,13 +26,18 @@ export function buildArticleCommentThreads(comments: ArticleComment[]): ArticleC
     threadsByRootId.set(root.id, thread);
   }
 
-  return Array.from(threadsByRootId.values()).map((thread) => ({
-    ...thread,
-    replies: thread.replies.sort((left, right) => (
-      new Date(left.comment.createdAt).getTime() - new Date(right.comment.createdAt).getTime()
-      || left.comment.id - right.comment.id
-    )),
-  }));
+  return Array.from(threadsByRootId.values())
+    .map((thread) => ({
+      ...thread,
+      replies: thread.replies.sort((left, right) => (
+        new Date(right.comment.createdAt).getTime() - new Date(left.comment.createdAt).getTime()
+        || right.comment.id - left.comment.id
+      )),
+    }))
+    .sort((left, right) => (
+      new Date(right.root.createdAt).getTime() - new Date(left.root.createdAt).getTime()
+      || right.root.id - left.root.id
+    ));
 }
 
 function findThreadRoot(

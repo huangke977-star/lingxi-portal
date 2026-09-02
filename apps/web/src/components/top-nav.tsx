@@ -295,13 +295,19 @@ export function TopNav() {
     const token = readAccessToken();
     setIsMessagePopoverOpen(false);
     if (token && !notification.openedAt) {
-      await markNotificationRead(token, notification.id).catch((actionError) => {
+      await markNotificationRead(token, notification.id).then((updatedNotification) => {
+        setNotifications((current) => current.map((item) => item.id === notification.id ? updatedNotification : item));
+      }).catch((actionError) => {
         setHeaderError(actionError instanceof Error ? actionError.message : phrase("通知状态更新失败。", "Could not update notification status."));
       });
       notifySocialStateChange();
     }
     if (notification.context?.kind === "announcement" && notification.actionUrl) {
       router.push(notification.actionUrl);
+    } else if (notification.context?.kind === "message_mention" && notification.context.conversationId && notification.messageId) {
+      openChatDock({ conversationId: notification.context.conversationId, messageId: notification.messageId });
+    } else if (notification.context?.kind === "article_comment" && notification.context.article?.slug) {
+      router.push(localizedPath(`/articles/${notification.context.article.slug}${notification.context.commentId ? `?commentId=${notification.context.commentId}` : ""}`, locale));
     } else if (notification.type === "friend_request_received") {
       openChatDock({ systemNotificationId: notification.id, notificationChannel: "system" });
     } else if (notification.type === "friend_request_accepted" && notification.actor) {

@@ -830,7 +830,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     this.assertCanRead(article, user);
     const commentIndex = await this.prisma.articleComment.findMany({
       where: { articleId: article.id },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: { id: true, parentId: true, status: true },
     });
     const includedIds = this.visibleCommentIds(commentIndex);
@@ -850,7 +850,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       .map((comment) => comment.id);
     const comments = selectedCommentIds.length ? await this.prisma.articleComment.findMany({
       where: { id: { in: selectedCommentIds } },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: this.commentSelect(),
     }) : [];
     const commentIds = comments.map((comment) => comment.id);

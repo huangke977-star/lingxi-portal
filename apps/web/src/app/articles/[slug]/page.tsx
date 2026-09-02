@@ -13,6 +13,7 @@ import { ContentAttachmentComposer, ContentAttachmentList } from "@/components/c
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { LikeBurst } from "@/components/like-burst";
+import { getActiveMention, MentionSuggestions, MentionText } from "@/components/mention-ui";
 import { CommentAuthorIdentity } from "@/components/public-profile-popover";
 import {
   Article,
@@ -38,7 +39,7 @@ import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
 import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-api";
-import { getPublicProfile, PublicProfile, subscribeToAuthor, unsubscribeFromAuthor } from "@/lib/social-api";
+import { getPublicProfile, PublicProfile, searchSocialUsers, SocialUserSearchResult, subscribeToAuthor, unsubscribeFromAuthor } from "@/lib/social-api";
 import { notifySocialStateChange } from "@/lib/social-events";
 
 const COMMENT_PAGE_SIZE = 10;
@@ -68,6 +69,10 @@ export default function ArticleDetailPage() {
   const [hasMoreComments, setHasMoreComments] = useState(false);
   const [isLoadingMoreComments, setIsLoadingMoreComments] = useState(false);
   const [commentDraft, setCommentDraft] = useState("");
+  const [commentMentionCandidates, setCommentMentionCandidates] = useState<SocialUserSearchResult[]>([]);
+  const [isCommentMentionSearching, setIsCommentMentionSearching] = useState(false);
+  const [commentMentionRange, setCommentMentionRange] = useState<{ start: number; end: number } | null>(null);
+  const [commentMentionCursor, setCommentMentionCursor] = useState(0);
   const [replyingTo, setReplyingTo] = useState<ArticleComment | null>(null);
   const [reportingComment, setReportingComment] = useState<ArticleComment | null>(null);
   const [reportingArticle, setReportingArticle] = useState(false);
@@ -96,6 +101,32 @@ export default function ArticleDetailPage() {
   const requestedCommentId = Number(searchParams.get("commentId") ?? 0);
   const readingArticleId = article?.id;
   const initialReadingProgress = article?.readingProgress;
+
+  useEffect(() => {
+    const token = readAccessToken();
+    const activeMention = getActiveMention(commentDraft, commentMentionCursor);
+    if (!token || !activeMention || activeMention.query.length < 2) {
+      // Suggestions mirror the textarea caret and must be reset when that external state changes.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCommentMentionCandidates([]);
+      setCommentMentionRange(activeMention ? { start: activeMention.start, end: activeMention.end } : null);
+      setIsCommentMentionSearching(false);
+      return;
+    }
+    setCommentMentionRange({ start: activeMention.start, end: activeMention.end });
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setIsCommentMentionSearching(true);
+      searchSocialUsers(token, activeMention.query, 8)
+        .then((result) => { if (active) setCommentMentionCandidates(result.items); })
+        .catch(() => { if (active) setCommentMentionCandidates([]); })
+        .finally(() => { if (active) setIsCommentMentionSearching(false); });
+    }, 180);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [commentDraft, commentMentionCursor]);
 
   useEffect(() => {
     const slug = params.slug;
@@ -393,6 +424,21 @@ export default function ArticleDetailPage() {
     }
   }
 
+  function insertCommentMention(user: SocialUserSearchResult) {
+    if (!commentMentionRange) return;
+    const nextDraft = `${commentDraft.slice(0, commentMentionRange.start)}@${user.username} ${commentDraft.slice(commentMentionRange.end)}`;
+    const nextCursor = commentMentionRange.start + user.username.length + 2;
+    setCommentDraft(nextDraft);
+    setCommentMentionCandidates([]);
+    setCommentMentionRange(null);
+    setCommentMentionCursor(nextCursor);
+    window.requestAnimationFrame(() => {
+      const textarea = composerRef.current;
+      textarea?.focus({ preventScroll: true });
+      textarea?.setSelectionRange(nextCursor, nextCursor);
+    });
+  }
+
   function beginReply(comment: ArticleComment) {
     if (!article) return;
     if (siteSettings && !siteSettings.commentsEnabled) {
@@ -482,7 +528,7 @@ export default function ArticleDetailPage() {
           </div>
           {comment.quote ? <button className={`article-comment-quote${comment.quote.available ? "" : " unavailable"}`} onClick={() => comment.quote?.available && document.getElementById(`article-comment-${comment.quote.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })} type="button"><CornerDownRight aria-hidden="true" size={13} /><span><strong>{comment.quote.authorName}</strong><small>{comment.quote.available ? comment.quote.body || phrase("原评论没有文字内容。", "The original comment has no text.") : phrase("原评论已不可见。", "The original comment is no longer available.")}</small></span></button> : null}
           {comment.attachments?.length ? <ContentAttachmentList attachments={comment.attachments} /> : null}
-          {comment.body ? <p>{comment.body}</p> : null}
+          {comment.body ? <p><MentionText text={comment.body} /></p> : null}
           {comment.status === "active" ? <div className="article-comment-actions">
             <span className="like-action-wrap compact"><button className={comment.liked ? "active" : undefined} onClick={() => void handleCommentLike(comment)} type="button"><ThumbsUp aria-hidden="true" fill={comment.liked ? "currentColor" : "none"} size={14} />{comment.likeCount || phrase("点赞", "Like")}</button><LikeBurst burst={commentLikeBursts[comment.id] ?? 0} variant="thumb" /></span>
             {siteSettings?.commentsEnabled !== false ? <button onClick={() => beginReply(comment)} type="button"><Reply aria-hidden="true" size={14} />{phrase("回复", "Reply")}</button> : null}
@@ -535,7 +581,7 @@ export default function ArticleDetailPage() {
           <div aria-hidden={!replyingTo} className={`article-composer-context${replyingTo ? " active" : ""}`}>
             {replyingTo ? <><span title={phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`)}>{phrase("回复", "Reply")} <strong>@{replyingTo.author.nickname}</strong></span><button aria-label={phrase("取消回复", "Cancel reply")} onClick={() => setReplyingTo(null)} title={phrase("取消回复", "Cancel reply")} type="button"><X aria-hidden="true" size={14} /></button></> : null}
           </div>
-          <ContentAttachmentComposer ariaLabel={replyingTo ? phrase(`回复 ${replyingTo.author.nickname}`, `Reply to ${replyingTo.author.nickname}`) : phrase("评论文章", "Comment on article")} isSubmitting={isSubmittingComment} onChange={setCommentDraft} onSubmit={handleCommentSubmit} placeholder={replyingTo ? phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`) : phrase("写下你的想法", "Write your thoughts")} textareaRef={composerRef} value={commentDraft} />
+          <div className="mention-composer-shell"><ContentAttachmentComposer ariaLabel={replyingTo ? phrase(`回复 ${replyingTo.author.nickname}`, `Reply to ${replyingTo.author.nickname}`) : phrase("评论文章", "Comment on article")} isSubmitting={isSubmittingComment} onChange={(value) => { setCommentDraft(value); setCommentMentionCursor(composerRef.current?.selectionStart ?? value.length); }} onCursorChange={setCommentMentionCursor} onSubmit={handleCommentSubmit} placeholder={replyingTo ? phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`) : phrase("写下你的想法", "Write your thoughts")} textareaRef={composerRef} value={commentDraft} /><MentionSuggestions isLoading={isCommentMentionSearching} items={commentMentionCandidates} onSelect={insertCommentMention} /></div>
           <div className="article-composer-footer">
             <span className="article-composer-count">{commentDraft.length} / 2000</span>
           </div>
@@ -556,6 +602,6 @@ function mergeArticleComments(current: ArticleComment[], incoming: ArticleCommen
   const comments = new Map(current.map((comment) => [comment.id, comment]));
   for (const comment of incoming) comments.set(comment.id, comment);
   return Array.from(comments.values()).sort((left, right) =>
-    new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime() || left.id - right.id
+    new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime() || right.id - left.id
   );
 }

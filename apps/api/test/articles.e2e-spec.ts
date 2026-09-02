@@ -452,10 +452,15 @@ describe("ArticlesService article center extensions", () => {
       articleComment: {
         findMany: jest.fn(async (args: { select: Record<string, unknown>; where?: { id?: { in: number[] } } }) => {
           if (!("body" in args.select)) {
-            return comments.map(({ id, parentId, status }) => ({ id, parentId, status }));
+            return comments
+              .map(({ id, parentId, status, createdAt }) => ({ id, parentId, status, createdAt }))
+              .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || right.id - left.id)
+              .map(({ id, parentId, status }) => ({ id, parentId, status }));
           }
           const ids = args.where?.id?.in ?? comments.map((comment) => comment.id);
-          return comments.filter((comment) => ids.includes(comment.id));
+          return comments
+            .filter((comment) => ids.includes(comment.id))
+            .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || right.id - left.id);
         }),
       },
       articleCommentLike: { findMany: jest.fn(async () => []) },
@@ -468,7 +473,7 @@ describe("ArticlesService article center extensions", () => {
       user,
       Object.assign(new ListArticleCommentsQueryDto(), { pageSize: 2 }),
     );
-    expect(first.items.map((comment) => comment.id)).toEqual([1, 4, 5, 2]);
+    expect(first.items.map((comment) => comment.id)).toEqual([6, 3, 2]);
     expect(first).toMatchObject({ hasMore: true, nextCursor: 2, totalThreads: 3 });
 
     const second = await service.listComments(
@@ -476,7 +481,7 @@ describe("ArticlesService article center extensions", () => {
       user,
       Object.assign(new ListArticleCommentsQueryDto(), { cursor: 2, pageSize: 2 }),
     );
-    expect(second.items.map((comment) => comment.id)).toEqual([3, 6]);
+    expect(second.items.map((comment) => comment.id)).toEqual([5, 4, 1]);
     expect(second).toMatchObject({ hasMore: false, nextCursor: null, totalThreads: 3 });
   });
 
@@ -491,9 +496,16 @@ describe("ArticlesService article center extensions", () => {
       article: { findUnique: jest.fn(async () => articleRecord()) },
       articleComment: {
         findMany: jest.fn(async (args: { select: Record<string, unknown>; where?: { id?: { in: number[] } } }) => {
-          if (!("body" in args.select)) return comments.map(({ id, parentId, status }) => ({ id, parentId, status }));
+          if (!("body" in args.select)) {
+            return comments
+              .map(({ id, parentId, status, createdAt }) => ({ id, parentId, status, createdAt }))
+              .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || right.id - left.id)
+              .map(({ id, parentId, status }) => ({ id, parentId, status }));
+          }
           const ids = args.where?.id?.in ?? [];
-          return comments.filter((comment) => ids.includes(comment.id));
+          return comments
+            .filter((comment) => ids.includes(comment.id))
+            .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || right.id - left.id);
         }),
       },
       articleCommentLike: { findMany: jest.fn(async () => []) },
@@ -507,8 +519,8 @@ describe("ArticlesService article center extensions", () => {
       Object.assign(new ListArticleCommentsQueryDto(), { focusId: 6, pageSize: 1 }),
     );
 
-    expect(result.items.map((comment) => comment.id)).toEqual([1, 3, 6]);
-    expect(result).toMatchObject({ hasMore: true, nextCursor: 1, totalThreads: 3 });
+    expect(result.items.map((comment) => comment.id)).toEqual([6, 3]);
+    expect(result).toMatchObject({ hasMore: true, nextCursor: 3, totalThreads: 3 });
   });
 
   it("aggregates unread article-like notifications and moves the latest actor to the front", async () => {
