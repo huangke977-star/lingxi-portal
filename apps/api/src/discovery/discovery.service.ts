@@ -22,6 +22,7 @@ import {
   PortalVisibility,
   Prisma,
   RecommendationTargetType,
+  SubscriptionDeliveryFrequency,
   ProfileAccessLevel,
   UserNotificationChannel,
   UserNotificationType,
@@ -42,6 +43,7 @@ import {
   ListSubscriptionFeedQueryDto,
   RecommendationFeedbackDto,
   ReorderContentItemsDto,
+  UpdateAuthorSubscriptionDto,
   UpdateArticleCollectionDto,
   UpdateArticleTopicDto,
   UpdateProfileSettingsDto,
@@ -706,7 +708,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
     user: AuthenticatedUser,
     query: ListSubscriptionFeedQueryDto,
   ): Promise<SubscriptionFeedResponse> {
-    const where = this.subscriptionArticleWhere(user);
+    const where = await this.subscriptionArticleWhere(user);
     const unreadWhere: Prisma.ArticleWhereInput = {
       AND: [where, { subscriptionFeedReads: { none: { userId: user.id } } }],
     };
@@ -786,7 +788,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
 
   async markSubscriptionFeedRead(user: AuthenticatedUser, articleId: number) {
     const article = await this.prisma.article.findFirst({
-      where: { AND: [this.subscriptionArticleWhere(user), { id: articleId }] },
+      where: { AND: [await this.subscriptionArticleWhere(user), { id: articleId }] },
       select: { id: true },
     });
     if (!article) throw new NotFoundException("订阅动态不存在或当前不可见。");
@@ -800,7 +802,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
 
   async markAllSubscriptionFeedRead(user: AuthenticatedUser) {
     const articles = await this.prisma.article.findMany({
-      where: this.subscriptionArticleWhere(user),
+      where: await this.subscriptionArticleWhere(user),
       select: { id: true },
     });
     if (articles.length) {
@@ -813,12 +815,13 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
   }
 
   async listContentSubscriptions(user: AuthenticatedUser) {
-    const [topicSubscriptions, collectionSubscriptions] = await Promise.all([
-      this.prisma.articleTopicSubscription.findMany({
+    const [topicSubscriptions, tagSubscriptions, collectionSubscriptions] = await Promise.all([
+      this.prisma.articleTopicSubscription?.findMany ? this.prisma.articleTopicSubscription.findMany({
         where: { userId: user.id, topic: { is: this.topicVisibleWhere(user) } },
         orderBy: [{ createdAt: "desc" }, { topicId: "desc" }],
         select: {
           createdAt: true,
+          frequency: true,
           topic: {
             select: {
               id: true,
@@ -830,7 +833,12 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
             },
           },
         },
-      }),
+      }) : Promise.resolve([]),
+      this.prisma.articleTagSubscription?.findMany ? this.prisma.articleTagSubscription.findMany({
+        where: { userId: user.id },
+        orderBy: [{ createdAt: "desc" }, { tag: "asc" }],
+        select: { tag: true, frequency: true, createdAt: true },
+      }) : Promise.resolve([]),
       this.prisma.articleCollectionSubscription.findMany({
         where: { userId: user.id, collection: { is: this.collectionVisibleWhere(user) } },
         orderBy: [{ createdAt: "desc" }, { collectionId: "desc" }],
@@ -849,7 +857,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
       }),
     ]);
     return {
-      topics: topicSubscriptions.map(({ createdAt, topic }) => ({
+      topics: topicSubscriptions.map(({ createdAt, frequency, topic }) => ({
         id: topic.id,
         title: topic.title,
         slug: topic.slug,
@@ -857,6 +865,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
         coverPath: topic.coverPath,
         articleCount: topic._count.items,
         subscriberCount: topic._count.subscribers,
+        frequency: frequency ?? SubscriptionDeliveryFrequency.instant,
         subscribedAt: createdAt.toISOString(),
       })),
       collections: collectionSubscriptions.map(({ createdAt, collection }) => ({
@@ -868,6 +877,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
         subscriberCount: collection._count.subscribers,
         subscribedAt: createdAt.toISOString(),
       })),
+       tags: tagSubscriptions.map(({ tag, frequency, createdAt }) => ({ tag, frequency: frequency ?? SubscriptionDeliveryFrequency.instant, subscribedAt: createdAt.toISOString() })),
     };
   }
 
@@ -879,6 +889,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
         select: {
           authorId: true,
           notifyNewArticles: true,
+          frequency: true,
           createdAt: true,
           author: { select: discoveryArticleInclude.author.select },
         },
@@ -892,6 +903,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
       items: items.map((item) => ({
         author: this.toAuthor(item.author),
         notifyNewArticles: item.notifyNewArticles,
+        frequency: item.frequency ?? SubscriptionDeliveryFrequency.instant,
         subscribedAt: item.createdAt.toISOString(),
       })),
       digestEnabled: channelState?.digestEnabled ?? true,
@@ -901,7 +913,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
   async updateSubscriptionSetting(
     user: AuthenticatedUser,
     authorId: number,
-    notifyNewArticles: boolean,
+    dto: UpdateAuthorSubscriptionDto,
   ) {
     const existing = await this.prisma.userSubscription.findUnique({
       where: { subscriberId_authorId: { subscriberId: user.id, authorId } },
@@ -910,9 +922,35 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
     if (!existing) throw new NotFoundException("尚未订阅该作者。");
     await this.prisma.userSubscription.update({
       where: { subscriberId_authorId: { subscriberId: user.id, authorId } },
-      data: { notifyNewArticles },
+      data: { ...(dto.notifyNewArticles === undefined ? {} : { notifyNewArticles: dto.notifyNewArticles }), ...(dto.frequency ? { frequency: dto.frequency } : {}) },
     });
-    return { authorId, notifyNewArticles };
+    return { authorId, notifyNewArticles: dto.notifyNewArticles ?? true, frequency: dto.frequency ?? undefined };
+  }
+
+  async updateTopicSubscriptionFrequency(user: AuthenticatedUser, topicId: number, frequency: "instant" | "daily" | "muted") {
+    const result = await this.prisma.articleTopicSubscription.updateMany({ where: { userId: user.id, topicId }, data: { frequency } });
+    if (!result.count) throw new NotFoundException("尚未订阅该专题。");
+    return { topicId, frequency };
+  }
+
+  async subscribeTag(user: AuthenticatedUser, rawTag: string) {
+    const tag = rawTag.trim().replace(/^#/, "");
+    if (!tag) throw new BadRequestException("标签不能为空。");
+    await this.prisma.articleTagSubscription.upsert({ where: { userId_tag: { userId: user.id, tag } }, create: { userId: user.id, tag }, update: {} });
+    return { subscribed: true, tag, frequency: "instant" as const };
+  }
+
+  async unsubscribeTag(user: AuthenticatedUser, rawTag: string) {
+    const tag = rawTag.trim().replace(/^#/, "");
+    await this.prisma.articleTagSubscription.deleteMany({ where: { userId: user.id, tag } });
+    return { subscribed: false, tag };
+  }
+
+  async updateTagSubscriptionFrequency(user: AuthenticatedUser, rawTag: string, frequency: "instant" | "daily" | "muted") {
+    const tag = rawTag.trim().replace(/^#/, "");
+    const result = await this.prisma.articleTagSubscription.updateMany({ where: { userId: user.id, tag }, data: { frequency } });
+    if (!result.count) throw new NotFoundException("尚未订阅该标签。");
+    return { tag, frequency };
   }
 
   async listMyCollections(user: AuthenticatedUser) {
@@ -1513,7 +1551,11 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
     return createHash("sha256").update(source).digest("hex");
   }
 
-  private subscriptionArticleWhere(user: AuthenticatedUser): Prisma.ArticleWhereInput {
+  private async subscriptionArticleWhere(user: AuthenticatedUser): Promise<Prisma.ArticleWhereInput> {
+    const tagSubscriptions = this.prisma.articleTagSubscription?.findMany
+      ? await this.prisma.articleTagSubscription.findMany({ where: { userId: user.id }, select: { tag: true } })
+      : [];
+    const tagWhere = tagSubscriptions.map(({ tag }) => ({ tags: { contains: tag } }));
     return {
       AND: [
         this.articleVisibleWhere(user),
@@ -1548,11 +1590,13 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
                 },
               },
             },
+            ...tagWhere,
           ],
         },
       ],
     };
   }
+
 
   private articleVisibleWhere(user: AuthenticatedUser | null): Prisma.ArticleWhereInput {
     const base: Prisma.ArticleWhereInput = { status: ArticleStatus.published };
@@ -1943,28 +1987,41 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
     if (china.hour < 9) return;
     const dayKey = `${china.year}-${String(china.month).padStart(2, "0")}-${String(china.day).padStart(2, "0")}`;
     const startedAfter = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const subscriptions = await this.prisma.userSubscription.findMany({
-      where: {
-        notifyNewArticles: true,
-        subscriber: { status: UserStatus.active },
-      },
-      select: {
-        subscriberId: true,
-        authorId: true,
-        subscriber: { select: { role: { select: { code: true } } } },
-      },
-    });
-    if (!subscriptions.length) return;
+    const [authorSubscriptions, topicSubscriptions, tagSubscriptions] = await Promise.all([
+      this.prisma.userSubscription.findMany({
+        where: { notifyNewArticles: true, frequency: SubscriptionDeliveryFrequency.daily, subscriber: { status: UserStatus.active } },
+        select: { subscriberId: true, authorId: true, subscriber: { select: { role: { select: { code: true } } } } },
+      }),
+      this.prisma.articleTopicSubscription?.findMany ? this.prisma.articleTopicSubscription.findMany({
+        where: { frequency: SubscriptionDeliveryFrequency.daily, user: { status: UserStatus.active }, topic: { status: ArticleTopicStatus.active } },
+        select: { userId: true, topicId: true, user: { select: { role: { select: { code: true } } } } },
+      }) : Promise.resolve([]),
+      this.prisma.articleTagSubscription?.findMany ? this.prisma.articleTagSubscription.findMany({
+        where: { frequency: SubscriptionDeliveryFrequency.daily, user: { status: UserStatus.active } },
+        select: { userId: true, tag: true, user: { select: { role: { select: { code: true } } } } },
+      }) : Promise.resolve([]),
+    ]);
+    if (!authorSubscriptions.length && !topicSubscriptions.length && !tagSubscriptions.length) return;
 
-    const authorIds = [...new Set(subscriptions.map(({ authorId }) => authorId))];
-    const subscriberIds = [...new Set(subscriptions.map(({ subscriberId }) => subscriberId))];
+    const authorIds = [...new Set(authorSubscriptions.map(({ authorId }) => authorId))];
+    const topicIds = [...new Set(topicSubscriptions.map(({ topicId }) => topicId))];
+    const tags = [...new Set(tagSubscriptions.map(({ tag }) => tag))];
+    const subscriberIds = [...new Set([
+      ...authorSubscriptions.map(({ subscriberId }) => subscriberId),
+      ...topicSubscriptions.map(({ userId }) => userId),
+      ...tagSubscriptions.map(({ userId }) => userId),
+    ])];
+    const articleMatch: Prisma.ArticleWhereInput[] = [];
+    if (authorIds.length) articleMatch.push({ authorId: { in: authorIds } });
+    if (topicIds.length) articleMatch.push({ topicItems: { some: { topicId: { in: topicIds } } } });
+    tags.forEach((tag) => articleMatch.push({ tags: { contains: tag } }));
     const [articles, disabledStates] = await Promise.all([
       this.prisma.article.findMany({
         where: {
-          authorId: { in: authorIds },
           status: ArticleStatus.published,
           visibility: { not: ArticleVisibility.private },
           publishedAt: { gte: startedAfter, lte: now },
+          OR: articleMatch,
         },
         orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
         select: {
@@ -1974,6 +2031,8 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
           slug: true,
           visibility: true,
           allowedRoles: { select: { role: { select: { code: true } } } },
+          tags: true,
+          topicItems: { select: { topicId: true } },
         },
       }),
       this.prisma.userNotificationChannelState.findMany({
@@ -1988,13 +2047,25 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
     if (!articles.length) return;
     const digestDisabledUserIds = new Set(disabledStates.map(({ userId }) => userId));
     const byAuthor = new Map<number, typeof articles>();
+    const byTopic = new Map<number, typeof articles>();
+    const byTag = new Map<string, typeof articles>();
     articles.forEach((article) => {
       const items = byAuthor.get(article.authorId) ?? [];
       items.push(article);
       byAuthor.set(article.authorId, items);
+      (article.topicItems ?? []).forEach(({ topicId }) => {
+        const topicItems = byTopic.get(topicId) ?? [];
+        topicItems.push(article);
+        byTopic.set(topicId, topicItems);
+      });
+      (article.tags ?? "").split(",").map((tag) => tag.trim()).filter(Boolean).forEach((tag) => {
+        const tagItems = byTag.get(tag) ?? [];
+        tagItems.push(article);
+        byTag.set(tag, tagItems);
+      });
     });
     const userArticles = new Map<number, typeof articles>();
-    subscriptions.forEach((subscription) => {
+    authorSubscriptions.forEach((subscription) => {
       if (digestDisabledUserIds.has(subscription.subscriberId)) return;
       const visible = (byAuthor.get(subscription.authorId) ?? []).filter((article) => (
         article.visibility !== ArticleVisibility.role_restricted ||
@@ -2006,6 +2077,26 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
       visible.forEach((article) => { if (!known.has(article.id)) items.push(article); });
       userArticles.set(subscription.subscriberId, items);
     });
+    topicSubscriptions.forEach((subscription) => {
+      if (digestDisabledUserIds.has(subscription.userId)) return;
+      const visible = (byTopic.get(subscription.topicId) ?? []).filter((article) => (
+        article.visibility !== ArticleVisibility.role_restricted || article.allowedRoles.some(({ role }) => role.code === subscription.user.role.code)
+      ));
+      const items = userArticles.get(subscription.userId) ?? [];
+      const known = new Set(items.map(({ id }) => id));
+      visible.forEach((article) => { if (!known.has(article.id)) items.push(article); });
+      if (items.length) userArticles.set(subscription.userId, items);
+    });
+    tagSubscriptions.forEach((subscription) => {
+      if (digestDisabledUserIds.has(subscription.userId)) return;
+      const visible = (byTag.get(subscription.tag) ?? []).filter((article) => (
+        article.visibility !== ArticleVisibility.role_restricted || article.allowedRoles.some(({ role }) => role.code === subscription.user.role.code)
+      ));
+      const items = userArticles.get(subscription.userId) ?? [];
+      const known = new Set(items.map(({ id }) => id));
+      visible.forEach((article) => { if (!known.has(article.id)) items.push(article); });
+      if (items.length) userArticles.set(subscription.userId, items);
+    });
     const data = [...userArticles.entries()].map(([userId, items]) => {
       const titles = items.slice(0, 3).map(({ title }) => `《${title}》`);
       const englishTitles = items.slice(0, 3).map(({ title }) => `"${title}"`);
@@ -2016,8 +2107,8 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
         type: UserNotificationType.subscription_published,
         channel: UserNotificationChannel.subscription,
         title: "订阅日报",
-        body: `你订阅的作者发布了 ${titles.join("、")}${tail}。`,
-        bodyEn: `New posts from authors you follow: ${englishTitles.join(", ")}${englishTail}.`,
+         body: `你关注的作者、专题或标签有新文章：${titles.join("、")}${tail}。`,
+         bodyEn: `New posts from authors, topics, or tags you follow: ${englishTitles.join(", ")}${englishTail}.`,
         actionUrl: "/articles/subscriptions",
         articleId: items[0]?.id,
         dedupeKey: `subscription-digest:${dayKey}:${userId}`,

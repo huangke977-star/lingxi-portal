@@ -75,6 +75,8 @@ function articleRecord(status: ArticleStatus = ArticleStatus.published) {
     },
     allowedRoles: [],
     images: [],
+    collectionItems: [],
+    topicItems: [],
     likes: [{ userId: user.id }],
     favorites: [{ userId: user.id }],
     comments: [
@@ -545,6 +547,8 @@ describe("ArticlesService article center extensions", () => {
         deleteMany: jest.fn(async () => ({ count: 0 })),
       },
       userSubscription: { findMany: jest.fn(async () => [{ subscriberId: 21 }, { subscriberId: 22 }]) },
+      articleTopicSubscription: { findMany: jest.fn(async () => []) },
+      articleTagSubscription: { findMany: jest.fn(async () => []) },
       userNotification: { createMany: jest.fn(async () => ({ count: 2 })) },
     };
     const prisma = {
@@ -902,6 +906,8 @@ describe("ArticlesService article center extensions", () => {
       article: { update: jest.fn(async () => published) },
       articleVersion: { findFirst: jest.fn(async () => null), create: jest.fn(async () => ({})) },
       userSubscription: { findMany: jest.fn(async () => []) },
+      articleTopicSubscription: { findMany: jest.fn(async () => []) },
+      articleTagSubscription: { findMany: jest.fn(async () => []) },
       userNotification: { create: jest.fn(async () => ({})) },
     };
     const prisma = {

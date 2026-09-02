@@ -56,6 +56,15 @@ export interface ChatMessageResponse {
   conversationId: number;
   body: string;
   type: "text" | "attachment" | "mixed" | "system";
+  quote: {
+    id: number;
+    body: string;
+    senderDisplayName: string;
+    createdAt: string;
+    available: boolean;
+  } | null;
+  isPinned: boolean;
+  pinOrder: number;
   attachments: ChatAttachmentResponse[];
   call: {
     id: number;
@@ -250,6 +259,7 @@ export interface UserNotificationResponse {
     | "article_favorited"
     | "article_commented"
     | "comment_replied"
+    | "mention_received"
     | "author_subscribed"
     | "subscription_published"
     | "announcement_published"
@@ -264,12 +274,13 @@ export interface UserNotificationResponse {
   bodyEn: string | null;
   actionUrl: string | null;
   friendshipId: number | null;
+  messageId: number | null;
   commentReportId: number | null;
   articleReportId: number | null;
   announcementId: number | null;
   actor: SocialUserResponse | null;
   context: {
-    kind: "comment_report" | "article_report" | "article" | "article_comment" | "friend_request" | "stranger_message_request" | "group_invitation" | "group_join_request" | "group_report" | "group_ban" | "announcement";
+    kind: "comment_report" | "article_report" | "article" | "article_comment" | "message_mention" | "friend_request" | "stranger_message_request" | "group_invitation" | "group_join_request" | "group_report" | "group_ban" | "announcement";
     announcementId?: number;
     announcement?: { id: number; title: string; summary: string };
     article?: { id: number; title: string; slug: string };
@@ -294,6 +305,13 @@ export interface UserNotificationResponse {
   openedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MessageSearchResponse {
+  items: Array<ChatMessageResponse & {
+    conversation: { id: number; kind: "direct" | "group" | "temporary"; name: string };
+  }>;
+  hasMore: boolean;
 }
 
 export interface NotificationChannelStateResponse {

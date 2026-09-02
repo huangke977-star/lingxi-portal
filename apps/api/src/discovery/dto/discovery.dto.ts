@@ -249,8 +249,24 @@ export class UpdateArticleTopicDto {
 }
 
 export class UpdateAuthorSubscriptionDto {
+  @IsOptional()
   @IsBoolean()
-  notifyNewArticles!: boolean;
+  notifyNewArticles?: boolean;
+
+  @IsOptional()
+  @IsIn(["instant", "daily", "muted"])
+  frequency?: "instant" | "daily" | "muted";
+}
+
+export class SubscribeTagDto {
+  @IsString()
+  @MaxLength(80)
+  tag!: string;
+}
+
+export class UpdateSubscriptionFrequencyDto {
+  @IsIn(["instant", "daily", "muted"])
+  frequency!: "instant" | "daily" | "muted";
 }
 
 export class UpdateProfileSettingsDto {

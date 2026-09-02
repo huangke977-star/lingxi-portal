@@ -262,6 +262,12 @@ export class CreateArticleCommentDto {
   @IsInt()
   @Min(1)
   parentId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  quotedCommentId?: number;
 }
 
 export class ModerateArticleDto {

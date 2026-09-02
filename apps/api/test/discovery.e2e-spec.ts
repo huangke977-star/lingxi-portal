@@ -242,6 +242,7 @@ describe("DiscoveryService", () => {
       articleTopicSubscription: {
         findMany: jest.fn(async () => [{
           createdAt: subscribedAt,
+          frequency: "instant",
           topic: {
             id: 11,
             title: "运维专题",
@@ -264,6 +265,9 @@ describe("DiscoveryService", () => {
           },
         }]),
       },
+      articleTagSubscription: {
+        findMany: jest.fn(async () => []),
+      },
     };
 
     await expect(createService(prisma).listContentSubscriptions(user)).resolves.toEqual({
@@ -275,6 +279,7 @@ describe("DiscoveryService", () => {
         coverPath: null,
         articleCount: 4,
         subscriberCount: 6,
+        frequency: "instant",
         subscribedAt: subscribedAt.toISOString(),
       }],
       collections: [{
@@ -286,6 +291,7 @@ describe("DiscoveryService", () => {
         subscriberCount: 3,
         subscribedAt: subscribedAt.toISOString(),
       }],
+      tags: [],
     });
     expect(prisma.articleTopicSubscription.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ userId: user.id, topic: { is: expect.any(Object) } }),

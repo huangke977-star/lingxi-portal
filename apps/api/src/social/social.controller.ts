@@ -22,6 +22,8 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import {
   ListMessagesQueryDto,
+  SearchMessagesQueryDto,
+  SetChatMessagePinDto,
   ListNotificationsQueryDto,
   NotificationIdsDto,
   CreateStrangerMessageRequestDto,
@@ -214,6 +216,11 @@ export class SocialController {
     return this.socialService.listConversations(user);
   }
 
+  @Get("messages/search")
+  searchMessages(@CurrentUser() user: AuthenticatedUser, @Query() query: SearchMessagesQueryDto) {
+    return this.socialService.searchMessages(user, query);
+  }
+
   @Get("calls/ice-servers")
   getCallIceServers(@CurrentUser() user: AuthenticatedUser) {
     return this.callsService.getIceServers(user.id);
@@ -231,6 +238,30 @@ export class SocialController {
     @Query() query: ListMessagesQueryDto,
   ) {
     return this.socialService.listMessages(user, id, query);
+  }
+
+  @Get("conversations/:id/messages/:messageId/context")
+  getMessageContext(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) conversationId: number,
+    @Param("messageId", ParseIntPipe) messageId: number,
+  ) {
+    return this.socialService.getMessageContext(user, conversationId, messageId);
+  }
+
+  @Get("conversations/:id/pinned")
+  listPinnedMessages(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) conversationId: number) {
+    return this.socialService.listPinnedMessages(user, conversationId);
+  }
+
+  @Patch("conversations/:id/messages/:messageId/pin")
+  setMessagePin(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("id", ParseIntPipe) conversationId: number,
+    @Param("messageId", ParseIntPipe) messageId: number,
+    @Body() dto: SetChatMessagePinDto,
+  ) {
+    return this.socialService.setMessagePin(user, conversationId, messageId, dto);
   }
 
   @Post("conversations/:id/read")

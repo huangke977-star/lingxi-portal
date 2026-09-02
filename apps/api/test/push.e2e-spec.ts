@@ -121,6 +121,9 @@ describe("browser push subscriptions", () => {
       conversationId: 12,
       body: "测试消息",
       type: "text",
+      quote: null,
+      isPinned: false,
+      pinOrder: 0,
       attachments: [],
       call: null,
       sender: {

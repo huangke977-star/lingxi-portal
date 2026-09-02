@@ -103,6 +103,7 @@ export interface ArticleComment {
   likeCount: number;
   liked: boolean;
   reported: boolean;
+  quote: { id: number; body: string; authorName: string; createdAt: string; available: boolean } | null;
   attachments: ContentAttachment[];
   pendingReportCount?: number;
   reports?: ArticleCommentReport[];
@@ -657,15 +658,16 @@ export function clearArticleReadingHistory(accessToken: string): Promise<{ count
   return requestJson<{ count: number }>("/articles/history", { method: "DELETE", headers: authHeaders(accessToken) });
 }
 
-export function createArticleComment(accessToken: string, id: number, body: string, parentId?: number, files: File[] = []): Promise<ArticleComment> {
+export function createArticleComment(accessToken: string, id: number, body: string, parentId?: number, files: File[] = [], quotedCommentId?: number): Promise<ArticleComment> {
   if (!files.length) return requestJson<ArticleComment>(`/articles/${id}/comments`, {
     method: "POST",
     headers: authHeaders(accessToken),
-    body: JSON.stringify({ body, parentId }),
+    body: JSON.stringify({ body, parentId, quotedCommentId }),
   });
   const form = new FormData();
   form.append("body", body);
   if (parentId) form.append("parentId", String(parentId));
+  if (quotedCommentId) form.append("quotedCommentId", String(quotedCommentId));
   files.forEach((file) => form.append("files", file));
   return requestJson<ArticleComment>(`/articles/${id}/comments`, { method: "POST", headers: authHeaders(accessToken), body: form });
 }

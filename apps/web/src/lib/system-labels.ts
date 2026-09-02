@@ -136,6 +136,7 @@ const notificationTypes: Record<string, LocalizedPair> = {
   article_favorited: ["文章被收藏", "Article favorited"],
   article_commented: ["文章有新评论", "New article comment"],
   comment_replied: ["评论有新回复", "New comment reply"],
+  mention_received: ["有人提到了你", "You were mentioned"],
   author_subscribed: ["新的订阅者", "New subscriber"],
   subscription_published: ["订阅作者发布新文章", "Subscribed author published"],
   suggestion_updated: ["建议进度已更新", "Suggestion progress updated"],

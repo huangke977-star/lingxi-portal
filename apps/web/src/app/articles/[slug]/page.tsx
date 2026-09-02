@@ -378,7 +378,7 @@ export default function ArticleDetailPage() {
     }
     setIsSubmittingComment(true);
     try {
-      const comment = await createArticleComment(token, article.id, commentDraft.trim(), replyingTo?.id, files);
+      const comment = await createArticleComment(token, article.id, commentDraft.trim(), replyingTo?.id, files, replyingTo?.id);
       setComments((current) => mergeArticleComments(current, [comment]));
       setArticle((current) => current ? { ...current, commentCount: current.commentCount + 1 } : current);
       setCommentDraft("");
@@ -480,6 +480,7 @@ export default function ArticleDetailPage() {
             {parent ? <span className="article-reply-target"><CornerDownRight aria-hidden="true" size={13} />{phrase(`回复 @${parent.author.nickname}`, `Reply to @${parent.author.nickname}`)}</span> : null}
             <time>{formatArticleDate(comment.createdAt, locale)}</time>
           </div>
+          {comment.quote ? <button className={`article-comment-quote${comment.quote.available ? "" : " unavailable"}`} onClick={() => comment.quote?.available && document.getElementById(`article-comment-${comment.quote.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })} type="button"><CornerDownRight aria-hidden="true" size={13} /><span><strong>{comment.quote.authorName}</strong><small>{comment.quote.available ? comment.quote.body || phrase("原评论没有文字内容。", "The original comment has no text.") : phrase("原评论已不可见。", "The original comment is no longer available.")}</small></span></button> : null}
           {comment.attachments?.length ? <ContentAttachmentList attachments={comment.attachments} /> : null}
           {comment.body ? <p>{comment.body}</p> : null}
           {comment.status === "active" ? <div className="article-comment-actions">

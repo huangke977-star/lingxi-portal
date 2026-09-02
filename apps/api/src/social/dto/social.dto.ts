@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsDateString,
   IsIn,
   IsInt,
   IsOptional,
@@ -81,6 +82,46 @@ export class ListMessagesQueryDto {
   limit = 30;
 }
 
+export class SearchMessagesQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  q = "";
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  conversationId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  senderId?: number;
+
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  beforeId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit = 20;
+}
+
 export class SendChatMessageDto {
   @IsOptional()
   @IsString()
@@ -92,6 +133,17 @@ export class SendChatMessageDto {
   @ArrayMaxSize(9)
   @IsInt({ each: true })
   attachmentIds?: number[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  quotedMessageId?: number;
+}
+
+export class SetChatMessagePinDto {
+  @IsBoolean()
+  isPinned!: boolean;
 }
 
 export class ListNotificationsQueryDto {

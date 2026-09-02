@@ -139,6 +139,13 @@ export interface ArticleCommentResponse {
   likeCount: number;
   liked: boolean;
   reported: boolean;
+  quote: {
+    id: number;
+    body: string;
+    authorName: string;
+    createdAt: string;
+    available: boolean;
+  } | null;
   attachments: ArticleCommentAttachmentResponse[];
   pendingReportCount?: number;
   reports?: ArticleCommentReportResponse[];

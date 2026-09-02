@@ -199,6 +199,7 @@ enum UserNotificationType {
   article_favorited
   article_commented
   comment_replied
+  mention_received
   author_subscribed
   subscription_published
   announcement_published
@@ -273,6 +274,12 @@ enum UserNotificationChannel {
   system
   subscription
   interaction
+}
+
+enum SubscriptionDeliveryFrequency {
+  instant
+  daily
+  muted
 }
 
 enum EmailVerificationPurpose {
@@ -592,6 +599,7 @@ model User {
   articleTopicsCreated       ArticleTopic[]                  @relation("ArticleTopicCreatedBy")
   articleTopicsUpdated       ArticleTopic[]                  @relation("ArticleTopicUpdatedBy")
   topicSubscriptions         ArticleTopicSubscription[]
+  tagSubscriptions           ArticleTagSubscription[]
   profileSettings            UserProfileSettings?
   profileVisits              ProfileVisit[]                  @relation("ProfileVisitTarget")
   auditLogs                  AuditLog[]                      @relation("AuditLogActor")
@@ -1489,6 +1497,12 @@ model ArticleComment {
   parentId      Int?                   @map("parent_id")
   parent        ArticleComment?        @relation("ArticleCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
   replies       ArticleComment[]       @relation("ArticleCommentReplies")
+  quotedCommentId Int?                 @map("quoted_comment_id")
+  quotedComment ArticleComment?        @relation("ArticleCommentQuote", fields: [quotedCommentId], references: [id], onDelete: SetNull)
+  quoteReplies  ArticleComment[]       @relation("ArticleCommentQuote")
+  quotedBody    String?                @map("quoted_body") @db.Text
+  quotedAuthorName String?             @map("quoted_author_name") @db.VarChar(120)
+  quotedCreatedAt DateTime?            @map("quoted_created_at")
   body          String                 @db.Text
   status        ArticleCommentStatus   @default(active)
   likeCount     Int                    @default(0) @map("like_count")
@@ -1694,6 +1708,7 @@ model UserSubscription {
   authorId          Int      @map("author_id")
   author            User     @relation("UserSubscriptionAuthor", fields: [authorId], references: [id], onDelete: Cascade)
   notifyNewArticles Boolean  @default(true) @map("notify_new_articles")
+  frequency         SubscriptionDeliveryFrequency @default(instant)
   createdAt         DateTime @default(now()) @map("created_at")
 
   @@id([subscriberId, authorId])
@@ -1801,10 +1816,23 @@ model ArticleTopicSubscription {
   topicId   Int          @map("topic_id")
   topic     ArticleTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
   createdAt DateTime     @default(now()) @map("created_at")
+  frequency SubscriptionDeliveryFrequency @default(instant)
 
   @@id([userId, topicId])
   @@index([topicId, createdAt])
   @@map("article_topic_subscriptions")
+}
+
+model ArticleTagSubscription {
+  userId    Int      @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tag       String   @db.VarChar(80)
+  frequency SubscriptionDeliveryFrequency @default(instant)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([userId, tag])
+  @@index([tag, createdAt])
+  @@map("article_tag_subscriptions")
 }
 
 model ArticleTopicAllowedRole {
@@ -1951,14 +1979,25 @@ model ChatMessage {
   callSession    CallSession?             @relation(fields: [callSessionId], references: [id], onDelete: SetNull)
   body           String                   @db.Text
   type           ChatMessageType          @default(text)
+  quotedMessageId Int?                   @map("quoted_message_id")
+  quotedMessage  ChatMessage?            @relation("ChatMessageQuote", fields: [quotedMessageId], references: [id], onDelete: SetNull)
+  quoteReplies   ChatMessage[]           @relation("ChatMessageQuote")
+  quotedBody     String?                 @map("quoted_body") @db.Text
+  quotedSenderName String?               @map("quoted_sender_name") @db.VarChar(120)
+  quotedCreatedAt DateTime?              @map("quoted_created_at")
+  isPinned       Boolean                 @default(false) @map("is_pinned")
+  pinOrder       Int                     @default(0) @map("pin_order")
+  pinnedAt       DateTime?               @map("pinned_at")
   attachments    ChatAttachment[]
   deletions      ChatMessageDeletion[]
   groupReports   ChatGroupMessageReport[]
+  notifications  UserNotification[]      @relation("UserNotificationMessage")
   readAt         DateTime?                @map("read_at")
   createdAt      DateTime                 @default(now()) @map("created_at")
 
   @@index([conversationId, id])
   @@index([senderId, createdAt])
+  @@index([conversationId, isPinned, pinOrder])
   @@map("chat_messages")
 }
 
@@ -2211,6 +2250,8 @@ model UserNotification {
   article                  Article?                @relation(fields: [articleId], references: [id], onDelete: SetNull)
   commentId                Int?                    @map("comment_id")
   comment                  ArticleComment?         @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  messageId                Int?                    @map("message_id")
+  message                  ChatMessage?            @relation("UserNotificationMessage", fields: [messageId], references: [id], onDelete: SetNull)
   friendshipId             Int?                    @map("friendship_id")
   friendship               Friendship?             @relation(fields: [friendshipId], references: [id], onDelete: SetNull)
   strangerMessageRequestId Int?                    @map("stranger_message_request_id")
@@ -2235,6 +2276,7 @@ model UserNotification {
   @@index([userId, type, articleId, readAt])
   @@index([articleId])
   @@index([commentId])
+  @@index([messageId])
   @@index([friendshipId])
   @@index([strangerMessageRequestId])
   @@index([commentReportId])

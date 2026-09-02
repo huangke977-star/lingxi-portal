@@ -33,6 +33,7 @@ interface SendMessagePayload {
   conversationId?: unknown;
   body?: unknown;
   attachmentIds?: unknown;
+  quotedMessageId?: unknown;
 }
 
 interface ReadConversationPayload {
@@ -191,7 +192,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       const conversationId = this.requirePositiveInteger(payload.conversationId, "会话编号无效。");
       const body = typeof payload.body === "string" ? payload.body : "";
       const attachmentIds = this.requireAttachmentIds(payload.attachmentIds);
-      const message = await this.socialService.createMessage(userId, conversationId, body, attachmentIds);
+      const quotedMessageId = payload.quotedMessageId === undefined || payload.quotedMessageId === null || payload.quotedMessageId === ""
+        ? undefined
+        : this.requirePositiveInteger(payload.quotedMessageId, "引用消息编号无效。");
+      const message = await this.socialService.createMessage(userId, conversationId, body, attachmentIds, quotedMessageId);
       const delivery = await this.socialService.getConversationDelivery(conversationId);
       if (delivery.kind === "direct") {
         for (const participantId of delivery.participantIds) {

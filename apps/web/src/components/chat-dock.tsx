@@ -23,10 +23,12 @@ import {
   LoaderCircle,
   MessageCircle,
   MessageCircleMore,
+  MessageSquareQuote,
   Minus,
   MoreHorizontal,
   Paperclip,
   Phone,
+  Pin,
   Plus,
   Rss,
   RotateCcw,
@@ -93,6 +95,7 @@ import {
   deleteSelectedNotifications,
   downloadChatAttachment,
   downloadChatAttachmentThumbnail,
+  getMessageContext,
   getChatSocketOrigin,
   getOrCreateConversation,
   handleChatGroupReport,
@@ -100,6 +103,7 @@ import {
   listConversations,
   listFriendships,
   listMessages,
+  listPinnedMessages,
   listNotifications,
   markAllNotificationsRead,
   markConversationRead,
@@ -113,6 +117,8 @@ import {
   respondFriendRequest,
   respondStrangerMessageRequest,
   searchSocialUsers,
+  searchMessages,
+  setMessagePin,
   unblockFriendship,
   updateConversationSettings,
   updateNotificationChannelSettings,
@@ -225,6 +231,10 @@ interface PendingMessageForward {
   messageIds: number[];
 }
 
+type MessageSearchItem = ChatMessage & {
+  conversation: { id: number; kind: Conversation["kind"]; name: string };
+};
+
 type ConversationAction = "clear" | "delete";
 type MessageDeleteMode = "self" | "everyone";
 type MessageOperation = "delete-self" | "delete-everyone" | "recall";
@@ -280,6 +290,13 @@ export function ChatDock() {
   const [selectedId, setSelectedId] = useState(0);
   const [selectedSystemNotificationId, setSelectedSystemNotificationId] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [pinnedMessages, setPinnedMessages] = useState<ChatMessage[]>([]);
+  const [pendingMessageFocusId, setPendingMessageFocusId] = useState(0);
+  const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null);
+  const [messageSearchOpen, setMessageSearchOpen] = useState(false);
+  const [messageSearchInput, setMessageSearchInput] = useState("");
+  const [messageSearchResults, setMessageSearchResults] = useState<MessageSearchItem[]>([]);
+  const [isMessageSearchLoading, setIsMessageSearchLoading] = useState(false);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [pendingAttachmentsByConversation, setPendingAttachmentsByConversation] = useState<Record<number, PendingAttachment[]>>({});
   const [hasMore, setHasMore] = useState(false);
@@ -481,6 +498,11 @@ export function ChatDock() {
     setSelectedNotificationIds(new Set());
     setOpenNotificationActionId(0);
     setNotificationActionPosition(null);
+    setQuotedMessage(null);
+    setMessageSearchOpen(false);
+    setMessageSearchInput("");
+    setMessageSearchResults([]);
+    setPendingMessageFocusId(0);
   }, [selectedId]);
 
   useEffect(() => {
@@ -911,6 +933,50 @@ export function ChatDock() {
   }, [isDesktop, isMinimized, isMobileConversationOpen, isOpen, phrase, selectedId]);
 
   useEffect(() => {
+    const token = readAccessToken();
+    if (!token || selectedId <= 0 || !selected?.group) {
+      setPinnedMessages([]);
+      return;
+    }
+    let active = true;
+    listPinnedMessages(token, selectedId)
+      .then((result) => { if (active) setPinnedMessages(result.items); })
+      .catch(() => { if (active) setPinnedMessages([]); });
+    return () => { active = false; };
+  }, [selected?.group, selectedId]);
+
+  useEffect(() => {
+    const token = readAccessToken();
+    const query = messageSearchInput.trim();
+    if (!token || !messageSearchOpen || !query) {
+      setMessageSearchResults([]);
+      setIsMessageSearchLoading(false);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setIsMessageSearchLoading(true);
+      searchMessages(token, { q: query, conversationId: selected?.id, limit: 20 })
+        .then((result) => { if (active) setMessageSearchResults(result.items); })
+        .catch((searchError) => { if (active) setError(searchError instanceof Error ? searchError.message : phrase("消息搜索失败。", "Could not search messages.")); })
+        .finally(() => { if (active) setIsMessageSearchLoading(false); });
+    }, 260);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [messageSearchInput, messageSearchOpen, phrase, selected?.id]);
+
+  useEffect(() => {
+    if (!pendingMessageFocusId || isMessagesLoading) return;
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(`chat-message-${pendingMessageFocusId}`);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.classList.add("chat-message-focus-highlight");
+      window.setTimeout(() => target.classList.remove("chat-message-focus-highlight"), 1600);
+      setPendingMessageFocusId(0);
+    });
+  }, [isMessagesLoading, messages.length, pendingMessageFocusId]);
+
+  useEffect(() => {
     if (!isMessagesLoading && isOpen && !isMinimized) {
       window.requestAnimationFrame(() => {
         const list = messageListRef.current;
@@ -1211,7 +1277,7 @@ export function ChatDock() {
     addFiles(Array.from(event.dataTransfer.files));
   }
 
-  async function sendPayload(conversationId: number, body: string, files: File[], clearComposer = false) {
+  async function sendPayload(conversationId: number, body: string, files: File[], clearComposer = false, quotedMessageId?: number) {
     const socket = socketRef.current;
     const token = readAccessToken();
     if ((!body && !files.length) || !conversationId || !token) return;
@@ -1235,12 +1301,14 @@ export function ChatDock() {
         conversationId,
         body,
         attachmentIds: attachments.map((item) => item.id),
+        quotedMessageId,
       }) as ChatAck;
       if (!response.ok) throw new Error(response.error || phrase("消息发送失败。", "Could not send message."));
       if (clearComposer) {
         clearComposerForConversation(conversationId, body, files);
         setIsEmojiOpen(false);
         setIsMobileToolsOpen(false);
+        setQuotedMessage(null);
       }
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : phrase("消息发送失败，请重试。", "Could not send message. Try again."));
@@ -1663,6 +1731,19 @@ export function ChatDock() {
         return;
       }
     }
+    if (notification.context?.kind === "message_mention" && notification.context.conversationId && notification.messageId) {
+      setIsMinimized(false);
+      setIsOpen(true);
+      setSelectedId(notification.context.conversationId);
+      setIsMobileConversationOpen(true);
+      if (notification.context.message) {
+        setMessages((current) => current.some((item) => item.id === notification.context!.message!.id)
+          ? current
+          : [...current, notification.context!.message!].sort((left, right) => left.id - right.id));
+      }
+      setPendingMessageFocusId(notification.messageId);
+      return;
+    }
     if (notification.type === "friend_request_received") {
       setSelectedId(notificationConversationId("system"));
       setSelectedSystemNotificationId(notification.id);
@@ -1987,7 +2068,69 @@ export function ChatDock() {
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await sendPayload(selectedId, draft.trim(), pendingAttachments.map((item) => item.file), true);
+    await sendPayload(selectedId, draft.trim(), pendingAttachments.map((item) => item.file), true, quotedMessage?.id);
+  }
+
+  function beginMessageQuote(message: ChatMessage) {
+    if (message.type === "system") return;
+    setQuotedMessage(message);
+    setOpenMessageActionId(0);
+    setMessageActionPosition(null);
+    window.requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.chat-composer textarea')?.focus({ preventScroll: true }));
+  }
+
+  async function toggleMessagePin(message: ChatMessage) {
+    const token = readAccessToken();
+    if (!token || !selected?.group || !selected.group.canManage) return;
+    try {
+      const updated = await setMessagePin(token, selected.id, message.id, !message.isPinned);
+      setMessages((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setPinnedMessages((current) => updated.isPinned
+        ? [updated, ...current.filter((item) => item.id !== updated.id)]
+        : current.filter((item) => item.id !== updated.id));
+      setOpenMessageActionId(0);
+      setMessageActionPosition(null);
+      setNotice(updated.isPinned ? phrase("消息已置顶。", "Message pinned.") : phrase("消息已取消置顶。", "Message unpinned."));
+    } catch (pinError) {
+      setError(pinError instanceof Error ? pinError.message : phrase("消息置顶操作失败。", "Could not update pinned message."));
+    }
+  }
+
+  async function openMessageSearchResult(result: MessageSearchItem) {
+    const token = readAccessToken();
+    if (!token) return;
+    setMessageSearchOpen(false);
+    setMessageSearchInput("");
+    setMessageSearchResults([]);
+    if (result.conversation.id !== selectedId) {
+      setSelectedId(result.conversation.id);
+      setIsMobileConversationOpen(true);
+    }
+    try {
+      const context = await getMessageContext(token, result.conversation.id, result.id);
+      setMessages((current) => current.some((item) => item.id === context.message.id)
+        ? current
+        : [...current, context.message].sort((left, right) => left.id - right.id));
+      setPendingMessageFocusId(context.message.id);
+    } catch (contextError) {
+      setError(contextError instanceof Error ? contextError.message : phrase("消息定位失败。", "Could not locate the message."));
+    }
+  }
+
+  async function focusMessage(messageId: number) {
+    if (messages.some((item) => item.id === messageId)) {
+      setPendingMessageFocusId(messageId);
+      return;
+    }
+    const token = readAccessToken();
+    if (!token || !selectedId) return;
+    try {
+      const context = await getMessageContext(token, selectedId, messageId);
+      setMessages((current) => [...current, context.message].filter((item, index, all) => all.findIndex((candidate) => candidate.id === item.id) === index).sort((left, right) => left.id - right.id));
+      setPendingMessageFocusId(messageId);
+    } catch (contextError) {
+      setError(contextError instanceof Error ? contextError.message : phrase("消息定位失败。", "Could not locate the message."));
+    }
   }
 
   function clearSendHoldTimer() {
@@ -2120,10 +2263,18 @@ export function ChatDock() {
               <button aria-label={phrase("发起语音通话", "Start voice call")} disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("voice")} title={phrase("语音通话", "Voice call")} type="button"><Phone aria-hidden="true" size={17} /></button>
               <button aria-label={phrase("发起视频通话", "Start video call")} disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("video")} title={phrase("视频通话", "Video call")} type="button"><Video aria-hidden="true" size={17} /></button>
             </> : null}
+            {selected && !selectedNotificationConfig ? <button aria-expanded={messageSearchOpen} aria-label={phrase("搜索聊天消息", "Search chat messages")} onClick={() => setMessageSearchOpen((current) => !current)} title={phrase("搜索聊天消息", "Search chat messages")} type="button"><Search aria-hidden="true" size={17} /></button> : null}
             <button aria-label={phrase("最小化聊天窗", "Minimize chat window")} onClick={() => { setIsMessageSettingsOpen(false); setIsMinimized(true); }} title={phrase("最小化", "Minimize")} type="button"><Minus aria-hidden="true" size={17} /></button>
             <button aria-label={phrase("关闭聊天窗", "Close chat window")} onClick={closeDock} title={t("common.close")} type="button"><X aria-hidden="true" size={17} /></button>
           </div>
         </header>
+        {messageSearchOpen && selected && !selectedNotificationConfig ? <section className="chat-message-search-panel" onPointerDown={(event) => event.stopPropagation()}>
+          <label><Search aria-hidden="true" size={15} /><input autoFocus aria-label={phrase("搜索聊天消息", "Search chat messages")} onChange={(event) => setMessageSearchInput(event.target.value)} placeholder={phrase("搜索当前会话消息", "Search this conversation")} value={messageSearchInput} /><button aria-label={phrase("关闭消息搜索", "Close message search")} onClick={() => { setMessageSearchOpen(false); setMessageSearchInput(""); }} title={t("common.close")} type="button"><X aria-hidden="true" size={14} /></button></label>
+          {isMessageSearchLoading ? <span className="chat-state">{phrase("正在搜索。", "Searching.")}</span> : null}
+          {!isMessageSearchLoading && messageSearchInput.trim() && !messageSearchResults.length ? <span className="chat-sidebar-empty">{phrase("没有找到消息。", "No messages found.")}</span> : null}
+          {!messageSearchInput.trim() ? <span className="chat-sidebar-empty">{phrase("输入文字搜索当前会话。", "Enter text to search this conversation.")}</span> : null}
+          {messageSearchResults.map((result) => <button className="chat-message-search-result" key={`${result.conversation.id}-${result.id}`} onClick={() => void openMessageSearchResult(result)} type="button"><span><strong>{result.body || phrase("附件消息", "Attachment")}</strong><small>{result.senderDisplayName} · {formatChatTime(result.createdAt, locale)}</small></span><ChevronLeft aria-hidden="true" size={15} /></button>)}
+        </section> : null}
         {isMessageSettingsOpen ? <section className="chat-message-settings" onPointerDown={(event) => event.stopPropagation()}>
           <header>
             <span><Settings2 aria-hidden="true" size={17} /><strong>{phrase("消息设置", "Message settings")}</strong></span>
@@ -2315,6 +2466,7 @@ export function ChatDock() {
               selectedIds={selectedNotificationIds}
               listRef={systemMessageListRef}
             /> : selected ? <>
+              {selected.group && pinnedMessages.length ? <div className="chat-pinned-messages"><span><Pin aria-hidden="true" size={14} />{phrase("置顶消息", "Pinned messages")}</span>{pinnedMessages.map((message) => <button key={message.id} onClick={() => void focusMessage(message.id)} type="button"><strong>{message.senderDisplayName}</strong><small>{message.body || phrase("附件消息", "Attachment")}</small></button>)}</div> : null}
               <div className="chat-message-list" onScroll={handleMessageListScroll} ref={messageListRef}>
                 {isOlderMessagesLoading ? <span className="chat-load-older"><LoaderCircle aria-hidden="true" className="spin" size={14} />{phrase("正在读取更早消息", "Loading earlier messages")}</span> : null}
                 {isMessagesLoading ? <span className="chat-state">{phrase("正在读取聊天记录。", "Loading chat history.")}</span> : messages.map((message) => (
@@ -2325,6 +2477,7 @@ export function ChatDock() {
                     onCall={() => callFromMessage(message)}
                     onGreeting={() => void sendQuickMessage(phrase("你好", "Hello"))}
                     onPreview={setPreviewAttachment}
+                    onOpenQuoted={(messageId) => void focusMessage(messageId)}
                     onOpenActions={(event) => openMessageActionsAtPointer(message.id, event)}
                     onLongPressActions={() => openMobileMessageActions(message.id)}
                     onToggleSelection={() => toggleMessageSelection(message.id)}
@@ -2343,6 +2496,7 @@ export function ChatDock() {
                 <button disabled={!selectedMessageIds.size || isMessageActionRunning} onClick={() => requestSelectedMessageDeletion("self")} type="button"><Trash2 aria-hidden="true" size={15} />{phrase("删除", "Delete")}</button>
                 <button className="danger" disabled={!selectedMessageIds.size || isMessageActionRunning} onClick={() => requestSelectedMessageDeletion("everyone")} type="button"><Trash2 aria-hidden="true" size={15} />{phrase("双向删除", "Delete for everyone")}</button>
               </div> : <form className={`chat-composer${selectedGroupIsBanned ? " disabled" : ""}`} onDragOver={(event) => { if (!selectedGroupIsBanned) event.preventDefault(); }} onDrop={handleDrop} onSubmit={sendMessage}>
+                {quotedMessage ? <div className="chat-quoted-composer"><MessageSquareQuote aria-hidden="true" size={14} /><span><strong>{phrase("引用", "Replying to")} {quotedMessage.senderDisplayName}</strong><small>{quotedMessage.body || phrase("附件消息", "Attachment")}</small></span><button aria-label={phrase("取消引用", "Clear quote")} onClick={() => setQuotedMessage(null)} title={phrase("取消引用", "Clear quote")} type="button"><X aria-hidden="true" size={14} /></button></div> : null}
                 {pendingAttachments.length ? <div className="chat-pending-attachments">{pendingAttachments.map((attachment) => (
                   <span key={attachment.id}>{attachment.kind === "image" && attachment.previewUrl
                     ? <img alt="" src={attachment.previewUrl} />
@@ -2382,10 +2536,12 @@ export function ChatDock() {
             </> : <div className="chat-empty"><MessageCircle aria-hidden="true" size={28} /><strong>{phrase("选择一位好友开始聊天", "Choose a friend to start chatting")}</strong><span>{phrase("可以发送文字、表情、图片和文件。", "You can send text, emoji, images, and files.")}</span></div>}
           </main>
         </div>
-        {actionMessage && !isMessageSelectionMode ? <span className={`chat-message-action-menu${messageActionPosition ? " context-positioned" : ""}`} data-chat-message-action style={messageActionStyle}>
-          <button onClick={() => beginMessageSelection(actionMessage.id)} type="button"><Check aria-hidden="true" size={14} />{phrase("选择", "Select")}</button>
-          {actionMessage.body ? <button onClick={() => void copyMessageBody(actionMessage)} type="button"><Copy aria-hidden="true" size={14} />{phrase("复制", "Copy")}</button> : null}
-          {actionMessage.type !== "system" && !selectedGroupIsBanned ? <button onClick={() => openMessageForward([actionMessage.id])} type="button"><Forward aria-hidden="true" size={14} />{phrase("转发", "Forward")}</button> : null}
+         {actionMessage && !isMessageSelectionMode ? <span className={`chat-message-action-menu${messageActionPosition ? " context-positioned" : ""}`} data-chat-message-action style={messageActionStyle}>
+           <button onClick={() => beginMessageSelection(actionMessage.id)} type="button"><Check aria-hidden="true" size={14} />{phrase("选择", "Select")}</button>
+           {actionMessage.type !== "system" ? <button onClick={() => beginMessageQuote(actionMessage)} type="button"><MessageSquareQuote aria-hidden="true" size={14} />{phrase("引用", "Quote")}</button> : null}
+           {actionMessage.body ? <button onClick={() => void copyMessageBody(actionMessage)} type="button"><Copy aria-hidden="true" size={14} />{phrase("复制", "Copy")}</button> : null}
+           {actionMessage.type !== "system" && !selectedGroupIsBanned ? <button onClick={() => openMessageForward([actionMessage.id])} type="button"><Forward aria-hidden="true" size={14} />{phrase("转发", "Forward")}</button> : null}
+           {selected?.group?.canManage && actionMessage.type !== "system" ? <button onClick={() => void toggleMessagePin(actionMessage)} type="button"><Pin aria-hidden="true" size={14} />{actionMessage.isPinned ? phrase("取消置顶", "Unpin") : phrase("置顶", "Pin")}</button> : null}
           {selected?.group && actionMessage.sender.id !== user.id && actionMessage.type !== "system" ? <button onClick={() => { setPendingGroupReportMessageId(actionMessage.id); setOpenMessageActionId(0); setGroupReportReason("spam"); setGroupReportDetail(""); }} type="button"><Flag aria-hidden="true" size={14} />{phrase("举报", "Report")}</button> : null}
           {actionMessage.sender.id === user.id && actionMessage.type !== "system" && messageActionOpenedAt - timestamp(actionMessage.createdAt) <= 2 * 60 * 1000
             ? <button onClick={() => requestMessageOperation("recall", actionMessage.id)} type="button"><Undo2 aria-hidden="true" size={14} />{phrase("撤回消息", "Recall message")}</button>
@@ -2820,6 +2976,7 @@ function ChatMessageItem({
   onCall,
   onGreeting,
   onPreview,
+  onOpenQuoted,
   onLongPressActions,
   onOpenActions,
   onToggleSelection,
@@ -2833,6 +2990,7 @@ function ChatMessageItem({
   onCall: () => void;
   onGreeting: () => void;
   onPreview: (attachment: ChatAttachment) => void;
+  onOpenQuoted: (messageId: number) => void;
   onLongPressActions: () => void;
   onOpenActions: (event: ReactMouseEvent<HTMLDivElement>) => void;
   onToggleSelection: () => void;
@@ -2943,7 +3101,7 @@ function ChatMessageItem({
   >{selected ? <Check aria-hidden="true" size={13} /> : null}</button> : null;
 
   if (message.type === "system") {
-    return <div aria-selected={selectionMode ? selected : undefined} className={`chat-system-row${selectionMode ? " selection-mode" : ""}${selected ? " selected" : ""}`} onClickCapture={handleSelectionClick} onContextMenu={handleContextMenu} onPointerCancel={handlePointerEnd} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd}>
+    return <div aria-selected={selectionMode ? selected : undefined} className={`chat-system-row${selectionMode ? " selection-mode" : ""}${selected ? " selected" : ""}`} id={`chat-message-${message.id}`} onClickCapture={handleSelectionClick} onContextMenu={handleContextMenu} onPointerCancel={handlePointerEnd} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd}>
       {selectionControl}
       {callType ? <button className="chat-call-message" onClick={onCall} title={callType === "voice" ? phrase("再次发起语音通话", "Start another voice call") : phrase("再次发起视频通话", "Start another video call")} type="button">
         {callType === "voice" ? <Phone aria-hidden="true" size={14} /> : <Video aria-hidden="true" size={14} />}
@@ -2956,7 +3114,7 @@ function ChatMessageItem({
   const emojiOnly = isEmojiOnly(message.body);
   const imageAttachments = message.attachments?.filter((attachment) => attachment.kind === "image") ?? [];
   const otherAttachments = message.attachments?.filter((attachment) => attachment.kind !== "image") ?? [];
-  return <div aria-selected={selectionMode ? selected : undefined} className={`chat-message ${mine ? "mine" : "theirs"}${selectionMode ? " selection-mode" : ""}${emojiOnly ? " emoji-only" : ""}${selected ? " selected" : ""}`} onClickCapture={handleSelectionClick} onContextMenu={handleContextMenu} onPointerCancel={handlePointerEnd} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd}>
+  return <div aria-selected={selectionMode ? selected : undefined} className={`chat-message ${mine ? "mine" : "theirs"}${selectionMode ? " selection-mode" : ""}${emojiOnly ? " emoji-only" : ""}${selected ? " selected" : ""}`} id={`chat-message-${message.id}`} onClickCapture={handleSelectionClick} onContextMenu={handleContextMenu} onPointerCancel={handlePointerEnd} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd}>
     {selectionControl}
     <span
       aria-label={message.senderDisplayName || message.sender.nickname}
@@ -2969,6 +3127,7 @@ function ChatMessageItem({
       title={message.senderDisplayName || message.sender.nickname}
     ><UserAvatar user={message.sender} /><small>{message.senderDisplayName || message.sender.nickname}</small></span>
     <div>
+      {message.quote ? <button className={`chat-message-quote${message.quote.available ? "" : " unavailable"}`} onClick={() => message.quote && onOpenQuoted(message.quote.id)} type="button"><MessageSquareQuote aria-hidden="true" size={13} /><span><strong>{message.quote.senderDisplayName}</strong><small>{message.quote.available ? message.quote.body || phrase("附件消息", "Attachment") : phrase("原消息已不可见", "Original message is unavailable")}</small></span></button> : null}
       {imageAttachments.length ? <div className={`chat-message-attachments chat-message-images count-${imageAttachments.length}`}>{imageAttachments.map((attachment) => <AuthenticatedImage attachment={attachment} key={attachment.id} onClick={() => onPreview(attachment)} />)}</div> : null}
       {otherAttachments.length ? <div className={`chat-message-attachments chat-message-files${otherAttachments.length === 1 && otherAttachments[0].kind === "audio" ? " audio-only" : ""}`}>{otherAttachments.map((attachment) => attachment.kind === "audio" || attachment.kind === "video" ? <AuthenticatedMedia attachment={attachment} key={attachment.id} /> : <AttachmentFile attachment={attachment} key={attachment.id} />)}</div> : null}
       {message.body ? <p>{message.body}</p> : null}

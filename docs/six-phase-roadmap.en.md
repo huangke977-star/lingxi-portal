@@ -2,8 +2,8 @@
 
 - Document status: Active
 - Created: 2026-08-04
-- Last updated: 2026-08-31
-- Current phase: Phase 15 completed
+- Last updated: 2026-09-02
+- Current phase: Phase 16 completed
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -48,7 +48,7 @@ Status definitions:
 | Phase 13 | Recommendation And Subscription Experience | Recommendation feedback, creator heat, subscription management, and mobile collapse | Completed |
 | Phase 14 | Article Publishing Plans And Author Templates | Scheduled publication, scheduled unpublishing, templates, and pre-publish checks | Completed |
 | Phase 15 | Account And Privacy Completeness | Data export, deletion, blocking, two-factor authentication, and authorization records | Completed |
-| Phase 16 | Stronger Community Interaction | Mentions, quotes, message search, group pins, message location, and subscription improvements | Not started |
+| Phase 16 | Stronger Community Interaction | Mentions, quotes, message search, group pins, message location, and subscription improvements | Completed |
 | Phase 17 | Content Distribution And Public Sharing | RSS/Atom, sitemaps, Open Graph, and email distribution | Not started |
 | Phase 18 | Deeper Recommendations And Resources | Recommendation explanations, recovery, redemption records, points rules, and creator earnings | Not started |
 | Phase 19 | External Integration Capability | Webhooks, read-only API tokens, external notifications, and third-party login | Not started |
@@ -574,16 +574,27 @@ Goal: improve discussion readability and findability so users can follow context
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P16-01 | `@` mention notifications in article comments, replies, and group messages with visibility, blocking, and notification-preference checks | Not started |
-| P16-02 | Quoted replies with a stable quoted summary and source; show a safe fallback when the original is deleted or no longer visible | Not started |
-| P16-03 | Direct-message and group-message search by keyword, sender, time, and conversation with paginated, scoped results | Not started |
-| P16-04 | Pinned group announcements and important messages with administrator-only write access and ordering | Not started |
-| P16-05 | Group-message location from search results, notifications, and quotes with historical pagination and permission changes handled | Not started |
-| P16-06 | Author, topic, and tag subscription improvements with consistent state, unsubscribe entry points, delivery frequency, and bulk management | Not started |
+| P16-01 | `@` mention notifications in article comments, replies, and group messages with visibility, blocking, and notification-preference checks | Completed |
+| P16-02 | Quoted replies with a stable quoted summary and source; show a safe fallback when the original is deleted or no longer visible | Completed |
+| P16-03 | Direct-message and group-message search by keyword, sender, time, and conversation with paginated, scoped results | Completed |
+| P16-04 | Pinned group announcements and important messages with administrator-only write access and ordering | Completed |
+| P16-05 | Group-message location from search results, notifications, and quotes with historical pagination and permission changes handled | Completed |
+| P16-06 | Author, topic, and tag subscription improvements with consistent state, unsubscribe entry points, delivery frequency, and bulk management | Completed |
 
 Necessity: High. This directly improves community retention and message handling, and depends on Phase 15 blocking and notification boundaries.
 
 Acceptance focus: notifications are neither unauthorized nor duplicated; quotes do not leak hidden content; search never crosses unauthorized conversations; pins and message location work on desktop, mobile, and both locales.
+
+### P16 Acceptance Record
+
+- Added additive migration `20260902100000_add_p16_interaction_features`: comment and chat-message quote snapshots, group-message pin ordering/timestamps, notification-to-message linkage, instant/daily/muted frequency for author and topic subscriptions, and a tag-subscription table.
+- Article comments, comment replies, and group messages support `@` mentions. Before creating a notification, the API checks visibility, blocking, notification preferences, and a deduplication key; notifications can locate the relevant conversation or message context.
+- Comments and chat messages support quoted replies. When the source is deleted, hidden, or no longer accessible, only a fallback state is returned and the original body is not leaked.
+- Direct and group messages support keyword, conversation, sender, time-range, and cursor-based pagination search. The server constrains results to conversations accessible to the current user.
+- Group administrators can pin, unpin, and order messages; ordinary members can only read pinned messages. Search results, mention notifications, and quotes can locate historical message context.
+- Subscription management supports instant, daily, and muted delivery for authors, topics, and tags, plus unsubscribe actions for authors, topics, tags, and collections. Digest generation includes only currently visible, authorized content.
+- The chat client now has search, quote previews, a pinned-message area, pin actions, and message location; article comments render quote previews; fixed bilingual copy uses the existing `phrase()` mechanism.
+- The complete API suite passed 44 suites and 315 tests. API/Web lint, API/Web production builds, Prisma schema validation, and `git diff --check` passed.
 
 ### Phase 17: Content Distribution And Public Sharing
 
@@ -666,7 +677,7 @@ Acceptance focus: restore results are reproducible, alerts reach owners, ordinar
 
 ### Later-Phase Dependencies And Order
 
-Phase 15 is next and establishes the account, blocking, and authorization foundation. Phase 16 depends on its relationship and notification boundaries. Phases 17 and 18 can run in parallel after Phase 15, but P17-05 requires SMTP. Phase 19 depends on a stable event and permission model; third-party login/SSO needs a separate decision. Phase 20 can follow once public URLs and content-cache boundaries from Phase 17 are clear. Phase 21 should collect operational evidence continuously and run its final acceptance after the main P15-P20 work is complete.
+Phases 15 and 16 are complete. Phases 17 and 18 can run in parallel, but P17-05 requires SMTP. Phase 19 depends on a stable event and permission model; third-party login/SSO needs a separate decision. Phase 20 can follow once public URLs and content-cache boundaries from Phase 17 are clear. Phase 21 should collect operational evidence continuously and run its final acceptance after the main P15-P20 work is complete.
 
 The fixed execution order is P15 -> P16 -> P17/P18 -> P19 -> P20 -> P21. Each phase must complete code, migrations, tests, bilingual documentation, push, deployment, and production verification before its status changes to `Completed`.
 

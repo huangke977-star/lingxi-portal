@@ -124,12 +124,13 @@ export interface OnboardingState {
 }
 
 export interface ContentSubscriptions {
-  topics: Array<{ id: number; title: string; slug: string; description: string; coverPath: string | null; articleCount: number; subscriberCount: number; subscribedAt: string }>;
+  topics: Array<{ id: number; title: string; slug: string; description: string; coverPath: string | null; articleCount: number; subscriberCount: number; frequency: "instant" | "daily" | "muted"; subscribedAt: string }>;
   collections: Array<{ id: number; name: string; description: string; owner: ArticleAuthor; articleCount: number; subscriberCount: number; subscribedAt: string }>;
+  tags: Array<{ tag: string; frequency: "instant" | "daily" | "muted"; subscribedAt: string }>;
 }
 
 export interface SubscriptionSettings {
-  items: Array<{ author: ArticleAuthor; notifyNewArticles: boolean; subscribedAt: string }>;
+  items: Array<{ author: ArticleAuthor; notifyNewArticles: boolean; frequency: "instant" | "daily" | "muted"; subscribedAt: string }>;
   digestEnabled: boolean;
 }
 
@@ -163,8 +164,8 @@ export function listContentSubscriptions(accessToken: string) {
   return requestJson<ContentSubscriptions>("/discovery/subscriptions/content", { cache: "no-store", headers: authHeaders(accessToken) });
 }
 
-export function updateSubscriptionSetting(accessToken: string, authorId: number, notifyNewArticles: boolean) {
-  return requestJson<{ authorId: number; notifyNewArticles: boolean }>(`/discovery/subscriptions/${authorId}/settings`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify({ notifyNewArticles }) });
+export function updateSubscriptionSetting(accessToken: string, authorId: number, input: { notifyNewArticles?: boolean; frequency?: "instant" | "daily" | "muted" }) {
+  return requestJson<{ authorId: number; notifyNewArticles: boolean; frequency?: "instant" | "daily" | "muted" }>(`/discovery/subscriptions/${authorId}/settings`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify(input) });
 }
 
 export function listMyCollections(accessToken: string) {
@@ -213,6 +214,22 @@ export function subscribeTopic(accessToken: string, id: number) {
 
 export function unsubscribeTopic(accessToken: string, id: number) {
   return requestJson<{ subscribed: false; subscriberCount: number }>(`/discovery/topics/${id}/subscribe`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function updateTopicSubscriptionFrequency(accessToken: string, id: number, frequency: "instant" | "daily" | "muted") {
+  return requestJson<{ topicId: number; frequency: typeof frequency }>(`/discovery/topics/${id}/subscription`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify({ frequency }) });
+}
+
+export function subscribeTag(accessToken: string, tag: string) {
+  return requestJson<{ subscribed: true; tag: string; frequency: "instant" }>("/discovery/tags/subscribe", { method: "POST", headers: authHeaders(accessToken), body: JSON.stringify({ tag }) });
+}
+
+export function unsubscribeTag(accessToken: string, tag: string) {
+  return requestJson<{ subscribed: false; tag: string }>(`/discovery/tags/subscribe/${encodeURIComponent(tag)}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
+export function updateTagSubscriptionFrequency(accessToken: string, tag: string, frequency: "instant" | "daily" | "muted") {
+  return requestJson<{ tag: string; frequency: typeof frequency }>(`/discovery/tags/subscriptions/${encodeURIComponent(tag)}`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify({ frequency }) });
 }
 
 export function subscribeCollection(accessToken: string, id: number) {

@@ -23,6 +23,8 @@ import {
   ArticleTopicStatus,
   ArticleVersionSource,
   ArticleVisibility,
+  FriendshipStatus,
+  SubscriptionDeliveryFrequency,
   PortalVisibility,
   Prisma,
   RecommendationTargetType,
@@ -1593,6 +1595,20 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
           throw new BadRequestException("回复的评论不存在。");
         }
       }
+      let quotedComment: { id: number; body: string; authorName: string; createdAt: Date } | null = null;
+      if (dto.quotedCommentId) {
+        const quoted = await this.prisma.articleComment.findFirst({
+          where: { id: dto.quotedCommentId, articleId: id, status: ArticleCommentStatus.active },
+          select: { id: true, body: true, createdAt: true, author: { select: { nickname: true, username: true } } },
+        });
+        if (!quoted) throw new BadRequestException("引用的评论不存在或当前不可见。");
+        quotedComment = {
+          id: quoted.id,
+          body: quoted.body,
+          authorName: quoted.author.nickname || quoted.author.username,
+          createdAt: quoted.createdAt,
+        };
+      }
       stored = files?.length ? await this.storeContentFiles(files) : [];
       const comment = await this.prisma.$transaction(async (transaction) => {
         const created = await transaction.articleComment.create({
@@ -1600,6 +1616,10 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
             articleId: id,
             authorId: user.id,
             parentId: dto.parentId ?? null,
+            quotedCommentId: quotedComment?.id ?? null,
+            quotedBody: quotedComment?.body ?? null,
+            quotedAuthorName: quotedComment?.authorName ?? null,
+            quotedCreatedAt: quotedComment?.createdAt ?? null,
             body,
             attachments: stored.length ? { create: stored.map((attachment) => ({ ...attachment, ownerId: user.id })) } : undefined,
           },
@@ -1639,6 +1659,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
           }),
           actionUrl, articleId: article.id, commentId: created.id,
         } });
+        await this.createCommentMentionNotifications(transaction, article, created.id, user, body);
         return created;
       });
       if (body) await this.contentModerationService.recordAccepted({ source: "comment", actorId: user.id, content: body, contentRef: `comment:${comment.id}` });
@@ -2817,16 +2838,37 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     const notificationSettings = await this.siteSettingsService.getNotificationSettings();
     if (!notificationSettings.notifySubscriptionPublished) return;
     const roleCodes = article.allowedRoles.map(({ role }) => role.code);
-    const subscriptions = await transaction.userSubscription.findMany({ where: {
-      authorId: article.authorId,
-      notifyNewArticles: true,
-      subscriber: {
-        status: "active",
-        ...(article.visibility === ArticleVisibility.role_restricted ? { role: { code: { in: roleCodes } } } : {}),
-      },
-    }, select: { subscriberId: true } });
-    if (!subscriptions.length) return;
-    await transaction.userNotification.createMany({ data: subscriptions.map(({ subscriberId }) => ({
+    const subscriberWhere = {
+      status: "active" as const,
+      ...(article.visibility === ArticleVisibility.role_restricted ? { role: { code: { in: roleCodes } } } : {}),
+    };
+    const topicIds = (article.topicItems ?? []).map(({ topic }) => topic.id);
+    const tags = (article.tags ?? "").split(",").map((tag) => tag.trim()).filter(Boolean);
+    const [authorSubscriptions, topicSubscriptions, tagSubscriptions] = await Promise.all([
+      transaction.userSubscription.findMany({ where: {
+        authorId: article.authorId,
+        notifyNewArticles: true,
+        frequency: SubscriptionDeliveryFrequency.instant,
+        subscriber: subscriberWhere,
+      }, select: { subscriberId: true } }),
+      topicIds.length ? transaction.articleTopicSubscription.findMany({ where: {
+        topicId: { in: topicIds },
+        frequency: SubscriptionDeliveryFrequency.instant,
+        user: subscriberWhere,
+        topic: { status: ArticleTopicStatus.active },
+      }, select: { userId: true } }) : Promise.resolve([] as Array<{ userId: number }>),
+      tags.length ? transaction.articleTagSubscription.findMany({ where: {
+        tag: { in: tags },
+        frequency: SubscriptionDeliveryFrequency.instant,
+        user: subscriberWhere,
+      }, select: { userId: true } }) : Promise.resolve([] as Array<{ userId: number }>),
+    ]);
+    const recipients = new Set<number>();
+    authorSubscriptions.forEach(({ subscriberId }) => recipients.add(subscriberId));
+    topicSubscriptions.forEach(({ userId }) => recipients.add(userId));
+    tagSubscriptions.forEach(({ userId }) => recipients.add(userId));
+    if (!recipients.size) return;
+    await transaction.userNotification.createMany({ data: [...recipients].map((subscriberId) => ({
       userId: subscriberId, actorId: article.authorId,
       type: UserNotificationType.subscription_published, channel: UserNotificationChannel.subscription,
       title: "订阅作者发布了新内容", ...this.siteSettingsService.renderNotificationTemplate(notificationSettings, "subscriptionPublished", {
@@ -3326,6 +3368,11 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       body: true,
       status: true,
       likeCount: true,
+      quotedCommentId: true,
+      quotedBody: true,
+      quotedAuthorName: true,
+      quotedCreatedAt: true,
+      quotedComment: { select: { id: true, status: true } },
       createdAt: true,
       updatedAt: true,
       attachments: {
@@ -3360,6 +3407,11 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     body: string;
     status?: ArticleCommentStatus;
     likeCount: number;
+    quotedCommentId: number | null;
+    quotedBody: string | null;
+    quotedAuthorName: string | null;
+    quotedCreatedAt: Date | null;
+    quotedComment?: { id: number; status: ArticleCommentStatus } | null;
     createdAt: Date;
     updatedAt: Date;
     attachments?: Array<{
@@ -3399,6 +3451,13 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       likeCount: Math.max(0, comment.likeCount),
       liked: options.liked ?? false,
       reported: options.reported ?? false,
+      quote: comment.quotedCommentId && comment.quotedBody && comment.quotedAuthorName && comment.quotedCreatedAt ? {
+        id: comment.quotedCommentId,
+        body: comment.quotedBody,
+        authorName: comment.quotedAuthorName,
+        createdAt: comment.quotedCreatedAt.toISOString(),
+        available: comment.quotedComment?.status === ArticleCommentStatus.active,
+      } : null,
       attachments: (comment.attachments ?? []).map((attachment) => this.toCommentAttachmentResponse(attachment)),
       pendingReportCount: options.pendingReportCount,
       reports: options.reports,
@@ -3424,6 +3483,56 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       createdAt: report.createdAt.toISOString(),
       handledAt: report.handledAt?.toISOString() ?? null,
     };
+  }
+
+  private async createCommentMentionNotifications(
+    transaction: Prisma.TransactionClient,
+    article: ArticleRecord,
+    commentId: number,
+    actor: AuthenticatedUser,
+    body: string,
+  ): Promise<void> {
+    const usernames = [...new Set(Array.from(body.matchAll(/@([A-Za-z0-9_]{2,32})/g), (match) => match[1].toLowerCase()))];
+    if (!usernames.length) return;
+    const candidates = await transaction.user.findMany({
+      where: { username: { in: usernames }, status: "active", id: { not: actor.id } },
+      select: { id: true, role: { select: { code: true } } },
+    });
+    if (!candidates.length) return;
+    const blocked = await transaction.friendship.findMany({
+      where: {
+        status: FriendshipStatus.blocked,
+        OR: candidates.map((candidate) => ({
+          userOneId: Math.min(actor.id, candidate.id),
+          userTwoId: Math.max(actor.id, candidate.id),
+        })),
+      },
+      select: { userOneId: true, userTwoId: true },
+    });
+    const blockedIds = new Set(blocked.map((item) => item.userOneId === actor.id ? item.userTwoId : item.userOneId));
+    const allowedRoles = new Set(article.allowedRoles.map(({ role }) => role.code));
+    const recipients = candidates.filter((candidate) => !blockedIds.has(candidate.id) && (
+      article.visibility === ArticleVisibility.public ||
+      article.visibility === ArticleVisibility.authenticated ||
+      (article.visibility === ArticleVisibility.role_restricted && allowedRoles.has(candidate.role.code))
+    ));
+    if (!recipients.length) return;
+    await transaction.userNotification.createMany({
+      data: recipients.map((recipient) => ({
+        userId: recipient.id,
+        actorId: actor.id,
+        type: UserNotificationType.mention_received,
+        channel: UserNotificationChannel.interaction,
+        title: "有人在评论中提到了你",
+        body: `${actor.nickname || actor.username} 在《${article.title}》的评论中提到了你。`,
+        bodyEn: `${actor.nickname || actor.username} mentioned you in a comment on “${article.title}”.`,
+        actionUrl: `/articles/${article.slug}?commentId=${commentId}`,
+        articleId: article.id,
+        commentId,
+        dedupeKey: `mention:comment:${commentId}:${recipient.id}`,
+      })),
+      skipDuplicates: true,
+    });
   }
 
   private toCommentAttachmentResponse(attachment: {

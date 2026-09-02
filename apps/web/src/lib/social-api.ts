@@ -85,6 +85,9 @@ export interface ChatMessage {
   conversationId: number;
   body: string;
   type: "text" | "attachment" | "mixed" | "system";
+  quote: { id: number; body: string; senderDisplayName: string; createdAt: string; available: boolean } | null;
+  isPinned: boolean;
+  pinOrder: number;
   attachments: ChatAttachment[];
   call: {
     id: number;
@@ -239,6 +242,7 @@ export interface SocialNotification {
     | "article_favorited"
     | "article_commented"
     | "comment_replied"
+    | "mention_received"
     | "author_subscribed"
     | "subscription_published"
     | "announcement_published"
@@ -253,12 +257,13 @@ export interface SocialNotification {
   bodyEn: string | null;
   actionUrl: string | null;
   friendshipId: number | null;
+  messageId: number | null;
   commentReportId: number | null;
   articleReportId: number | null;
   announcementId: number | null;
   actor: SocialUser | null;
   context: {
-    kind: "comment_report" | "article_report" | "article" | "article_comment" | "friend_request" | "stranger_message_request" | "group_invitation" | "group_join_request" | "group_report" | "group_ban" | "announcement";
+    kind: "comment_report" | "article_report" | "article" | "article_comment" | "message_mention" | "friend_request" | "stranger_message_request" | "group_invitation" | "group_join_request" | "group_report" | "group_ban" | "announcement";
     announcementId?: number;
     announcement?: { id: number; title: string; summary: string };
     article?: { id: number; title: string; slug: string };
@@ -583,6 +588,24 @@ export function getOrCreateConversation(accessToken: string, userId: number): Pr
 export function listMessages(accessToken: string, conversationId: number, beforeId?: number): Promise<{ items: ChatMessage[]; hasMore: boolean }> {
   const query = beforeId ? `?beforeId=${beforeId}&limit=10` : "?limit=10";
   return requestJson(`/social/conversations/${conversationId}/messages${query}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function searchMessages(accessToken: string, input: { q?: string; conversationId?: number; senderId?: number; from?: string; to?: string; beforeId?: number; limit?: number } = {}) {
+  const params = new URLSearchParams();
+  Object.entries(input).forEach(([key, value]) => { if (value !== undefined && value !== "") params.set(key, String(value)); });
+  return requestJson<{ items: Array<ChatMessage & { conversation: { id: number; kind: Conversation["kind"]; name: string } }>; hasMore: boolean }>(`/social/messages/search?${params}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function getMessageContext(accessToken: string, conversationId: number, messageId: number) {
+  return requestJson<{ conversationId: number; message: ChatMessage }>(`/social/conversations/${conversationId}/messages/${messageId}/context`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function listPinnedMessages(accessToken: string, conversationId: number) {
+  return requestJson<{ items: ChatMessage[] }>(`/social/conversations/${conversationId}/pinned`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function setMessagePin(accessToken: string, conversationId: number, messageId: number, isPinned: boolean) {
+  return requestJson<ChatMessage>(`/social/conversations/${conversationId}/messages/${messageId}/pin`, { method: "PATCH", headers: authHeaders(accessToken), body: JSON.stringify({ isPinned }) });
 }
 
 export function markConversationRead(accessToken: string, conversationId: number): Promise<void> {

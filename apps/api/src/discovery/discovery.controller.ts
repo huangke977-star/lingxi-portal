@@ -37,6 +37,8 @@ import {
   UpdateArticleCollectionDto,
   UpdateArticleTopicDto,
   UpdateAuthorSubscriptionDto,
+  SubscribeTagDto,
+  UpdateSubscriptionFrequencyDto,
   UpdateProfileSettingsDto,
 } from "./dto/discovery.dto";
 import type { UploadedCollectionCover, UploadedTopicCover } from "./discovery.types";
@@ -88,7 +90,31 @@ export class DiscoveryController {
     @Param("authorId", ParseIntPipe) authorId: number,
     @Body() dto: UpdateAuthorSubscriptionDto,
   ) {
-    return this.discoveryService.updateSubscriptionSetting(user, authorId, dto.notifyNewArticles);
+    return this.discoveryService.updateSubscriptionSetting(user, authorId, dto);
+  }
+
+  @Patch("topics/:id/subscription")
+  @UseGuards(JwtAuthGuard)
+  updateTopicSubscriptionFrequency(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseIntPipe) id: number, @Body() dto: UpdateSubscriptionFrequencyDto) {
+    return this.discoveryService.updateTopicSubscriptionFrequency(user, id, dto.frequency);
+  }
+
+  @Post("tags/subscribe")
+  @UseGuards(JwtAuthGuard)
+  subscribeTag(@CurrentUser() user: AuthenticatedUser, @Body() dto: SubscribeTagDto) {
+    return this.discoveryService.subscribeTag(user, dto.tag);
+  }
+
+  @Delete("tags/subscribe/:tag")
+  @UseGuards(JwtAuthGuard)
+  unsubscribeTag(@CurrentUser() user: AuthenticatedUser, @Param("tag") tag: string) {
+    return this.discoveryService.unsubscribeTag(user, tag);
+  }
+
+  @Patch("tags/subscriptions/:tag")
+  @UseGuards(JwtAuthGuard)
+  updateTagSubscriptionFrequency(@CurrentUser() user: AuthenticatedUser, @Param("tag") tag: string, @Body() dto: UpdateSubscriptionFrequencyDto) {
+    return this.discoveryService.updateTagSubscriptionFrequency(user, tag, dto.frequency);
   }
 
   @Get("collections/mine")

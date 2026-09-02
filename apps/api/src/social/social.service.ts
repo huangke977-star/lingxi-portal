@@ -35,6 +35,8 @@ import { ChatAttachmentsService } from "./chat-attachments.service";
 import {
   ListMessagesQueryDto,
   ListNotificationsQueryDto,
+  SearchMessagesQueryDto,
+  SetChatMessagePinDto,
   SearchSocialUsersQueryDto,
   UpdateConversationSettingsDto,
   UpdateNotificationChannelSettingsDto,
@@ -51,6 +53,7 @@ import {
   StrangerMessageRequestResponse,
   NotificationChannelStateResponse,
   UserNotificationResponse,
+  MessageSearchResponse,
 } from "./social.types";
 
 const MESSAGE_RECALL_WINDOW_MS = 2 * 60 * 1000;
@@ -138,6 +141,7 @@ type StrangerRequestRecord = Prisma.StrangerMessageRequestGetPayload<{ include: 
 
 const messageInclude = {
   sender: { select: socialUserSelect },
+  quotedMessage: { select: { id: true, body: true, sender: { select: socialUserSelect }, createdAt: true } },
   attachments: { orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }] },
   callSession: { select: { id: true, type: true, status: true, durationSeconds: true } },
 } satisfies Prisma.ChatMessageInclude;
@@ -190,6 +194,7 @@ const notificationInclude = {
     },
   },
   announcement: { select: { id: true, title: true, summary: true } },
+  message: { include: messageInclude },
 } satisfies Prisma.UserNotificationInclude;
 
 type NotificationRecord = Prisma.UserNotificationGetPayload<{ include: typeof notificationInclude }>;
@@ -1107,11 +1112,96 @@ export class SocialService {
     };
   }
 
+  async searchMessages(user: AuthenticatedUser, query: SearchMessagesQueryDto): Promise<MessageSearchResponse> {
+    const memberships = await this.prisma.conversation.findMany({
+      where: {
+        ...(query.conversationId ? { id: query.conversationId } : {}),
+        OR: [
+          { friendship: { status: FriendshipStatus.accepted, OR: [{ userOneId: user.id }, { userTwoId: user.id }] } },
+          { directUserOneId: user.id, directUserTwoId: { not: null } },
+          { directUserTwoId: user.id, directUserOneId: { not: null } },
+          { group: { status: ChatGroupStatus.active, members: { some: { userId: user.id, status: ChatGroupMemberStatus.active } } } },
+        ],
+      },
+      select: { id: true, kind: true, directUserOneId: true, directUserTwoId: true, group: { select: { name: true } } },
+    });
+    const allowedConversationIds = memberships.map((item) => item.id);
+    if (!allowedConversationIds.length) return { items: [], hasMore: false };
+    const from = query.from ? new Date(query.from) : undefined;
+    const to = query.to ? new Date(query.to) : undefined;
+    const rows = await this.prisma.chatMessage.findMany({
+      where: {
+        conversationId: { in: allowedConversationIds },
+        type: { not: ChatMessageType.system },
+        ...(query.senderId ? { senderId: query.senderId } : {}),
+        ...(query.q.trim() ? { body: { contains: query.q.trim() } } : {}),
+        ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+        ...(query.beforeId ? { id: { lt: query.beforeId } } : {}),
+      },
+      orderBy: [{ id: "desc" }],
+      take: query.limit + 1,
+      include: messageInclude,
+    });
+    const hasMore = rows.length > query.limit;
+    const conversations = new Map(memberships.map((item) => [item.id, item]));
+    return {
+      items: rows.slice(0, query.limit).map((row) => ({
+        ...this.toMessage(row),
+        conversation: {
+          id: row.conversationId,
+          kind: conversations.get(row.conversationId)?.kind ?? ConversationKind.direct,
+          name: conversations.get(row.conversationId)?.group?.name ?? "Direct message",
+        },
+      })),
+      hasMore,
+    };
+  }
+
+  async getMessageContext(user: AuthenticatedUser, conversationId: number, messageId: number) {
+    await this.assertConversationMember(conversationId, user.id);
+    const message = await this.prisma.chatMessage.findUnique({ where: { id: messageId }, include: messageInclude });
+    if (!message || message.conversationId !== conversationId || message.type === ChatMessageType.system) {
+      throw new NotFoundException("消息不存在或当前不可见。");
+    }
+    return { conversationId, message: this.toMessage(message) };
+  }
+
+  async listPinnedMessages(user: AuthenticatedUser, conversationId: number): Promise<{ items: ChatMessageResponse[] }> {
+    const membership = await this.assertConversationMember(conversationId, user.id);
+    const messages = await this.prisma.chatMessage.findMany({
+      where: { conversationId, isPinned: true, type: { not: ChatMessageType.system } },
+      orderBy: [{ pinOrder: "desc" }, { pinnedAt: "desc" }, { id: "desc" }],
+      include: messageInclude,
+    });
+    const aliases = membership.group
+      ? new Map((await this.prisma.chatGroupMember.findMany({
+          where: { groupId: membership.group.id, userId: { in: messages.map((message) => message.senderId) } },
+          select: { userId: true, alias: true },
+        })).map((member) => [member.userId, member.alias]))
+      : new Map<number, string | null>();
+    return { items: messages.map((message) => this.toMessage(message, aliases.get(message.senderId) ?? undefined)) };
+  }
+
+  async setMessagePin(user: AuthenticatedUser, conversationId: number, messageId: number, dto: SetChatMessagePinDto) {
+    const membership = await this.assertConversationMember(conversationId, user.id);
+    if (!membership.group || (membership.group.role !== ChatGroupMemberRole.owner && membership.group.role !== ChatGroupMemberRole.admin)) {
+      throw new ForbiddenException("只有群主或群管理员可以管理置顶消息。");
+    }
+    const message = await this.prisma.chatMessage.findFirst({ where: { id: messageId, conversationId, type: { not: ChatMessageType.system } }, select: { id: true } });
+    if (!message) throw new NotFoundException("消息不存在或当前不可置顶。");
+    const nextOrder = dto.isPinned
+      ? (await this.prisma.chatMessage.aggregate({ where: { conversationId, isPinned: true }, _max: { pinOrder: true } }))._max.pinOrder ?? 0
+      : 0;
+    const updated = await this.prisma.chatMessage.update({ where: { id: messageId }, data: { isPinned: dto.isPinned, pinOrder: dto.isPinned ? nextOrder + 1 : 0, pinnedAt: dto.isPinned ? new Date() : null }, include: messageInclude });
+    return this.toMessage(updated);
+  }
+
   async createMessage(
     userId: number,
     conversationId: number,
     rawBody: string,
     attachmentIds: number[] = [],
+    quotedMessageId?: number,
   ): Promise<ChatMessageResponse> {
     const body = rawBody.trim();
     if (!body && !attachmentIds.length) {
@@ -1121,6 +1211,12 @@ export class SocialService {
       throw new BadRequestException("单条消息不能超过 2000 个字符。");
     }
     const membership = await this.assertConversationMember(conversationId, userId);
+    let quote: { id: number; body: string; senderName: string; createdAt: Date } | null = null;
+    if (quotedMessageId) {
+      const quoted = await this.prisma.chatMessage.findFirst({ where: { id: quotedMessageId, conversationId, type: { not: ChatMessageType.system } }, include: { sender: { select: { nickname: true, username: true } } } });
+      if (!quoted) throw new BadRequestException("引用的消息不存在或当前不可见。");
+      quote = { id: quoted.id, body: quoted.body, senderName: quoted.sender.nickname || quoted.sender.username, createdAt: quoted.createdAt };
+    }
     if (membership.group?.mutedUntil && membership.group.mutedUntil > new Date()) {
       throw new ForbiddenException(`你已被禁言至 ${membership.group.mutedUntil.toLocaleString("zh-CN", { hour12: false })}。`);
     }
@@ -1137,6 +1233,10 @@ export class SocialService {
           type: body
             ? attachmentIds.length ? ChatMessageType.mixed : ChatMessageType.text
             : ChatMessageType.attachment,
+          quotedMessageId: quote?.id,
+          quotedBody: quote?.body,
+          quotedSenderName: quote?.senderName,
+          quotedCreatedAt: quote?.createdAt,
         },
         select: { id: true },
       });
@@ -1156,6 +1256,7 @@ export class SocialService {
         data: { hidden: false },
       });
       await transaction.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
+      await this.createMessageMentionNotifications(transaction, membership, conversationId, created.id, userId, body);
       return transaction.chatMessage.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude });
     });
     if (membership.group) {
@@ -2107,6 +2208,59 @@ export class SocialService {
     };
   }
 
+  private async createMessageMentionNotifications(
+    transaction: Prisma.TransactionClient,
+    membership: ConversationMembership,
+    conversationId: number,
+    messageId: number,
+    actorId: number,
+    body: string,
+  ): Promise<void> {
+    const usernames = [...new Set(Array.from(body.matchAll(/@([A-Za-z0-9_]{2,32})/g), (match) => match[1].toLowerCase()))];
+    if (!usernames.length) return;
+    const candidates = await transaction.user.findMany({
+      where: { id: { in: membership.participantIds, not: actorId }, username: { in: usernames }, status: "active" },
+      select: { id: true, username: true, nickname: true },
+    });
+    if (!candidates.length) return;
+    if (membership.group) {
+      const activeMembers = await transaction.chatGroupMember.findMany({
+        where: { groupId: membership.group.id, userId: { in: candidates.map((candidate) => candidate.id) }, status: ChatGroupMemberStatus.active },
+        select: { userId: true },
+      });
+      const activeIds = new Set(activeMembers.map((member) => member.userId));
+      candidates.splice(0, candidates.length, ...candidates.filter((candidate) => activeIds.has(candidate.id)));
+    }
+    if (!candidates.length) return;
+    const blocked = await transaction.friendship.findMany({
+      where: {
+        status: FriendshipStatus.blocked,
+        OR: candidates.map((candidate) => ({
+          userOneId: Math.min(actorId, candidate.id),
+          userTwoId: Math.max(actorId, candidate.id),
+        })),
+      },
+      select: { userOneId: true, userTwoId: true },
+    });
+    const blockedIds = new Set(blocked.map((item) => item.userOneId === actorId ? item.userTwoId : item.userOneId));
+    const actor = await transaction.user.findUnique({ where: { id: actorId }, select: { nickname: true, username: true } });
+    const label = actor?.nickname || actor?.username || "有人";
+    const actionUrl = `/messages?conversationId=${conversationId}&messageId=${messageId}`;
+    const data = candidates.filter((candidate) => !blockedIds.has(candidate.id)).map((candidate) => ({
+      userId: candidate.id,
+      actorId,
+      type: UserNotificationType.mention_received,
+      channel: UserNotificationChannel.interaction,
+      title: "有人在消息中提到了你",
+      body: `${label} 在聊天消息中提到了你。`,
+      bodyEn: `${label} mentioned you in a chat message.`,
+      actionUrl,
+      messageId,
+      dedupeKey: `mention:message:${messageId}:${candidate.id}`,
+    }));
+    if (data.length) await transaction.userNotification.createMany({ data, skipDuplicates: true });
+  }
+
   private friendshipDirection(record: FriendshipRecord, userId: number): FriendshipResponse["direction"] {
     if (record.status === FriendshipStatus.blocked) return "blocked";
     if (record.status === FriendshipStatus.accepted) return "accepted";
@@ -2186,6 +2340,15 @@ export class SocialService {
       conversationId: message.conversationId,
       body: message.body,
       type: message.type,
+      quote: message.quotedMessageId && message.quotedBody && message.quotedSenderName && message.quotedCreatedAt ? {
+        id: message.quotedMessageId,
+        body: message.quotedBody,
+        senderDisplayName: message.quotedSenderName,
+        createdAt: message.quotedCreatedAt.toISOString(),
+        available: Boolean(message.quotedMessage),
+      } : null,
+      isPinned: message.isPinned,
+      pinOrder: message.pinOrder,
       attachments: message.attachments.map((attachment) => this.chatAttachmentsService.toResponse(attachment)),
       call: message.callSession ? {
         id: message.callSession.id,
@@ -2211,11 +2374,16 @@ export class SocialService {
       bodyEn: notification.bodyEn,
       actionUrl: notification.actionUrl,
       friendshipId: notification.friendshipId,
+      messageId: notification.messageId,
       commentReportId: notification.commentReportId,
       articleReportId: notification.articleReportId,
       announcementId: notification.announcementId,
       actor: notification.actor ? this.toSocialUser(notification.actor) : null,
-      context: notification.articleReport ? {
+      context: notification.type === UserNotificationType.mention_received && notification.message ? {
+        kind: "message_mention",
+        conversationId: notification.message.conversationId,
+        message: this.toMessage(notification.message),
+      } : notification.articleReport ? {
         kind: "article_report",
         reportId: notification.articleReport.id,
         status: notification.articleReport.status,

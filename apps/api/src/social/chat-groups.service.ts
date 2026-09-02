@@ -110,6 +110,7 @@ type GroupRecord = Prisma.ChatGroupGetPayload<{ include: typeof groupInclude }>;
 
 const groupMessageInclude = {
   sender: { select: groupUserSelect },
+  quotedMessage: { select: { id: true } },
   attachments: { orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }] },
   callSession: { select: { id: true, type: true, status: true, durationSeconds: true } },
 } satisfies Prisma.ChatMessageInclude;
@@ -1445,6 +1446,15 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
       conversationId: message.conversationId,
       body: message.body,
       type: message.type,
+      quote: message.quotedMessageId && message.quotedBody && message.quotedSenderName && message.quotedCreatedAt ? {
+        id: message.quotedMessageId,
+        body: message.quotedBody,
+        senderDisplayName: message.quotedSenderName,
+        createdAt: message.quotedCreatedAt.toISOString(),
+        available: Boolean(message.quotedMessage),
+      } : null,
+      isPinned: message.isPinned,
+      pinOrder: message.pinOrder,
       attachments: message.attachments.map((attachment) => this.chatAttachmentsService.toResponse(attachment)),
       call: message.callSession ? {
         id: message.callSession.id,

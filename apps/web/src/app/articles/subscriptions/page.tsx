@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, BookOpen, CheckCheck, FolderOpen, Rss, SlidersHorizontal, X } from "lucide-react";
+import { Bell, BellOff, BookOpen, CheckCheck, FolderOpen, Hash, Rss, SlidersHorizontal, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
@@ -9,6 +9,7 @@ import { ArticleCenterNav } from "@/components/article-center-nav";
 import { ArticleInfiniteFooter } from "@/components/article-infinite-scroll";
 import { AppToast } from "@/components/app-toast";
 import { DiscoveryArticleRow } from "@/components/discovery-ui";
+import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
 import { getMe, isAuthExpiredError, type AuthUser } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
@@ -18,6 +19,9 @@ import {
   listSubscriptionSettings,
   markAllSubscriptionFeedRead,
   markSubscriptionFeedRead,
+  updateTagSubscriptionFrequency,
+  updateTopicSubscriptionFrequency,
+  unsubscribeTag,
   type SubscriptionFeed,
   type ContentSubscriptions,
   unsubscribeCollection,
@@ -29,8 +33,9 @@ import { localizedPath } from "@/lib/i18n";
 import { unsubscribeFromAuthor, updateNotificationChannelSettings } from "@/lib/social-api";
 
 type FeedSort = "latest" | "unread" | "popular";
+type SubscriptionFrequency = "instant" | "daily" | "muted";
 const emptyFeed: SubscriptionFeed = { items: [], total: 0, unread: 0, page: 1, pageSize: 12, totalPages: 1 };
-const emptyContentSubscriptions: ContentSubscriptions = { topics: [], collections: [] };
+const emptyContentSubscriptions: ContentSubscriptions = { topics: [], collections: [], tags: [] };
 const emptySettings: SubscriptionSettings = { items: [], digestEnabled: true };
 
 export default function SubscriptionFeedPage() {
@@ -115,11 +120,59 @@ function SubscriptionFeedContent() {
     const token = readAccessToken();
     if (!token) return;
     try {
-      await updateSubscriptionSetting(token, authorId, enabled);
+      await updateSubscriptionSetting(token, authorId, { notifyNewArticles: enabled });
       setSettings((current) => ({ ...current, items: current.items.map((item) => item.author.id === authorId ? { ...item, notifyNewArticles: enabled } : item) }));
       setNotice(enabled ? phrase("已恢复该作者的新内容推送。", "New-content notifications were enabled for this author.") : phrase("已关闭该作者的新内容推送。", "New-content notifications were disabled for this author."));
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : phrase("推送设置更新失败。", "Could not update notification settings."));
+    }
+  }
+
+  async function changeAuthorFrequency(authorId: number, frequency: SubscriptionFrequency) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      await updateSubscriptionSetting(token, authorId, { frequency });
+      setSettings((current) => ({ ...current, items: current.items.map((item) => item.author.id === authorId ? { ...item, frequency } : item) }));
+      setNotice(phrase("作者推送频率已更新。", "Author notification frequency updated."));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("作者推送频率更新失败。", "Could not update author notification frequency."));
+    }
+  }
+
+  async function changeTopicFrequency(topicId: number, frequency: SubscriptionFrequency) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      await updateTopicSubscriptionFrequency(token, topicId, frequency);
+      setContentSubscriptions((current) => ({ ...current, topics: current.topics.map((item) => item.id === topicId ? { ...item, frequency } : item) }));
+      setNotice(phrase("专题推送频率已更新。", "Topic notification frequency updated."));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("专题推送频率更新失败。", "Could not update topic notification frequency."));
+    }
+  }
+
+  async function changeTagFrequency(tag: string, frequency: SubscriptionFrequency) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      await updateTagSubscriptionFrequency(token, tag, frequency);
+      setContentSubscriptions((current) => ({ ...current, tags: current.tags.map((item) => item.tag === tag ? { ...item, frequency } : item) }));
+      setNotice(phrase("标签推送频率已更新。", "Tag notification frequency updated."));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("标签推送频率更新失败。", "Could not update tag notification frequency."));
+    }
+  }
+
+  async function removeTagSubscription(tag: string) {
+    const token = readAccessToken();
+    if (!token) return;
+    try {
+      await unsubscribeTag(token, tag);
+      setContentSubscriptions((current) => ({ ...current, tags: current.tags.filter((item) => item.tag !== tag) }));
+      setNotice(phrase("已取消标签订阅。", "Tag unsubscribed."));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("取消标签订阅失败。", "Could not unsubscribe from the tag."));
     }
   }
 
@@ -185,9 +238,25 @@ function SubscriptionFeedContent() {
         <button aria-label={phrase("全部已读", "Mark all as read")} disabled={!feed.unread} onClick={() => void markAll()} title={phrase("全部已读", "Mark all as read")} type="button"><CheckCheck aria-hidden="true" size={18} /></button>
       </span>
     </div>
-    {settingsOpen && typeof document !== "undefined" ? createPortal(<div className="subscription-management-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }} role="presentation"><aside aria-label={phrase("订阅管理", "Manage subscriptions")} aria-modal="true" className="subscription-settings-panel subscription-management-panel subscription-management-drawer" role="dialog"><header><span><strong>{phrase("订阅管理", "Manage subscriptions")}</strong><small>{phrase("作者、专题和合集的订阅设置。", "Manage author, topic, and collection subscriptions.")}</small></span><div><button aria-label={settings.digestEnabled ? phrase("关闭订阅日报", "Disable subscription digest") : phrase("开启订阅日报", "Enable subscription digest")} aria-pressed={settings.digestEnabled} className={settings.digestEnabled ? "active" : undefined} onClick={() => void toggleDigest(!settings.digestEnabled)} title={settings.digestEnabled ? phrase("关闭订阅日报", "Disable subscription digest") : phrase("开启订阅日报", "Enable subscription digest")} type="button">{settings.digestEnabled ? <Bell aria-hidden="true" size={16} /> : <BellOff aria-hidden="true" size={16} />}</button><button aria-label={phrase("关闭", "Close")} onClick={() => setSettingsOpen(false)} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={17} /></button></div></header><div className="subscription-management-groups"><section><h3><Bell aria-hidden="true" size={14} />{phrase("作者推送", "Author notifications")}</h3><div>{settings.items.map((item) => <div className="subscription-author-setting" key={item.author.id}><span>{item.author.nickname}<small>@{item.author.username}</small></span><span className="subscription-setting-actions"><button aria-label={phrase(`${item.notifyNewArticles ? "关闭" : "开启"}${item.author.nickname}的新内容推送`, `${item.notifyNewArticles ? "Disable" : "Enable"} new-content notifications for ${item.author.nickname}`)} aria-pressed={item.notifyNewArticles} className={item.notifyNewArticles ? "active" : undefined} onClick={() => void toggleAuthor(item.author.id, !item.notifyNewArticles)} title={item.notifyNewArticles ? phrase("关闭推送", "Disable notifications") : phrase("开启推送", "Enable notifications")} type="button">{item.notifyNewArticles ? <Bell aria-hidden="true" size={16} /> : <BellOff aria-hidden="true" size={16} />}</button><button aria-label={`${phrase("取消订阅", "Unsubscribe")} ${item.author.nickname}`} className="subscription-unsubscribe-action" onClick={() => void removeAuthorSubscription(item.author.id)} title={phrase("取消订阅", "Unsubscribe")} type="button"><Rss aria-hidden="true" size={16} /></button></span></div>)}{!settings.items.length ? <p>{phrase("还没有订阅作者。", "No authors are subscribed yet.")}</p> : null}</div></section><section><h3><BookOpen aria-hidden="true" size={14} />{phrase("专题", "Topics")}</h3><div>{contentSubscriptions.topics.map((topic) => <div className="subscription-content-setting" key={topic.id}><Link href={localizedPath(`/topics/${topic.slug}`, locale)}><strong>{topic.title}</strong><small>{phrase(`${topic.articleCount} 篇 · ${topic.subscriberCount} 人订阅`, `${topic.articleCount} articles · ${topic.subscriberCount} subscribers`)}</small></Link><button aria-label={`${phrase("取消订阅", "Unsubscribe")} ${topic.title}`} className="subscription-unsubscribe-action" onClick={() => void removeTopicSubscription(topic.id)} title={phrase("取消订阅", "Unsubscribe")} type="button"><Rss aria-hidden="true" size={16} /></button></div>)}{!contentSubscriptions.topics.length ? <p>{phrase("还没有订阅专题。", "No topics are subscribed yet.")}</p> : null}</div></section><section><h3><FolderOpen aria-hidden="true" size={14} />{phrase("合集", "Collections")}</h3><div>{contentSubscriptions.collections.map((collection) => <div className="subscription-content-setting" key={collection.id}><Link href={localizedPath(`/collections/${collection.id}`, locale)}><strong>{collection.name}</strong><small>{phrase(`${collection.owner.nickname} · ${collection.articleCount} 篇`, `${collection.owner.nickname} · ${collection.articleCount} articles`)}</small></Link><button aria-label={`${phrase("取消订阅", "Unsubscribe")} ${collection.name}`} className="subscription-unsubscribe-action" onClick={() => void removeCollectionSubscription(collection.id)} title={phrase("取消订阅", "Unsubscribe")} type="button"><Rss aria-hidden="true" size={16} /></button></div>)}{!contentSubscriptions.collections.length ? <p>{phrase("还没有订阅合集。", "No collections are subscribed yet.")}</p> : null}</div></section></div></aside></div>, document.body) : null}
+    {settingsOpen && typeof document !== "undefined" ? createPortal(
+      <div className="subscription-management-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setSettingsOpen(false); }} role="presentation">
+        <aside aria-label={phrase("订阅管理", "Manage subscriptions")} aria-modal="true" className="subscription-settings-panel subscription-management-panel subscription-management-drawer" role="dialog">
+          <header><span><strong>{phrase("订阅管理", "Manage subscriptions")}</strong><small>{phrase("作者、专题、标签和合集的订阅设置。", "Manage author, topic, tag, and collection subscriptions.")}</small></span><div><button aria-label={settings.digestEnabled ? phrase("关闭订阅日报", "Disable subscription digest") : phrase("开启订阅日报", "Enable subscription digest")} aria-pressed={settings.digestEnabled} className={settings.digestEnabled ? "active" : undefined} onClick={() => void toggleDigest(!settings.digestEnabled)} title={settings.digestEnabled ? phrase("关闭订阅日报", "Disable subscription digest") : phrase("开启订阅日报", "Enable subscription digest")} type="button">{settings.digestEnabled ? <Bell aria-hidden="true" size={16} /> : <BellOff aria-hidden="true" size={16} />}</button><button aria-label={phrase("关闭", "Close")} onClick={() => setSettingsOpen(false)} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={17} /></button></div></header>
+          <div className="subscription-management-groups">
+            <section><h3><Bell aria-hidden="true" size={14} />{phrase("作者推送", "Author notifications")}</h3><div>{settings.items.map((item) => <div className="subscription-author-setting" key={item.author.id}><span>{item.author.nickname}<small>@{item.author.username}</small></span><span className="subscription-setting-actions"><FrequencySelect value={item.frequency} onChange={(frequency) => void changeAuthorFrequency(item.author.id, frequency)} /><button aria-label={phrase(`${item.notifyNewArticles ? "关闭" : "开启"}${item.author.nickname}的新内容推送`, `${item.notifyNewArticles ? "Disable" : "Enable"} new-content notifications for ${item.author.nickname}`)} aria-pressed={item.notifyNewArticles} className={item.notifyNewArticles ? "active" : undefined} onClick={() => void toggleAuthor(item.author.id, !item.notifyNewArticles)} title={item.notifyNewArticles ? phrase("关闭推送", "Disable notifications") : phrase("开启推送", "Enable notifications")} type="button">{item.notifyNewArticles ? <Bell aria-hidden="true" size={16} /> : <BellOff aria-hidden="true" size={16} />}</button><button aria-label={`${phrase("取消订阅", "Unsubscribe")} ${item.author.nickname}`} className="subscription-unsubscribe-action" onClick={() => void removeAuthorSubscription(item.author.id)} title={phrase("取消订阅", "Unsubscribe")} type="button"><Rss aria-hidden="true" size={16} /></button></span></div>)}{!settings.items.length ? <p>{phrase("还没有订阅作者。", "No authors are subscribed yet.")}</p> : null}</div></section>
+            <section><h3><BookOpen aria-hidden="true" size={14} />{phrase("专题", "Topics")}</h3><div>{contentSubscriptions.topics.map((topic) => <div className="subscription-content-setting" key={topic.id}><Link href={localizedPath(`/topics/${topic.slug}`, locale)}><strong>{topic.title}</strong><small>{phrase(`${topic.articleCount} 篇 · ${topic.subscriberCount} 人订阅`, `${topic.articleCount} articles · ${topic.subscriberCount} subscribers`)}</small></Link><span className="subscription-setting-actions"><FrequencySelect value={topic.frequency} onChange={(frequency) => void changeTopicFrequency(topic.id, frequency)} /><button aria-label={`${phrase("取消订阅", "Unsubscribe")} ${topic.title}`} className="subscription-unsubscribe-action" onClick={() => void removeTopicSubscription(topic.id)} title={phrase("取消订阅", "Unsubscribe")} type="button"><Rss aria-hidden="true" size={16} /></button></span></div>)}{!contentSubscriptions.topics.length ? <p>{phrase("还没有订阅专题。", "No topics are subscribed yet.")}</p> : null}</div></section>
+            <section><h3><Hash aria-hidden="true" size={14} />{phrase("标签", "Tags")}</h3><div>{contentSubscriptions.tags.map((item) => <div className="subscription-content-setting" key={item.tag}><span className="subscription-tag-name">#{item.tag}</span><span className="subscription-setting-actions"><FrequencySelect value={item.frequency} onChange={(frequency) => void changeTagFrequency(item.tag, frequency)} /><button aria-label={`${phrase("取消订阅", "Unsubscribe")} #${item.tag}`} className="subscription-unsubscribe-action" onClick={() => void removeTagSubscription(item.tag)} title={phrase("取消订阅", "Unsubscribe")} type="button"><Rss aria-hidden="true" size={16} /></button></span></div>)}{!contentSubscriptions.tags.length ? <p>{phrase("还没有订阅标签。", "No tags are subscribed yet.")}</p> : null}</div></section>
+            <section><h3><FolderOpen aria-hidden="true" size={14} />{phrase("合集", "Collections")}</h3><div>{contentSubscriptions.collections.map((collection) => <div className="subscription-content-setting" key={collection.id}><Link href={localizedPath(`/collections/${collection.id}`, locale)}><strong>{collection.name}</strong><small>{phrase(`${collection.owner.nickname} · ${collection.articleCount} 篇`, `${collection.owner.nickname} · ${collection.articleCount} articles`)}</small></Link><button aria-label={`${phrase("取消订阅", "Unsubscribe")} ${collection.name}`} className="subscription-unsubscribe-action" onClick={() => void removeCollectionSubscription(collection.id)} title={phrase("取消订阅", "Unsubscribe")} type="button"><Rss aria-hidden="true" size={16} /></button></div>)}{!contentSubscriptions.collections.length ? <p>{phrase("还没有订阅合集。", "No collections are subscribed yet.")}</p> : null}</div></section>
+          </div>
+        </aside>
+      </div>, document.body) : null}
     {isLoading ? <div className="article-empty-state">{phrase("正在读取订阅动态。", "Loading subscription updates.")}</div> : feed.items.length ? <div className="discovery-feed-list">{feed.items.map((item) => <DiscoveryArticleRow article={item.article} key={item.article.id} onOpen={() => void markRead(item.article.id)} unread={!item.readAt} />)}</div> : <div className="article-empty-state"><strong>{phrase("订阅动态还是空的", "No subscription updates yet")}</strong><span>{phrase("订阅作者后，新发布的内容会集中出现在这里。", "New articles from subscribed authors appear here.")}</span></div>}
     {feed.items.length ? <ArticleInfiniteFooter hasMore={feed.page < feed.totalPages} isLoading={isLoadingMore} onLoadMore={loadMore} /> : null}
     <AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
   </section>;
+}
+
+function FrequencySelect({ value, onChange }: { value: SubscriptionFrequency; onChange: (value: SubscriptionFrequency) => void }) {
+  const { phrase } = useLanguage();
+  return <GlassSelect ariaLabel={phrase("订阅频率", "Subscription frequency")} menuPortal onChange={onChange} options={[{ value: "instant" as const, label: phrase("即时", "Instant") }, { value: "daily" as const, label: phrase("日报", "Daily") }, { value: "muted" as const, label: phrase("静音", "Muted") }]} value={value} />;
 }
