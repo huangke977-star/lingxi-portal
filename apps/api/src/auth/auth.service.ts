@@ -729,23 +729,10 @@ export class AuthService {
   private async completePasskeyLogin(
     userId: number,
     context: RefreshSessionContext,
-  ): Promise<LoginResponse> {
-    const user = await this.usersService.findActiveById(userId);
-    const securityConfiguration =
-      await this.securityConfiguration.getConfiguration();
-    if (
-      securityConfiguration.smtpEnabled &&
-      securityConfiguration.untrustedDeviceEmailVerificationEnabled &&
-      !(await this.accountSecurity.isTrustedDevice(user.id, context))
-    ) {
-      return this.accountSecurity.requestDeviceLoginVerification(user, context);
-    }
-    if (
-      (await this.accountPrivacy.verifyTotpForLogin(user.id)) === "required"
-    ) {
-      return this.requestTotpLoginVerification(user.id, context, false);
-    }
-    return this.completeLogin(user.id, context, false);
+  ): Promise<AuthResponse> {
+    // A passkey already completed required user verification on the authenticator.
+    // Do not apply the password-login email or TOTP challenge a second time.
+    return this.completeLogin(userId, context, false);
   }
 
   private async requirePasskeyChallenge(

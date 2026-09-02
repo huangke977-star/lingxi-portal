@@ -8,6 +8,7 @@ import { AccountSecurityService } from "../src/security/account-security.service
 import { SecurityConfigurationService } from "../src/security/security-configuration.service";
 import { TurnstileService } from "../src/security/turnstile.service";
 import { AccountPrivacyService } from "../src/account-privacy/account-privacy.service";
+import { AuthService } from "../src/auth/auth.service";
 
 interface StoredUser {
   id: number;
@@ -500,6 +501,37 @@ describe("AuthController (e2e)", () => {
 
     expect(verified.body.accessToken).toEqual(expect.any(String));
     expect(accountSecurityState.recordVerifiedDeviceLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it("completes passkey login without password-login challenges", async () => {
+    const registered = await register("passkey_direct", "passkey-direct@example.com").expect(200);
+    const user = prismaState.users.find((item) => item.username === "passkey_direct");
+    if (!user) throw new Error("Expected passkey_direct to exist");
+
+    securityConfigurationState = {
+      ...securityConfigurationState,
+      smtpEnabled: true,
+      untrustedDeviceEmailVerificationEnabled: true,
+    };
+    accountSecurityState.isTrustedDevice.mockResolvedValue(false);
+    accountPrivacyState.verifyTotpForLogin.mockResolvedValue("required");
+
+    const authService = app.get(AuthService);
+    const completePasskeyLogin = (authService as unknown as {
+      completePasskeyLogin: (userId: number, context: { ip: string; userAgent: string }) => Promise<unknown>;
+    }).completePasskeyLogin.bind(authService);
+    const response = await completePasskeyLogin(user.id, {
+      ip: "203.0.113.80",
+      userAgent: "Passkey browser",
+    });
+
+    expect(response).toMatchObject({
+      accessToken: expect.any(String),
+      refreshToken: expect.any(String),
+    });
+    expect(accountSecurityState.requestDeviceLoginVerification).not.toHaveBeenCalled();
+    expect(accountPrivacyState.verifyTotpForLogin).not.toHaveBeenCalled();
+    expect(registered.body.user.username).toBe("passkey_direct");
   });
 
   it("rejects wrong passwords and blocks after five failures", async () => {
