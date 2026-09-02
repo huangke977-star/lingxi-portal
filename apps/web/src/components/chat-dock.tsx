@@ -134,7 +134,7 @@ import {
 } from "@/lib/social-events";
 import { getAvatarFallbackText } from "@/lib/user-display";
 import { localizedPath } from "@/lib/i18n";
-import { notificationBody, notificationTitle } from "@/lib/system-labels";
+import { chatSystemMessageBody, notificationBody, notificationTitle } from "@/lib/system-labels";
 import {
   type BrowserPushState,
   disableBrowserPush,
@@ -305,6 +305,7 @@ export function ChatDock() {
   const [isMessageSearchLoading, setIsMessageSearchLoading] = useState(false);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [mentionCandidates, setMentionCandidates] = useState<SocialUserSearchResult[]>([]);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   const [isMentionSearching, setIsMentionSearching] = useState(false);
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null);
   const [mentionCursor, setMentionCursor] = useState(0);
@@ -393,7 +394,7 @@ export function ChatDock() {
       const position = getMentionCaretPosition(textarea, cursor, anchor);
       if (!position) return;
       setMentionPopupStyle({
-        left: Math.min(Math.max(0, position.left), Math.max(0, anchor.clientWidth - 288)),
+        left: Math.min(Math.max(12, position.left), Math.max(12, window.innerWidth - 292)),
         bottom: position.bottom,
       });
     });
@@ -535,6 +536,7 @@ export function ChatDock() {
     setMentionCandidates([]);
     setMentionRange(null);
     setMentionCursor(0);
+    setMentionActiveIndex(0);
   }, [selectedId]);
 
   useEffect(() => {
@@ -578,16 +580,18 @@ export function ChatDock() {
     if (!token || !selectedId || !activeMention) {
       setMentionCandidates([]);
       setMentionRange(activeMention ? { start: activeMention.start, end: activeMention.end } : null);
+      setMentionActiveIndex(0);
       setIsMentionSearching(false);
       setMentionPopupStyle(undefined);
       return;
     }
     setMentionRange({ start: activeMention.start, end: activeMention.end });
+    setMentionActiveIndex(0);
     let active = true;
     const timer = window.setTimeout(() => {
       setIsMentionSearching(true);
       searchSocialUsers(token, activeMention.query, 8, { mention: true })
-        .then((result) => { if (active) setMentionCandidates(result.items); })
+        .then((result) => { if (active) { setMentionCandidates(result.items); setMentionActiveIndex(0); } })
         .catch(() => { if (active) setMentionCandidates([]); })
         .finally(() => { if (active) setIsMentionSearching(false); });
     }, 180);
@@ -753,6 +757,11 @@ export function ChatDock() {
       }
       if (detail.messageDeleted) {
         pendingConversationOpenRef.current = null;
+        setSelectedSystemNotificationId(0);
+        if (detail.conversationId) {
+          setSelectedId(detail.conversationId);
+          setIsMobileConversationOpen(true);
+        }
         setPendingMessageFocusId(0);
         setError(phrase("该消息已删除，无法定位。", "This message has been deleted and cannot be located."));
         return;
@@ -1082,10 +1091,17 @@ export function ChatDock() {
     if (!pendingMessageFocusId || isMessagesLoading) return;
     window.requestAnimationFrame(() => {
       const target = document.getElementById(`chat-message-${pendingMessageFocusId}`);
-      if (!target) return;
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
-      target.classList.add("chat-message-focus-highlight");
-      window.setTimeout(() => target.classList.remove("chat-message-focus-highlight"), 1000);
+      const list = messageListRef.current;
+      if (!target || !list) return;
+      const listRect = list.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const centeredTop = list.scrollTop + targetRect.top - listRect.top - (list.clientHeight - targetRect.height) / 2;
+      list.scrollTo({ behavior: "smooth", top: Math.max(0, centeredTop) });
+      target.classList.remove("chat-message-focus-highlight");
+      window.requestAnimationFrame(() => {
+        target.classList.add("chat-message-focus-highlight");
+        window.setTimeout(() => target.classList.remove("chat-message-focus-highlight"), 1000);
+      });
       if (pendingConversationOpenRef.current?.messageId === pendingMessageFocusId) pendingConversationOpenRef.current = null;
       setPendingMessageFocusId(0);
     });
@@ -1162,6 +1178,16 @@ export function ChatDock() {
     setDrafts((current) => ({ ...current, [selectedId]: value }));
   }
 
+  function moveMentionSelection(direction: 1 | -1) {
+    if (!mentionCandidates.length) return;
+    setMentionActiveIndex((current) => (current + direction + mentionCandidates.length) % mentionCandidates.length);
+  }
+
+  function selectActiveMention() {
+    const candidate = mentionCandidates[mentionActiveIndex] ?? mentionCandidates[0];
+    if (candidate) insertMention(candidate);
+  }
+
   function insertMention(user: SocialUserSearchResult) {
     if (!selectedId || !mentionRange) return;
     const nextDraft = `${draft.slice(0, mentionRange.start)}@${user.username} ${draft.slice(mentionRange.end)}`;
@@ -1169,6 +1195,7 @@ export function ChatDock() {
     updateDraft(nextDraft);
     setMentionCandidates([]);
     setMentionRange(null);
+    setMentionActiveIndex(0);
     setMentionCursor(nextCursor);
     window.requestAnimationFrame(() => {
       const textarea = document.querySelector<HTMLTextAreaElement>(".chat-composer-row textarea");
@@ -1817,8 +1844,10 @@ export function ChatDock() {
   async function handleNotification(notification: SocialNotification) {
     const mentionContext = notification.context?.kind === "message_mention" ? notification.context : null;
     const mentionMessage = mentionContext?.message;
-    const mentionTarget = !mentionContext?.messageDeleted && mentionContext?.conversationId
-      ? { conversationId: mentionContext.conversationId, messageId: notification.messageId ?? 0 }
+    const mentionConversationId = mentionContext?.conversationId ?? getMentionConversationId(notification.actionUrl);
+    const mentionDeleted = Boolean(mentionContext?.messageDeleted || (notification.type === "mention_received" && notification.messageId === null && mentionConversationId));
+    const mentionTarget = !mentionDeleted && mentionConversationId
+      ? { conversationId: mentionConversationId, messageId: notification.messageId ?? 0 }
       : null;
     if (mentionTarget) pendingConversationOpenRef.current = mentionTarget;
     else pendingConversationOpenRef.current = null;
@@ -1839,7 +1868,14 @@ export function ChatDock() {
         // Following the action is still useful if read-state persistence fails.
       }
     }
-    if (mentionContext?.messageDeleted) {
+    if (mentionDeleted) {
+      setIsMinimized(false);
+      setIsOpen(true);
+      setSelectedSystemNotificationId(0);
+      if (mentionConversationId) {
+        setSelectedId(mentionConversationId);
+        setIsMobileConversationOpen(true);
+      }
       setPendingMessageFocusId(0);
       setError(phrase("该消息已删除，无法定位。", "This message has been deleted and cannot be located."));
       return;
@@ -2536,7 +2572,7 @@ export function ChatDock() {
                   return <div className={`chat-sidebar-notification-row${active ? " active" : ""}`} key={entry.id}>
                     <button className={active ? "chat-sidebar-primary-row active system-conversation" : "chat-sidebar-primary-row system-conversation"} onClick={() => { setOpenNotificationChannelMenuId(0); setSelectedId(entry.id); setSelectedSystemNotificationId(0); setIsMobileConversationOpen(true); }} type="button">
                       <span className={`chat-system-avatar ${entry.config.channel}`}><NotificationChannelIcon channel={entry.config.channel} size={17} /></span>
-                      <span><strong>{entry.config.label}{!pushEnabled ? <BellOff aria-hidden="true" className="chat-muted-inline" size={13} /> : null}</strong><small>{items[0]?.body ?? entry.config.empty}</small></span>
+                      <span><strong>{entry.config.label}{!pushEnabled ? <BellOff aria-hidden="true" className="chat-muted-inline" size={13} /> : null}</strong><small>{items[0] ? notificationBody(items[0].body, items[0].bodyEn, locale) : entry.config.empty}</small></span>
                       {unreadCount && pushEnabled ? <b>{formatCount(unreadCount)}</b> : null}
                     </button>
                     <span className="chat-notification-channel-action" data-chat-notification-action>
@@ -2633,8 +2669,7 @@ export function ChatDock() {
               listRef={systemMessageListRef}
             /> : selected ? <>
               {selected.group && pinnedMessages.length ? <div className="chat-pinned-messages">
-                <span><Pin aria-hidden="true" size={14} />{phrase("置顶消息", "Pinned message")}<small>{pinnedMessageIndex + 1}/{pinnedMessages.length}</small></span>
-                <button onClick={focusCurrentPinnedMessage} type="button">
+                <button aria-label={phrase("定位置顶消息", "Locate pinned message")} onClick={focusCurrentPinnedMessage} type="button">
                   <PinnedMessagePreview message={pinnedMessages[pinnedMessageIndex] ?? pinnedMessages[0]} locale={locale} />
                 </button>
               </div> : null}
@@ -2684,8 +2719,8 @@ export function ChatDock() {
                     <button aria-label={phrase("添加表情", "Add emoji")} className={`chat-desktop-tool${isEmojiOpen ? " active" : ""}`} disabled={selectedGroupIsBanned} onClick={() => { setIsEmojiOpen((current) => !current); setIsMobileToolsOpen(false); }} title={phrase("表情", "Emoji")} type="button"><Laugh aria-hidden="true" size={18} /></button>
                     <button aria-label={phrase("添加图片或文件", "Add images or files")} className="chat-desktop-tool" disabled={selectedGroupIsBanned} onClick={() => fileInputRef.current?.click()} title={phrase("添加图片或文件", "Add images or files")} type="button"><Paperclip aria-hidden="true" size={18} /></button>
                   </div>
-                  <MentionTextarea aria-label={phrase(`给 ${selected.group?.name ?? selected.user.nickname} 发消息`, `Message ${selected.group?.name ?? selected.user.nickname}`)} disabled={selectedGroupIsBanned} maxLength={2000} onChange={(nextValue, cursor) => { updateDraft(nextValue); setMentionCursor(cursor); syncMentionPopupPosition(cursor); }} onKeyDown={(event) => { if ((event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) && mentionCandidates.length) { event.preventDefault(); insertMention(mentionCandidates[0]); return; } if (event.key === "Escape" && mentionCandidates.length) { event.preventDefault(); setMentionCandidates([]); return; } if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} onPaste={handlePaste} onCursorChange={(cursor) => { setMentionCursor(cursor); syncMentionPopupPosition(cursor); }} placeholder={selectedGroupIsBanned ? phrase("该群已被封禁，暂时无法发送消息", "This group is banned and cannot receive messages") : phrase("输入消息", "Write a message")} rows={2} textareaRef={mentionTextareaRef} value={draft} />
-                  <MentionSuggestions isLoading={isMentionSearching} items={mentionCandidates} onSelect={insertMention} style={mentionPopupStyle} />
+                  <MentionTextarea aria-label={phrase(`给 ${selected.group?.name ?? selected.user.nickname} 发消息`, `Message ${selected.group?.name ?? selected.user.nickname}`)} disabled={selectedGroupIsBanned} maxLength={2000} onChange={(nextValue, cursor) => { updateDraft(nextValue); setMentionCursor(cursor); syncMentionPopupPosition(cursor); }} onKeyDown={(event) => { if (event.key === "ArrowDown" && mentionCandidates.length) { event.preventDefault(); moveMentionSelection(1); return; } if (event.key === "ArrowUp" && mentionCandidates.length) { event.preventDefault(); moveMentionSelection(-1); return; } if ((event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) && mentionCandidates.length) { event.preventDefault(); selectActiveMention(); return; } if (event.key === "Escape" && mentionCandidates.length) { event.preventDefault(); setMentionCandidates([]); setMentionActiveIndex(0); return; } if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} onPaste={handlePaste} onCursorChange={(cursor) => { setMentionCursor(cursor); syncMentionPopupPosition(cursor); }} placeholder={selectedGroupIsBanned ? phrase("该群已被封禁，暂时无法发送消息", "This group is banned and cannot receive messages") : phrase("输入消息", "Write a message")} rows={2} textareaRef={mentionTextareaRef} value={draft} />
+                  <MentionSuggestions activeIndex={mentionActiveIndex} isLoading={isMentionSearching} items={mentionCandidates} onActiveIndexChange={setMentionActiveIndex} onSelect={insertMention} style={mentionPopupStyle} />
                   <button
                     aria-label={isVoiceRecording ? phrase(`松开发送语音，已录制 ${formatDuration(voiceRecordingSeconds)}`, `Release to send voice message, recorded ${formatDuration(voiceRecordingSeconds)}`) : phrase("发送消息，长按录制语音", "Send message. Hold to record voice.")}
                     className={isVoiceRecording ? "recording" : undefined}
@@ -3178,6 +3213,7 @@ function ChatMessageItem({
   const senderLabelOriginRef = useRef<{ x: number; y: number } | null>(null);
   const [senderLabelVisible, setSenderLabelVisible] = useState(false);
   const callType = message.type === "system" ? message.call?.type ?? inferCallType(message.body) : null;
+  const localizedSystemBody = message.type === "system" ? chatSystemMessageBody(message.body, locale) : message.body;
   function clearLongPressTimer() {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = null;
@@ -3277,8 +3313,8 @@ function ChatMessageItem({
       {selectionControl}
       {callType ? <button className="chat-call-message" onClick={onCall} title={callType === "voice" ? phrase("再次发起语音通话", "Start another voice call") : phrase("再次发起视频通话", "Start another video call")} type="button">
         {callType === "voice" ? <Phone aria-hidden="true" size={14} /> : <Video aria-hidden="true" size={14} />}
-        <span>{message.body}</span>
-      </button> : <span>{message.body}</span>}
+        <span>{localizedSystemBody}</span>
+      </button> : <span>{localizedSystemBody}</span>}
       {message.body === "你们已经成为好友，可以开始聊天了。" ? <button onClick={onGreeting} type="button">{phrase("打个招呼", "Say hello")}</button> : null}
       <time>{formatChatTime(message.createdAt, locale)}</time>
     </div>;
@@ -3458,12 +3494,25 @@ function timestamp(value: string | null | undefined): number {
 function getConversationPreview(conversation: Conversation, locale: "zh-CN" | "en-US"): string {
   const text = (chinese: string, english: string) => locale === "en-US" ? english : chinese;
   if (!conversation.lastMessage) return text("开始聊天", "Start chatting");
-  if (conversation.lastMessage.body) return conversation.lastMessage.body;
+  if (conversation.lastMessage.body) return conversation.lastMessage.type === "system"
+    ? chatSystemMessageBody(conversation.lastMessage.body, locale)
+    : conversation.lastMessage.body;
   const attachments = conversation.lastMessage.attachments ?? [];
   if (attachments.length === 1 && attachments[0].kind === "audio") return text("[语音消息]", "[Voice message]");
   if (attachments.length === 1 && attachments[0].kind === "video") return text("[视频]", "[Video]");
   const count = attachments.length;
   return count ? text(`[${count} 个附件]`, `[${count} attachments]`) : text("新消息", "New message");
+}
+
+function getMentionConversationId(actionUrl: string | null): number | null {
+  if (!actionUrl) return null;
+  try {
+    const url = new URL(actionUrl, "https://local.invalid");
+    const conversationId = Number(url.searchParams.get("conversation"));
+    return Number.isInteger(conversationId) && conversationId > 0 ? conversationId : null;
+  } catch {
+    return null;
+  }
 }
 
 function formatDuration(seconds: number): string {

@@ -165,6 +165,15 @@ const systemNotificationTitles: Record<string, LocalizedPair> = {
   "待处理的入群申请": ["待处理的入群申请", "Group join request awaiting action"],
   "陌生消息请求未通过": ["陌生消息请求未通过", "Message request declined"],
   "陌生消息请求已通过": ["陌生消息请求已通过", "Message request accepted"],
+  "群聊已被站点封禁": ["群聊已被站点封禁", "Group banned by site"],
+  "群聊封禁已解除": ["群聊封禁已解除", "Group ban lifted"],
+  "新的群聊邀请": ["新的群聊邀请", "New group invitation"],
+  "新的入群申请": ["新的入群申请", "New group join request"],
+  "入群申请已通过": ["入群申请已通过", "Group join request approved"],
+  "入群申请未通过": ["入群申请未通过", "Group join request declined"],
+  "群消息举报处理结果": ["群消息举报处理结果", "Group message report result"],
+  "群消息处理通知": ["群消息处理通知", "Group message moderation notice"],
+  "群聊封禁已到期": ["群聊封禁已到期", "Group ban expired"],
 };
 
 export function reputationReasonLabel(reason: ReputationReason, locale: Locale, fallback: string): string {
@@ -222,7 +231,53 @@ export function notificationTitle(
 }
 
 export function notificationBody(body: string, bodyEn: string | null, locale: Locale): string {
-  return locale === "en-US" && bodyEn ? bodyEn : body;
+  if (locale !== "en-US" || bodyEn) return locale === "en-US" ? bodyEn! : body;
+  const legacyPairs: Array<[RegExp, (match: RegExpExecArray) => string]> = [
+    [/^(.+?) 在聊天消息中提到了你。$/, (match) => `${match[1]} mentioned you in a chat message.`],
+    [/^群聊“(.+?)”已恢复正常发言。$/, (match) => `Group “${match[1]}” is accepting messages again.`],
+    [/^群聊“(.+?)”已被永久封禁。原因：(.+)$/, (match) => `Group “${match[1]}” was permanently banned. Reason: ${match[2]}`],
+    [/^群聊“(.+?)”已被封禁至 (.+)。原因：(.+)$/, (match) => `Group “${match[1]}” was banned until ${match[2]}. Reason: ${match[3]}`],
+    [/^(.+?) 创建了群聊。$/, (match) => `${match[1]} created a group.`],
+    [/^(.+?) 邀请你加入群聊“(.+?)”。$/, (match) => `${match[1]} invited you to join group “${match[2]}”.`],
+    [/^(.+?) 申请加入群聊“(.+?)”。$/, (match) => `${match[1]} requested to join group “${match[2]}”.`],
+    [/^你已加入群聊“(.+?)”。$/, (match) => `You joined group “${match[1]}”.`],
+    [/^你申请加入群聊“(.+?)”的请求未通过。$/, (match) => `Your request to join group “${match[1]}” was declined.`],
+    [/^你在群聊“(.+?)”提交的举报已处理。$/, (match) => `Your report in group “${match[1]}” was handled.`],
+    [/^你在群聊“(.+?)”提交的举报未发现违规。$/, (match) => `No violation was found in your report in group “${match[1]}”.`],
+    [/^你在群聊“(.+?)”发送的消息已被管理员处理。$/, (match) => `Your message in group “${match[1]}” was handled by an administrator.`],
+    [/^你已被移出群聊“(.+?)”，当前无法重新申请加入。$/, (match) => `You were removed from group “${match[1]}” and cannot request to join again.`],
+    [/^你已被移出群聊“(.+?)”。$/, (match) => `You were removed from group “${match[1]}”.`],
+  ];
+  for (const [pattern, translate] of legacyPairs) {
+    const match = pattern.exec(body);
+    if (match) return translate(match);
+  }
+  return body;
+}
+
+export function chatSystemMessageBody(body: string, locale: Locale): string {
+  if (locale !== "en-US") return body;
+  const exact: Record<string, string> = {
+    "你们已经成为好友，可以开始聊天了。": "You are now friends and can start chatting.",
+  };
+  if (exact[body]) return exact[body];
+  const created = body.match(/^(.+?) 创建了群聊。$/);
+  if (created) return `${created[1]} created a group.`;
+  const recalled = body.match(/^(.+?) 撤回了一条消息。$/);
+  if (recalled) return `${recalled[1]} recalled a message.`;
+  const call = body.match(/^(语音通话|视频通话) · (.+)$/);
+  if (call) {
+    const label = call[1] === "视频通话" ? "Video call" : "Voice call";
+    const status: Record<string, string> = {
+      "已拒绝": "Declined",
+      "对方忙线": "Busy",
+      "已取消": "Cancelled",
+      "未接听": "Missed",
+      "连接失败": "Connection failed",
+    };
+    return `${label} · ${status[call[2]] ?? call[2]}`;
+  }
+  return body;
 }
 
 export function containerRuntimeMessage(locale: Locale, fallback: string): string {

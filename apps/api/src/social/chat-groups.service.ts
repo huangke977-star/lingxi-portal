@@ -246,6 +246,9 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
             type: UserNotificationType.system,
             title: "群聊已被站点封禁",
             body: `群聊“${group.name}”已被${dto.permanent ? "永久" : `封禁至 ${this.formatMinute(bannedUntil!)}`}。原因：${reason}`,
+            bodyEn: dto.permanent
+              ? `Group “${group.name}” was permanently banned. Reason: ${reason}`
+              : `Group “${group.name}” was banned until ${this.formatMinute(bannedUntil!)}. Reason: ${reason}`,
             actionUrl: `/messages?groupBan=${groupId}`,
           })),
         });
@@ -282,6 +285,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
             type: UserNotificationType.system,
             title: "群聊封禁已解除",
             body: `群聊“${group.name}”已恢复正常发言。`,
+            bodyEn: `Group “${group.name}” is accepting messages again.`,
             actionUrl: `/messages?groupBan=${groupId}`,
           })),
         });
@@ -358,6 +362,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
             type: UserNotificationType.system,
             title: "新的群聊邀请",
             body: `${user.nickname || user.username} 邀请你加入群聊“${dto.name.trim()}”。`,
+            bodyEn: `${user.nickname || user.username} invited you to join group “${dto.name.trim()}”.`,
             actionUrl: `/messages?groupApproval=${created.id}`,
           })),
         });
@@ -501,6 +506,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
     const existingActive = new Set(group.members.filter((item) => item.status === ChatGroupMemberStatus.active).map((item) => item.userId));
     const inviteeIds = userIds.filter((id) => !existingActive.has(id));
     const notificationBody = `${user.nickname || user.username} 邀请你加入群聊“${group.name}”。`;
+    const notificationBodyEn = `${user.nickname || user.username} invited you to join group “${group.name}”.`;
     const [pendingInvitations, unreadNotifications] = inviteeIds.length
       ? await Promise.all([
           this.prisma.chatGroupInvitation.findMany({
@@ -550,6 +556,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
             type: UserNotificationType.system,
             title: "新的群聊邀请",
             body: notificationBody,
+            bodyEn: notificationBodyEn,
             actionUrl: `/messages?groupApproval=${groupId}`,
           })),
         });
@@ -761,6 +768,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
           type: UserNotificationType.system,
           title: "新的入群申请",
           body: `${user.nickname || user.username} 申请加入群聊“${group.name}”。`,
+          bodyEn: `${user.nickname || user.username} requested to join group “${group.name}”.`,
           actionUrl: `/messages?groupApproval=${groupId}&joinRequest=${request.id}`,
         })),
       });
@@ -852,6 +860,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
           type: UserNotificationType.system,
           title: dto.status === "approved" ? "入群申请已通过" : "入群申请未通过",
           body: dto.status === "approved" ? `你已加入群聊“${group.name}”。` : `你申请加入群聊“${group.name}”的请求未通过。`,
+          bodyEn: dto.status === "approved" ? `You joined group “${group.name}”.` : `Your request to join group “${group.name}” was declined.`,
           actionUrl: dto.status === "approved" ? `/messages?conversation=${group.conversationId}` : "/messages",
         },
       });
@@ -1109,6 +1118,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
             type: UserNotificationType.system,
             title: "群消息举报处理结果",
             body: dto.status === "resolved" ? `你在群聊“${report.group.name}”提交的举报已处理。` : `你在群聊“${report.group.name}”提交的举报未发现违规。`,
+            bodyEn: dto.status === "resolved" ? `Your report in group “${report.group.name}” was handled.` : `No violation was found in your report in group “${report.group.name}”.`,
             actionUrl: `/messages?conversation=${report.group.conversationId}`,
           },
           ...(dto.status === "resolved" ? [{
@@ -1117,6 +1127,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
             type: UserNotificationType.system,
             title: "群消息处理通知",
             body: `你在群聊“${report.group.name}”发送的消息已被管理员处理。`,
+            bodyEn: `Your message in group “${report.group.name}” was handled by an administrator.`,
             actionUrl: `/messages?conversation=${report.group.conversationId}`,
           }] : []),
         ],
@@ -1217,6 +1228,7 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
               type: UserNotificationType.system,
               title: "群聊封禁已到期",
               body: `群聊“${group.name}”已恢复正常发言。`,
+              bodyEn: `Group “${group.name}” is accepting messages again.`,
               actionUrl: `/messages?groupBan=${group.id}`,
             })),
           });
@@ -1260,6 +1272,9 @@ export class ChatGroupsService implements OnModuleInit, OnModuleDestroy {
           body: status === ChatGroupMemberStatus.blocked
             ? `你已被移出群聊“${context.group.name}”，当前无法重新申请加入。`
             : `你已被移出群聊“${context.group.name}”。`,
+          bodyEn: status === ChatGroupMemberStatus.blocked
+            ? `You were removed from group “${context.group.name}” and cannot request to join again.`
+            : `You were removed from group “${context.group.name}”.`,
           actionUrl: "/messages",
         },
       });

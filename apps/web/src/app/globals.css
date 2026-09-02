@@ -7834,7 +7834,9 @@ a.entry-item:hover {
   padding: 6px;
   text-align: left;
 }
-.mention-suggestions button:hover { background: color-mix(in srgb, var(--accent-soft) 64%, transparent); }
+.mention-suggestions button:hover,
+.mention-suggestions button.active,
+.mention-suggestions button[aria-selected="true"] { background: color-mix(in srgb, var(--accent-soft) 64%, transparent); }
 .mention-suggestion-avatar {
   display: grid;
   width: 26px;
@@ -7977,6 +7979,21 @@ a.entry-item:hover {
 }
 
 .article-comment-form button { margin-top: 10px; }
+.article-comment-form .content-attachment-actions {
+  z-index: 3;
+  display: inline-flex;
+  pointer-events: auto;
+}
+.article-comment-form .content-attachment-actions button {
+  position: relative;
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
 
 .my-articles-layout,
 .admin-articles-layout {
@@ -11128,8 +11145,11 @@ html:has(.article-comment-form) {
 .chat-dock .chat-message { max-width: 88%; margin: 6px 0; }
 
 .chat-message-focus-highlight > div > p,
-.chat-message-focus-highlight > div > .chat-message-quote { animation: chat-message-focus 1.6s ease; }
-@keyframes chat-message-focus { 0%, 100% { box-shadow: var(--chat-bubble-shadow); } 24% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 55%, transparent), var(--chat-bubble-shadow); } }
+.chat-message-focus-highlight > div > .chat-message-quote { animation: chat-message-focus 1s ease; }
+@keyframes chat-message-focus {
+  0%, 100% { background: var(--chat-bubble-background); }
+  24%, 46% { background: color-mix(in srgb, var(--accent-soft) 78%, var(--chat-bubble-background)); }
+}
 .chat-pinned-messages {
   display: grid;
   min-width: 0;
@@ -11683,8 +11703,8 @@ html:has(.article-comment-form) {
 .article-comment-wrap.notification-highlight > .article-comment {
   border-radius: 7px;
   background: color-mix(in srgb, var(--accent-soft) 58%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-strong) 28%, transparent);
-  transition: background 240ms ease, box-shadow 240ms ease;
+  box-shadow: none;
+  transition: background 240ms ease;
 }
 
 @media (max-width: 760px) {
@@ -20378,7 +20398,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .chat-call-mini,
   .app-toast
 ) {
-  background: var(--chat-floating-surface) !important;
+  background: var(--chat-bubble-background) !important;
   background-image: none !important;
   border-color: var(--chat-bubble-border) !important;
   box-shadow: var(--chat-bubble-shadow) !important;
@@ -20387,7 +20407,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 
 :is(.level-badge::after, .portal-entry-tooltip::before, .level-popover::before) {
-  background: var(--chat-floating-surface) !important;
+  background: var(--chat-bubble-background) !important;
   backdrop-filter: blur(22px) saturate(125%) !important;
   -webkit-backdrop-filter: blur(22px) saturate(125%) !important;
 }
@@ -20421,6 +20441,8 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 
 .chat-dock-titlebar {
+  position: relative;
+  z-index: 40;
   flex: 0 0 auto;
   min-height: 46px;
 }
@@ -20477,51 +20499,110 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   tab-size: 4;
 }
 .mention-token {
-  display: inline;
-  padding: 0;
+  display: inline-block;
+  background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
+  color: var(--accent-strong);
+  font-weight: 650;
+  padding: 0 3px;
   border-radius: 3px;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
 .mention-suggestions {
+  position: fixed;
+  z-index: 30000 !important;
+  top: auto;
   right: auto;
   bottom: auto;
   width: min(280px, calc(100vw - 32px));
+  pointer-events: auto !important;
 }
-.chat-composer { overflow: visible; }
+.chat-composer {
+  position: relative;
+  z-index: 20;
+  overflow: visible;
+}
+.chat-composer-row {
+  position: relative;
+  z-index: 30;
+  overflow: visible;
+}
 .chat-message-focus-highlight > div {
-  animation: chat-message-focus 1s ease;
-}
-.chat-message-focus-highlight > div > p,
-.chat-message-focus-highlight > div > .chat-message-quote {
   animation: none;
 }
+.chat-message-focus-highlight > div > p,
+.chat-message-focus-highlight > div > .chat-message-quote,
+.chat-message-focus-highlight > div > .chat-message-attachments,
+.chat-message-focus-highlight > div > .chat-message-attachments > * {
+  animation: chat-message-focus 1s ease;
+}
 @keyframes chat-message-focus {
-  0%, 100% { box-shadow: var(--chat-bubble-shadow); }
-  24% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 55%, transparent), var(--chat-bubble-shadow); }
+  0%, 100% { background: var(--chat-bubble-background); }
+  24%, 46% { background: color-mix(in srgb, var(--accent-soft) 78%, var(--chat-bubble-background)); }
 }
 .chat-panel {
   position: relative;
 }
 .chat-panel.has-pinned .chat-message-list {
-  padding-top: 72px;
+  padding-top: 48px;
 }
 .chat-pinned-messages {
   position: absolute;
-  z-index: 4;
-  top: 8px;
-  right: 10px;
-  left: 10px;
+  z-index: 6;
+  top: 7px;
+  right: 50%;
+  left: auto;
+  width: min(180px, calc(100% - 24px));
+  transform: translateX(50%);
   border: 1px solid var(--chat-bubble-border);
-  border-radius: 9px;
+  border-radius: 999px;
   background: var(--chat-bubble-background);
   box-shadow: var(--chat-bubble-shadow);
   backdrop-filter: blur(16px) saturate(125%);
   -webkit-backdrop-filter: blur(16px) saturate(125%);
-  padding: 6px 9px;
+  padding: 4px 8px;
+}
+.chat-pinned-messages > span { display: none; }
+.chat-pinned-messages > button {
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 5px;
+  padding: 0;
+}
+.chat-pinned-messages > button strong,
+.chat-pinned-messages > button small { font-size: 0.6rem; }
+.chat-pinned-message-icon { width: 18px; height: 18px; }
+.mention-suggestions,
+.chat-pinned-messages {
+  background: var(--chat-bubble-background) !important;
+  background-image: none !important;
+  border-color: var(--chat-bubble-border) !important;
+  box-shadow: var(--chat-bubble-shadow) !important;
+  backdrop-filter: blur(22px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(125%) !important;
+}
+
+/* Keep the comment composer actions above the mention paint layer. */
+.article-comment-form .content-attachment-actions {
+  position: absolute !important;
+  z-index: 5 !important;
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+.article-comment-form .content-attachment-actions button {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+.article-comment-wrap.notification-highlight > .article-comment {
+  border: 0 !important;
+  box-shadow: none !important;
 }
 .chat-dock-titlebar-actions {
   position: relative;
+  min-width: 0;
   flex: 0 0 auto;
 }
 .chat-inline-message-search {
@@ -20559,7 +20640,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 .chat-message-search-dropdown {
   position: absolute;
-  z-index: 8;
+  z-index: 30001;
   top: calc(100% + 6px);
   right: 0;
   left: 0;
@@ -20579,12 +20660,18 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .chat-message-search-dropdown .chat-state,
 .chat-message-search-dropdown .chat-sidebar-empty { padding: 6px; }
 @media (max-width: 760px) {
+  .chat-dock-titlebar-actions { max-width: 100%; gap: 2px; }
   .chat-inline-message-search { width: min(240px, 54vw); }
-  .chat-panel.has-pinned .chat-message-list { padding-top: 70px; }
+  .chat-inline-message-search { flex: 1 1 120px; }
+  .chat-panel.has-pinned .chat-message-list { padding-top: 48px; }
 }
 .subscription-management-drawer .subscription-setting-actions .announcement-editor-select-trigger {
   display: inline-flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
   flex-wrap: nowrap;
+  overflow: hidden;
   white-space: nowrap;
 }
 .subscription-management-drawer .subscription-setting-actions .announcement-editor-select-leading-icon,
@@ -20592,6 +20679,11 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .subscription-management-drawer .subscription-setting-actions .announcement-editor-select-trigger > svg {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+.subscription-management-drawer .subscription-setting-actions .announcement-editor-select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .announcement-editor-select-menu-portal.subscription-frequency-menu button {
   min-height: 28px;

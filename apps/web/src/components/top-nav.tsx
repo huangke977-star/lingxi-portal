@@ -100,6 +100,24 @@ function pendingReportActionUrl(report: ModerationReport): string {
     : "/messages";
 }
 
+function getMentionConversationId(actionUrl: string | null): number | null {
+  if (!actionUrl) return null;
+  try {
+    const url = new URL(actionUrl, "https://local.invalid");
+    const conversationId = Number(url.searchParams.get("conversation"));
+    return Number.isInteger(conversationId) && conversationId > 0 ? conversationId : null;
+  } catch {
+    return null;
+  }
+}
+
+function isDeletedMentionNotification(notification: SocialNotification): boolean {
+  if (notification.context?.kind === "message_mention" && notification.context.messageDeleted) return true;
+  return notification.type === "mention_received"
+    && notification.messageId === null
+    && Boolean(getMentionConversationId(notification.actionUrl));
+}
+
 export function TopNav() {
   const router = useRouter();
   const pathname = usePathname();
@@ -304,8 +322,9 @@ export function TopNav() {
     }
     if (notification.context?.kind === "announcement" && notification.actionUrl) {
       router.push(notification.actionUrl);
-    } else if (notification.context?.kind === "message_mention" && notification.context.messageDeleted) {
-      setHeaderError(phrase("该消息已删除，无法定位。", "This message has been deleted and cannot be located."));
+    } else if (isDeletedMentionNotification(notification)) {
+      const conversationId = notification.context?.conversationId ?? getMentionConversationId(notification.actionUrl);
+      openChatDock({ ...(conversationId ? { conversationId } : {}), messageDeleted: true });
     } else if (notification.context?.kind === "message_mention" && notification.context.conversationId) {
       openChatDock({ conversationId: notification.context.conversationId, ...(notification.messageId ? { messageId: notification.messageId } : {}) });
     } else if (notification.context?.kind === "article_comment" && notification.context.article?.slug) {

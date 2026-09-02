@@ -70,6 +70,7 @@ export default function ArticleDetailPage() {
   const [isLoadingMoreComments, setIsLoadingMoreComments] = useState(false);
   const [commentDraft, setCommentDraft] = useState("");
   const [commentMentionCandidates, setCommentMentionCandidates] = useState<SocialUserSearchResult[]>([]);
+  const [commentMentionActiveIndex, setCommentMentionActiveIndex] = useState(0);
   const [isCommentMentionSearching, setIsCommentMentionSearching] = useState(false);
   const [commentMentionRange, setCommentMentionRange] = useState<{ start: number; end: number } | null>(null);
   const [commentMentionCursor, setCommentMentionCursor] = useState(0);
@@ -111,22 +112,27 @@ export default function ArticleDetailPage() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCommentMentionCandidates([]);
       setCommentMentionRange(activeMention ? { start: activeMention.start, end: activeMention.end } : null);
+      setCommentMentionActiveIndex(0);
       setIsCommentMentionSearching(false);
       setCommentMentionPopupStyle(undefined);
       return;
     }
     setCommentMentionRange({ start: activeMention.start, end: activeMention.end });
+    setCommentMentionActiveIndex(0);
     const positionFrame = window.requestAnimationFrame(() => {
       const textarea = composerRef.current;
       const anchor = textarea?.closest<HTMLElement>(".mention-composer-shell");
       const position = textarea && anchor ? getMentionCaretPosition(textarea, commentMentionCursor, anchor) : null;
-      if (position) setCommentMentionPopupStyle({ left: Math.min(Math.max(0, position.left), Math.max(0, anchor!.clientWidth - 288)), bottom: position.bottom });
+      if (position) setCommentMentionPopupStyle({
+        left: Math.min(Math.max(12, position.left), Math.max(12, window.innerWidth - 292)),
+        bottom: position.bottom,
+      });
     });
     let active = true;
     const timer = window.setTimeout(() => {
       setIsCommentMentionSearching(true);
       searchSocialUsers(token, activeMention.query, 8, { mention: true })
-        .then((result) => { if (active) setCommentMentionCandidates(result.items); })
+        .then((result) => { if (active) { setCommentMentionCandidates(result.items); setCommentMentionActiveIndex(0); } })
         .catch(() => { if (active) setCommentMentionCandidates([]); })
         .finally(() => { if (active) setIsCommentMentionSearching(false); });
     }, 180);
@@ -282,7 +288,7 @@ export default function ArticleDetailPage() {
     const scrollTimer = window.setTimeout(() => {
       document.getElementById(`article-comment-${requestedCommentId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 120);
-    const clearTimer = window.setTimeout(() => setHighlightCommentId(null), 3600);
+    const clearTimer = window.setTimeout(() => setHighlightCommentId(null), 1000);
     return () => {
       window.clearTimeout(scrollTimer);
       window.clearTimeout(clearTimer);
@@ -433,6 +439,16 @@ export default function ArticleDetailPage() {
     }
   }
 
+  function moveCommentMentionSelection(direction: 1 | -1) {
+    if (!commentMentionCandidates.length) return;
+    setCommentMentionActiveIndex((current) => (current + direction + commentMentionCandidates.length) % commentMentionCandidates.length);
+  }
+
+  function selectActiveCommentMention() {
+    const candidate = commentMentionCandidates[commentMentionActiveIndex] ?? commentMentionCandidates[0];
+    if (candidate) insertCommentMention(candidate);
+  }
+
   function insertCommentMention(user: SocialUserSearchResult) {
     if (!commentMentionRange) return;
     const nextDraft = `${commentDraft.slice(0, commentMentionRange.start)}@${user.username} ${commentDraft.slice(commentMentionRange.end)}`;
@@ -440,6 +456,7 @@ export default function ArticleDetailPage() {
     setCommentDraft(nextDraft);
     setCommentMentionCandidates([]);
     setCommentMentionRange(null);
+    setCommentMentionActiveIndex(0);
     setCommentMentionCursor(nextCursor);
     window.requestAnimationFrame(() => {
       const textarea = composerRef.current;
@@ -590,7 +607,7 @@ export default function ArticleDetailPage() {
           <div aria-hidden={!replyingTo} className={`article-composer-context${replyingTo ? " active" : ""}`}>
             {replyingTo ? <><span title={phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`)}>{phrase("回复", "Reply")} <strong>@{replyingTo.author.nickname}</strong></span><button aria-label={phrase("取消回复", "Cancel reply")} onClick={() => setReplyingTo(null)} title={phrase("取消回复", "Cancel reply")} type="button"><X aria-hidden="true" size={14} /></button></> : null}
           </div>
-          <div className="mention-composer-shell"><ContentAttachmentComposer ariaLabel={replyingTo ? phrase(`回复 ${replyingTo.author.nickname}`, `Reply to ${replyingTo.author.nickname}`) : phrase("评论文章", "Comment on article")} isSubmitting={isSubmittingComment} onChange={(value) => { setCommentDraft(value); setCommentMentionCursor(composerRef.current?.selectionStart ?? value.length); }} onKeyDown={(event) => { if ((event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) && commentMentionCandidates.length) { event.preventDefault(); insertCommentMention(commentMentionCandidates[0]); return; } if (event.key === "Escape" && commentMentionCandidates.length) { event.preventDefault(); setCommentMentionCandidates([]); } }} onCursorChange={(cursor) => { setCommentMentionCursor(cursor); }} onSubmit={handleCommentSubmit} placeholder={replyingTo ? phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`) : phrase("写下你的想法", "Write your thoughts")} textareaRef={composerRef} value={commentDraft} /><MentionSuggestions isLoading={isCommentMentionSearching} items={commentMentionCandidates} onSelect={insertCommentMention} style={commentMentionPopupStyle} /></div>
+          <div className="mention-composer-shell"><ContentAttachmentComposer ariaLabel={replyingTo ? phrase(`回复 ${replyingTo.author.nickname}`, `Reply to ${replyingTo.author.nickname}`) : phrase("评论文章", "Comment on article")} isSubmitting={isSubmittingComment} onChange={(value) => { setCommentDraft(value); setCommentMentionCursor(composerRef.current?.selectionStart ?? value.length); }} onKeyDown={(event) => { if (event.key === "ArrowDown" && commentMentionCandidates.length) { event.preventDefault(); moveCommentMentionSelection(1); return; } if (event.key === "ArrowUp" && commentMentionCandidates.length) { event.preventDefault(); moveCommentMentionSelection(-1); return; } if ((event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) && commentMentionCandidates.length) { event.preventDefault(); selectActiveCommentMention(); return; } if (event.key === "Escape" && commentMentionCandidates.length) { event.preventDefault(); setCommentMentionCandidates([]); setCommentMentionActiveIndex(0); } }} onCursorChange={(cursor) => { setCommentMentionCursor(cursor); }} onSubmit={handleCommentSubmit} placeholder={replyingTo ? phrase(`回复 @${replyingTo.author.nickname}`, `Reply to ${replyingTo.author.nickname}`) : phrase("写下你的想法", "Write your thoughts")} textareaRef={composerRef} value={commentDraft} /><MentionSuggestions activeIndex={commentMentionActiveIndex} isLoading={isCommentMentionSearching} items={commentMentionCandidates} onActiveIndexChange={setCommentMentionActiveIndex} onSelect={insertCommentMention} style={commentMentionPopupStyle} /></div>
           <div className="article-composer-footer">
             <span className="article-composer-count">{commentDraft.length} / 2000</span>
           </div>

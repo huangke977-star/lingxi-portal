@@ -5,6 +5,7 @@ import { useLanguage } from "@/components/language-provider";
 import { resolveApiUrl } from "@/lib/auth-api";
 import type { SocialUserSearchResult } from "@/lib/social-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
+import { createPortal } from "react-dom";
 import { useRef, type ChangeEvent, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactElement, type RefObject, type SyntheticEvent, type TextareaHTMLAttributes, type UIEvent } from "react";
 
 export function getActiveMention(value: string, cursor: number): { start: number; end: number; query: string } | null {
@@ -33,8 +34,10 @@ export function getMentionCaretPosition(
   mirror.style.left = `${textarea.getBoundingClientRect().left}px`;
   mirror.style.top = `${textarea.getBoundingClientRect().top}px`;
   mirror.style.width = `${textarea.clientWidth}px`;
+  mirror.style.height = `${textarea.clientHeight}px`;
   mirror.style.minHeight = `${textarea.clientHeight}px`;
   mirror.style.whiteSpace = "pre-wrap";
+  mirror.style.overflow = "hidden";
   mirror.style.overflowWrap = "anywhere";
   mirror.style.wordBreak = "break-word";
   mirror.style.visibility = "hidden";
@@ -43,13 +46,14 @@ export function getMentionCaretPosition(
   caret.textContent = "\u200b";
   mirror.appendChild(caret);
   document.body.appendChild(mirror);
+  mirror.scrollTop = textarea.scrollTop;
+  mirror.scrollLeft = textarea.scrollLeft;
   const caretRect = caret.getBoundingClientRect();
-  const textareaRect = textarea.getBoundingClientRect();
-  const anchorRect = anchor.getBoundingClientRect();
   mirror.remove();
   return {
-    left: Math.max(0, caretRect.left - textareaRect.left + textareaRect.left - anchorRect.left - textarea.scrollLeft),
-    bottom: Math.max(0, anchorRect.bottom - caretRect.top + textarea.scrollTop + 6),
+    // Suggestions are portaled to body, so keep the coordinates in viewport space.
+    left: caretRect.left,
+    bottom: Math.max(12, window.innerHeight - caretRect.top + 6),
   };
 }
 
@@ -102,26 +106,32 @@ export function MentionTextarea({ mentionsEnabled = true, onChange, onCursorChan
 }
 
 export function MentionSuggestions({
+  activeIndex = 0,
   isLoading,
   items,
+  onActiveIndexChange,
   onSelect,
   style,
 }: {
+  activeIndex?: number;
   isLoading: boolean;
   items: SocialUserSearchResult[];
+  onActiveIndexChange?: (index: number) => void;
   onSelect: (user: SocialUserSearchResult) => void;
   style?: CSSProperties;
 }) {
   const { phrase } = useLanguage();
   if (!isLoading && !items.length) return null;
-  return <div className="mention-suggestions" role="listbox" style={style}>
-    {isLoading ? <span className="mention-suggestions-loading">{phrase("正在搜索用户...", "Searching users...")}</span> : items.map((user) => {
+  const menu = <div className="mention-suggestions" role="listbox" style={style}>
+    {isLoading ? <span className="mention-suggestions-loading">{phrase("正在搜索用户...", "Searching users...")}</span> : items.map((user, index) => {
       const avatar = user.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
       return <button
+        aria-selected={index === activeIndex}
+        className={index === activeIndex ? "active" : undefined}
         key={user.id}
+        onMouseEnter={() => onActiveIndexChange?.(index)}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => onSelect(user)}
-        aria-selected={false}
         role="option"
         type="button"
       >
@@ -131,4 +141,5 @@ export function MentionSuggestions({
       </button>;
     })}
   </div>;
+  return typeof document === "undefined" ? null : createPortal(menu, document.body);
 }

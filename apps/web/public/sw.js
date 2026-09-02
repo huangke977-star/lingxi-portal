@@ -39,7 +39,8 @@ self.addEventListener("push", (event) => {
 
     const title = payload.title || "HLOVET";
     const tag = payload.tag || "hlovet-notification";
-    if (tag.startsWith("notification-") && await isDuplicatePush(tag)) return;
+    const dedupeKey = payload.dedupeKey || (tag.startsWith("notification-") ? tag : "");
+    if (dedupeKey && await isDuplicatePush(dedupeKey)) return;
     const fallbackIcon = await readPwaIcon();
     await self.registration.showNotification(title, {
       body: payload.body || "你有一条新消息。",

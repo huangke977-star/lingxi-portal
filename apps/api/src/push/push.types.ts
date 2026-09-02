@@ -12,6 +12,7 @@ export interface BrowserPushPayload {
   body: string;
   url: string;
   tag: string;
+  dedupeKey?: string;
   icon?: string;
   badge?: string;
 }

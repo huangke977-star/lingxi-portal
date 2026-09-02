@@ -89,6 +89,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
       body: message.body || (message.attachments.length > 1 ? `发来 ${message.attachments.length} 个附件` : "发来一个附件"),
       url: `/messages?conversation=${message.conversationId}`,
       tag: `chat-${message.conversationId}`,
+      dedupeKey: `chat-message-${message.id}-${recipientId}`,
     });
   }
 
@@ -109,7 +110,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
         });
         if (state?.pushEnabled !== false) {
           let notificationUrl = notification.actionUrl || "/";
-          if (notification.type === "mention_received" && notification.messageId && !notification.message) {
+          if (notification.type === "mention_received" && !notification.message) {
             const url = new URL(notificationUrl, "https://push.local");
             url.searchParams.set("messageDeleted", "1");
             notificationUrl = `${url.pathname}${url.search}${url.hash}`;
@@ -119,6 +120,9 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
             body: notification.body,
             url: notificationUrl,
             tag: `notification-${notification.id}`,
+            dedupeKey: notification.messageId
+              ? `chat-message-${notification.messageId}-${notification.userId}`
+              : `notification-${notification.id}`,
           });
         }
         await this.prisma.userNotification.update({
