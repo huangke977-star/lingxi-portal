@@ -274,6 +274,7 @@ export function ChatDock() {
   const minimizedRef = useRef(false);
   const desktopRef = useRef(false);
   const mobileConversationOpenRef = useRef(false);
+  const pendingConversationOpenRef = useRef<{ conversationId: number; messageId: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const iconDraggedRef = useRef(false);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -507,7 +508,10 @@ export function ChatDock() {
     setMessageSearchOpen(false);
     setMessageSearchInput("");
     setMessageSearchResults([]);
-    setPendingMessageFocusId(0);
+    if (pendingConversationOpenRef.current?.conversationId !== selectedId) {
+      pendingConversationOpenRef.current = null;
+      setPendingMessageFocusId(0);
+    }
     setMentionCandidates([]);
     setMentionRange(null);
     setMentionCursor(0);
@@ -647,7 +651,9 @@ export function ChatDock() {
       setNotificationChannelStates(notificationResult.channelStates ?? []);
       const nextHiddenChannels = notificationResult.hiddenChannels ?? [];
       setHiddenNotificationChannels(nextHiddenChannels);
+      const requestedConversationId = pendingConversationOpenRef.current?.conversationId ?? 0;
       setSelectedId((current) => {
+        if (requestedConversationId && (!current || current === requestedConversationId)) return requestedConversationId;
         if (notificationChannels.some((item) => item.id === current && !nextHiddenChannels.includes(item.channel))) return current;
         if (current && conversationResult.items.some((item) => item.id === current)) return current;
         return 0;
@@ -695,12 +701,15 @@ export function ChatDock() {
       setIsMinimized(false);
       if (detail.tab === "friends") setIsMobileConversationOpen(false);
       if (detail.systemNotificationId) {
+        pendingConversationOpenRef.current = null;
         setSelectedId(notificationConversationId(detail.notificationChannel ?? "system"));
         setSelectedSystemNotificationId(detail.systemNotificationId);
         setIsMobileConversationOpen(true);
         return;
       }
       if (detail.conversationId) {
+        pendingConversationOpenRef.current = { conversationId: detail.conversationId, messageId: detail.messageId ?? 0 };
+        setSelectedSystemNotificationId(0);
         setPendingMessageFocusId(detail.messageId ?? 0);
         setSelectedId(detail.conversationId);
         setIsMobileConversationOpen(true);
