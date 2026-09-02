@@ -1,4 +1,4 @@
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
   ArrayMaxSize,
   IsArray,
@@ -7,6 +7,7 @@ import {
   IsIn,
   IsInt,
   IsOptional,
+  ValidateIf,
   IsString,
   IsUrl,
   Max,
@@ -17,9 +18,15 @@ import {
 
 export class SearchSocialUsersQueryDto {
   @IsString()
+  @ValidateIf((value) => !value.mention)
   @MinLength(2)
   @MaxLength(32)
   q!: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === "true")
+  @IsBoolean()
+  mention?: boolean;
 
   @IsOptional()
   @Type(() => Number)

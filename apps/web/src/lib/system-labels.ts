@@ -153,6 +153,20 @@ const notificationKinds: Record<string, LocalizedPair> = {
   group_ban: ["群聊状态通知", "Group status notice"],
 };
 
+const systemNotificationTitles: Record<string, LocalizedPair> = {
+  "新设备登录": ["新设备登录", "New device sign-in"],
+  "新设备通过邮箱验证并登录": ["新设备通过邮箱验证并登录", "New device signed in after email verification"],
+  "陌生 IP 登录": ["陌生 IP 登录", "Unfamiliar IP sign-in"],
+  "短时间内出现多次登录": ["短时间内出现多次登录", "Multiple sign-ins in a short period"],
+  "账号登录成功": ["账号登录成功", "Sign-in successful"],
+  "登录失败次数过多，已临时限制": ["登录失败次数过多，已临时限制", "Sign-in temporarily blocked after too many failures"],
+  "待处理的好友申请": ["待处理的好友申请", "Friend request awaiting action"],
+  "待处理的群聊邀请": ["待处理的群聊邀请", "Group invitation awaiting action"],
+  "待处理的入群申请": ["待处理的入群申请", "Group join request awaiting action"],
+  "陌生消息请求未通过": ["陌生消息请求未通过", "Message request declined"],
+  "陌生消息请求已通过": ["陌生消息请求已通过", "Message request accepted"],
+};
+
 export function reputationReasonLabel(reason: ReputationReason, locale: Locale, fallback: string): string {
   return reputationReasons[reason] ? pick(locale, reputationReasons[reason]) : fallback;
 }
@@ -197,7 +211,14 @@ export function notificationTitle(
   fallback: string,
 ): string {
   const value = notificationTypes[type] ?? (kind ? notificationKinds[kind] : undefined);
-  return value ? pick(locale, value) : fallback;
+  if (value) return pick(locale, value);
+  if (locale === "en-US") {
+    const systemTitle = systemNotificationTitles[fallback];
+    if (systemTitle) return pick(locale, systemTitle);
+    const reportPrefix = "待处理的群消息举报 · ";
+    if (fallback.startsWith(reportPrefix)) return `Group message report pending · ${fallback.slice(reportPrefix.length)}`;
+  }
+  return fallback;
 }
 
 export function notificationBody(body: string, bodyEn: string | null, locale: Locale): string {

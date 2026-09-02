@@ -282,6 +282,7 @@ export interface SocialNotification {
     requestNote?: string | null;
     group?: { id: number; conversationId: number; name: string; avatarUrl: string | null };
     message?: ChatMessage;
+    messageDeleted?: boolean;
   } | null;
   aggregateCount: number;
   readAt: string | null;
@@ -314,8 +315,10 @@ export function searchSocialUsers(
   accessToken: string,
   query: string,
   limit = 12,
+  options: { mention?: boolean } = {},
 ): Promise<{ items: SocialUserSearchResult[] }> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
+  if (options.mention) params.set("mention", "true");
   return requestJson(`/social/users/search?${params}`, {
     cache: "no-store",
     headers: authHeaders(accessToken),

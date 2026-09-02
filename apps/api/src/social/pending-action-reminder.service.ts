@@ -21,6 +21,7 @@ type ReminderCandidate = {
   type: UserNotificationType;
   title: string;
   body: string;
+  bodyEn?: string;
   actionUrl: string;
   friendshipId?: number;
   sourceUpdatedAt: Date;
@@ -146,6 +147,7 @@ export class PendingActionReminderService implements OnModuleInit, OnModuleDestr
         type: UserNotificationType.friend_request_received,
         title: "待处理的好友申请",
         body: `${item.requestedBy.nickname || item.requestedBy.username} 的好友申请仍在等待处理。${item.requestNote ? ` 备注：${item.requestNote}` : ""}`,
+        bodyEn: `${item.requestedBy.nickname || item.requestedBy.username}'s friend request is still awaiting your response.${item.requestNote ? ` Note: ${item.requestNote}` : ""}`,
         actionUrl: `/messages?friendshipId=${item.id}`,
         friendshipId: item.id,
         sourceUpdatedAt: item.updatedAt,
@@ -157,6 +159,7 @@ export class PendingActionReminderService implements OnModuleInit, OnModuleDestr
         type: UserNotificationType.system,
         title: "待处理的群聊邀请",
         body: `${item.inviter.nickname || item.inviter.username} 邀请你加入群聊“${item.group.name}”。`,
+        bodyEn: `${item.inviter.nickname || item.inviter.username} invited you to join the group "${item.group.name}".`,
         actionUrl: `/messages?groupApproval=${item.groupId}`,
         sourceUpdatedAt: item.updatedAt,
       })),
@@ -167,6 +170,7 @@ export class PendingActionReminderService implements OnModuleInit, OnModuleDestr
         type: UserNotificationType.system,
         title: "待处理的入群申请",
         body: `${item.user.nickname || item.user.username} 申请加入群聊“${item.group.name}”。`,
+        bodyEn: `${item.user.nickname || item.user.username} requested to join the group "${item.group.name}".`,
         actionUrl: `/messages?groupApproval=${item.groupId}&joinRequest=${item.id}`,
         sourceUpdatedAt: item.updatedAt,
       }))),
@@ -210,6 +214,7 @@ export class PendingActionReminderService implements OnModuleInit, OnModuleDestr
           type: candidate.type,
           title: candidate.title,
           body: candidate.body,
+          ...(candidate.bodyEn ? { bodyEn: candidate.bodyEn } : {}),
           actionUrl: candidate.actionUrl,
           friendshipId: candidate.friendshipId,
           dedupeKey,

@@ -299,6 +299,7 @@ export interface UserNotificationResponse {
     requestNote?: string | null;
     group?: Pick<ChatGroupSummaryResponse, "id" | "conversationId" | "name" | "avatarUrl">;
     message?: ChatMessageResponse;
+    messageDeleted?: boolean;
   } | null;
   aggregateCount: number;
   readAt: string | null;

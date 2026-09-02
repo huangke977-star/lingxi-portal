@@ -258,5 +258,5 @@ function SubscriptionFeedContent() {
 
 function FrequencySelect({ value, onChange }: { value: SubscriptionFrequency; onChange: (value: SubscriptionFrequency) => void }) {
   const { phrase } = useLanguage();
-  return <GlassSelect ariaLabel={phrase("订阅频率", "Subscription frequency")} menuPortal onChange={onChange} options={[{ value: "instant" as const, label: phrase("即时", "Instant") }, { value: "daily" as const, label: phrase("日报", "Daily") }, { value: "muted" as const, label: phrase("静音", "Muted") }]} value={value} />;
+  return <GlassSelect ariaLabel={phrase("订阅频率", "Subscription frequency")} menuClassName="subscription-frequency-menu" menuPortal onChange={onChange} options={[{ value: "instant" as const, label: phrase("即时", "Instant") }, { value: "daily" as const, label: phrase("日报", "Daily") }, { value: "muted" as const, label: phrase("静音", "Muted") }]} value={value} />;
 }

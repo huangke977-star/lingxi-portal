@@ -1,5 +1,6 @@
-const VERSION = "hlovet-pwa-v6";
+const VERSION = "hlovet-pwa-v7";
 const PUSH_IDENTITY_CACHE = `${VERSION}-identity`;
+const PUSH_DEDUP_CACHE = `${VERSION}-dedup`;
 const PUSH_IDENTITY_KEY = "/__hlovet_push_identity__";
 const PWA_ICON_KEY = "/__hlovet_pwa_icon__";
 
@@ -37,13 +38,15 @@ self.addEventListener("push", (event) => {
     if (recipientUserId && recipientUserId !== await readActivePushUser()) return;
 
     const title = payload.title || "HLOVET";
+    const tag = payload.tag || "hlovet-notification";
+    if (tag.startsWith("notification-") && await isDuplicatePush(tag)) return;
     const fallbackIcon = await readPwaIcon();
     await self.registration.showNotification(title, {
       body: payload.body || "你有一条新消息。",
       icon: payload.icon || fallbackIcon,
       badge: payload.badge || "/favicon-48x48.png",
-      tag: payload.tag || "hlovet-notification",
-      renotify: true,
+      tag,
+      renotify: !tag.startsWith("notification-"),
       data: { url: payload.url || "/", recipientUserId },
     });
   })());
@@ -105,6 +108,18 @@ async function readPwaIcon() {
   const cache = await caches.open(PUSH_IDENTITY_CACHE);
   const response = await cache.match(PWA_ICON_KEY);
   return response ? await response.text() : "/pwa-logo.png";
+}
+
+async function isDuplicatePush(tag) {
+  const cache = await caches.open(PUSH_DEDUP_CACHE);
+  const key = `/__hlovet_push_dedup__/${encodeURIComponent(tag)}`;
+  const existing = await cache.match(key);
+  if (existing) {
+    const timestamp = Number(await existing.text());
+    if (Number.isFinite(timestamp) && Date.now() - timestamp < 120_000) return true;
+  }
+  await cache.put(key, new Response(String(Date.now()), { headers: { "Content-Type": "text/plain" } }));
+  return false;
 }
 
 function normalizeUserId(value) {

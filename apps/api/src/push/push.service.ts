@@ -100,7 +100,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
         where: { pushDeliveredAt: null },
         orderBy: [{ id: "asc" }],
         take: 50,
-        select: { id: true, userId: true, channel: true, title: true, body: true, actionUrl: true },
+        select: { id: true, userId: true, channel: true, title: true, body: true, actionUrl: true, type: true, messageId: true, message: { select: { id: true } } },
       });
       for (const notification of notifications) {
         const state = await this.prisma.userNotificationChannelState.findUnique({
@@ -108,10 +108,16 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
           select: { pushEnabled: true },
         });
         if (state?.pushEnabled !== false) {
+          let notificationUrl = notification.actionUrl || "/";
+          if (notification.type === "mention_received" && notification.messageId && !notification.message) {
+            const url = new URL(notificationUrl, "https://push.local");
+            url.searchParams.set("messageDeleted", "1");
+            notificationUrl = `${url.pathname}${url.search}${url.hash}`;
+          }
           await this.sendToUser(notification.userId, {
             title: notification.title,
             body: notification.body,
-            url: notification.actionUrl || "/",
+            url: notificationUrl,
             tag: `notification-${notification.id}`,
           });
         }

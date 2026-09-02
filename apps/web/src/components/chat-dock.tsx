@@ -70,7 +70,7 @@ import { ChatCallPanel, useChatCalls } from "@/components/chat-call";
 import { ChatGroupManager } from "@/components/chat-group-manager";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
-import { getActiveMention, MentionSuggestions, MentionText, MentionTextarea } from "@/components/mention-ui";
+import { getActiveMention, getMentionCaretPosition, MentionSuggestions, MentionText, MentionTextarea } from "@/components/mention-ui";
 import { RequestComposerDialog } from "@/components/request-composer-dialog";
 import { RoleSymbol } from "@/components/role-symbol";
 import { AvatarManagementBadge } from "@/components/user-identity-badges";
@@ -261,6 +261,9 @@ export function ChatDock() {
   const sendPointerHeldRef = useRef(false);
   const suppressSendClickRef = useRef(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const messageSearchRef = useRef<HTMLDivElement | null>(null);
+  const mentionComposerRowRef = useRef<HTMLDivElement | null>(null);
+  const mentionTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const messageScrollRestoreRef = useRef<{ height: number; top: number } | null>(null);
   const shouldScrollMessagesToBottomRef = useRef(false);
   const loadingOlderMessagesRef = useRef(false);
@@ -305,6 +308,7 @@ export function ChatDock() {
   const [isMentionSearching, setIsMentionSearching] = useState(false);
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null);
   const [mentionCursor, setMentionCursor] = useState(0);
+  const [mentionPopupStyle, setMentionPopupStyle] = useState<CSSProperties>();
   const [pendingAttachmentsByConversation, setPendingAttachmentsByConversation] = useState<Record<number, PendingAttachment[]>>({});
   const [hasMore, setHasMore] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -380,6 +384,20 @@ export function ChatDock() {
     { label: t("report.reason.misinformation"), value: "misinformation" },
     { label: t("report.reason.other"), value: "other" },
   ], [t]);
+
+  function syncMentionPopupPosition(cursor: number) {
+    window.requestAnimationFrame(() => {
+      const textarea = mentionTextareaRef.current;
+      const anchor = mentionComposerRowRef.current;
+      if (!textarea || !anchor) return;
+      const position = getMentionCaretPosition(textarea, cursor, anchor);
+      if (!position) return;
+      setMentionPopupStyle({
+        left: Math.min(Math.max(0, position.left), Math.max(0, anchor.clientWidth - 288)),
+        bottom: position.bottom,
+      });
+    });
+  }
 
   const selected = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedId) ?? null,
@@ -557,17 +575,18 @@ export function ChatDock() {
   useEffect(() => {
     const token = readAccessToken();
     const activeMention = getActiveMention(draft, mentionCursor);
-    if (!token || !selectedId || !activeMention || activeMention.query.length < 2) {
+    if (!token || !selectedId || !activeMention) {
       setMentionCandidates([]);
       setMentionRange(activeMention ? { start: activeMention.start, end: activeMention.end } : null);
       setIsMentionSearching(false);
+      setMentionPopupStyle(undefined);
       return;
     }
     setMentionRange({ start: activeMention.start, end: activeMention.end });
     let active = true;
     const timer = window.setTimeout(() => {
       setIsMentionSearching(true);
-      searchSocialUsers(token, activeMention.query, 8)
+      searchSocialUsers(token, activeMention.query, 8, { mention: true })
         .then((result) => { if (active) setMentionCandidates(result.items); })
         .catch(() => { if (active) setMentionCandidates([]); })
         .finally(() => { if (active) setIsMentionSearching(false); });
@@ -577,6 +596,28 @@ export function ChatDock() {
       window.clearTimeout(timer);
     };
   }, [draft, mentionCursor, phrase, selectedId]);
+
+  useEffect(() => {
+    if (!messageSearchOpen) return;
+    function handlePointerDown(event: PointerEvent) {
+      if (messageSearchRef.current?.contains(event.target as Node)) return;
+      setMessageSearchOpen(false);
+      setMessageSearchInput("");
+      setMessageSearchResults([]);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setMessageSearchOpen(false);
+      setMessageSearchInput("");
+      setMessageSearchResults([]);
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [messageSearchOpen]);
 
   useEffect(() => {
     function synchronizeGeometry() {
@@ -708,6 +749,12 @@ export function ChatDock() {
         setSelectedId(notificationConversationId(detail.notificationChannel ?? "system"));
         setSelectedSystemNotificationId(detail.systemNotificationId);
         setIsMobileConversationOpen(true);
+        return;
+      }
+      if (detail.messageDeleted) {
+        pendingConversationOpenRef.current = null;
+        setPendingMessageFocusId(0);
+        setError(phrase("该消息已删除，无法定位。", "This message has been deleted and cannot be located."));
         return;
       }
       if (detail.conversationId) {
@@ -949,22 +996,12 @@ export function ChatDock() {
     }
     let active = true;
     setIsMessagesLoading(true);
-    shouldScrollMessagesToBottomRef.current = true;
+    shouldScrollMessagesToBottomRef.current = pendingMessageFocusId <= 0;
     messageScrollRestoreRef.current = null;
     listMessages(token, selectedId)
-      .then(async (result) => {
+      .then((result) => {
         if (!active) return null;
-        let nextMessages = result.items;
-        if (pendingMessageFocusId && !nextMessages.some((message) => message.id === pendingMessageFocusId)) {
-          try {
-            const context = await getMessageContext(token, selectedId, pendingMessageFocusId);
-            nextMessages = [...nextMessages, context.message].sort((left, right) => left.id - right.id);
-          } catch {
-            if (pendingConversationOpenRef.current?.conversationId === selectedId) pendingConversationOpenRef.current = null;
-            setPendingMessageFocusId(0);
-          }
-        }
-        setMessages(nextMessages);
+        setMessages(result.items);
         setHasMore(result.hasMore);
         setConversations((current) => current.map((item) =>
           item.id === selectedId ? { ...item, unreadCount: 0 } : item,
@@ -986,6 +1023,27 @@ export function ChatDock() {
       active = false;
     };
   }, [isDesktop, isMinimized, isMobileConversationOpen, isOpen, pendingMessageFocusId, phrase, selectedId]);
+
+  useEffect(() => {
+    if (!pendingMessageFocusId || isMessagesLoading || selectedId <= 0 || messages.some((message) => message.id === pendingMessageFocusId)) return;
+    const token = readAccessToken();
+    if (!token) return;
+    let active = true;
+    getMessageContext(token, selectedId, pendingMessageFocusId)
+      .then((context) => {
+        if (!active) return;
+        setMessages((current) => current.some((message) => message.id === context.message.id)
+          ? current
+          : [...current, context.message].sort((left, right) => left.id - right.id));
+      })
+      .catch(() => {
+        if (!active) return;
+        if (pendingConversationOpenRef.current?.conversationId === selectedId) pendingConversationOpenRef.current = null;
+        setPendingMessageFocusId(0);
+        setError(phrase("消息不存在或当前不可见。", "The message does not exist or is no longer visible."));
+      });
+    return () => { active = false; };
+  }, [isMessagesLoading, messages, pendingMessageFocusId, phrase, selectedId]);
 
   useEffect(() => {
     const token = readAccessToken();
@@ -1027,7 +1085,7 @@ export function ChatDock() {
       if (!target) return;
       target.scrollIntoView({ behavior: "smooth", block: "center" });
       target.classList.add("chat-message-focus-highlight");
-      window.setTimeout(() => target.classList.remove("chat-message-focus-highlight"), 1600);
+      window.setTimeout(() => target.classList.remove("chat-message-focus-highlight"), 1000);
       if (pendingConversationOpenRef.current?.messageId === pendingMessageFocusId) pendingConversationOpenRef.current = null;
       setPendingMessageFocusId(0);
     });
@@ -1759,7 +1817,7 @@ export function ChatDock() {
   async function handleNotification(notification: SocialNotification) {
     const mentionContext = notification.context?.kind === "message_mention" ? notification.context : null;
     const mentionMessage = mentionContext?.message;
-    const mentionTarget = mentionContext?.conversationId
+    const mentionTarget = !mentionContext?.messageDeleted && mentionContext?.conversationId
       ? { conversationId: mentionContext.conversationId, messageId: notification.messageId ?? 0 }
       : null;
     if (mentionTarget) pendingConversationOpenRef.current = mentionTarget;
@@ -1780,6 +1838,11 @@ export function ChatDock() {
       } catch {
         // Following the action is still useful if read-state persistence fails.
       }
+    }
+    if (mentionContext?.messageDeleted) {
+      setPendingMessageFocusId(0);
+      setError(phrase("该消息已删除，无法定位。", "This message has been deleted and cannot be located."));
+      return;
     }
     if (notification.context?.kind === "announcement" && notification.actionUrl) {
       router.push(localizedPath(notification.actionUrl, locale));
@@ -2185,12 +2248,13 @@ export function ChatDock() {
   async function openMessageSearchResult(result: MessageSearchItem) {
     const token = readAccessToken();
     if (!token) return;
-    setMessageSearchOpen(false);
-    setMessageSearchInput("");
-    setMessageSearchResults([]);
+    closeMessageSearch();
     if (result.conversation.id !== selectedId) {
+      pendingConversationOpenRef.current = { conversationId: result.conversation.id, messageId: result.id };
+      setPendingMessageFocusId(result.id);
       setSelectedId(result.conversation.id);
       setIsMobileConversationOpen(true);
+      return;
     }
     try {
       const context = await getMessageContext(token, result.conversation.id, result.id);
@@ -2201,6 +2265,12 @@ export function ChatDock() {
     } catch (contextError) {
       setError(contextError instanceof Error ? contextError.message : phrase("消息定位失败。", "Could not locate the message."));
     }
+  }
+
+  function closeMessageSearch() {
+    setMessageSearchOpen(false);
+    setMessageSearchInput("");
+    setMessageSearchResults([]);
   }
 
   async function focusMessage(messageId: number) {
@@ -2347,7 +2417,7 @@ export function ChatDock() {
               <ChevronLeft aria-hidden="true" size={19} />
             </button> : null}
           <span><MessageCircleMore aria-hidden="true" size={18} /><strong>{selectedNotificationConfig?.label ?? selected?.group?.name ?? selected?.user.nickname ?? phrase("消息", "Messages")}</strong></span>
-          <div>
+          <div className="chat-dock-titlebar-actions">
             {isDesktop || !isMobileConversationOpen ? <button aria-label={phrase("添加好友", "Add friend")} onClick={() => { setIsAddFriendOpen(true); setUserSearch(""); setUserSearchResults([]); }} title={phrase("添加好友", "Add friend")} type="button"><UserPlus aria-hidden="true" size={17} /></button> : null}
             {isDesktop || !isMobileConversationOpen ? <button aria-label={phrase("群聊", "Groups")} onClick={() => { setGroupManagerInitialId(null); setGroupManagerInitialView("mine"); setIsGroupManagerOpen(true); }} title={phrase("群聊", "Groups")} type="button"><Users aria-hidden="true" size={17} /></button> : null}
             {isDesktop || !isMobileConversationOpen ? <button aria-expanded={isMessageSettingsOpen} aria-label={phrase("消息设置", "Message settings")} onClick={() => setIsMessageSettingsOpen((current) => !current)} title={phrase("消息设置", "Message settings")} type="button"><Settings2 aria-hidden="true" size={17} /></button> : null}
@@ -2356,18 +2426,21 @@ export function ChatDock() {
               <button aria-label={phrase("发起语音通话", "Start voice call")} disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("voice")} title={phrase("语音通话", "Voice call")} type="button"><Phone aria-hidden="true" size={17} /></button>
               <button aria-label={phrase("发起视频通话", "Start video call")} disabled={isVoiceRecording || chatCalls.isPreparing || Boolean(chatCalls.state)} onClick={() => void chatCalls.startCall("video")} title={phrase("视频通话", "Video call")} type="button"><Video aria-hidden="true" size={17} /></button>
             </> : null}
-            {selected && !selectedNotificationConfig ? <button aria-expanded={messageSearchOpen} aria-label={phrase("搜索聊天消息", "Search chat messages")} onClick={() => setMessageSearchOpen((current) => !current)} title={phrase("搜索聊天消息", "Search chat messages")} type="button"><Search aria-hidden="true" size={17} /></button> : null}
+            {selected && !selectedNotificationConfig ? messageSearchOpen ? <div className="chat-inline-message-search" onPointerDown={(event) => event.stopPropagation()} ref={messageSearchRef}>
+              <Search aria-hidden="true" size={15} />
+              <input autoFocus aria-label={phrase("搜索聊天消息", "Search chat messages")} onChange={(event) => setMessageSearchInput(event.target.value)} placeholder={phrase("搜索当前会话消息", "Search this conversation")} value={messageSearchInput} />
+              <button aria-label={phrase("关闭消息搜索", "Close message search")} onClick={closeMessageSearch} title={t("common.close")} type="button"><X aria-hidden="true" size={14} /></button>
+              <div className="chat-message-search-dropdown">
+                {isMessageSearchLoading ? <span className="chat-state">{phrase("正在搜索。", "Searching.")}</span> : null}
+                {!isMessageSearchLoading && messageSearchInput.trim() && !messageSearchResults.length ? <span className="chat-sidebar-empty">{phrase("没有找到消息。", "No messages found.")}</span> : null}
+                {!messageSearchInput.trim() ? <span className="chat-sidebar-empty">{phrase("输入文字搜索当前会话。", "Enter text to search this conversation.")}</span> : null}
+                {messageSearchResults.map((result) => <button className="chat-message-search-result" key={`${result.conversation.id}-${result.id}`} onClick={() => void openMessageSearchResult(result)} type="button"><span><strong>{result.body || phrase("附件消息", "Attachment")}</strong><small>{result.senderDisplayName} · {formatChatTime(result.createdAt, locale)}</small></span><ChevronLeft aria-hidden="true" size={15} /></button>)}
+              </div>
+            </div> : <button aria-expanded={false} aria-label={phrase("搜索聊天消息", "Search chat messages")} onClick={() => setMessageSearchOpen(true)} title={phrase("搜索聊天消息", "Search chat messages")} type="button"><Search aria-hidden="true" size={17} /></button> : null}
             <button aria-label={phrase("最小化聊天窗", "Minimize chat window")} onClick={() => { setIsMessageSettingsOpen(false); setIsMinimized(true); }} title={phrase("最小化", "Minimize")} type="button"><Minus aria-hidden="true" size={17} /></button>
             <button aria-label={phrase("关闭聊天窗", "Close chat window")} onClick={closeDock} title={t("common.close")} type="button"><X aria-hidden="true" size={17} /></button>
           </div>
         </header>
-        {messageSearchOpen && selected && !selectedNotificationConfig ? <section className="chat-message-search-panel" onPointerDown={(event) => event.stopPropagation()}>
-          <label><Search aria-hidden="true" size={15} /><input autoFocus aria-label={phrase("搜索聊天消息", "Search chat messages")} onChange={(event) => setMessageSearchInput(event.target.value)} placeholder={phrase("搜索当前会话消息", "Search this conversation")} value={messageSearchInput} /><button aria-label={phrase("关闭消息搜索", "Close message search")} onClick={() => { setMessageSearchOpen(false); setMessageSearchInput(""); }} title={t("common.close")} type="button"><X aria-hidden="true" size={14} /></button></label>
-          {isMessageSearchLoading ? <span className="chat-state">{phrase("正在搜索。", "Searching.")}</span> : null}
-          {!isMessageSearchLoading && messageSearchInput.trim() && !messageSearchResults.length ? <span className="chat-sidebar-empty">{phrase("没有找到消息。", "No messages found.")}</span> : null}
-          {!messageSearchInput.trim() ? <span className="chat-sidebar-empty">{phrase("输入文字搜索当前会话。", "Enter text to search this conversation.")}</span> : null}
-          {messageSearchResults.map((result) => <button className="chat-message-search-result" key={`${result.conversation.id}-${result.id}`} onClick={() => void openMessageSearchResult(result)} type="button"><span><strong>{result.body || phrase("附件消息", "Attachment")}</strong><small>{result.senderDisplayName} · {formatChatTime(result.createdAt, locale)}</small></span><ChevronLeft aria-hidden="true" size={15} /></button>)}
-        </section> : null}
         {isMessageSettingsOpen ? <section className="chat-message-settings" onPointerDown={(event) => event.stopPropagation()}>
           <header>
             <span><Settings2 aria-hidden="true" size={17} /><strong>{phrase("消息设置", "Message settings")}</strong></span>
@@ -2536,7 +2609,7 @@ export function ChatDock() {
               </div>
             </div>
           </aside>
-          <main className={`chat-panel${isNotificationSelected ? " system-selected" : ""}`}>
+            <main className={`chat-panel${isNotificationSelected ? " system-selected" : ""}${selected?.group && pinnedMessages.length ? " has-pinned" : ""}`}>
             {selectedNotificationConfig ? <NotificationPanel
               channel={selectedNotificationConfig.channel}
               emptyText={selectedNotificationConfig.empty}
@@ -2604,15 +2677,15 @@ export function ChatDock() {
                         ? <FileVideo aria-hidden="true" size={24} />
                         : <FileText aria-hidden="true" size={22} />}<small title={attachment.file.name}>{attachment.file.name}</small><button aria-label={phrase(`移除 ${attachment.file.name}`, `Remove ${attachment.file.name}`)} onClick={() => removePendingAttachment(attachment.id)} type="button"><X aria-hidden="true" size={13} /></button></span>
                 ))}</div> : null}
-                <div className="chat-composer-row">
+                <div className="chat-composer-row" ref={mentionComposerRowRef}>
                   <input accept=".jpg,.jpeg,.png,.webp,.webm,.m4a,.mp3,.wav,.ogg,.mp4,.mov,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.md,.csv,.json,.xml,.rtf,.zip,.rar,.7z,.gz,.tar" hidden multiple onChange={(event) => { handleSelectedFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} ref={fileInputRef} type="file" />
                   <div className="chat-composer-tools">
                     {!isDesktop ? <button aria-label={phrase("更多聊天功能", "More chat actions")} className={`chat-mobile-more${isMobileToolsOpen ? " active" : ""}`} disabled={selectedGroupIsBanned} onClick={() => { setIsMobileToolsOpen((current) => !current); setIsEmojiOpen(false); }} title={phrase("更多", "More")} type="button"><Plus aria-hidden="true" size={19} /></button> : null}
                     <button aria-label={phrase("添加表情", "Add emoji")} className={`chat-desktop-tool${isEmojiOpen ? " active" : ""}`} disabled={selectedGroupIsBanned} onClick={() => { setIsEmojiOpen((current) => !current); setIsMobileToolsOpen(false); }} title={phrase("表情", "Emoji")} type="button"><Laugh aria-hidden="true" size={18} /></button>
                     <button aria-label={phrase("添加图片或文件", "Add images or files")} className="chat-desktop-tool" disabled={selectedGroupIsBanned} onClick={() => fileInputRef.current?.click()} title={phrase("添加图片或文件", "Add images or files")} type="button"><Paperclip aria-hidden="true" size={18} /></button>
                   </div>
-                  <MentionTextarea aria-label={phrase(`给 ${selected.group?.name ?? selected.user.nickname} 发消息`, `Message ${selected.group?.name ?? selected.user.nickname}`)} disabled={selectedGroupIsBanned} maxLength={2000} onChange={(nextValue, cursor) => { updateDraft(nextValue); setMentionCursor(cursor); }} onKeyDown={(event) => { if ((event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) && mentionCandidates.length) { event.preventDefault(); insertMention(mentionCandidates[0]); return; } if (event.key === "Escape" && mentionCandidates.length) { event.preventDefault(); setMentionCandidates([]); return; } if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} onPaste={handlePaste} onCursorChange={setMentionCursor} placeholder={selectedGroupIsBanned ? phrase("该群已被封禁，暂时无法发送消息", "This group is banned and cannot receive messages") : phrase("输入消息", "Write a message")} rows={2} value={draft} />
-                  <MentionSuggestions isLoading={isMentionSearching} items={mentionCandidates} onSelect={insertMention} />
+                  <MentionTextarea aria-label={phrase(`给 ${selected.group?.name ?? selected.user.nickname} 发消息`, `Message ${selected.group?.name ?? selected.user.nickname}`)} disabled={selectedGroupIsBanned} maxLength={2000} onChange={(nextValue, cursor) => { updateDraft(nextValue); setMentionCursor(cursor); syncMentionPopupPosition(cursor); }} onKeyDown={(event) => { if ((event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) && mentionCandidates.length) { event.preventDefault(); insertMention(mentionCandidates[0]); return; } if (event.key === "Escape" && mentionCandidates.length) { event.preventDefault(); setMentionCandidates([]); return; } if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} onPaste={handlePaste} onCursorChange={(cursor) => { setMentionCursor(cursor); syncMentionPopupPosition(cursor); }} placeholder={selectedGroupIsBanned ? phrase("该群已被封禁，暂时无法发送消息", "This group is banned and cannot receive messages") : phrase("输入消息", "Write a message")} rows={2} textareaRef={mentionTextareaRef} value={draft} />
+                  <MentionSuggestions isLoading={isMentionSearching} items={mentionCandidates} onSelect={insertMention} style={mentionPopupStyle} />
                   <button
                     aria-label={isVoiceRecording ? phrase(`松开发送语音，已录制 ${formatDuration(voiceRecordingSeconds)}`, `Release to send voice message, recorded ${formatDuration(voiceRecordingSeconds)}`) : phrase("发送消息，长按录制语音", "Send message. Hold to record voice.")}
                     className={isVoiceRecording ? "recording" : undefined}

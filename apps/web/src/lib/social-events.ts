@@ -5,6 +5,7 @@ export const CHAT_DOCK_TOGGLE_EVENT = "hlovet-chat-dock-toggle";
 export interface ChatDockOpenDetail {
   conversationId?: number;
   messageId?: number;
+  messageDeleted?: boolean;
   userId?: number;
   systemNotificationId?: number;
   notificationChannel?: "system" | "subscription" | "interaction";

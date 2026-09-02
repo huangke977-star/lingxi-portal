@@ -785,6 +785,7 @@ export class AccountSecurityService {
           channel: UserNotificationChannel.system,
           title: summary,
           body: `${deviceLabel} · ${context.ip} · ${this.formatDateTime(new Date())}`,
+          bodyEn: `${this.deviceLabelEn(context.userAgent)} · ${context.ip} · ${this.formatDateTime(new Date(), "en-US")}`,
           actionUrl: "/profile#account-security",
         },
       });
@@ -1139,8 +1140,14 @@ export class AccountSecurityService {
     return createHash("sha256").update(token).digest("hex");
   }
 
-  private formatDateTime(value: Date): string {
-    return new Intl.DateTimeFormat("zh-CN", {
+  private deviceLabelEn(userAgent: string): string {
+    const browser = /Edg\//.test(userAgent) ? "Edge" : /Chrome\//.test(userAgent) ? "Chrome" : /Firefox\//.test(userAgent) ? "Firefox" : /Safari\//.test(userAgent) ? "Safari" : "Unknown browser";
+    const system = /Android/.test(userAgent) ? "Android" : /iPhone|iPad/.test(userAgent) ? "iOS" : /Windows/.test(userAgent) ? "Windows" : /Mac OS X/.test(userAgent) ? "macOS" : /Linux/.test(userAgent) ? "Linux" : "Unknown system";
+    return `${system} · ${browser}`;
+  }
+
+  private formatDateTime(value: Date, locale: "zh-CN" | "en-US" = "zh-CN"): string {
+    return new Intl.DateTimeFormat(locale, {
       timeZone: "Asia/Shanghai",
       year: "numeric",
       month: "2-digit",

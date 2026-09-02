@@ -417,7 +417,7 @@ export class SocialService {
     query: SearchSocialUsersQueryDto,
   ): Promise<{ items: SocialUserSearchResult[] }> {
     const keyword = query.q.trim();
-    if (keyword.length < 2) {
+    if (keyword.length < 2 && !query.mention) {
       throw new BadRequestException("搜索关键词至少需要 2 个字符。");
     }
     const candidates = await this.prisma.user.findMany({
@@ -826,6 +826,7 @@ export class SocialService {
         channel: UserNotificationChannel.interaction,
         title: "新的陌生消息请求",
         body: `${user.nickname || user.username} 向你发送了消息请求。`,
+        bodyEn: `${user.nickname || user.username} sent you a message request.`,
         actionUrl: "/messages?strangerRequests=1",
         strangerMessageRequestId: record.id,
       },
@@ -866,6 +867,7 @@ export class SocialService {
             channel: UserNotificationChannel.interaction,
             title: "陌生消息请求未通过",
             body: `${user.nickname || user.username} 拒绝了你的消息请求。`,
+            bodyEn: `${user.nickname || user.username} declined your message request.`,
             actionUrl: "/messages?strangerRequests=1",
             strangerMessageRequestId: requestId,
           },
@@ -915,6 +917,7 @@ export class SocialService {
           channel: UserNotificationChannel.interaction,
           title: "陌生消息请求已通过",
           body: `${user.nickname || user.username} 接受了你的消息请求。`,
+          bodyEn: `${user.nickname || user.username} accepted your message request.`,
           actionUrl: `/messages?conversation=${conversation.id}`,
           strangerMessageRequestId: requestId,
         },
@@ -2374,7 +2377,7 @@ export class SocialService {
             conversationId: notification.message.conversationId,
             message: this.toMessage(notification.message),
           }
-        : this.messageMentionContext(notification.actionUrl)
+        : this.messageMentionContext(notification.actionUrl, true)
       : null;
     return {
       id: notification.id,
@@ -2420,13 +2423,13 @@ export class SocialService {
     };
   }
 
-  private messageMentionContext(actionUrl: string | null): UserNotificationResponse["context"] | null {
+  private messageMentionContext(actionUrl: string | null, messageDeleted = false): UserNotificationResponse["context"] | null {
     if (!actionUrl) return null;
     try {
       const url = new URL(actionUrl, "https://local.invalid");
       const conversationId = Number(url.searchParams.get("conversation"));
       return Number.isInteger(conversationId) && conversationId > 0
-        ? { kind: "message_mention", conversationId }
+        ? { kind: "message_mention", conversationId, ...(messageDeleted ? { messageDeleted: true } : {}) }
         : null;
     } catch {
       return null;

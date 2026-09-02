@@ -5,7 +5,7 @@ import { useLanguage } from "@/components/language-provider";
 import { resolveApiUrl } from "@/lib/auth-api";
 import type { SocialUserSearchResult } from "@/lib/social-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
-import { useRef, type ChangeEvent, type KeyboardEvent, type MouseEvent, type ReactElement, type RefObject, type TextareaHTMLAttributes, type UIEvent } from "react";
+import { useRef, type ChangeEvent, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactElement, type RefObject, type SyntheticEvent, type TextareaHTMLAttributes, type UIEvent } from "react";
 
 export function getActiveMention(value: string, cursor: number): { start: number; end: number; query: string } | null {
   const beforeCursor = value.slice(0, cursor);
@@ -15,15 +15,53 @@ export function getActiveMention(value: string, cursor: number): { start: number
   return { start, end: cursor, query: match[1] };
 }
 
+export function getMentionCaretPosition(
+  textarea: HTMLTextAreaElement,
+  cursor: number,
+  anchor: HTMLElement,
+): { left: number; bottom: number } | null {
+  if (!textarea.isConnected || !anchor.isConnected) return null;
+  const computed = window.getComputedStyle(textarea);
+  const mirror = document.createElement("div");
+  const caret = document.createElement("span");
+  const properties = [
+    "boxSizing", "fontFamily", "fontSize", "fontStretch", "fontStyle", "fontVariant", "fontWeight",
+    "letterSpacing", "lineHeight", "padding", "textIndent", "textTransform", "wordSpacing", "wordWrap",
+  ] as const;
+  properties.forEach((property) => { mirror.style[property] = computed[property]; });
+  mirror.style.position = "fixed";
+  mirror.style.left = `${textarea.getBoundingClientRect().left}px`;
+  mirror.style.top = `${textarea.getBoundingClientRect().top}px`;
+  mirror.style.width = `${textarea.clientWidth}px`;
+  mirror.style.minHeight = `${textarea.clientHeight}px`;
+  mirror.style.whiteSpace = "pre-wrap";
+  mirror.style.overflowWrap = "anywhere";
+  mirror.style.wordBreak = "break-word";
+  mirror.style.visibility = "hidden";
+  mirror.style.pointerEvents = "none";
+  mirror.textContent = textarea.value.slice(0, cursor) || "\u200b";
+  caret.textContent = "\u200b";
+  mirror.appendChild(caret);
+  document.body.appendChild(mirror);
+  const caretRect = caret.getBoundingClientRect();
+  const textareaRect = textarea.getBoundingClientRect();
+  const anchorRect = anchor.getBoundingClientRect();
+  mirror.remove();
+  return {
+    left: Math.max(0, caretRect.left - textareaRect.left + textareaRect.left - anchorRect.left - textarea.scrollLeft),
+    bottom: Math.max(0, anchorRect.bottom - caretRect.top + textarea.scrollTop + 6),
+  };
+}
+
 export function MentionText({ text }: { text: string }) {
   const nodes: Array<string | ReactElement> = [];
-  const pattern = /(?:^|\s)(@[A-Za-z0-9_]{2,32})(?=\s)/g;
+  const pattern = /(^|\s)(@[A-Za-z0-9_]{2,32})(?=\s|$)/g;
   let lastIndex = 0;
   for (const match of text.matchAll(pattern)) {
-    const tokenStart = (match.index ?? 0) + (match[0].length - match[1].length - 1);
+    const tokenStart = (match.index ?? 0) + match[1].length;
     if (tokenStart > lastIndex) nodes.push(text.slice(lastIndex, tokenStart));
-    nodes.push(<span className="mention-token" key={`${match[1]}-${tokenStart}`}>{match[1]}</span>);
-    lastIndex = tokenStart + match[1].length;
+    nodes.push(<span className="mention-token" key={`${match[2]}-${tokenStart}`}>{match[2]}</span>);
+    lastIndex = tokenStart + match[2].length;
   }
   if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
   return <>{nodes}</>;
@@ -45,7 +83,7 @@ export function MentionTextarea({ mentionsEnabled = true, onChange, onCursorChan
     onChange(event.currentTarget.value, event.currentTarget.selectionStart);
   }
 
-  function handleCursor(event: MouseEvent<HTMLTextAreaElement> | KeyboardEvent<HTMLTextAreaElement>) {
+  function handleCursor(event: MouseEvent<HTMLTextAreaElement> | KeyboardEvent<HTMLTextAreaElement> | SyntheticEvent<HTMLTextAreaElement>) {
     onCursorChange?.(event.currentTarget.selectionStart);
   }
 
@@ -59,7 +97,7 @@ export function MentionTextarea({ mentionsEnabled = true, onChange, onCursorChan
 
   return <div className={`mention-textarea-shell${mentionsEnabled ? " is-mentions-enabled" : ""}${value ? " has-value" : ""}`}>
     {mentionsEnabled && value ? <div aria-hidden="true" className="mention-textarea-overlay" ref={overlayRef}><MentionText text={value} /></div> : null}
-    <textarea {...props} onChange={handleChange} onClick={(event) => { handleCursor(event); onClick?.(event); }} onKeyUp={(event) => { handleCursor(event); onKeyUp?.(event); }} onPaste={onPaste} onScroll={handleScroll} ref={textareaRef} value={value} />
+    <textarea {...props} onChange={handleChange} onClick={(event) => { handleCursor(event); onClick?.(event); }} onFocus={handleCursor} onInput={handleCursor} onKeyDown={(event) => { handleCursor(event); props.onKeyDown?.(event); }} onKeyUp={(event) => { handleCursor(event); onKeyUp?.(event); }} onPaste={onPaste} onScroll={handleScroll} onSelect={handleCursor} ref={textareaRef} value={value} />
   </div>;
 }
 
@@ -67,14 +105,16 @@ export function MentionSuggestions({
   isLoading,
   items,
   onSelect,
+  style,
 }: {
   isLoading: boolean;
   items: SocialUserSearchResult[];
   onSelect: (user: SocialUserSearchResult) => void;
+  style?: CSSProperties;
 }) {
   const { phrase } = useLanguage();
   if (!isLoading && !items.length) return null;
-  return <div className="mention-suggestions" role="listbox">
+  return <div className="mention-suggestions" role="listbox" style={style}>
     {isLoading ? <span className="mention-suggestions-loading">{phrase("正在搜索用户...", "Searching users...")}</span> : items.map((user) => {
       const avatar = user.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
       return <button

@@ -20464,3 +20464,137 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   max-height: min(360px, calc(100dvh - 16px));
   overflow-y: auto;
 }
+
+/* Chat and comment mention surfaces share the same text metrics as the native textarea. */
+.mention-textarea-shell > textarea,
+.mention-textarea-overlay {
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  tab-size: 4;
+}
+.mention-token {
+  display: inline;
+  padding: 0;
+  border-radius: 3px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.mention-suggestions {
+  right: auto;
+  bottom: auto;
+  width: min(280px, calc(100vw - 32px));
+}
+.chat-composer { overflow: visible; }
+.chat-message-focus-highlight > div {
+  animation: chat-message-focus 1s ease;
+}
+.chat-message-focus-highlight > div > p,
+.chat-message-focus-highlight > div > .chat-message-quote {
+  animation: none;
+}
+@keyframes chat-message-focus {
+  0%, 100% { box-shadow: var(--chat-bubble-shadow); }
+  24% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 55%, transparent), var(--chat-bubble-shadow); }
+}
+.chat-panel {
+  position: relative;
+}
+.chat-panel.has-pinned .chat-message-list {
+  padding-top: 72px;
+}
+.chat-pinned-messages {
+  position: absolute;
+  z-index: 4;
+  top: 8px;
+  right: 10px;
+  left: 10px;
+  border: 1px solid var(--chat-bubble-border);
+  border-radius: 9px;
+  background: var(--chat-bubble-background);
+  box-shadow: var(--chat-bubble-shadow);
+  backdrop-filter: blur(16px) saturate(125%);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  padding: 6px 9px;
+}
+.chat-dock-titlebar-actions {
+  position: relative;
+  flex: 0 0 auto;
+}
+.chat-inline-message-search {
+  position: relative;
+  display: inline-flex;
+  width: min(280px, 42vw);
+  min-width: 0;
+  height: 30px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--chat-bubble-border);
+  border-radius: 7px;
+  background: var(--chat-bubble-background);
+  box-shadow: var(--chat-bubble-shadow);
+  color: var(--muted);
+  padding: 0 5px 0 8px;
+  backdrop-filter: blur(16px) saturate(125%);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+}
+.chat-inline-message-search input {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 28px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.7rem;
+}
+.chat-inline-message-search > button {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+}
+.chat-message-search-dropdown {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  display: grid;
+  max-height: min(300px, 42vh);
+  gap: 3px;
+  overflow-y: auto;
+  border: 1px solid var(--chat-bubble-border);
+  border-radius: 8px;
+  background: var(--chat-bubble-background);
+  box-shadow: var(--chat-bubble-shadow);
+  padding: 5px;
+  backdrop-filter: blur(16px) saturate(125%);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+}
+.chat-message-search-dropdown:empty { display: none; }
+.chat-message-search-dropdown .chat-state,
+.chat-message-search-dropdown .chat-sidebar-empty { padding: 6px; }
+@media (max-width: 760px) {
+  .chat-inline-message-search { width: min(240px, 54vw); }
+  .chat-panel.has-pinned .chat-message-list { padding-top: 70px; }
+}
+.subscription-management-drawer .subscription-setting-actions .announcement-editor-select-trigger {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.subscription-management-drawer .subscription-setting-actions .announcement-editor-select-leading-icon,
+.subscription-management-drawer .subscription-setting-actions .announcement-editor-select-value,
+.subscription-management-drawer .subscription-setting-actions .announcement-editor-select-trigger > svg {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.announcement-editor-select-menu-portal.subscription-frequency-menu button {
+  min-height: 28px;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
