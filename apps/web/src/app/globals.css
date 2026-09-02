@@ -1409,19 +1409,19 @@ body:has(.auth-page) .topbar {
 
 .account-menu-head span {
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.76rem;
 }
 
 .account-menu a,
 .account-menu button {
-  min-height: 34px;
+  min-height: 31px;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: var(--muted-strong);
   cursor: pointer;
   font: inherit;
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   font-weight: 560;
   padding: 0 10px;
   text-align: left;
@@ -20018,9 +20018,9 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   width: 100%;
   min-width: 0;
   min-height: 44px;
-  border: 0;
+  border: 1px solid color-mix(in srgb, var(--control-line) 72%, var(--muted) 28%);
   border-radius: 7px;
-  background: var(--surface-soft);
+  background: color-mix(in srgb, var(--surface-strong) 68%, var(--surface-soft));
   color: var(--foreground);
   font-family: inherit;
   font-size: 1rem;
@@ -20029,16 +20029,20 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   outline: none;
   padding: 0;
   text-align: center;
-  transition: background 150ms ease, box-shadow 150ms ease;
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .otp-code-input input:focus {
-  background: color-mix(in srgb, var(--accent-soft) 42%, var(--surface-soft));
+  background: color-mix(in srgb, var(--accent-soft) 42%, var(--surface-strong));
+  border-color: color-mix(in srgb, var(--accent) 68%, var(--control-line));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 32%, transparent);
   outline: none;
 }
 
 .otp-code-input input:disabled { cursor: wait; opacity: 0.65; }
+
+/* The privacy page follows the same compact card rhythm as the home feed. */
+.page-shell.account-privacy-page { gap: 8px; }
 
 .auth-totp-verification {
   display: grid;
