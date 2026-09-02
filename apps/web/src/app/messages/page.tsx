@@ -16,10 +16,11 @@ function MessagesCompatibilityRoute() {
   const { locale } = useLanguage();
 
   useEffect(() => {
-    const conversationId = Number(searchParams.get("conversation") ?? 0);
+    const conversationId = Number(searchParams.get("conversation") ?? searchParams.get("conversationId") ?? 0);
+    const messageId = Number(searchParams.get("messageId") ?? 0);
     const friendshipId = Number(searchParams.get("friendshipId") ?? 0);
     openChatDock(conversationId > 0
-      ? { conversationId }
+      ? { conversationId, ...(messageId > 0 ? { messageId } : {}) }
       : friendshipId > 0 ? { tab: "friends" } : {});
     router.replace(localizedPath("/", locale));
   }, [locale, router, searchParams]);

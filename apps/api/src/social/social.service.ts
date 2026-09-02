@@ -2245,7 +2245,7 @@ export class SocialService {
     const blockedIds = new Set(blocked.map((item) => item.userOneId === actorId ? item.userTwoId : item.userOneId));
     const actor = await transaction.user.findUnique({ where: { id: actorId }, select: { nickname: true, username: true } });
     const label = actor?.nickname || actor?.username || "有人";
-    const actionUrl = `/messages?conversationId=${conversationId}&messageId=${messageId}`;
+    const actionUrl = `/messages?conversation=${conversationId}&messageId=${messageId}`;
     const data = candidates.filter((candidate) => !blockedIds.has(candidate.id)).map((candidate) => ({
       userId: candidate.id,
       actorId,

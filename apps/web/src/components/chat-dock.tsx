@@ -621,6 +621,7 @@ export function ChatDock() {
       setNotificationChannelStates([]);
       setBrowserPushState(null);
       setHiddenNotificationChannels([]);
+      pendingConversationOpenRef.current = null;
       setSelectedId(0);
       setMessages([]);
       setDrafts({});
@@ -653,7 +654,7 @@ export function ChatDock() {
       setHiddenNotificationChannels(nextHiddenChannels);
       const requestedConversationId = pendingConversationOpenRef.current?.conversationId ?? 0;
       setSelectedId((current) => {
-        if (requestedConversationId && (!current || current === requestedConversationId)) return requestedConversationId;
+        if (requestedConversationId) return requestedConversationId;
         if (notificationChannels.some((item) => item.id === current && !nextHiddenChannels.includes(item.channel))) return current;
         if (current && conversationResult.items.some((item) => item.id === current)) return current;
         return 0;
@@ -957,6 +958,7 @@ export function ChatDock() {
             const context = await getMessageContext(token, selectedId, pendingMessageFocusId);
             nextMessages = [...nextMessages, context.message].sort((left, right) => left.id - right.id);
           } catch {
+            if (pendingConversationOpenRef.current?.conversationId === selectedId) pendingConversationOpenRef.current = null;
             setPendingMessageFocusId(0);
           }
         }
@@ -1023,6 +1025,7 @@ export function ChatDock() {
       target.scrollIntoView({ behavior: "smooth", block: "center" });
       target.classList.add("chat-message-focus-highlight");
       window.setTimeout(() => target.classList.remove("chat-message-focus-highlight"), 1600);
+      if (pendingConversationOpenRef.current?.messageId === pendingMessageFocusId) pendingConversationOpenRef.current = null;
       setPendingMessageFocusId(0);
     });
   }, [isMessagesLoading, messages.length, pendingMessageFocusId]);
@@ -1751,6 +1754,13 @@ export function ChatDock() {
   }
 
   async function handleNotification(notification: SocialNotification) {
+    const mentionContext = notification.context?.kind === "message_mention" ? notification.context : null;
+    const mentionMessage = mentionContext?.message;
+    const mentionTarget = mentionContext?.conversationId && notification.messageId
+      ? { conversationId: mentionContext.conversationId, messageId: notification.messageId }
+      : null;
+    if (mentionTarget) pendingConversationOpenRef.current = mentionTarget;
+    else pendingConversationOpenRef.current = null;
     const token = readAccessToken();
     if (!token) return;
     if (!notification.openedAt) {
@@ -1802,18 +1812,18 @@ export function ChatDock() {
       setIsMinimized(true);
       return;
     }
-    if (notification.context?.kind === "message_mention" && notification.context.conversationId && notification.messageId) {
+    if (mentionTarget) {
       setIsMinimized(false);
       setIsOpen(true);
       setSelectedSystemNotificationId(0);
-      setSelectedId(notification.context.conversationId);
+      setSelectedId(mentionTarget.conversationId);
       setIsMobileConversationOpen(true);
-      if (notification.context.message) {
-        setMessages((current) => current.some((item) => item.id === notification.context!.message!.id)
+      if (mentionMessage) {
+        setMessages((current) => current.some((item) => item.id === mentionMessage.id)
           ? current
-          : [...current, notification.context!.message!].sort((left, right) => left.id - right.id));
+          : [...current, mentionMessage].sort((left, right) => left.id - right.id));
       }
-      setPendingMessageFocusId(notification.messageId);
+      setPendingMessageFocusId(mentionTarget.messageId);
       return;
     }
     if (notification.type === "friend_request_received") {
