@@ -1583,11 +1583,11 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       }
       const article = await this.getArticleOrThrow(id);
       this.assertCanRead(article, user);
-      const body = dto.body.trim();
-      if (!body && !files?.length) {
+      const body = dto.body.replace(/^\s+/, "");
+      if (!body.trim() && !files?.length) {
         throw new BadRequestException("评论内容不能为空。");
       }
-      if (body) await this.contentModerationService.enforce({ source: "comment", actorId: user.id, content: body });
+      if (body.trim()) await this.contentModerationService.enforce({ source: "comment", actorId: user.id, content: body.trim() });
       let parent: { id: number; authorId: number } | null = null;
       if (dto.parentId) {
         parent = await this.prisma.articleComment.findFirst({ where: { id: dto.parentId, articleId: id, status: ArticleCommentStatus.active }, select: { id: true, authorId: true } });
@@ -1662,7 +1662,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
         await this.createCommentMentionNotifications(transaction, article, created.id, user, body);
         return created;
       });
-      if (body) await this.contentModerationService.recordAccepted({ source: "comment", actorId: user.id, content: body, contentRef: `comment:${comment.id}` });
+      if (body.trim()) await this.contentModerationService.recordAccepted({ source: "comment", actorId: user.id, content: body.trim(), contentRef: `comment:${comment.id}` });
       return this.toCommentResponse(comment);
     } catch (error) {
       await Promise.all([
@@ -3492,7 +3492,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     actor: AuthenticatedUser,
     body: string,
   ): Promise<void> {
-    const usernames = [...new Set(Array.from(body.matchAll(/@([A-Za-z0-9_]{2,32})/g), (match) => match[1].toLowerCase()))];
+    const usernames = [...new Set(Array.from(body.matchAll(/(?:^|\s)@([A-Za-z0-9_]{2,32})(?=\s)/g), (match) => match[1].toLowerCase()))];
     if (!usernames.length) return;
     const candidates = await transaction.user.findMany({
       where: { username: { in: usernames }, status: "active", id: { not: actor.id } },

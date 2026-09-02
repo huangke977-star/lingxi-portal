@@ -1202,9 +1202,9 @@ export class SocialService {
     rawBody: string,
     attachmentIds: number[] = [],
     quotedMessageId?: number,
-  ): Promise<ChatMessageResponse> {
-    const body = rawBody.trim();
-    if (!body && !attachmentIds.length) {
+  ): Promise<ChatMessageResponse & { mentionedUserIds: number[] }> {
+    const body = rawBody.replace(/^\s+/, "");
+    if (!body.trim() && !attachmentIds.length) {
       throw new BadRequestException("消息文字和附件不能同时为空。");
     }
     if (Array.from(body).length > 2000) {
@@ -1224,7 +1224,7 @@ export class SocialService {
     if (membership.group) {
       await this.contentModerationService.enforce({ source: "group_message", actorId: userId, content: body || "[附件消息]", attachmentOnly: !body });
     }
-    const message = await this.prisma.$transaction(async (transaction) => {
+    const result = await this.prisma.$transaction(async (transaction) => {
       const created = await transaction.chatMessage.create({
         data: {
           conversationId,
@@ -1256,13 +1256,14 @@ export class SocialService {
         data: { hidden: false },
       });
       await transaction.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date() } });
-      await this.createMessageMentionNotifications(transaction, membership, conversationId, created.id, userId, body);
-      return transaction.chatMessage.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude });
+      const mentionedUserIds = await this.createMessageMentionNotifications(transaction, membership, conversationId, created.id, userId, body);
+      const message = await transaction.chatMessage.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude });
+      return { message, mentionedUserIds };
     });
     if (membership.group) {
-      await this.contentModerationService.recordAccepted({ source: "group_message", actorId: userId, content: body || "[附件消息]", contentRef: `group_message:${message.id}` });
+      await this.contentModerationService.recordAccepted({ source: "group_message", actorId: userId, content: body.trim() || "[附件消息]", contentRef: `group_message:${result.message.id}` });
     }
-    return this.toMessage(message, membership.group?.alias ?? undefined);
+    return { ...this.toMessage(result.message, membership.group?.alias ?? undefined), mentionedUserIds: result.mentionedUserIds };
   }
 
   async forwardMessages(
@@ -2215,14 +2216,14 @@ export class SocialService {
     messageId: number,
     actorId: number,
     body: string,
-  ): Promise<void> {
-    const usernames = [...new Set(Array.from(body.matchAll(/@([A-Za-z0-9_]{2,32})/g), (match) => match[1].toLowerCase()))];
-    if (!usernames.length) return;
+  ): Promise<number[]> {
+    const usernames = [...new Set(Array.from(body.matchAll(/(?:^|\s)@([A-Za-z0-9_]{2,32})(?=\s)/g), (match) => match[1].toLowerCase()))];
+    if (!usernames.length) return [];
     const candidates = await transaction.user.findMany({
       where: { id: { in: membership.participantIds, not: actorId }, username: { in: usernames }, status: "active" },
       select: { id: true, username: true, nickname: true },
     });
-    if (!candidates.length) return;
+    if (!candidates.length) return [];
     if (membership.group) {
       const activeMembers = await transaction.chatGroupMember.findMany({
         where: { groupId: membership.group.id, userId: { in: candidates.map((candidate) => candidate.id) }, status: ChatGroupMemberStatus.active },
@@ -2231,7 +2232,7 @@ export class SocialService {
       const activeIds = new Set(activeMembers.map((member) => member.userId));
       candidates.splice(0, candidates.length, ...candidates.filter((candidate) => activeIds.has(candidate.id)));
     }
-    if (!candidates.length) return;
+    if (!candidates.length) return [];
     const blocked = await transaction.friendship.findMany({
       where: {
         status: FriendshipStatus.blocked,
@@ -2259,6 +2260,7 @@ export class SocialService {
       dedupeKey: `mention:message:${messageId}:${candidate.id}`,
     }));
     if (data.length) await transaction.userNotification.createMany({ data, skipDuplicates: true });
+    return data.map((item) => item.userId);
   }
 
   private friendshipDirection(record: FriendshipRecord, userId: number): FriendshipResponse["direction"] {
@@ -2365,6 +2367,15 @@ export class SocialService {
 
   private toNotification(notification: NotificationRecord, enrichedContext?: NotificationContext): UserNotificationResponse {
     const groupContext = this.groupNotificationContext(notification.actionUrl, notification.title);
+    const messageMentionContext = notification.type === UserNotificationType.mention_received
+      ? notification.message
+        ? {
+            kind: "message_mention" as const,
+            conversationId: notification.message.conversationId,
+            message: this.toMessage(notification.message),
+          }
+        : this.messageMentionContext(notification.actionUrl)
+      : null;
     return {
       id: notification.id,
       type: notification.type,
@@ -2379,11 +2390,7 @@ export class SocialService {
       articleReportId: notification.articleReportId,
       announcementId: notification.announcementId,
       actor: notification.actor ? this.toSocialUser(notification.actor) : null,
-      context: notification.type === UserNotificationType.mention_received && notification.message ? {
-        kind: "message_mention",
-        conversationId: notification.message.conversationId,
-        message: this.toMessage(notification.message),
-      } : notification.articleReport ? {
+      context: messageMentionContext ?? (notification.articleReport ? {
         kind: "article_report",
         reportId: notification.articleReport.id,
         status: notification.articleReport.status,
@@ -2404,13 +2411,26 @@ export class SocialService {
         kind: "announcement",
         announcementId: notification.announcement.id,
         announcement: notification.announcement,
-      } : enrichedContext ?? groupContext,
+      } : enrichedContext ?? groupContext),
       aggregateCount: notification.aggregateCount,
       readAt: notification.readAt?.toISOString() ?? null,
       openedAt: notification.openedAt?.toISOString() ?? null,
       createdAt: notification.createdAt.toISOString(),
       updatedAt: notification.updatedAt.toISOString(),
     };
+  }
+
+  private messageMentionContext(actionUrl: string | null): UserNotificationResponse["context"] | null {
+    if (!actionUrl) return null;
+    try {
+      const url = new URL(actionUrl, "https://local.invalid");
+      const conversationId = Number(url.searchParams.get("conversation"));
+      return Number.isInteger(conversationId) && conversationId > 0
+        ? { kind: "message_mention", conversationId }
+        : null;
+    } catch {
+      return null;
+    }
   }
 
   private groupNotificationContext(

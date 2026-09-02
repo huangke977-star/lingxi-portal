@@ -70,7 +70,7 @@ import { ChatCallPanel, useChatCalls } from "@/components/chat-call";
 import { ChatGroupManager } from "@/components/chat-group-manager";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
-import { getActiveMention, MentionSuggestions, MentionText } from "@/components/mention-ui";
+import { getActiveMention, MentionSuggestions, MentionText, MentionTextarea } from "@/components/mention-ui";
 import { RequestComposerDialog } from "@/components/request-composer-dialog";
 import { RoleSymbol } from "@/components/role-symbol";
 import { AvatarManagementBadge } from "@/components/user-identity-badges";
@@ -293,6 +293,7 @@ export function ChatDock() {
   const [selectedSystemNotificationId, setSelectedSystemNotificationId] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pinnedMessages, setPinnedMessages] = useState<ChatMessage[]>([]);
+  const [pinnedMessageIndex, setPinnedMessageIndex] = useState(0);
   const [pendingMessageFocusId, setPendingMessageFocusId] = useState(0);
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null);
   const [messageSearchOpen, setMessageSearchOpen] = useState(false);
@@ -508,6 +509,7 @@ export function ChatDock() {
     setMessageSearchOpen(false);
     setMessageSearchInput("");
     setMessageSearchResults([]);
+    setPinnedMessageIndex(0);
     if (pendingConversationOpenRef.current?.conversationId !== selectedId) {
       pendingConversationOpenRef.current = null;
       setPendingMessageFocusId(0);
@@ -989,12 +991,13 @@ export function ChatDock() {
     const token = readAccessToken();
     if (!token || selectedId <= 0 || !selected?.group) {
       setPinnedMessages([]);
+      setPinnedMessageIndex(0);
       return;
     }
     let active = true;
     listPinnedMessages(token, selectedId)
-      .then((result) => { if (active) setPinnedMessages(result.items); })
-      .catch(() => { if (active) setPinnedMessages([]); });
+      .then((result) => { if (active) { setPinnedMessages(result.items); setPinnedMessageIndex(0); } })
+      .catch(() => { if (active) { setPinnedMessages([]); setPinnedMessageIndex(0); } });
     return () => { active = false; };
   }, [selected?.group, selectedId]);
 
@@ -1134,7 +1137,7 @@ export function ChatDock() {
 
   function clearComposerForConversation(conversationId: number, sentBody: string, sentFiles: File[]) {
     setDrafts((current) => {
-      if ((current[conversationId] ?? "").trim() !== sentBody) return current;
+      if ((current[conversationId] ?? "").trim() !== sentBody.trim()) return current;
       const { [conversationId]: _removed, ...rest } = current;
       void _removed;
       return rest;
@@ -1349,7 +1352,7 @@ export function ChatDock() {
   async function sendPayload(conversationId: number, body: string, files: File[], clearComposer = false, quotedMessageId?: number) {
     const socket = socketRef.current;
     const token = readAccessToken();
-    if ((!body && !files.length) || !conversationId || !token) return;
+    if ((!body.trim() && !files.length) || !conversationId || !token) return;
     if (sendInFlightRef.current) return;
     if (selectedGroupIsBanned) {
       setError(selectedGroupBanNotice);
@@ -1756,8 +1759,8 @@ export function ChatDock() {
   async function handleNotification(notification: SocialNotification) {
     const mentionContext = notification.context?.kind === "message_mention" ? notification.context : null;
     const mentionMessage = mentionContext?.message;
-    const mentionTarget = mentionContext?.conversationId && notification.messageId
-      ? { conversationId: mentionContext.conversationId, messageId: notification.messageId }
+    const mentionTarget = mentionContext?.conversationId
+      ? { conversationId: mentionContext.conversationId, messageId: notification.messageId ?? 0 }
       : null;
     if (mentionTarget) pendingConversationOpenRef.current = mentionTarget;
     else pendingConversationOpenRef.current = null;
@@ -1823,7 +1826,7 @@ export function ChatDock() {
           ? current
           : [...current, mentionMessage].sort((left, right) => left.id - right.id));
       }
-      setPendingMessageFocusId(mentionTarget.messageId);
+      if (mentionTarget.messageId) setPendingMessageFocusId(mentionTarget.messageId);
       return;
     }
     if (notification.type === "friend_request_received") {
@@ -2150,7 +2153,7 @@ export function ChatDock() {
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await sendPayload(selectedId, draft.trim(), pendingAttachments.map((item) => item.file), true, quotedMessage?.id);
+    await sendPayload(selectedId, draft, pendingAttachments.map((item) => item.file), true, quotedMessage?.id);
   }
 
   function beginMessageQuote(message: ChatMessage) {
@@ -2170,6 +2173,7 @@ export function ChatDock() {
       setPinnedMessages((current) => updated.isPinned
         ? [updated, ...current.filter((item) => item.id !== updated.id)]
         : current.filter((item) => item.id !== updated.id));
+      setPinnedMessageIndex(0);
       setOpenMessageActionId(0);
       setMessageActionPosition(null);
       setNotice(updated.isPinned ? phrase("消息已置顶。", "Message pinned.") : phrase("消息已取消置顶。", "Message unpinned."));
@@ -2213,6 +2217,13 @@ export function ChatDock() {
     } catch (contextError) {
       setError(contextError instanceof Error ? contextError.message : phrase("消息定位失败。", "Could not locate the message."));
     }
+  }
+
+  function focusCurrentPinnedMessage() {
+    if (!pinnedMessages.length) return;
+    const target = pinnedMessages[pinnedMessageIndex] ?? pinnedMessages[0];
+    setPinnedMessageIndex((current) => pinnedMessages.length ? (current + 1) % pinnedMessages.length : 0);
+    void focusMessage(target.id);
   }
 
   function clearSendHoldTimer() {
@@ -2548,7 +2559,12 @@ export function ChatDock() {
               selectedIds={selectedNotificationIds}
               listRef={systemMessageListRef}
             /> : selected ? <>
-              {selected.group && pinnedMessages.length ? <div className="chat-pinned-messages"><span><Pin aria-hidden="true" size={14} />{phrase("置顶消息", "Pinned messages")}</span>{pinnedMessages.map((message) => <button key={message.id} onClick={() => void focusMessage(message.id)} type="button"><strong>{message.senderDisplayName}</strong><small>{message.body || phrase("附件消息", "Attachment")}</small></button>)}</div> : null}
+              {selected.group && pinnedMessages.length ? <div className="chat-pinned-messages">
+                <span><Pin aria-hidden="true" size={14} />{phrase("置顶消息", "Pinned message")}<small>{pinnedMessageIndex + 1}/{pinnedMessages.length}</small></span>
+                <button onClick={focusCurrentPinnedMessage} type="button">
+                  <PinnedMessagePreview message={pinnedMessages[pinnedMessageIndex] ?? pinnedMessages[0]} locale={locale} />
+                </button>
+              </div> : null}
               <div className="chat-message-list" onScroll={handleMessageListScroll} ref={messageListRef}>
                 {isOlderMessagesLoading ? <span className="chat-load-older"><LoaderCircle aria-hidden="true" className="spin" size={14} />{phrase("正在读取更早消息", "Loading earlier messages")}</span> : null}
                 {isMessagesLoading ? <span className="chat-state">{phrase("正在读取聊天记录。", "Loading chat history.")}</span> : messages.map((message) => (
@@ -2595,7 +2611,7 @@ export function ChatDock() {
                     <button aria-label={phrase("添加表情", "Add emoji")} className={`chat-desktop-tool${isEmojiOpen ? " active" : ""}`} disabled={selectedGroupIsBanned} onClick={() => { setIsEmojiOpen((current) => !current); setIsMobileToolsOpen(false); }} title={phrase("表情", "Emoji")} type="button"><Laugh aria-hidden="true" size={18} /></button>
                     <button aria-label={phrase("添加图片或文件", "Add images or files")} className="chat-desktop-tool" disabled={selectedGroupIsBanned} onClick={() => fileInputRef.current?.click()} title={phrase("添加图片或文件", "Add images or files")} type="button"><Paperclip aria-hidden="true" size={18} /></button>
                   </div>
-                  <textarea aria-label={phrase(`给 ${selected.group?.name ?? selected.user.nickname} 发消息`, `Message ${selected.group?.name ?? selected.user.nickname}`)} disabled={selectedGroupIsBanned} maxLength={2000} onChange={(event) => { updateDraft(event.target.value); setMentionCursor(event.currentTarget.selectionStart); }} onClick={(event) => setMentionCursor(event.currentTarget.selectionStart)} onKeyDown={(event) => { if ((event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) && mentionCandidates.length) { event.preventDefault(); insertMention(mentionCandidates[0]); return; } if (event.key === "Escape" && mentionCandidates.length) { event.preventDefault(); setMentionCandidates([]); return; } if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} onKeyUp={(event) => setMentionCursor(event.currentTarget.selectionStart)} onPaste={handlePaste} placeholder={selectedGroupIsBanned ? phrase("该群已被封禁，暂时无法发送消息", "This group is banned and cannot receive messages") : phrase("输入消息", "Write a message")} rows={2} value={draft} />
+                  <MentionTextarea aria-label={phrase(`给 ${selected.group?.name ?? selected.user.nickname} 发消息`, `Message ${selected.group?.name ?? selected.user.nickname}`)} disabled={selectedGroupIsBanned} maxLength={2000} onChange={(nextValue, cursor) => { updateDraft(nextValue); setMentionCursor(cursor); }} onKeyDown={(event) => { if ((event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) && mentionCandidates.length) { event.preventDefault(); insertMention(mentionCandidates[0]); return; } if (event.key === "Escape" && mentionCandidates.length) { event.preventDefault(); setMentionCandidates([]); return; } if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} onPaste={handlePaste} onCursorChange={setMentionCursor} placeholder={selectedGroupIsBanned ? phrase("该群已被封禁，暂时无法发送消息", "This group is banned and cannot receive messages") : phrase("输入消息", "Write a message")} rows={2} value={draft} />
                   <MentionSuggestions isLoading={isMentionSearching} items={mentionCandidates} onSelect={insertMention} />
                   <button
                     aria-label={isVoiceRecording ? phrase(`松开发送语音，已录制 ${formatDuration(voiceRecordingSeconds)}`, `Release to send voice message, recorded ${formatDuration(voiceRecordingSeconds)}`) : phrase("发送消息，长按录制语音", "Send message. Hold to record voice.")}
@@ -3305,6 +3321,44 @@ function AttachmentPreview({ attachment, onClose }: { attachment: ChatAttachment
     return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [attachment, onClose]);
   return <div className="chat-attachment-preview" onClick={onClose} role="presentation"><button aria-label={t("common.close")} onClick={onClose} title={t("common.close")} type="button"><X aria-hidden="true" size={22} /></button>{url ? <img alt={attachment.originalName} onClick={(event) => event.stopPropagation()} src={url} /> : <LoaderCircle aria-hidden="true" className="spin" size={26} />}</div>;
+}
+
+function PinnedMessagePreview({ message, locale }: { message: ChatMessage; locale: "zh-CN" | "en-US" }) {
+  const attachment = message.attachments?.[0];
+  const text = (chinese: string, english: string) => locale === "en-US" ? english : chinese;
+  const attachmentLabel = attachment
+    ? attachment.kind === "image" ? text("图片", "Image")
+      : attachment.kind === "audio" ? text("语音消息", "Voice message")
+        : attachment.kind === "video" ? text("视频", "Video")
+          : attachment.originalName
+    : text("附件消息", "Attachment");
+  return <>
+    {attachment ? <PinnedAttachmentThumbnail attachment={attachment} /> : <span className="chat-pinned-message-icon"><Pin aria-hidden="true" size={14} /></span>}
+    <span><strong>{message.senderDisplayName}</strong><small>{message.body ? <MentionText text={message.body} /> : attachmentLabel}</small></span>
+  </>;
+}
+
+function PinnedAttachmentThumbnail({ attachment }: { attachment: ChatAttachment }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    const token = readAccessToken();
+    if (!token || attachment.kind !== "image") return;
+    let active = true;
+    let objectUrl = "";
+    downloadChatAttachmentThumbnail(token, attachment).then((blob) => {
+      if (!active) return;
+      objectUrl = URL.createObjectURL(blob);
+      setUrl(objectUrl);
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [attachment]);
+  if (attachment.kind === "image") return <span className="chat-pinned-message-icon image">{url ? <img alt="" src={url} /> : <ImageIcon aria-hidden="true" size={15} />}</span>;
+  if (attachment.kind === "audio") return <span className="chat-pinned-message-icon"><FileAudio aria-hidden="true" size={15} /></span>;
+  if (attachment.kind === "video") return <span className="chat-pinned-message-icon"><FileVideo aria-hidden="true" size={15} /></span>;
+  return <span className="chat-pinned-message-icon"><FileText aria-hidden="true" size={15} /></span>;
 }
 
 function UserAvatar({ user, large = false }: { user: SocialUser; large?: boolean }) {

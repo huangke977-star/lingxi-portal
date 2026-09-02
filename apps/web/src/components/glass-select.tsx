@@ -50,9 +50,11 @@ export function GlassSelect<T extends string>({
       const rect = triggerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const width = Math.max(rect.width, 132);
+      const menuHeight = menuRef.current?.getBoundingClientRect().height ?? Math.min(options.length * 32 + 10, 320);
+      const opensUp = rect.bottom + 4 + menuHeight > window.innerHeight - 8 && rect.top - menuHeight - 4 >= 8;
       setMenuPosition({
         left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
-        top: rect.bottom + 4,
+        top: opensUp ? rect.top - menuHeight - 4 : rect.bottom + 4,
         width,
       });
     }
@@ -63,7 +65,7 @@ export function GlassSelect<T extends string>({
       window.removeEventListener("resize", updateMenuPosition);
       window.removeEventListener("scroll", updateMenuPosition, true);
     };
-  }, [isOpen, menuPortal]);
+  }, [isOpen, menuPortal, options.length]);
 
   const menu = isOpen ? (
     <div

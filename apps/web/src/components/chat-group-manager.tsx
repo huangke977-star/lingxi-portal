@@ -335,7 +335,7 @@ export function ChatGroupManager({
             </article>)}
             {approvalRequests.map((request) => <article className="chat-group-invitation" key={`request-${request.id}`}>
               <GroupAvatar group={request.group} />
-              <span><strong>{request.group.name}</strong><small>{phrase(`${request.user.nickname} 申请加入 · ${request.note || "未填写申请说明"}`, `${request.user.nickname} requested to join · ${request.note || "No request note"}`)}</small></span>
+              <span><strong>{request.group.name}</strong><small>{request.note ? phrase(`${request.user.nickname} 申请加入 · ${request.note}`, `${request.user.nickname} requested to join · ${request.note}`) : phrase(`${request.user.nickname} 申请加入 · 未填写申请说明`, `${request.user.nickname} requested to join · No request note`)}</small></span>
               <div className="chat-group-inline-actions"><button aria-label={phrase("同意入群申请", "Approve join request")} disabled={Boolean(busyKey)} onClick={() => void run(`approval:${request.id}`, async () => {
                 await respondChatGroupJoinRequest(accessToken, request.groupId, request.id, "approved");
               }, phrase("已同意入群申请。", "Join request approved."))} title={phrase("同意", "Approve")} type="button"><Check aria-hidden="true" size={13} />{phrase("同意", "Approve")}</button><button aria-label={phrase("拒绝入群申请", "Reject join request")} disabled={Boolean(busyKey)} onClick={() => void run(`approval:${request.id}`, async () => {

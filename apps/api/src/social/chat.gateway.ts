@@ -195,7 +195,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       const quotedMessageId = payload.quotedMessageId === undefined || payload.quotedMessageId === null || payload.quotedMessageId === ""
         ? undefined
         : this.requirePositiveInteger(payload.quotedMessageId, "引用消息编号无效。");
-      const message = await this.socialService.createMessage(userId, conversationId, body, attachmentIds, quotedMessageId);
+      const createdMessage = await this.socialService.createMessage(userId, conversationId, body, attachmentIds, quotedMessageId);
+      const { mentionedUserIds, ...message } = createdMessage;
       const delivery = await this.socialService.getConversationDelivery(conversationId);
       if (delivery.kind === "direct") {
         for (const participantId of delivery.participantIds) {
@@ -208,7 +209,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         this.server.to(this.groupRoom(conversationId)).emit("chat:message", message);
       }
       for (const participantId of delivery.participantIds) {
-        if (participantId !== userId) {
+        if (participantId !== userId && !mentionedUserIds.includes(participantId)) {
           void this.pushService.sendChatMessage(userId, participantId, message).catch(() => undefined);
         }
       }

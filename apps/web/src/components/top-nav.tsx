@@ -304,8 +304,8 @@ export function TopNav() {
     }
     if (notification.context?.kind === "announcement" && notification.actionUrl) {
       router.push(notification.actionUrl);
-    } else if (notification.context?.kind === "message_mention" && notification.context.conversationId && notification.messageId) {
-      openChatDock({ conversationId: notification.context.conversationId, messageId: notification.messageId });
+    } else if (notification.context?.kind === "message_mention" && notification.context.conversationId) {
+      openChatDock({ conversationId: notification.context.conversationId, ...(notification.messageId ? { messageId: notification.messageId } : {}) });
     } else if (notification.context?.kind === "article_comment" && notification.context.article?.slug) {
       router.push(localizedPath(`/articles/${notification.context.article.slug}${notification.context.commentId ? `?commentId=${notification.context.commentId}` : ""}`, locale));
     } else if (notification.type === "friend_request_received") {

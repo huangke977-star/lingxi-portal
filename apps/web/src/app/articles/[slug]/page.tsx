@@ -409,7 +409,7 @@ export default function ArticleDetailPage() {
     }
     setIsSubmittingComment(true);
     try {
-      const comment = await createArticleComment(token, article.id, commentDraft.trim(), replyingTo?.id, files, replyingTo?.id);
+      const comment = await createArticleComment(token, article.id, commentDraft, replyingTo?.id, files, replyingTo?.id);
       setComments((current) => mergeArticleComments(current, [comment]));
       setArticle((current) => current ? { ...current, commentCount: current.commentCount + 1 } : current);
       setCommentDraft("");
@@ -581,7 +581,7 @@ export default function ArticleDetailPage() {
           <div aria-hidden={!replyingTo} className={`article-composer-context${replyingTo ? " active" : ""}`}>
             {replyingTo ? <><span title={phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`)}>{phrase("回复", "Reply")} <strong>@{replyingTo.author.nickname}</strong></span><button aria-label={phrase("取消回复", "Cancel reply")} onClick={() => setReplyingTo(null)} title={phrase("取消回复", "Cancel reply")} type="button"><X aria-hidden="true" size={14} /></button></> : null}
           </div>
-          <div className="mention-composer-shell"><ContentAttachmentComposer ariaLabel={replyingTo ? phrase(`回复 ${replyingTo.author.nickname}`, `Reply to ${replyingTo.author.nickname}`) : phrase("评论文章", "Comment on article")} isSubmitting={isSubmittingComment} onChange={(value) => { setCommentDraft(value); setCommentMentionCursor(composerRef.current?.selectionStart ?? value.length); }} onCursorChange={setCommentMentionCursor} onSubmit={handleCommentSubmit} placeholder={replyingTo ? phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`) : phrase("写下你的想法", "Write your thoughts")} textareaRef={composerRef} value={commentDraft} /><MentionSuggestions isLoading={isCommentMentionSearching} items={commentMentionCandidates} onSelect={insertCommentMention} /></div>
+          <div className="mention-composer-shell"><ContentAttachmentComposer ariaLabel={replyingTo ? phrase(`回复 ${replyingTo.author.nickname}`, `Reply to ${replyingTo.author.nickname}`) : phrase("评论文章", "Comment on article")} isSubmitting={isSubmittingComment} onChange={(value) => { setCommentDraft(value); setCommentMentionCursor(composerRef.current?.selectionStart ?? value.length); }} onKeyDown={(event) => { if ((event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) && commentMentionCandidates.length) { event.preventDefault(); insertCommentMention(commentMentionCandidates[0]); return; } if (event.key === "Escape" && commentMentionCandidates.length) { event.preventDefault(); setCommentMentionCandidates([]); } }} onCursorChange={setCommentMentionCursor} onSubmit={handleCommentSubmit} placeholder={replyingTo ? phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`) : phrase("写下你的想法", "Write your thoughts")} textareaRef={composerRef} value={commentDraft} /><MentionSuggestions isLoading={isCommentMentionSearching} items={commentMentionCandidates} onSelect={insertCommentMention} /></div>
           <div className="article-composer-footer">
             <span className="article-composer-count">{commentDraft.length} / 2000</span>
           </div>

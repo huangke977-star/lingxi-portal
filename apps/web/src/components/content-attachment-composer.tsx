@@ -1,10 +1,11 @@
 import { Download, FileAudio, FileText, FileVideo, ImageIcon, LoaderCircle, Send, Upload, X } from "lucide-react";
-import { useEffect, useState, type ClipboardEvent, type DragEvent, type FormEvent, type RefObject } from "react";
+import { useEffect, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 import { AppToast } from "@/components/app-toast";
 import { requestBlob } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
 import type { ContentAttachment } from "@/lib/content-attachments";
 import { useLanguage } from "@/components/language-provider";
+import { MentionTextarea } from "@/components/mention-ui";
 
 const MAX_ATTACHMENTS = 9;
 const MAX_BATCH_SIZE = 50 * 1024 * 1024;
@@ -25,7 +26,9 @@ export function ContentAttachmentComposer({
   ariaLabel,
   disabled = false,
   isSubmitting = false,
+  mentionsEnabled = true,
   onChange,
+  onKeyDown,
   onCursorChange,
   onSubmit,
   placeholder,
@@ -35,7 +38,9 @@ export function ContentAttachmentComposer({
   ariaLabel: string;
   disabled?: boolean;
   isSubmitting?: boolean;
+  mentionsEnabled?: boolean;
   onChange: (value: string) => void;
+  onKeyDown?: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onCursorChange?: (cursor: number) => void;
   onSubmit: (files: File[]) => Promise<boolean>;
   placeholder: string;
@@ -122,7 +127,7 @@ export function ContentAttachmentComposer({
     <form className="content-attachment-composer" onDrop={handleDrop} onDragOver={(event) => event.preventDefault()} onSubmit={submit}>
       <div className={`content-attachment-input-wrap${pending.length ? " has-pending" : ""}`}>
         <input accept=".jpg,.jpeg,.png,.webp,.webm,.m4a,.mp3,.wav,.ogg,.mp4,.mov,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.md,.csv,.json,.xml,.rtf,.zip,.rar,.7z,.gz,.tar" hidden multiple onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} type="file" />
-        <textarea aria-label={ariaLabel} disabled={disabled} maxLength={2000} onChange={(event) => { onChange(event.target.value); onCursorChange?.(event.currentTarget.selectionStart); }} onClick={(event) => onCursorChange?.(event.currentTarget.selectionStart)} onKeyUp={(event) => onCursorChange?.(event.currentTarget.selectionStart)} onPaste={handlePaste} placeholder={placeholder} ref={textareaRef} rows={3} value={value} />
+        <MentionTextarea aria-label={ariaLabel} disabled={disabled} maxLength={2000} mentionsEnabled={mentionsEnabled} onChange={(nextValue, cursor) => { onChange(nextValue); onCursorChange?.(cursor); }} onCursorChange={onCursorChange} onKeyDown={onKeyDown} onPaste={handlePaste} placeholder={placeholder} rows={3} textareaRef={textareaRef} value={value} />
         {pending.length ? <div className="content-attachment-pending">{pending.map((item) => <span key={item.id}>{item.previewUrl ? <img alt="" src={item.previewUrl} /> : item.kind === "audio" ? <FileAudio aria-hidden="true" size={24} /> : item.kind === "video" ? <FileVideo aria-hidden="true" size={24} /> : <FileText aria-hidden="true" size={22} />}<small title={item.file.name}>{item.file.name}</small><button aria-label={phrase(`移除 ${item.file.name}`, `Remove ${item.file.name}`)} onClick={() => removeFile(item.id)} type="button"><X aria-hidden="true" size={13} /></button></span>)}</div> : null}
         <div className="content-attachment-actions">
           <button aria-label={phrase("上传图片或文件", "Upload images or files")} disabled={disabled || isSubmitting} onClick={(event) => { const input = event.currentTarget.closest(".content-attachment-input-wrap")?.querySelector<HTMLInputElement>("input[type=file]"); input?.click(); }} title={phrase("上传图片或文件", "Upload images or files")} type="button"><Upload aria-hidden="true" size={16} /></button>
