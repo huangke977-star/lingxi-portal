@@ -20696,3 +20696,41 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   font-size: 0.68rem;
   white-space: nowrap;
 }
+
+/* Mention candidates use the same painted surface as the chat message bubbles. */
+.mention-suggestions {
+  background: var(--chat-bubble-background) !important;
+  background-image: none !important;
+  border-color: var(--chat-bubble-border) !important;
+  box-shadow: var(--chat-bubble-shadow) !important;
+  backdrop-filter: blur(16px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(125%) !important;
+}
+
+/* Search results use the same painted bubble surface and keep useful message text visible. */
+.chat-message-search-dropdown {
+  background: var(--chat-bubble-background) !important;
+  background-image: none !important;
+  border-color: var(--chat-bubble-border) !important;
+  box-shadow: var(--chat-bubble-shadow) !important;
+  backdrop-filter: blur(16px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(125%) !important;
+}
+.chat-message-search-result > span {
+  min-width: 0;
+  overflow: hidden;
+}
+.chat-message-search-result strong {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  line-height: 1.35;
+}
+.chat-message-search-result small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

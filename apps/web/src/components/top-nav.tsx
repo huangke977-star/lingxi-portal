@@ -323,8 +323,7 @@ export function TopNav() {
     if (notification.context?.kind === "announcement" && notification.actionUrl) {
       router.push(notification.actionUrl);
     } else if (isDeletedMentionNotification(notification)) {
-      const conversationId = notification.context?.conversationId ?? getMentionConversationId(notification.actionUrl);
-      openChatDock({ ...(conversationId ? { conversationId } : {}), messageDeleted: true });
+      setHeaderError(phrase("该消息已删除，无法定位。", "This message has been deleted and cannot be located."));
     } else if (notification.context?.kind === "message_mention" && notification.context.conversationId) {
       openChatDock({ conversationId: notification.context.conversationId, ...(notification.messageId ? { messageId: notification.messageId } : {}) });
     } else if (notification.context?.kind === "article_comment" && notification.context.article?.slug) {

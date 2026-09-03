@@ -6,7 +6,7 @@ import { resolveApiUrl } from "@/lib/auth-api";
 import type { SocialUserSearchResult } from "@/lib/social-api";
 import { getAvatarFallbackText } from "@/lib/user-display";
 import { createPortal } from "react-dom";
-import { useRef, type ChangeEvent, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactElement, type RefObject, type SyntheticEvent, type TextareaHTMLAttributes, type UIEvent } from "react";
+import { useEffect, useRef, type ChangeEvent, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactElement, type RefObject, type SyntheticEvent, type TextareaHTMLAttributes, type UIEvent } from "react";
 
 export function getActiveMention(value: string, cursor: number): { start: number; end: number; query: string } | null {
   const beforeCursor = value.slice(0, cursor);
@@ -121,8 +121,13 @@ export function MentionSuggestions({
   style?: CSSProperties;
 }) {
   const { phrase } = useLanguage();
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const activeOption = menuRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    activeOption?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, items.length]);
   if (!isLoading && !items.length) return null;
-  const menu = <div className="mention-suggestions" role="listbox" style={style}>
+  const menu = <div className="mention-suggestions" ref={menuRef} role="listbox" style={style}>
     {isLoading ? <span className="mention-suggestions-loading">{phrase("正在搜索用户...", "Searching users...")}</span> : items.map((user, index) => {
       const avatar = user.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
       return <button

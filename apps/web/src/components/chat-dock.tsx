@@ -278,6 +278,7 @@ export function ChatDock() {
   const desktopRef = useRef(false);
   const mobileConversationOpenRef = useRef(false);
   const pendingConversationOpenRef = useRef<{ conversationId: number; messageId: number } | null>(null);
+  const highlightedMessageRef = useRef<{ element: HTMLElement; timer: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const iconDraggedRef = useRef(false);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -552,6 +553,14 @@ export function ChatDock() {
     mobileConversationOpenRef.current = isMobileConversationOpen;
   }, [isDesktop, isMinimized, isMobileConversationOpen, isOpen]);
 
+  useEffect(() => () => {
+    const highlighted = highlightedMessageRef.current;
+    if (!highlighted) return;
+    window.clearTimeout(highlighted.timer);
+    highlighted.element.classList.remove("chat-message-focus-highlight");
+    highlightedMessageRef.current = null;
+  }, []);
+
   useEffect(() => {
     if (!isAddFriendOpen || userSearch.trim().length < 2) {
       setUserSearchResults([]);
@@ -596,7 +605,7 @@ export function ChatDock() {
     let active = true;
     const timer = window.setTimeout(() => {
       setIsMentionSearching(true);
-      searchSocialUsers(token, activeMention.query, 8, { mention: true })
+      searchSocialUsers(token, activeMention.query, 20, { mention: true })
         .then((result) => { if (active) { setMentionCandidates(result.items); setMentionActiveIndex(0); } })
         .catch(() => { if (active) setMentionCandidates([]); })
         .finally(() => { if (active) setIsMentionSearching(false); });
@@ -763,11 +772,6 @@ export function ChatDock() {
       }
       if (detail.messageDeleted) {
         pendingConversationOpenRef.current = null;
-        setSelectedSystemNotificationId(0);
-        if (detail.conversationId) {
-          setSelectedId(detail.conversationId);
-          setIsMobileConversationOpen(true);
-        }
         setPendingMessageFocusId(0);
         showDeletedMessageNotice();
         return;
@@ -1098,8 +1102,6 @@ export function ChatDock() {
     let cancelled = false;
     let attempts = 0;
     let frame = 0;
-    let highlightTimer = 0;
-    let highlightedTarget: HTMLElement | null = null;
 
     const locate = () => {
       if (cancelled) return;
@@ -1114,23 +1116,28 @@ export function ChatDock() {
       const targetRect = target.getBoundingClientRect();
       const centeredTop = list.scrollTop + targetRect.top - listRect.top - (list.clientHeight - targetRect.height) / 2;
       list.scrollTo({ behavior: "smooth", top: Math.max(0, centeredTop) });
-      target.classList.remove("chat-message-focus-highlight");
-      highlightedTarget = target;
       frame = window.requestAnimationFrame(() => {
         if (cancelled) return;
+        if (highlightedMessageRef.current) {
+          window.clearTimeout(highlightedMessageRef.current.timer);
+          highlightedMessageRef.current.element.classList.remove("chat-message-focus-highlight");
+          highlightedMessageRef.current = null;
+        }
         target.classList.add("chat-message-focus-highlight");
-        highlightTimer = window.setTimeout(() => target.classList.remove("chat-message-focus-highlight"), 1000);
+        const timer = window.setTimeout(() => {
+          target.classList.remove("chat-message-focus-highlight");
+          if (highlightedMessageRef.current?.element === target) highlightedMessageRef.current = null;
+        }, 1000);
+        highlightedMessageRef.current = { element: target, timer };
+        if (pendingConversationOpenRef.current?.messageId === pendingMessageFocusId) pendingConversationOpenRef.current = null;
+        setPendingMessageFocusId(0);
       });
-      if (pendingConversationOpenRef.current?.messageId === pendingMessageFocusId) pendingConversationOpenRef.current = null;
-      setPendingMessageFocusId(0);
     };
 
     frame = window.requestAnimationFrame(locate);
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(frame);
-      window.clearTimeout(highlightTimer);
-      highlightedTarget?.classList.remove("chat-message-focus-highlight");
     };
   }, [isDesktop, isMinimized, isMessagesLoading, isMobileConversationOpen, isOpen, messages.length, pendingMessageFocusId]);
 
@@ -1896,13 +1903,6 @@ export function ChatDock() {
       }
     }
     if (mentionDeleted) {
-      setIsMinimized(false);
-      setIsOpen(true);
-      setSelectedSystemNotificationId(0);
-      if (mentionConversationId) {
-        setSelectedId(mentionConversationId);
-        setIsMobileConversationOpen(true);
-      }
       setPendingMessageFocusId(0);
       showDeletedMessageNotice();
       return;
@@ -2454,7 +2454,10 @@ export function ChatDock() {
   />;
 
   if (!user) return null;
-  if (!isOpen) return callPanel;
+  if (!isOpen) return <>
+    {callPanel}
+    <AppToast duration={error || deletedMessageNotice ? 4200 : 2600} message={deletedMessageNotice || error || notice} onDismiss={() => { setError(""); setNotice(""); setDeletedMessageNotice(""); }} tone={deletedMessageNotice || error ? "error" : "success"} />
+  </>;
 
   if (isMinimized) {
     return <>
