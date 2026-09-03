@@ -602,7 +602,7 @@ export default function ArticleDetailPage() {
       </article>
 
       <section className="article-comments-section">
-        <div className="article-section-heading"><div><span className="section-label">CONVERSATION</span><h2>{phrase("评论与回复", "Comments and replies")}</h2></div><span>{phrase(`${article.commentCount} 条`, `${article.commentCount} comments`)}</span></div>
+        <div className="article-section-heading"><div><h2>{phrase("评论与回复", "Comments and replies")}</h2></div><span>{phrase(`${article.commentCount} 条`, `${article.commentCount} comments`)}</span></div>
         {siteSettings?.commentsEnabled === false ? <div className="article-empty-inline"><MessageCircle aria-hidden="true" size={18} />{phrase("评论功能暂未开放。", "Comments are not available.")}</div> : <div className="article-comment-form">
           <div aria-hidden={!replyingTo} className={`article-composer-context${replyingTo ? " active" : ""}`}>
             {replyingTo ? <><span title={phrase(`回复 @${replyingTo.author.nickname}`, `Reply to @${replyingTo.author.nickname}`)}>{phrase("回复", "Reply")} <strong>@{replyingTo.author.nickname}</strong></span><button aria-label={phrase("取消回复", "Cancel reply")} onClick={() => setReplyingTo(null)} title={phrase("取消回复", "Cancel reply")} type="button"><X aria-hidden="true" size={14} /></button></> : null}

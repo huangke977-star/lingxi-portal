@@ -760,7 +760,13 @@ export function ChatDock() {
   useEffect(() => {
     async function handleOpen(event: Event) {
       const detail = (event as CustomEvent<ChatDockOpenDetail>).detail ?? {};
-      if (detail.tab === "friends") setIsMobileConversationOpen(false);
+      const hasOpenTarget = Boolean(detail.systemNotificationId || detail.conversationId || detail.userId);
+      if (detail.tab) {
+        setIsOpen(true);
+        setIsMinimized(false);
+        if (detail.tab === "friends" || !hasOpenTarget) setIsMobileConversationOpen(false);
+      }
+      if (detail.tab && !hasOpenTarget) return;
       if (detail.systemNotificationId) {
         pendingConversationOpenRef.current = null;
         setSelectedId(notificationConversationId(detail.notificationChannel ?? "system"));
