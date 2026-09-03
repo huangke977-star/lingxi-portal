@@ -110,7 +110,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
         });
         if (state?.pushEnabled !== false) {
           let notificationUrl = notification.actionUrl || "/";
-          if (notification.type === "mention_received" && !notification.message) {
+          if (notification.type === "mention_received" && !notification.message && this.isChatMentionUrl(notification.actionUrl)) {
             const url = new URL(notificationUrl, "https://push.local");
             url.searchParams.set("messageDeleted", "1");
             notificationUrl = `${url.pathname}${url.search}${url.hash}`;
@@ -163,6 +163,17 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
         }
       }
     }));
+  }
+
+  private isChatMentionUrl(actionUrl: string | null): boolean {
+    if (!actionUrl) return false;
+    try {
+      const url = new URL(actionUrl, "https://push.local");
+      const conversationId = Number(url.searchParams.get("conversation"));
+      return Number.isInteger(conversationId) && conversationId > 0;
+    } catch {
+      return false;
+    }
   }
 
   private async configuredPwaIcon(): Promise<string> {

@@ -1881,7 +1881,7 @@ export function ChatDock() {
     const mentionConversationId = mentionContext?.conversationId ?? getMentionConversationId(notification.actionUrl);
     const mentionDeleted = Boolean(
       mentionContext?.messageDeleted ||
-      (notification.type === "mention_received" && (hasDeletedMessageMarker(notification.actionUrl) || notification.messageId === null)),
+      (notification.type === "mention_received" && hasDeletedMessageMarker(notification.actionUrl)),
     );
     const mentionTarget = !mentionDeleted && mentionConversationId
       ? { conversationId: mentionConversationId, messageId: notification.messageId ?? 0 }

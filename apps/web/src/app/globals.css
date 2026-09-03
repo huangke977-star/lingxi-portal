@@ -30,6 +30,9 @@
   --chat-floating-surface: rgba(235, 243, 247, 0.82);
   --chat-bubble-background: rgba(255, 255, 255, 0.48);
   --chat-floating-bubble-background: rgba(255, 255, 255, 0.62);
+  --chat-avatar-bubble-background: var(--chat-conversation-background);
+  --chat-avatar-bubble-border: var(--chat-bubble-border);
+  --chat-avatar-bubble-shadow: var(--chat-bubble-shadow);
   --chat-bubble-border: color-mix(in srgb, var(--control-line) 44%, transparent);
   --chat-bubble-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
   --accent: #db2777;
@@ -20744,7 +20747,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   white-space: nowrap;
 }
 
-/* Keep floating bubbles readable and consistent with the avatar bubble. */
+/* Keep avatar, mention, and search bubbles on one explicit surface. */
 :is(
   .level-popover,
   .level-badge::after,
@@ -20771,12 +20774,12 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .mention-suggestions,
   .chat-message-search-dropdown
 ) {
-  background: var(--chat-floating-bubble-background) !important;
+  background: var(--chat-avatar-bubble-background) !important;
   background-image: none !important;
-  border-color: var(--chat-bubble-border) !important;
-  box-shadow: var(--chat-bubble-shadow) !important;
-  backdrop-filter: blur(22px) saturate(132%) !important;
-  -webkit-backdrop-filter: blur(22px) saturate(132%) !important;
+  border-color: var(--chat-avatar-bubble-border) !important;
+  box-shadow: var(--chat-avatar-bubble-shadow) !important;
+  backdrop-filter: blur(34px) saturate(146%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(146%) !important;
 }
 
 :is(.level-popover::before, .level-badge::after, .portal-entry-tooltip::before) {
@@ -20790,9 +20793,16 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   box-sizing: border-box;
 }
 
+.chat-message-search-dropdown > * {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
 .chat-message-search-result {
   width: 100%;
   box-sizing: border-box;
+  min-width: 0;
   grid-template-columns: minmax(0, 1fr) 15px;
 }
 
