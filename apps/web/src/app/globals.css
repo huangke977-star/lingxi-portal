@@ -29,6 +29,7 @@
   /* Floating surfaces need their own painted base because they can sit over any page background. */
   --chat-floating-surface: rgba(235, 243, 247, 0.82);
   --chat-bubble-background: rgba(255, 255, 255, 0.48);
+  --chat-floating-bubble-background: rgba(255, 255, 255, 0.62);
   --chat-bubble-border: color-mix(in srgb, var(--control-line) 44%, transparent);
   --chat-bubble-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
   --accent: #db2777;
@@ -20528,19 +20529,27 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .chat-message-focus-highlight > div {
   animation: none;
 }
+.chat-message-focus-highlight {
+  animation: chat-message-row-focus 2s ease;
+  border-radius: 8px;
+}
 .chat-message-focus-highlight > div > p,
 .chat-message-focus-highlight > div > .chat-message-quote,
 .chat-message-focus-highlight > div > .chat-message-attachments,
 .chat-message-focus-highlight > div > .chat-message-attachments > * {
-  animation: chat-message-focus 1s ease;
+  animation: chat-message-focus 2s ease;
 }
 .chat-system-row.chat-message-focus-highlight {
-  animation: chat-message-focus 1s ease;
-  border-radius: 6px;
+  animation: chat-message-row-focus 2s ease;
+  border-radius: 8px;
 }
 @keyframes chat-message-focus {
   0%, 100% { background: var(--chat-bubble-background); }
   24%, 46% { background: color-mix(in srgb, var(--accent-soft) 78%, var(--chat-bubble-background)); }
+}
+@keyframes chat-message-row-focus {
+  0%, 100% { background: transparent; }
+  24%, 46% { background: color-mix(in srgb, var(--accent-soft) 78%, transparent); }
 }
 .chat-panel {
   position: relative;
@@ -20733,4 +20742,76 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Keep floating bubbles readable and consistent with the avatar bubble. */
+:is(
+  .level-popover,
+  .level-badge::after,
+  .public-profile-popover,
+  .portal-entry-tooltip,
+  .analytics-chart-tooltip,
+  .analytics-metric-tooltip,
+  .my-report-detail-tooltip,
+  .admin-report-popover,
+  .header-popover,
+  .account-menu,
+  .chat-message-sender > small,
+  .chat-emoji-picker,
+  .chat-friend-action-menu,
+  .chat-friend-action-menu-floating,
+  .chat-conversation-action-menu,
+  .chat-message-action-menu,
+  .chat-notification-action-menu,
+  .chat-notification-channel-menu,
+  .chat-mobile-tools-panel,
+  .chat-group-member-context,
+  .chat-call-mini,
+  .app-toast,
+  .mention-suggestions,
+  .chat-message-search-dropdown
+) {
+  background: var(--chat-floating-bubble-background) !important;
+  background-image: none !important;
+  border-color: var(--chat-bubble-border) !important;
+  box-shadow: var(--chat-bubble-shadow) !important;
+  backdrop-filter: blur(22px) saturate(132%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(132%) !important;
+}
+
+:is(.level-popover::before, .level-badge::after, .portal-entry-tooltip::before) {
+  background: var(--chat-floating-bubble-background) !important;
+  border-color: var(--chat-bubble-border) !important;
+  backdrop-filter: blur(22px) saturate(132%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(132%) !important;
+}
+
+.chat-message-search-dropdown {
+  box-sizing: border-box;
+}
+
+.chat-message-search-result {
+  width: 100%;
+  box-sizing: border-box;
+  grid-template-columns: minmax(0, 1fr) 15px;
+}
+
+.chat-message-search-result > span {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chat-message-search-result strong,
+.chat-message-search-result small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-message-search-result strong {
+  line-height: 1.25;
 }

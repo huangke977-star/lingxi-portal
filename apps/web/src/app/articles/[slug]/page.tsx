@@ -288,7 +288,7 @@ export default function ArticleDetailPage() {
     const scrollTimer = window.setTimeout(() => {
       document.getElementById(`article-comment-${requestedCommentId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 120);
-    const clearTimer = window.setTimeout(() => setHighlightCommentId(null), 1000);
+    const clearTimer = window.setTimeout(() => setHighlightCommentId(null), 2000);
     return () => {
       window.clearTimeout(scrollTimer);
       window.clearTimeout(clearTimer);

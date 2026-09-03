@@ -1127,7 +1127,7 @@ export function ChatDock() {
         const timer = window.setTimeout(() => {
           target.classList.remove("chat-message-focus-highlight");
           if (highlightedMessageRef.current?.element === target) highlightedMessageRef.current = null;
-        }, 1000);
+        }, 2000);
         highlightedMessageRef.current = { element: target, timer };
         if (pendingConversationOpenRef.current?.messageId === pendingMessageFocusId) pendingConversationOpenRef.current = null;
         setPendingMessageFocusId(0);
@@ -1879,7 +1879,10 @@ export function ChatDock() {
     const mentionContext = notification.context?.kind === "message_mention" ? notification.context : null;
     const mentionMessage = mentionContext?.message;
     const mentionConversationId = mentionContext?.conversationId ?? getMentionConversationId(notification.actionUrl);
-    const mentionDeleted = Boolean(mentionContext?.messageDeleted || (notification.type === "mention_received" && notification.messageId === null && mentionConversationId));
+    const mentionDeleted = Boolean(
+      mentionContext?.messageDeleted ||
+      (notification.type === "mention_received" && (hasDeletedMessageMarker(notification.actionUrl) || notification.messageId === null)),
+    );
     const mentionTarget = !mentionDeleted && mentionConversationId
       ? { conversationId: mentionConversationId, messageId: notification.messageId ?? 0 }
       : null;
@@ -3542,6 +3545,15 @@ function getMentionConversationId(actionUrl: string | null): number | null {
     return Number.isInteger(conversationId) && conversationId > 0 ? conversationId : null;
   } catch {
     return null;
+  }
+}
+
+function hasDeletedMessageMarker(actionUrl: string | null): boolean {
+  if (!actionUrl) return false;
+  try {
+    return new URL(actionUrl, "https://local.invalid").searchParams.get("messageDeleted") === "1";
+  } catch {
+    return false;
   }
 }
 

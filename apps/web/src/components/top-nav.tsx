@@ -100,22 +100,19 @@ function pendingReportActionUrl(report: ModerationReport): string {
     : "/messages";
 }
 
-function getMentionConversationId(actionUrl: string | null): number | null {
-  if (!actionUrl) return null;
+function hasDeletedMessageMarker(actionUrl: string | null): boolean {
+  if (!actionUrl) return false;
   try {
-    const url = new URL(actionUrl, "https://local.invalid");
-    const conversationId = Number(url.searchParams.get("conversation"));
-    return Number.isInteger(conversationId) && conversationId > 0 ? conversationId : null;
+    return new URL(actionUrl, "https://local.invalid").searchParams.get("messageDeleted") === "1";
   } catch {
-    return null;
+    return false;
   }
 }
 
 function isDeletedMentionNotification(notification: SocialNotification): boolean {
   if (notification.context?.kind === "message_mention" && notification.context.messageDeleted) return true;
   return notification.type === "mention_received"
-    && notification.messageId === null
-    && Boolean(getMentionConversationId(notification.actionUrl));
+    && (hasDeletedMessageMarker(notification.actionUrl) || notification.messageId === null);
 }
 
 export function TopNav() {
