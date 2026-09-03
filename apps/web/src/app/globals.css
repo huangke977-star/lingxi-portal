@@ -7774,12 +7774,11 @@ a.entry-item:hover {
 
 .article-comment-actions button:hover { color: var(--accent-strong); }
 .mention-token {
-  display: inline-block;
+  display: inline;
   border-radius: 4px;
   background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
   color: var(--accent-strong);
-  font-weight: 650;
-  padding: 0 3px;
+  font-weight: inherit;
 }
 .mention-textarea-shell { position: relative; min-width: 0; }
 .mention-textarea-overlay {
@@ -20499,11 +20498,10 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   tab-size: 4;
 }
 .mention-token {
-  display: inline-block;
+  display: inline;
   background: color-mix(in srgb, var(--accent-soft) 72%, transparent);
   color: var(--accent-strong);
-  font-weight: 650;
-  padding: 0 3px;
+  font-weight: inherit;
   border-radius: 3px;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
@@ -20535,6 +20533,10 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .chat-message-focus-highlight > div > .chat-message-attachments,
 .chat-message-focus-highlight > div > .chat-message-attachments > * {
   animation: chat-message-focus 1s ease;
+}
+.chat-system-row.chat-message-focus-highlight {
+  animation: chat-message-focus 1s ease;
+  border-radius: 6px;
 }
 @keyframes chat-message-focus {
   0%, 100% { background: var(--chat-bubble-background); }
@@ -20571,7 +20573,11 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .chat-pinned-messages > button strong,
 .chat-pinned-messages > button small { font-size: 0.6rem; }
 .chat-pinned-message-icon { width: 18px; height: 18px; }
-.mention-suggestions,
+.mention-suggestions {
+  background: color-mix(in srgb, var(--popover-surface) 86%, transparent) !important;
+  backdrop-filter: blur(22px) saturate(132%) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(132%) !important;
+}
 .chat-pinned-messages {
   background: var(--chat-bubble-background) !important;
   background-image: none !important;

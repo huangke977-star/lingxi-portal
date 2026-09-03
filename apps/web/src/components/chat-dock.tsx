@@ -372,6 +372,12 @@ export function ChatDock() {
   const [pendingNotificationChannelHide, setPendingNotificationChannelHide] = useState<PendingNotificationChannelHide | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [deletedMessageNotice, setDeletedMessageNotice] = useState("");
+  const showDeletedMessageNotice = useCallback(() => {
+    setError("");
+    setNotice("");
+    setDeletedMessageNotice(phrase("该消息已删除，无法定位。", "This message has been deleted and cannot be located."));
+  }, [phrase]);
   const notificationChannels = useMemo(() => [
     { channel: "system" as const, id: -1, label: phrase("系统消息", "System"), empty: phrase("好友申请结果和内容处理通知会显示在这里。", "Friend request results and content-review updates appear here.") },
     { channel: "subscription" as const, id: -2, label: phrase("订阅更新", "Subscriptions"), empty: phrase("订阅作者发布的新内容会显示在这里。", "New content from subscribed authors appears here.") },
@@ -763,7 +769,7 @@ export function ChatDock() {
           setIsMobileConversationOpen(true);
         }
         setPendingMessageFocusId(0);
-        setError(phrase("该消息已删除，无法定位。", "This message has been deleted and cannot be located."));
+        showDeletedMessageNotice();
         return;
       }
       if (detail.conversationId) {
@@ -802,7 +808,7 @@ export function ChatDock() {
       window.removeEventListener(CHAT_DOCK_OPEN_EVENT, handleOpen);
       window.removeEventListener(CHAT_DOCK_TOGGLE_EVENT, handleToggle);
     };
-  }, [phrase]);
+  }, [phrase, showDeletedMessageNotice]);
 
   useEffect(() => {
     if (!isNotificationSelected || !selectedSystemNotificationId || !isOpen || isMinimized) return;
@@ -1005,7 +1011,7 @@ export function ChatDock() {
     }
     let active = true;
     setIsMessagesLoading(true);
-    shouldScrollMessagesToBottomRef.current = pendingMessageFocusId <= 0;
+    shouldScrollMessagesToBottomRef.current = !pendingConversationOpenRef.current?.messageId;
     messageScrollRestoreRef.current = null;
     listMessages(token, selectedId)
       .then((result) => {
@@ -1031,7 +1037,7 @@ export function ChatDock() {
     return () => {
       active = false;
     };
-  }, [isDesktop, isMinimized, isMobileConversationOpen, isOpen, pendingMessageFocusId, phrase, selectedId]);
+  }, [isDesktop, isMinimized, isMobileConversationOpen, isOpen, phrase, selectedId]);
 
   useEffect(() => {
     if (!pendingMessageFocusId || isMessagesLoading || selectedId <= 0 || messages.some((message) => message.id === pendingMessageFocusId)) return;
@@ -1088,24 +1094,45 @@ export function ChatDock() {
   }, [messageSearchInput, messageSearchOpen, phrase, selected?.id]);
 
   useEffect(() => {
-    if (!pendingMessageFocusId || isMessagesLoading) return;
-    window.requestAnimationFrame(() => {
+    if (!pendingMessageFocusId || isMessagesLoading || !isOpen || isMinimized || (!isDesktop && !isMobileConversationOpen)) return;
+    let cancelled = false;
+    let attempts = 0;
+    let frame = 0;
+    let highlightTimer = 0;
+    let highlightedTarget: HTMLElement | null = null;
+
+    const locate = () => {
+      if (cancelled) return;
       const target = document.getElementById(`chat-message-${pendingMessageFocusId}`);
       const list = messageListRef.current;
-      if (!target || !list) return;
+      if (!target || !list) {
+        if (attempts++ < 60) frame = window.requestAnimationFrame(locate);
+        else setPendingMessageFocusId(0);
+        return;
+      }
       const listRect = list.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
       const centeredTop = list.scrollTop + targetRect.top - listRect.top - (list.clientHeight - targetRect.height) / 2;
       list.scrollTo({ behavior: "smooth", top: Math.max(0, centeredTop) });
       target.classList.remove("chat-message-focus-highlight");
-      window.requestAnimationFrame(() => {
+      highlightedTarget = target;
+      frame = window.requestAnimationFrame(() => {
+        if (cancelled) return;
         target.classList.add("chat-message-focus-highlight");
-        window.setTimeout(() => target.classList.remove("chat-message-focus-highlight"), 1000);
+        highlightTimer = window.setTimeout(() => target.classList.remove("chat-message-focus-highlight"), 1000);
       });
       if (pendingConversationOpenRef.current?.messageId === pendingMessageFocusId) pendingConversationOpenRef.current = null;
       setPendingMessageFocusId(0);
-    });
-  }, [isMessagesLoading, messages.length, pendingMessageFocusId]);
+    };
+
+    frame = window.requestAnimationFrame(locate);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(highlightTimer);
+      highlightedTarget?.classList.remove("chat-message-focus-highlight");
+    };
+  }, [isDesktop, isMinimized, isMessagesLoading, isMobileConversationOpen, isOpen, messages.length, pendingMessageFocusId]);
 
   useEffect(() => {
     if (!isMessagesLoading && isOpen && !isMinimized) {
@@ -1845,7 +1872,7 @@ export function ChatDock() {
     const mentionContext = notification.context?.kind === "message_mention" ? notification.context : null;
     const mentionMessage = mentionContext?.message;
     const mentionConversationId = mentionContext?.conversationId ?? getMentionConversationId(notification.actionUrl);
-    const mentionDeleted = Boolean(mentionContext?.messageDeleted || (notification.type === "mention_received" && notification.messageId === null && mentionConversationId));
+    const mentionDeleted = Boolean(mentionContext?.messageDeleted || (notification.type === "mention_received" && notification.messageId === null));
     const mentionTarget = !mentionDeleted && mentionConversationId
       ? { conversationId: mentionConversationId, messageId: notification.messageId ?? 0 }
       : null;
@@ -1877,7 +1904,7 @@ export function ChatDock() {
         setIsMobileConversationOpen(true);
       }
       setPendingMessageFocusId(0);
-      setError(phrase("该消息已删除，无法定位。", "This message has been deleted and cannot be located."));
+      showDeletedMessageNotice();
       return;
     }
     if (notification.context?.kind === "announcement" && notification.actionUrl) {
@@ -2436,7 +2463,7 @@ export function ChatDock() {
         {dockUnreadCount ? <b>{formatCount(dockUnreadCount)}</b> : null}
       </button>
       {callPanel}
-      <AppToast duration={error ? 4200 : 2600} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
+      <AppToast duration={error || deletedMessageNotice ? 4200 : 2600} message={deletedMessageNotice || error || notice} onDismiss={() => { setError(""); setNotice(""); setDeletedMessageNotice(""); }} tone={deletedMessageNotice || error ? "error" : "success"} />
     </>;
   }
 
@@ -2819,7 +2846,7 @@ export function ChatDock() {
       ) : null}
       {previewAttachment ? <AttachmentPreview attachment={previewAttachment} onClose={closeAttachmentPreview} /> : null}
       {callPanel}
-      <AppToast duration={error ? 4200 : 2600} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
+      <AppToast duration={error || deletedMessageNotice ? 4200 : 2600} message={deletedMessageNotice || error || notice} onDismiss={() => { setError(""); setNotice(""); setDeletedMessageNotice(""); }} tone={deletedMessageNotice || error ? "error" : "success"} />
     </>
   );
 }
