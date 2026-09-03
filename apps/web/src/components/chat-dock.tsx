@@ -74,7 +74,7 @@ import { getActiveMention, getMentionCaretPosition, MentionSuggestions, MentionT
 import { RequestComposerDialog } from "@/components/request-composer-dialog";
 import { RoleSymbol } from "@/components/role-symbol";
 import { AvatarManagementBadge } from "@/components/user-identity-badges";
-import { getMe, refreshStoredSession, resolveApiUrl, type AuthUser } from "@/lib/auth-api";
+import { ApiRequestError, getMe, refreshStoredSession, resolveApiUrl, type AuthUser } from "@/lib/auth-api";
 import {
   AUTH_STATE_CHANGE_EVENT,
   readAccessToken,
@@ -760,13 +760,13 @@ export function ChatDock() {
   useEffect(() => {
     async function handleOpen(event: Event) {
       const detail = (event as CustomEvent<ChatDockOpenDetail>).detail ?? {};
-      setIsOpen(true);
-      setIsMinimized(false);
       if (detail.tab === "friends") setIsMobileConversationOpen(false);
       if (detail.systemNotificationId) {
         pendingConversationOpenRef.current = null;
         setSelectedId(notificationConversationId(detail.notificationChannel ?? "system"));
         setSelectedSystemNotificationId(detail.systemNotificationId);
+        setIsOpen(true);
+        setIsMinimized(false);
         setIsMobileConversationOpen(true);
         return;
       }
@@ -777,10 +777,26 @@ export function ChatDock() {
         return;
       }
       if (detail.conversationId) {
+        if (detail.messageId && !detail.messageDeleted) {
+          const token = readAccessToken();
+          if (token) {
+            try {
+              await getMessageContext(token, detail.conversationId, detail.messageId);
+            } catch (openError) {
+              pendingConversationOpenRef.current = null;
+              setPendingMessageFocusId(0);
+              if (isMissingMessageError(openError)) showDeletedMessageNotice();
+              else setError(openError instanceof Error ? openError.message : phrase("消息定位失败。", "Could not locate the message."));
+              return;
+            }
+          }
+        }
         pendingConversationOpenRef.current = { conversationId: detail.conversationId, messageId: detail.messageId ?? 0 };
         setSelectedSystemNotificationId(0);
         setPendingMessageFocusId(detail.messageId ?? 0);
         setSelectedId(detail.conversationId);
+        setIsOpen(true);
+        setIsMinimized(false);
         setIsMobileConversationOpen(true);
         return;
       }
@@ -793,6 +809,8 @@ export function ChatDock() {
           ? current
           : [conversation, ...current]);
         setSelectedId(conversation.id);
+        setIsOpen(true);
+        setIsMinimized(false);
         setIsMobileConversationOpen(true);
       } catch (openError) {
         setError(openError instanceof Error ? openError.message : phrase("会话创建失败。", "Could not create conversation."));
@@ -1020,7 +1038,12 @@ export function ChatDock() {
     listMessages(token, selectedId)
       .then((result) => {
         if (!active) return null;
-        setMessages(result.items);
+        setMessages((current) => {
+          const currentConversationMessages = current.filter((message) => message.conversationId === selectedId);
+          const merged = [...result.items, ...currentConversationMessages];
+          return merged.filter((message, index, all) => all.findIndex((candidate) => candidate.id === message.id) === index)
+            .sort((left, right) => left.id - right.id);
+        });
         setHasMore(result.hasMore);
         setConversations((current) => current.map((item) =>
           item.id === selectedId ? { ...item, unreadCount: 0 } : item,
@@ -1876,71 +1899,84 @@ export function ChatDock() {
   }
 
   async function handleNotification(notification: SocialNotification) {
-    const mentionContext = notification.context?.kind === "message_mention" ? notification.context : null;
+    let currentNotification = notification;
+    const token = readAccessToken();
+    if (!token) return;
+    if (!notification.openedAt || notification.type === "mention_received") {
+      try {
+        const updatedNotification = await markNotificationRead(token, notification.id);
+        currentNotification = updatedNotification;
+        setNotifications((current) => current.map((item) => item.id === notification.id ? {
+          ...item,
+          readAt: updatedNotification.readAt,
+          openedAt: updatedNotification.openedAt,
+          context: updatedNotification.context,
+        } : item));
+        notifySocialStateChange();
+      } catch {
+        // The existing notification can still be opened when read-state persistence fails.
+      }
+    }
+    const mentionContext = currentNotification.context?.kind === "message_mention" ? currentNotification.context : null;
     const mentionMessage = mentionContext?.message;
-    const mentionConversationId = mentionContext?.conversationId ?? getMentionConversationId(notification.actionUrl);
-    const mentionDeleted = Boolean(
-      mentionContext?.messageDeleted ||
-      (notification.type === "mention_received" && hasDeletedMessageMarker(notification.actionUrl)),
+    const mentionConversationId = mentionContext?.conversationId ?? getMentionConversationId(currentNotification.actionUrl);
+    const mentionDeleted = currentNotification.type === "mention_received" && (
+      hasDeletedMessageMarker(currentNotification.actionUrl) ||
+      (currentNotification.context?.kind === "message_mention" && Boolean(currentNotification.context.messageDeleted)) ||
+      (currentNotification.context?.kind === "article_comment" && currentNotification.context.commentStatus === "deleted")
     );
     const mentionTarget = !mentionDeleted && mentionConversationId
-      ? { conversationId: mentionConversationId, messageId: notification.messageId ?? 0 }
+      ? { conversationId: mentionConversationId, messageId: currentNotification.messageId ?? 0 }
       : null;
     if (mentionTarget) pendingConversationOpenRef.current = mentionTarget;
     else pendingConversationOpenRef.current = null;
-    const token = readAccessToken();
-    if (!token) return;
-    if (!notification.openedAt) {
-      try {
-        const updatedNotification = await markNotificationRead(token, notification.id);
-        setNotifications((current) => current.map((item) =>
-          item.id === notification.id ? {
-            ...item,
-            readAt: updatedNotification.readAt,
-            openedAt: updatedNotification.openedAt,
-          } : item,
-        ));
-        notifySocialStateChange();
-      } catch {
-        // Following the action is still useful if read-state persistence fails.
-      }
-    }
     if (mentionDeleted) {
       setPendingMessageFocusId(0);
       showDeletedMessageNotice();
       return;
     }
-    if (notification.context?.kind === "announcement" && notification.actionUrl) {
-      router.push(localizedPath(notification.actionUrl, locale));
+    if (mentionTarget?.messageId) {
+      try {
+        await getMessageContext(token, mentionTarget.conversationId, mentionTarget.messageId);
+      } catch (contextError) {
+        pendingConversationOpenRef.current = null;
+        setPendingMessageFocusId(0);
+        if (isMissingMessageError(contextError)) showDeletedMessageNotice();
+        else setError(contextError instanceof Error ? contextError.message : phrase("消息定位失败。", "Could not locate the message."));
+        return;
+      }
+    }
+    if (currentNotification.context?.kind === "announcement" && currentNotification.actionUrl) {
+      router.push(localizedPath(currentNotification.actionUrl, locale));
       setIsMinimized(true);
       return;
     }
-    if (notification.context?.kind === "article_report") {
-      const reportUrl = notification.context.status === "pending" && notification.context.reportId
-        ? `/admin/articles?tab=articles&report=${notification.context.reportId}&reportSource=article`
-        : notification.context.article?.slug
-          ? `/articles/${notification.context.article.slug}`
-          : notification.actionUrl;
+    if (currentNotification.context?.kind === "article_report") {
+      const reportUrl = currentNotification.context.status === "pending" && currentNotification.context.reportId
+        ? `/admin/articles?tab=articles&report=${currentNotification.context.reportId}&reportSource=article`
+        : currentNotification.context.article?.slug
+          ? `/articles/${currentNotification.context.article.slug}`
+          : currentNotification.actionUrl;
       if (reportUrl) {
         router.push(localizedPath(reportUrl, locale));
         setIsMinimized(true);
         return;
       }
     }
-    if (notification.context?.kind === "comment_report") {
-      const reportUrl = notification.context.status === "pending" && notification.context.reportId
-        ? `/admin/articles?tab=comments&report=${notification.context.reportId}&reportSource=comment`
-        : notification.context.article?.slug
-        ? `/articles/${notification.context.article.slug}${notification.context.commentId ? `?commentId=${notification.context.commentId}` : ""}`
-        : notification.actionUrl;
+    if (currentNotification.context?.kind === "comment_report") {
+      const reportUrl = currentNotification.context.status === "pending" && currentNotification.context.reportId
+        ? `/admin/articles?tab=comments&report=${currentNotification.context.reportId}&reportSource=comment`
+        : currentNotification.context.article?.slug
+        ? `/articles/${currentNotification.context.article.slug}${currentNotification.context.commentId ? `?commentId=${currentNotification.context.commentId}` : ""}`
+        : currentNotification.actionUrl;
       if (reportUrl) {
         router.push(localizedPath(reportUrl, locale));
         setIsMinimized(true);
         return;
       }
     }
-    if (notification.context?.kind === "article_comment" && notification.context.article?.slug) {
-      router.push(localizedPath(`/articles/${notification.context.article.slug}${notification.context.commentId ? `?commentId=${notification.context.commentId}` : ""}`, locale));
+    if (currentNotification.context?.kind === "article_comment" && currentNotification.context.article?.slug) {
+      router.push(localizedPath(`/articles/${currentNotification.context.article.slug}${currentNotification.context.commentId ? `?commentId=${currentNotification.context.commentId}` : ""}`, locale));
       setIsMinimized(true);
       return;
     }
@@ -1958,34 +1994,34 @@ export function ChatDock() {
       if (mentionTarget.messageId) setPendingMessageFocusId(mentionTarget.messageId);
       return;
     }
-    if (notification.type === "friend_request_received") {
+    if (currentNotification.type === "friend_request_received") {
       setSelectedId(notificationConversationId("system"));
-      setSelectedSystemNotificationId(notification.id);
+      setSelectedSystemNotificationId(currentNotification.id);
       setIsMobileConversationOpen(true);
       return;
     }
-    if (notification.context?.kind === "stranger_message_request") {
-      setSelectedId(notificationConversationId(notification.channel));
-      setSelectedSystemNotificationId(notification.id);
+    if (currentNotification.context?.kind === "stranger_message_request") {
+      setSelectedId(notificationConversationId(currentNotification.channel));
+      setSelectedSystemNotificationId(currentNotification.id);
       setIsMobileConversationOpen(true);
       return;
     }
-    if (notification.context?.kind === "group_ban") {
+    if (currentNotification.context?.kind === "group_ban") {
       setSelectedId(notificationConversationId("system"));
-      setSelectedSystemNotificationId(notification.id);
+      setSelectedSystemNotificationId(currentNotification.id);
       setIsMobileConversationOpen(true);
       return;
     }
-    if (notification.context?.groupId) {
-      setGroupManagerInitialId(notification.context.kind === "group_invitation" ? null : notification.context.groupId);
-      setGroupManagerInitialView(notification.context.kind === "group_invitation" || notification.context.kind === "group_join_request" ? "invites" : "mine");
+    if (currentNotification.context?.groupId) {
+      setGroupManagerInitialId(currentNotification.context.kind === "group_invitation" ? null : currentNotification.context.groupId);
+      setGroupManagerInitialView(currentNotification.context.kind === "group_invitation" || currentNotification.context.kind === "group_join_request" ? "invites" : "mine");
       setIsGroupManagerOpen(true);
       return;
     }
-    setSelectedId(notificationConversationId(notification.channel));
-    setSelectedSystemNotificationId(notification.id);
+    setSelectedId(notificationConversationId(currentNotification.channel));
+    setSelectedSystemNotificationId(currentNotification.id);
     setIsMobileConversationOpen(true);
-    if (notification.channel !== "system" && notification.actionUrl) router.push(localizedPath(notification.actionUrl, locale));
+    if (currentNotification.channel !== "system" && currentNotification.actionUrl) router.push(localizedPath(currentNotification.actionUrl, locale));
   }
 
   async function executeFriendAction() {
@@ -2315,15 +2351,15 @@ export function ChatDock() {
     const token = readAccessToken();
     if (!token) return;
     closeMessageSearch();
-    if (result.conversation.id !== selectedId) {
-      pendingConversationOpenRef.current = { conversationId: result.conversation.id, messageId: result.id };
-      setPendingMessageFocusId(result.id);
-      setSelectedId(result.conversation.id);
-      setIsMobileConversationOpen(true);
-      return;
-    }
     try {
       const context = await getMessageContext(token, result.conversation.id, result.id);
+      if (result.conversation.id !== selectedId) {
+        pendingConversationOpenRef.current = { conversationId: result.conversation.id, messageId: result.id };
+        setPendingMessageFocusId(result.id);
+        setSelectedId(result.conversation.id);
+        setIsMobileConversationOpen(true);
+        return;
+      }
       setMessages((current) => current.some((item) => item.id === context.message.id)
         ? current
         : [...current, context.message].sort((left, right) => left.id - right.id));
@@ -3555,6 +3591,10 @@ function hasDeletedMessageMarker(actionUrl: string | null): boolean {
   } catch {
     return false;
   }
+}
+
+function isMissingMessageError(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 404;
 }
 
 function formatDuration(seconds: number): string {

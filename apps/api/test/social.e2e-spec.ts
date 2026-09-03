@@ -825,6 +825,38 @@ describe("SocialService", () => {
     expect(attachmentsService.deleteStoredFiles).toHaveBeenCalledWith(["message-file.webp"]);
   });
 
+  it("marks existing mention notifications as deleted before removing a message", async () => {
+    const friendship = { userOneId: 7, userTwoId: 8, status: FriendshipStatus.accepted };
+    const updateNotification = jest.fn(async () => ({ id: 301 }));
+    const transaction = {
+      chatMessage: {
+        deleteMany: jest.fn(async () => ({ count: 1 })),
+        findFirst: jest.fn(async () => null),
+      },
+      conversation: { update: jest.fn(async () => ({ id: 5 })) },
+      userNotification: {
+        findMany: jest.fn(async () => [{ id: 301, actionUrl: "/messages?conversation=5&messageId=61" }]),
+        update: updateNotification,
+      },
+    };
+    const conversationFindUnique = jest.fn()
+      .mockResolvedValueOnce({ friendship })
+      .mockResolvedValueOnce({ createdAt: new Date("2026-07-20T00:00:00.000Z") });
+    const prisma = {
+      conversation: { findUnique: conversationFindUnique },
+      chatMessage: { findMany: jest.fn(async () => [{ id: 61, senderId: user.id, attachments: [] }]) },
+      $transaction: jest.fn(async (callback: (client: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    };
+    const service = createService(prisma);
+
+    await service.deleteMessagesForEveryone(user.id, 5, [61]);
+
+    expect(updateNotification).toHaveBeenCalledWith({
+      where: { id: 301 },
+      data: { actionUrl: "/messages?conversation=5&messageId=61&messageDeleted=1" },
+    });
+  });
+
   it("allows either participant to physically delete the other user's and system messages", async () => {
     const friendship = { userOneId: 7, userTwoId: 8, status: FriendshipStatus.accepted };
     const deleteMany = jest.fn(async () => ({ count: 2 }));

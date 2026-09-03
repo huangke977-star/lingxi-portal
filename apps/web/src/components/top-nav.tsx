@@ -29,7 +29,7 @@ import { GlobalSearch } from "@/components/global-search";
 import { RoleSymbol } from "@/components/role-symbol";
 import { AvatarManagementBadge } from "@/components/user-identity-badges";
 import { getModerationReportSummary, listModerationReports, type ModerationReport } from "@/lib/moderation-api";
-import { type AuthUser, getMe, logout, resolveApiUrl } from "@/lib/auth-api";
+import { ApiRequestError, type AuthUser, getMe, logout, resolveApiUrl } from "@/lib/auth-api";
 import {
   AUTH_STATE_CHANGE_EVENT,
   clearAuthTokens,
@@ -42,6 +42,7 @@ import {
   type NotificationChannelState,
   type SocialNotification,
   deleteNotification,
+  getMessageContext,
   getSocialSummary,
   handleChatGroupReport,
   listConversations,
@@ -110,9 +111,17 @@ function hasDeletedMessageMarker(actionUrl: string | null): boolean {
 }
 
 function isDeletedMentionNotification(notification: SocialNotification): boolean {
-  if (notification.context?.kind === "message_mention" && notification.context.messageDeleted) return true;
-  return notification.type === "mention_received"
-    && hasDeletedMessageMarker(notification.actionUrl);
+  if (notification.type !== "mention_received") return false;
+  if (hasDeletedMessageMarker(notification.actionUrl)) return true;
+  if (!notification.context) return false;
+  if (notification.context.kind === "message_mention") {
+    return Boolean(notification.context.messageDeleted);
+  }
+  return notification.context.kind === "article_comment" && notification.context.commentStatus === "deleted";
+}
+
+function isMissingMessageError(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 404;
 }
 
 export function TopNav() {
@@ -307,30 +316,44 @@ export function TopNav() {
   }
 
   async function handleNotification(notification: SocialNotification) {
+    let currentNotification = notification;
     const token = readAccessToken();
     setIsMessagePopoverOpen(false);
-    if (token && !notification.openedAt) {
-      await markNotificationRead(token, notification.id).then((updatedNotification) => {
+    if (!token) return;
+    const accessToken = token;
+    if (!notification.openedAt || notification.type === "mention_received") {
+      await markNotificationRead(accessToken, notification.id).then((updatedNotification) => {
+        currentNotification = updatedNotification;
         setNotifications((current) => current.map((item) => item.id === notification.id ? updatedNotification : item));
       }).catch((actionError) => {
         setHeaderError(actionError instanceof Error ? actionError.message : phrase("通知状态更新失败。", "Could not update notification status."));
       });
       notifySocialStateChange();
     }
-    if (notification.context?.kind === "announcement" && notification.actionUrl) {
-      router.push(notification.actionUrl);
-    } else if (isDeletedMentionNotification(notification)) {
+    if (currentNotification.context?.kind === "announcement" && currentNotification.actionUrl) {
+      router.push(currentNotification.actionUrl);
+    } else if (isDeletedMentionNotification(currentNotification)) {
       setHeaderError(phrase("该消息已删除，无法定位。", "This message has been deleted and cannot be located."));
-    } else if (notification.context?.kind === "message_mention" && notification.context.conversationId) {
-      openChatDock({ conversationId: notification.context.conversationId, ...(notification.messageId ? { messageId: notification.messageId } : {}) });
-    } else if (notification.context?.kind === "article_comment" && notification.context.article?.slug) {
-      router.push(localizedPath(`/articles/${notification.context.article.slug}${notification.context.commentId ? `?commentId=${notification.context.commentId}` : ""}`, locale));
-    } else if (notification.type === "friend_request_received") {
-      openChatDock({ systemNotificationId: notification.id, notificationChannel: "system" });
-    } else if (notification.type === "friend_request_accepted" && notification.actor) {
-      openChatDock({ userId: notification.actor.id });
+    } else if (currentNotification.context?.kind === "message_mention" && currentNotification.context.conversationId) {
+      if (currentNotification.messageId) {
+        try {
+          await getMessageContext(accessToken, currentNotification.context.conversationId, currentNotification.messageId);
+        } catch (contextError) {
+          if (isMissingMessageError(contextError)) {
+            setHeaderError(phrase("该消息已删除，无法定位。", "This message has been deleted and cannot be located."));
+            return;
+          }
+        }
+      }
+      openChatDock({ conversationId: currentNotification.context.conversationId, ...(currentNotification.messageId ? { messageId: currentNotification.messageId } : {}) });
+    } else if (currentNotification.context?.kind === "article_comment" && currentNotification.context.article?.slug) {
+      router.push(localizedPath(`/articles/${currentNotification.context.article.slug}${currentNotification.context.commentId ? `?commentId=${currentNotification.context.commentId}` : ""}`, locale));
+    } else if (currentNotification.type === "friend_request_received") {
+      openChatDock({ systemNotificationId: currentNotification.id, notificationChannel: "system" });
+    } else if (currentNotification.type === "friend_request_accepted" && currentNotification.actor) {
+      openChatDock({ userId: currentNotification.actor.id });
     } else {
-      openChatDock({ systemNotificationId: notification.id, notificationChannel: notification.channel });
+      openChatDock({ systemNotificationId: currentNotification.id, notificationChannel: currentNotification.channel });
     }
   }
 

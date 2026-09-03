@@ -194,7 +194,12 @@ const notificationInclude = {
     },
   },
   announcement: { select: { id: true, title: true, summary: true } },
-  message: { include: messageInclude },
+  message: {
+    include: {
+      ...messageInclude,
+      deletions: { select: { userId: true } },
+    },
+  },
 } satisfies Prisma.UserNotificationInclude;
 
 type NotificationRecord = Prisma.UserNotificationGetPayload<{ include: typeof notificationInclude }>;
@@ -1136,6 +1141,7 @@ export class SocialService {
       where: {
         conversationId: { in: allowedConversationIds },
         type: { not: ChatMessageType.system },
+        deletions: { none: { userId: user.id } },
         ...(query.senderId ? { senderId: query.senderId } : {}),
         ...(query.q.trim() ? { body: { contains: query.q.trim() } } : {}),
         ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
@@ -1162,8 +1168,16 @@ export class SocialService {
 
   async getMessageContext(user: AuthenticatedUser, conversationId: number, messageId: number) {
     await this.assertConversationMember(conversationId, user.id);
-    const message = await this.prisma.chatMessage.findUnique({ where: { id: messageId }, include: messageInclude });
-    if (!message || message.conversationId !== conversationId || message.type === ChatMessageType.system) {
+    const message = await this.prisma.chatMessage.findFirst({
+      where: {
+        id: messageId,
+        conversationId,
+        type: { not: ChatMessageType.system },
+        deletions: { none: { userId: user.id } },
+      },
+      include: messageInclude,
+    });
+    if (!message) {
       throw new NotFoundException("消息不存在或当前不可见。");
     }
     return { conversationId, message: this.toMessage(message) };
@@ -1172,7 +1186,7 @@ export class SocialService {
   async listPinnedMessages(user: AuthenticatedUser, conversationId: number): Promise<{ items: ChatMessageResponse[] }> {
     const membership = await this.assertConversationMember(conversationId, user.id);
     const messages = await this.prisma.chatMessage.findMany({
-      where: { conversationId, isPinned: true, type: { not: ChatMessageType.system } },
+      where: { conversationId, isPinned: true, type: { not: ChatMessageType.system }, deletions: { none: { userId: user.id } } },
       orderBy: [{ pinOrder: "desc" }, { pinnedAt: "desc" }, { id: "desc" }],
       include: messageInclude,
     });
@@ -1514,18 +1528,19 @@ export class SocialService {
     if (messages.length !== messageIds.length) {
       throw new NotFoundException("部分消息不存在或不属于当前会话。");
     }
-    await this.prisma.$transaction([
-      this.prisma.chatMessageDeletion.createMany({
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.chatMessageDeletion.createMany({
         data: messageIds.map((messageId) => ({ messageId, userId })),
         skipDuplicates: true,
-      }),
-      this.prisma.chatMessage.updateMany({
+      });
+      await transaction.chatMessage.updateMany({
         where: {
           id: { in: messages.filter((message) => message.senderId !== userId && !message.readAt).map((message) => message.id) },
         },
         data: { readAt: new Date() },
-      }),
-    ]);
+      });
+      await this.markMessageMentionNotificationsDeleted(transaction, messageIds, userId);
+    });
     return { conversationId, messageIds };
   }
 
@@ -1559,6 +1574,8 @@ export class SocialService {
       throw new ForbiddenException("普通群成员只能双向删除自己发送的消息。");
     }
     await this.prisma.$transaction(async (transaction) => {
+      // Preserve a deleted state for existing @ notifications after the message row is removed.
+      await this.markMessageMentionNotificationsDeleted(transaction, messageIds);
       await transaction.chatMessage.deleteMany({
         where: { conversationId, id: { in: messageIds } },
       });
@@ -1580,6 +1597,33 @@ export class SocialService {
       messageIds,
       participantIds: membership.participantIds,
     };
+  }
+
+  private async markMessageMentionNotificationsDeleted(
+    transaction: Prisma.TransactionClient,
+    messageIds: number[],
+    userId?: number,
+  ): Promise<void> {
+    // Keep lightweight service test doubles compatible with the production transaction client.
+    const notificationClient = transaction.userNotification;
+    if (!notificationClient) return;
+    const notifications = await notificationClient.findMany({
+      where: {
+        type: UserNotificationType.mention_received,
+        messageId: { in: messageIds },
+        ...(userId ? { userId } : {}),
+      },
+      select: { id: true, actionUrl: true },
+    });
+    await Promise.all(notifications.map((notification) => notificationClient.update({
+      where: { id: notification.id },
+      data: { actionUrl: this.withMessageDeletedMarker(notification.actionUrl) },
+    })));
+  }
+
+  private withMessageDeletedMarker(actionUrl: string | null): string | null {
+    if (!actionUrl || actionUrl.includes("messageDeleted=1")) return actionUrl;
+    return `${actionUrl}${actionUrl.includes("?") ? "&" : "?"}messageDeleted=1`;
   }
 
   async recallMessage(
@@ -1756,7 +1800,7 @@ export class SocialService {
     const visibleNotifications = notifications.slice(0, query.limit);
     const contexts = await this.buildNotificationContexts(visibleNotifications);
     return {
-      items: visibleNotifications.map((notification) => this.toNotification(notification, contexts.get(notification.id))),
+      items: visibleNotifications.map((notification) => this.toNotification(notification, contexts.get(notification.id), user.id)),
       hasMore: notifications.length > query.limit,
       hiddenChannels,
       channelStates,
@@ -1778,7 +1822,7 @@ export class SocialService {
     }
     void result;
     const contexts = await this.buildNotificationContexts([notification]);
-    return this.toNotification(notification, contexts.get(notification.id));
+    return this.toNotification(notification, contexts.get(notification.id), user.id);
   }
 
   async markAllNotificationsRead(user: AuthenticatedUser, channel?: "system" | "subscription" | "interaction"): Promise<{ count: number; readAt: string }> {
@@ -2368,10 +2412,13 @@ export class SocialService {
     };
   }
 
-  private toNotification(notification: NotificationRecord, enrichedContext?: NotificationContext): UserNotificationResponse {
+  private toNotification(notification: NotificationRecord, enrichedContext?: NotificationContext, viewerId?: number): UserNotificationResponse {
     const groupContext = this.groupNotificationContext(notification.actionUrl, notification.title);
+    const messageDeletedForViewer = Boolean(
+      notification.message && viewerId && notification.message.deletions.some((deletion) => deletion.userId === viewerId),
+    );
     const messageMentionContext = notification.type === UserNotificationType.mention_received
-      ? notification.message
+      ? notification.message && !messageDeletedForViewer
         ? {
             kind: "message_mention" as const,
             conversationId: notification.message.conversationId,

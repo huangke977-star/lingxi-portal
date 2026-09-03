@@ -30,9 +30,11 @@
   --chat-floating-surface: rgba(235, 243, 247, 0.82);
   --chat-bubble-background: rgba(255, 255, 255, 0.48);
   --chat-floating-bubble-background: rgba(255, 255, 255, 0.62);
-  --chat-avatar-bubble-background: var(--chat-conversation-background);
-  --chat-avatar-bubble-border: var(--chat-bubble-border);
-  --chat-avatar-bubble-shadow: var(--chat-bubble-shadow);
+  /* The avatar popover is the reference surface for every floating bubble. */
+  --chat-avatar-bubble-background: color-mix(in srgb, var(--popover-surface) 70%, transparent);
+  --chat-avatar-bubble-border: color-mix(in srgb, var(--control-line) 58%, transparent);
+  --chat-avatar-bubble-shadow: 0 18px 48px rgba(22, 29, 43, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  --chat-avatar-bubble-backdrop: blur(34px) saturate(146%);
   --chat-bubble-border: color-mix(in srgb, var(--control-line) 44%, transparent);
   --chat-bubble-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
   --accent: #db2777;
@@ -19692,7 +19694,10 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .chat-mobile-channel-sheet,
   .chat-group-member-context,
   .chat-call-mini,
-  .app-toast
+  .app-toast,
+  .mention-suggestions,
+  .chat-message-search-dropdown,
+  .chat-pinned-messages
 ) {
   backdrop-filter: blur(34px) saturate(146%) !important;
 }
@@ -20772,9 +20777,10 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .chat-call-mini,
   .app-toast,
   .mention-suggestions,
-  .chat-message-search-dropdown
+  .chat-message-search-dropdown,
+  .chat-pinned-messages
 ) {
-  background: var(--chat-avatar-bubble-background) !important;
+  background: color-mix(in srgb, var(--popover-surface) 70%, transparent) !important;
   background-image: none !important;
   border-color: var(--chat-avatar-bubble-border) !important;
   box-shadow: var(--chat-avatar-bubble-shadow) !important;
@@ -20824,4 +20830,135 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 .chat-message-search-result strong {
   line-height: 1.25;
+}
+
+/* Floating bubbles use the same painted surface as the avatar popover. */
+.level-popover,
+.public-profile-popover,
+.portal-entry-tooltip,
+.analytics-chart-tooltip,
+.analytics-metric-tooltip,
+.my-report-detail-tooltip,
+.admin-report-popover,
+.header-popover,
+.account-menu,
+.chat-message-sender > small,
+.chat-emoji-picker,
+.chat-friend-action-menu,
+.chat-friend-action-menu-floating,
+.chat-conversation-action-menu,
+.chat-message-action-menu,
+.chat-notification-action-menu,
+.chat-notification-channel-menu,
+.chat-mobile-tools-panel,
+.chat-mobile-channel-sheet,
+.chat-group-member-context,
+.chat-call-mini,
+.app-toast,
+.mention-suggestions,
+.chat-message-search-dropdown,
+.chat-pinned-messages {
+  background: color-mix(in srgb, var(--popover-surface) 70%, transparent) !important;
+  background-image: none !important;
+  border-color: var(--chat-avatar-bubble-border) !important;
+  box-shadow: var(--chat-avatar-bubble-shadow) !important;
+  backdrop-filter: blur(34px) saturate(146%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(146%) !important;
+}
+
+.level-popover::before,
+.level-badge::after,
+.portal-entry-tooltip::before {
+  background: color-mix(in srgb, var(--popover-surface) 70%, transparent) !important;
+  border-color: var(--chat-avatar-bubble-border) !important;
+  box-shadow: var(--chat-avatar-bubble-shadow) !important;
+  backdrop-filter: blur(34px) saturate(146%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(146%) !important;
+}
+
+.chat-pinned-messages {
+  backdrop-filter: blur(34px) saturate(146%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(146%) !important;
+}
+
+/* Search results use the full dropdown width and truncate each line cleanly. */
+.chat-message-search-dropdown {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.chat-message-search-result {
+  display: grid !important;
+  width: 100% !important;
+  min-width: 0;
+  box-sizing: border-box;
+  grid-template-columns: minmax(0, 1fr) 15px;
+}
+
+.chat-message-search-result > span {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chat-message-search-result strong,
+.chat-message-search-result small {
+  display: block !important;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Comments and reply composers use one compact text scale. */
+.article-comment p,
+.article-comment-form textarea,
+.article-reply-form textarea,
+.article-composer-context {
+  font-size: 0.8rem;
+  line-height: 1.38;
+}
+
+/* Keep these surfaces tied directly to the avatar bubble reference. */
+.mention-suggestions,
+.chat-message-search-dropdown,
+.chat-pinned-messages {
+  background: var(--chat-avatar-bubble-background) !important;
+  background-image: none !important;
+  border-color: var(--chat-avatar-bubble-border) !important;
+  box-shadow: var(--chat-avatar-bubble-shadow) !important;
+  backdrop-filter: var(--chat-avatar-bubble-backdrop) !important;
+  -webkit-backdrop-filter: var(--chat-avatar-bubble-backdrop) !important;
+}
+
+.chat-dock-titlebar,
+.chat-dock-titlebar-actions,
+.chat-inline-message-search {
+  overflow: visible;
+}
+
+.chat-message-search-dropdown > * {
+  width: 100% !important;
+  min-width: 0;
+}
+
+.chat-message-search-result {
+  width: 100% !important;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 15px;
+}
+
+.chat-message-search-result > span {
+  width: 100%;
+  min-width: 0;
+}
+
+.chat-message-search-result strong,
+.chat-message-search-result small {
+  display: block !important;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
