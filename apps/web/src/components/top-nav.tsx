@@ -114,7 +114,8 @@ function getMentionConversationId(actionUrl: string | null): number | null {
 function isDeletedMentionNotification(notification: SocialNotification): boolean {
   if (notification.context?.kind === "message_mention" && notification.context.messageDeleted) return true;
   return notification.type === "mention_received"
-    && notification.messageId === null;
+    && notification.messageId === null
+    && Boolean(getMentionConversationId(notification.actionUrl));
 }
 
 export function TopNav() {

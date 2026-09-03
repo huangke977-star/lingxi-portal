@@ -1872,7 +1872,7 @@ export function ChatDock() {
     const mentionContext = notification.context?.kind === "message_mention" ? notification.context : null;
     const mentionMessage = mentionContext?.message;
     const mentionConversationId = mentionContext?.conversationId ?? getMentionConversationId(notification.actionUrl);
-    const mentionDeleted = Boolean(mentionContext?.messageDeleted || (notification.type === "mention_received" && notification.messageId === null));
+    const mentionDeleted = Boolean(mentionContext?.messageDeleted || (notification.type === "mention_received" && notification.messageId === null && mentionConversationId));
     const mentionTarget = !mentionDeleted && mentionConversationId
       ? { conversationId: mentionConversationId, messageId: notification.messageId ?? 0 }
       : null;
