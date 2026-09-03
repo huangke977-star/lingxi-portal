@@ -4,6 +4,8 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // API traffic reaches the container only through the single Caddy proxy.
+  app.getHttpAdapter().getInstance().set("trust proxy", 1);
   const configuredOrigins = new Set(
     (process.env.WEB_ORIGIN ?? 'http://localhost:3000')
       .split(',')

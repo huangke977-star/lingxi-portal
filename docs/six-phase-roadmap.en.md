@@ -49,7 +49,7 @@ Status definitions:
 | Phase 14 | Article Publishing Plans And Author Templates | Scheduled publication, scheduled unpublishing, templates, and pre-publish checks | Completed |
 | Phase 15 | Account And Privacy Completeness | Data export, deletion, blocking, two-factor authentication, and authorization records | Completed |
 | Phase 16 | Stronger Community Interaction | Mentions, quotes, message search, group pins, message location, and subscription improvements | Completed |
-| Phase 17 | Content Distribution And Public Sharing | RSS/Atom, sitemaps, Open Graph, and email distribution | Not started |
+| Phase 17 | Content Distribution And Public Sharing | RSS/Atom, sitemaps, Open Graph, and email distribution | Completed |
 | Phase 18 | Deeper Recommendations And Resources | Recommendation explanations, recovery, redemption records, points rules, and creator earnings | Not started |
 | Phase 19 | External Integration Capability | Webhooks, read-only API tokens, external notifications, and third-party login | Not started |
 | Phase 20 | Mobile And Offline Experience | Offline PWA reading, weak-network fallback, push improvements, and native-app assessment | Not started |
@@ -605,15 +605,24 @@ Goal: make public content discoverable by subscription tools and search engines 
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P17-01 | RSS/Atom feeds for the site, authors, topics, and collections with current-visibility filtering and per-user rate limits | Not started |
-| P17-02 | Sitemaps for public articles, authors, topics, and collections with incremental timestamps and stale-entry removal | Not started |
-| P17-03 | Article Open Graph share cards with title, summary, author, cover, locale, and canonical URL; use a site asset when no cover exists | Not started |
-| P17-04 | Public author/topic subscription pages with shareable entry points that do not expose private content or internal account data | Not started |
-| P17-05 | Email channel for subscription digests with subscribe, unsubscribe, frequency control, delivery records, retries, and bilingual templates | Not started |
+| P17-01 | RSS/Atom feeds for the site, authors, topics, and collections with current-visibility filtering and per-user rate limits | Completed |
+| P17-02 | Sitemaps for public articles, authors, topics, and collections with incremental timestamps and stale-entry removal | Completed |
+| P17-03 | Article Open Graph share cards with title, summary, author, cover, locale, and canonical URL; use a site asset when no cover exists | Completed |
+| P17-04 | Public author/topic subscription pages with shareable entry points that do not expose private content or internal account data | Completed |
+| P17-05 | Email channel for subscription digests with subscribe, unsubscribe, frequency control, delivery records, retries, and bilingual templates | Completed |
 
 Necessity: Medium-high. This is suitable after privacy boundaries are stable and supports off-site distribution and indexing; the email channel requires SMTP configuration.
 
 Acceptance focus: feeds, sitemaps, and share cards contain public data only; revoked visibility invalidates cached/source content promptly; unsubscribe links work without a new login; email failures are traceable without duplicate delivery.
+
+### P17 Acceptance Record
+
+- Added public RSS/Atom endpoints for the site, authors, topics, and collections. Each request rechecks article, author, topic, and collection visibility, emits only published public articles, and is rate limited by source and client address.
+- Added a dynamic sitemap, robots rules, and article Open Graph metadata. The sitemap includes only public articles, authors, topics, and collections. Share metadata includes canonical URL, title, summary, author, cover, and locale, with the site icon as a no-cover fallback.
+- Added RSS entry points to public author, topic, and collection pages. Private profiles, non-public topics, and non-public collections cannot expose a usable feed.
+- Added email-digest preferences and delivery records. Users can enable or pause digests from subscription management and unsubscribe through a signed link without logging in. A digest includes only subscribed author, topic, and tag content that remains visible and authorized for the recipient's role.
+- Email digest processing runs only while SMTP is enabled, uses Chinese and English templates, stores each user's daily delivery outcome and error, and retries failed deliveries up to three times without duplicate sends.
+- Prisma schema validation, API/Web lint, API/Web production builds, `git diff --check`, and the full API suite all passed (45 suites, 321 tests).
 
 ### Phase 18: Deeper Recommendations And Resources
 

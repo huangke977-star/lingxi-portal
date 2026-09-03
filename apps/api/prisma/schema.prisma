@@ -311,9 +311,17 @@ enum MailJobType {
   password_reset
   login_risk
   security_notice
+  subscription_digest
 }
 
 enum MailJobStatus {
+  pending
+  sending
+  sent
+  failed
+}
+
+enum SubscriptionEmailDeliveryStatus {
   pending
   sending
   sent
@@ -615,6 +623,8 @@ model User {
   emailVerificationRequests  EmailVerificationRequest[]
   passwordResetRequests      PasswordResetRequest[]
   mailJobs                   MailJob[]
+  subscriptionEmailPreference SubscriptionEmailPreference?
+  subscriptionEmailDeliveries SubscriptionEmailDelivery[]
   searchHistory              SearchHistory[]
   announcementsCreated       Announcement[]                  @relation("AnnouncementCreatedBy")
   announcementsUpdated       Announcement[]                  @relation("AnnouncementUpdatedBy")
@@ -2652,6 +2662,38 @@ model MailJob {
   @@index([userId, createdAt])
   @@index([recipient, createdAt])
   @@map("mail_jobs")
+}
+
+model SubscriptionEmailPreference {
+  userId           Int      @id @map("user_id")
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enabled          Boolean  @default(false)
+  unsubscribeToken String   @unique @map("unsubscribe_token") @db.Char(64)
+  unsubscribedAt   DateTime? @map("unsubscribed_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("subscription_email_preferences")
+}
+
+model SubscriptionEmailDelivery {
+  id          Int                            @id @default(autoincrement())
+  userId      Int                            @map("user_id")
+  user        User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayKey      String                         @map("day_key") @db.Char(10)
+  status      SubscriptionEmailDeliveryStatus @default(pending)
+  attempts    Int                            @default(0)
+  itemCount   Int                            @default(0) @map("item_count")
+  articleIds  Json                           @map("article_ids")
+  lastError   String?                        @map("last_error") @db.VarChar(1000)
+  sentAt      DateTime?                      @map("sent_at")
+  createdAt   DateTime                       @default(now()) @map("created_at")
+  updatedAt   DateTime                       @updatedAt @map("updated_at")
+
+  @@unique([userId, dayKey])
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@map("subscription_email_deliveries")
 }
 
 model PushSubscription {

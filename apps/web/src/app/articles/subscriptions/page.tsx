@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BellOff, BookOpen, CheckCheck, FolderOpen, Hash, Rss, SlidersHorizontal, X } from "lucide-react";
+import { Bell, BellOff, BookOpen, CheckCheck, FolderOpen, Hash, Mail, Rss, SlidersHorizontal, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
@@ -31,12 +31,14 @@ import {
 } from "@/lib/discovery-api";
 import { localizedPath } from "@/lib/i18n";
 import { unsubscribeFromAuthor, updateNotificationChannelSettings } from "@/lib/social-api";
+import { getSubscriptionEmailSettings, updateSubscriptionEmailSettings, type SubscriptionEmailSettings } from "@/lib/distribution-api";
 
 type FeedSort = "latest" | "unread" | "popular";
 type SubscriptionFrequency = "instant" | "daily" | "muted";
 const emptyFeed: SubscriptionFeed = { items: [], total: 0, unread: 0, page: 1, pageSize: 12, totalPages: 1 };
 const emptyContentSubscriptions: ContentSubscriptions = { topics: [], collections: [], tags: [] };
 const emptySettings: SubscriptionSettings = { items: [], digestEnabled: true };
+const emptyEmailSettings: SubscriptionEmailSettings = { available: false, enabled: false, unsubscribedAt: null, deliveries: [] };
 
 export default function SubscriptionFeedPage() {
   return <Suspense fallback={<section className="page-shell"><div className="article-empty-state">Loading subscription updates.</div></section>}><SubscriptionFeedContent /></Suspense>;
@@ -51,6 +53,7 @@ function SubscriptionFeedContent() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [feed, setFeed] = useState<SubscriptionFeed>(emptyFeed);
   const [settings, setSettings] = useState<SubscriptionSettings>(emptySettings);
+  const [emailSettings, setEmailSettings] = useState<SubscriptionEmailSettings>(emptyEmailSettings);
   const [contentSubscriptions, setContentSubscriptions] = useState<ContentSubscriptions>(emptyContentSubscriptions);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -59,16 +62,18 @@ function SubscriptionFeedContent() {
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async (token: string) => {
-    const [currentUser, currentFeed, currentSettings, currentContentSubscriptions] = await Promise.all([
+    const [currentUser, currentFeed, currentSettings, currentContentSubscriptions, currentEmailSettings] = await Promise.all([
       getMe(token),
       listSubscriptionFeed(token, { page: 1, pageSize: 12, sort }),
       listSubscriptionSettings(token),
       listContentSubscriptions(token),
+      getSubscriptionEmailSettings(token),
     ]);
     setUser(currentUser);
     setFeed(currentFeed);
     setSettings(currentSettings);
     setContentSubscriptions(currentContentSubscriptions);
+    setEmailSettings(currentEmailSettings);
   }, [sort]);
 
   useEffect(() => {
@@ -188,6 +193,18 @@ function SubscriptionFeedContent() {
     }
   }
 
+  async function toggleEmailDigest(enabled: boolean) {
+    const token = readAccessToken();
+    if (!token || !emailSettings.available) return;
+    try {
+      const next = await updateSubscriptionEmailSettings(token, enabled);
+      setEmailSettings(next);
+      setNotice(enabled ? phrase("已开启邮件订阅日报。", "Email subscription digest enabled.") : phrase("已关闭邮件订阅日报。", "Email subscription digest disabled."));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("邮件日报设置更新失败。", "Could not update email digest settings."));
+    }
+  }
+
   async function removeTopicSubscription(topicId: number) {
     const token = readAccessToken();
     if (!token) return;
@@ -243,6 +260,7 @@ function SubscriptionFeedContent() {
         <aside aria-label={phrase("订阅管理", "Manage subscriptions")} aria-modal="true" className="subscription-settings-panel subscription-management-panel subscription-management-drawer" role="dialog">
           <header><span><strong>{phrase("订阅管理", "Manage subscriptions")}</strong><small>{phrase("作者、专题、标签和合集的订阅设置。", "Manage author, topic, tag, and collection subscriptions.")}</small></span><div><button aria-label={settings.digestEnabled ? phrase("关闭订阅日报", "Disable subscription digest") : phrase("开启订阅日报", "Enable subscription digest")} aria-pressed={settings.digestEnabled} className={settings.digestEnabled ? "active" : undefined} onClick={() => void toggleDigest(!settings.digestEnabled)} title={settings.digestEnabled ? phrase("关闭订阅日报", "Disable subscription digest") : phrase("开启订阅日报", "Enable subscription digest")} type="button">{settings.digestEnabled ? <Bell aria-hidden="true" size={16} /> : <BellOff aria-hidden="true" size={16} />}</button><button aria-label={phrase("关闭", "Close")} onClick={() => setSettingsOpen(false)} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={17} /></button></div></header>
           <div className="subscription-management-groups">
+            <section><h3><Mail aria-hidden="true" size={14} />{phrase("邮件日报", "Email digest")}</h3><div className="subscription-digest-setting"><span><strong>{phrase("每日邮件汇总", "Daily email summary")}</strong><small>{!emailSettings.available ? phrase("邮件服务尚未启用", "Email service is not configured") : emailSettings.enabled ? phrase("每天发送当前可见的新订阅内容", "Send currently visible subscription updates daily") : phrase("已暂停邮件日报", "Email digests are paused")}</small>{emailSettings.deliveries[0] ? <small className="subscription-email-delivery">{phrase(`最近投递：${emailSettings.deliveries[0].status === "sent" ? "成功" : emailSettings.deliveries[0].status === "failed" ? "失败" : "处理中"}`, `Latest delivery: ${emailSettings.deliveries[0].status}`)}</small> : null}</span><button aria-label={emailSettings.enabled ? phrase("关闭邮件日报", "Disable email digest") : phrase("开启邮件日报", "Enable email digest")} aria-pressed={emailSettings.enabled} className={emailSettings.enabled ? "active" : undefined} disabled={!emailSettings.available} onClick={() => void toggleEmailDigest(!emailSettings.enabled)} title={emailSettings.enabled ? phrase("关闭邮件日报", "Disable email digest") : phrase("开启邮件日报", "Enable email digest")} type="button">{emailSettings.enabled ? <Bell aria-hidden="true" size={16} /> : <BellOff aria-hidden="true" size={16} />}</button></div></section>
             <section><h3><Bell aria-hidden="true" size={14} />{phrase("作者推送", "Author notifications")}</h3><div>{settings.items.map((item) => <div className="subscription-author-setting" key={item.author.id}><span>{item.author.nickname}<small>@{item.author.username}</small></span><span className="subscription-setting-actions"><FrequencySelect value={item.frequency} onChange={(frequency) => void changeAuthorFrequency(item.author.id, frequency)} /><button aria-label={phrase(`${item.notifyNewArticles ? "关闭" : "开启"}${item.author.nickname}的新内容推送`, `${item.notifyNewArticles ? "Disable" : "Enable"} new-content notifications for ${item.author.nickname}`)} aria-pressed={item.notifyNewArticles} className={item.notifyNewArticles ? "active" : undefined} onClick={() => void toggleAuthor(item.author.id, !item.notifyNewArticles)} title={item.notifyNewArticles ? phrase("关闭推送", "Disable notifications") : phrase("开启推送", "Enable notifications")} type="button">{item.notifyNewArticles ? <Bell aria-hidden="true" size={16} /> : <BellOff aria-hidden="true" size={16} />}</button><button aria-label={`${phrase("取消订阅", "Unsubscribe")} ${item.author.nickname}`} className="subscription-unsubscribe-action" onClick={() => void removeAuthorSubscription(item.author.id)} title={phrase("取消订阅", "Unsubscribe")} type="button"><Rss aria-hidden="true" size={16} /></button></span></div>)}{!settings.items.length ? <p>{phrase("还没有订阅作者。", "No authors are subscribed yet.")}</p> : null}</div></section>
             <section><h3><BookOpen aria-hidden="true" size={14} />{phrase("专题", "Topics")}</h3><div>{contentSubscriptions.topics.map((topic) => <div className="subscription-content-setting" key={topic.id}><Link href={localizedPath(`/topics/${topic.slug}`, locale)}><strong>{topic.title}</strong><small>{phrase(`${topic.articleCount} 篇 · ${topic.subscriberCount} 人订阅`, `${topic.articleCount} articles · ${topic.subscriberCount} subscribers`)}</small></Link><span className="subscription-setting-actions"><FrequencySelect value={topic.frequency} onChange={(frequency) => void changeTopicFrequency(topic.id, frequency)} /><button aria-label={`${phrase("取消订阅", "Unsubscribe")} ${topic.title}`} className="subscription-unsubscribe-action" onClick={() => void removeTopicSubscription(topic.id)} title={phrase("取消订阅", "Unsubscribe")} type="button"><Rss aria-hidden="true" size={16} /></button></span></div>)}{!contentSubscriptions.topics.length ? <p>{phrase("还没有订阅专题。", "No topics are subscribed yet.")}</p> : null}</div></section>
             <section><h3><Hash aria-hidden="true" size={14} />{phrase("标签", "Tags")}</h3><div>{contentSubscriptions.tags.map((item) => <div className="subscription-content-setting" key={item.tag}><span className="subscription-tag-name">#{item.tag}</span><span className="subscription-setting-actions"><FrequencySelect value={item.frequency} onChange={(frequency) => void changeTagFrequency(item.tag, frequency)} /><button aria-label={`${phrase("取消订阅", "Unsubscribe")} #${item.tag}`} className="subscription-unsubscribe-action" onClick={() => void removeTagSubscription(item.tag)} title={phrase("取消订阅", "Unsubscribe")} type="button"><Rss aria-hidden="true" size={16} /></button></span></div>)}{!contentSubscriptions.tags.length ? <p>{phrase("还没有订阅标签。", "No tags are subscribed yet.")}</p> : null}</div></section>

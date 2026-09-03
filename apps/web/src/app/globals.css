@@ -17470,9 +17470,14 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 .content-group-header { position: relative; padding-right: 58px; }
 .content-group-subscribe { position: absolute; top: 13px; right: 14px; z-index: 2; background: color-mix(in srgb, var(--surface) 58%, transparent); }
+.content-group-feed-link { position: absolute; top: 13px; right: 48px; z-index: 2; display: grid; width: 29px; height: 29px; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--surface) 58%, transparent); color: var(--muted); }
+.content-group-feed-link:hover { background: var(--accent-soft); color: var(--accent-strong); }
 .content-group-header.topic.with-cover > .topic-detail-subscribe { position: absolute; top: 13px; right: 14px; }
 .content-group-header.topic.with-cover .content-group-subscribe { color: rgba(255, 255, 255, 0.88); }
 .content-group-header.topic.with-cover .content-group-subscribe.active { background: rgba(255, 255, 255, 0.2); color: #fff; }
+.content-group-header.topic.with-cover .content-group-feed-link { background: rgba(255, 255, 255, 0.2); color: #fff; }
+.public-feed-link { display: inline-grid; width: 30px; height: 30px; place-items: center; align-self: end; justify-self: end; border-radius: 50%; background: color-mix(in srgb, var(--surface) 54%, transparent); color: var(--muted); }
+.public-feed-link:hover { background: var(--accent-soft); color: var(--accent-strong); }
 
 .subscription-management-panel { gap: 10px; }
 .subscription-management-groups { display: grid; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
@@ -17488,6 +17493,13 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .subscription-digest-setting > button { display: grid; flex: 0 0 auto; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
 .subscription-digest-setting > button.active { background: var(--accent-soft); color: var(--accent-strong); }
 .subscription-digest-setting > button:hover { background: var(--accent-soft); color: var(--accent-strong); }
+.subscription-digest-setting > button:disabled { cursor: default; opacity: 0.42; }
+.subscription-email-delivery { color: var(--muted-strong) !important; }
+.unsubscribe-page { display: grid; min-height: 56vh; place-items: center; }
+.unsubscribe-panel { display: grid; width: min(380px, 100%); justify-items: center; gap: 8px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 82%, transparent); box-shadow: var(--panel-shadow); color: var(--muted); padding: 24px; text-align: center; }
+.unsubscribe-panel svg { color: var(--accent-strong); }
+.unsubscribe-panel strong { color: var(--foreground); font-size: 0.9rem; }
+.unsubscribe-panel span { font-size: 0.72rem; line-height: 1.5; }
 .subscription-content-setting { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; border-radius: 6px; background: color-mix(in srgb, var(--surface) 48%, transparent); padding: 7px 8px; }
 .subscription-content-setting > a { display: grid; min-width: 0; gap: 2px; }
 .subscription-content-setting strong,
