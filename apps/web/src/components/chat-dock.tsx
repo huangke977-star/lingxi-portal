@@ -236,6 +236,13 @@ type MessageSearchItem = ChatMessage & {
   conversation: { id: number; kind: Conversation["kind"]; name: string };
 };
 
+interface MessageScrollRestore {
+  anchorId: number | null;
+  anchorOffset: number;
+  height: number;
+  top: number;
+}
+
 type ConversationAction = "clear" | "delete";
 type MessageDeleteMode = "self" | "everyone";
 type MessageOperation = "delete-self" | "delete-everyone" | "recall";
@@ -264,9 +271,10 @@ export function ChatDock() {
   const messageSearchRef = useRef<HTMLDivElement | null>(null);
   const mentionComposerRowRef = useRef<HTMLDivElement | null>(null);
   const mentionTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const messageScrollRestoreRef = useRef<{ height: number; top: number } | null>(null);
+  const messageScrollRestoreRef = useRef<MessageScrollRestore | null>(null);
   const shouldScrollMessagesToBottomRef = useRef(false);
   const loadingOlderMessagesRef = useRef(false);
+  const messageFocusLockRef = useRef(false);
   const systemMessageListRef = useRef<HTMLDivElement | null>(null);
   const dockRef = useRef<HTMLElement | null>(null);
   const pendingAttachmentsRef = useRef<PendingAttachment[]>([]);
@@ -1144,7 +1152,9 @@ export function ChatDock() {
       const listRect = list.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
       const centeredTop = list.scrollTop + targetRect.top - listRect.top - (list.clientHeight - targetRect.height) / 2;
-      list.scrollTo({ behavior: "smooth", top: Math.max(0, centeredTop) });
+      // An instant locate cannot cross the lazy-load threshold and invalidate its target position.
+      messageFocusLockRef.current = true;
+      list.scrollTop = Math.max(0, centeredTop);
       frame = window.requestAnimationFrame(() => {
         if (cancelled) return;
         if (highlightedMessageRef.current) {
@@ -1160,6 +1170,7 @@ export function ChatDock() {
         highlightedMessageRef.current = { element: target, timer };
         if (pendingConversationOpenRef.current?.messageId === pendingMessageFocusId) pendingConversationOpenRef.current = null;
         setPendingMessageFocusId(0);
+        messageFocusLockRef.current = false;
       });
     };
 
@@ -1167,25 +1178,43 @@ export function ChatDock() {
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(frame);
+      messageFocusLockRef.current = false;
     };
   }, [isDesktop, isMinimized, isMessagesLoading, isMobileConversationOpen, isOpen, messages.length, pendingMessageFocusId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isMessagesLoading && isOpen && !isMinimized) {
-      window.requestAnimationFrame(() => {
-        const list = messageListRef.current;
-        if (!list) return;
-        const restore = messageScrollRestoreRef.current;
-        if (restore) {
-          list.scrollTop = restore.top + list.scrollHeight - restore.height;
+      const list = messageListRef.current;
+      if (!list) return;
+      const restore = messageScrollRestoreRef.current;
+      if (restore) {
+        const restorePosition = () => {
+          if (messageScrollRestoreRef.current !== restore) return;
+          const anchor = restore.anchorId ? document.getElementById(`chat-message-${restore.anchorId}`) : null;
+          if (anchor && list.contains(anchor)) {
+            const listTop = list.getBoundingClientRect().top;
+            const anchorOffset = anchor.getBoundingClientRect().top - listTop;
+            list.scrollTop += anchorOffset - restore.anchorOffset;
+          } else {
+            list.scrollTop = restore.top + list.scrollHeight - restore.height;
+          }
+        };
+        messageFocusLockRef.current = true;
+        restorePosition();
+        const frame = window.requestAnimationFrame(() => {
+          restorePosition();
           messageScrollRestoreRef.current = null;
-          return;
-        }
-        if (shouldScrollMessagesToBottomRef.current) {
-          list.scrollTop = list.scrollHeight;
-          shouldScrollMessagesToBottomRef.current = false;
-        }
-      });
+          messageFocusLockRef.current = false;
+        });
+        return () => {
+          window.cancelAnimationFrame(frame);
+          if (messageScrollRestoreRef.current === restore) messageFocusLockRef.current = false;
+        };
+      }
+      if (shouldScrollMessagesToBottomRef.current) {
+        list.scrollTop = list.scrollHeight;
+        shouldScrollMessagesToBottomRef.current = false;
+      }
     }
   }, [isMessagesLoading, isMinimized, isOpen, messages.length]);
 
@@ -1212,11 +1241,21 @@ export function ChatDock() {
   async function loadOlderMessages() {
     const token = readAccessToken();
     const firstId = messages[0]?.id;
-    if (!token || !selectedId || !firstId || !hasMore || loadingOlderMessagesRef.current) return;
+    if (!token || !selectedId || !firstId || !hasMore || loadingOlderMessagesRef.current || messageFocusLockRef.current) return;
     const list = messageListRef.current;
     loadingOlderMessagesRef.current = true;
     setIsOlderMessagesLoading(true);
-    if (list) messageScrollRestoreRef.current = { height: list.scrollHeight, top: list.scrollTop };
+    if (list) {
+      const listTop = list.getBoundingClientRect().top;
+      const anchor = Array.from(list.querySelectorAll<HTMLElement>("[id^='chat-message-']")).find((item) => item.getBoundingClientRect().bottom > listTop);
+      const anchorId = anchor ? Number(anchor.id.slice("chat-message-".length)) : null;
+      messageScrollRestoreRef.current = {
+        anchorId: Number.isFinite(anchorId) ? anchorId : null,
+        anchorOffset: anchor ? anchor.getBoundingClientRect().top - listTop : 0,
+        height: list.scrollHeight,
+        top: list.scrollTop,
+      };
+    }
     try {
       const result = await listMessages(token, selectedId, firstId);
       setMessages((current) => [...result.items, ...current]);
@@ -1232,7 +1271,7 @@ export function ChatDock() {
 
   function handleMessageListScroll() {
     const list = messageListRef.current;
-    if (!list || list.scrollTop > 280 || !hasMore || isMessagesLoading) return;
+    if (!list || list.scrollTop > 280 || !hasMore || isMessagesLoading || messageFocusLockRef.current || messageScrollRestoreRef.current) return;
     void loadOlderMessages();
   }
 
