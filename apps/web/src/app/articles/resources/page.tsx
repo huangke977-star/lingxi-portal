@@ -63,7 +63,7 @@ export default function ResourceCenterPage() {
         <span><Coins aria-hidden="true" size={15} /><small>{phrase("待入账积分", "Pending points")}</small><b>{summary.pendingPoints}</b></span>
       </div> : null}
       <label><Sparkles aria-hidden="true" size={16} /><input aria-label={phrase("搜索积分资源", "Search point resources")} onChange={(event) => setQuery(event.target.value)} placeholder={phrase("搜索资源、作者或分类", "Search resources, authors, or categories")} value={query} /></label>
-      <span className="resource-catalog-toolbar-actions"><GlassSelect ariaLabel={phrase("资源排序", "Resource sort")} onChange={setSort} options={sortOptions} value={sort} /><Link className="text-action" href={localizedPath("/articles/resources/orders", locale)}>{phrase("兑换记录", "Deliveries")}</Link></span>
+      <span className="resource-catalog-toolbar-actions"><GlassSelect ariaLabel={phrase("资源排序", "Resource sort")} onChange={setSort} options={sortOptions} value={sort} />{user ? <Link className="text-action" href={localizedPath("/articles/resources/earnings", locale)}>{phrase("我的收益", "My earnings")}</Link> : null}<Link className="text-action" href={localizedPath("/articles/resources/orders", locale)}>{phrase("兑换记录", "Deliveries")}</Link></span>
     </div>
     {isLoading ? <div className="article-empty-state">{phrase("正在读取积分资源。", "Loading point resources.")}</div> : catalog.items.length ? <div className="resource-catalog-list">
       {catalog.items.map((item) => <Link href={localizedPath(`/articles/${item.article.slug}`, locale)} key={item.article.id}>

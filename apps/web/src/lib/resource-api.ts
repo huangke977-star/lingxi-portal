@@ -23,4 +23,25 @@ export function applyViolationPenalty(token: string, input: { userId: number; po
   return requestJson<{ applied: boolean }>("/resources/admin/points/violation", { method: "POST", headers: authHeaders(token), body: JSON.stringify(input) });
 }
 
+export interface CreatorResourceAggregate {
+  articleId: number;
+  article: { id: number; title: string; slug: string };
+  blockKey: string;
+  redemptionCount: number;
+  grossPoints: number;
+  pendingPoints: number;
+  settledPoints: number;
+  refundedPoints: number;
+}
+
+export interface CreatorResourceEarnings {
+  summary: { total: number; pending: number; settled: number; refunded: number };
+  aggregates: CreatorResourceAggregate[];
+  items: ResourceDelivery[];
+}
+
+export function getCreatorResourceEarnings(token: string) {
+  return requestJson<CreatorResourceEarnings>("/resources/creator/earnings", { cache: "no-store", headers: authHeaders(token) });
+}
+
 export type { ResourceDelivery };

@@ -64,7 +64,6 @@ export class ResourcesService {
     const items = await this.prisma.articleResourceExchange.findMany({
       where: { authorId: user.id },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 100,
       include: this.deliveryInclude(),
     });
     const summary = items.reduce((result, item) => {
@@ -74,7 +73,41 @@ export class ResourcesService {
       else result.pending += item.pointCost;
       return result;
     }, { total: 0, pending: 0, settled: 0, refunded: 0 });
-    return { summary, items: items.map((item) => this.toDelivery(item as unknown as DeliveryItem)) };
+    const aggregates = new Map<string, {
+      articleId: number;
+      article: { id: number; title: string; slug: string };
+      blockKey: string;
+      redemptionCount: number;
+      grossPoints: number;
+      pendingPoints: number;
+      settledPoints: number;
+      refundedPoints: number;
+    }>();
+    for (const item of items) {
+      const delivery = item as unknown as DeliveryItem;
+      const key = `${delivery.articleId}:${delivery.blockKey}`;
+      const aggregate = aggregates.get(key) ?? {
+        articleId: delivery.articleId,
+        article: delivery.article,
+        blockKey: delivery.blockKey,
+        redemptionCount: 0,
+        grossPoints: 0,
+        pendingPoints: 0,
+        settledPoints: 0,
+        refundedPoints: 0,
+      };
+      aggregate.redemptionCount += 1;
+      aggregate.grossPoints += delivery.pointCost;
+      if (delivery.deliveryStatus === ResourceDeliveryStatus.refunded) aggregate.refundedPoints += delivery.pointCost;
+      else if (delivery.sellerSettledAt) aggregate.settledPoints += delivery.pointCost;
+      else aggregate.pendingPoints += delivery.pointCost;
+      aggregates.set(key, aggregate);
+    }
+    return {
+      summary,
+      aggregates: [...aggregates.values()],
+      items: items.slice(0, 100).map((item) => this.toDelivery(item as unknown as DeliveryItem)),
+    };
   }
 
   async download(id: number, user: AuthenticatedUser) {
