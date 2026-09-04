@@ -1,9 +1,10 @@
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import { IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 
 export class ResourceAdjustmentDto {
-  @IsInt()
-  @Min(1)
-  userId!: number;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(32)
+  username!: string;
 
   @IsInt()
   @Min(1)

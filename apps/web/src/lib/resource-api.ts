@@ -15,11 +15,11 @@ export function refundResourceDelivery(token: string, id: number) {
   return requestJson(`/resources/admin/deliveries/${id}/refund`, { method: "POST", headers: authHeaders(token) });
 }
 
-export function topUpUserPoints(token: string, input: { userId: number; points: number; eventKey: string; note?: string }) {
+export function topUpUserPoints(token: string, input: { username: string; points: number; eventKey: string; note?: string }) {
   return requestJson<{ applied: boolean }>("/resources/admin/points/top-up", { method: "POST", headers: authHeaders(token), body: JSON.stringify(input) });
 }
 
-export function applyViolationPenalty(token: string, input: { userId: number; points: number; eventKey: string; note?: string }) {
+export function applyViolationPenalty(token: string, input: { username: string; points: number; eventKey: string; note?: string }) {
   return requestJson<{ applied: boolean }>("/resources/admin/points/violation", { method: "POST", headers: authHeaders(token), body: JSON.stringify(input) });
 }
 

@@ -170,13 +170,23 @@ export class ResourcesService {
   }
 
   async topUp(dto: ResourceAdjustmentDto) {
-    const applied = await this.prisma.$transaction((transaction) => this.reputationService.recordManualAdjustment(transaction, { userId: dto.userId, reason: ReputationReason.points_top_up, points: dto.points, eventKey: `points-top-up:${dto.userId}:${dto.eventKey.trim()}`, description: dto.note?.trim() || "管理员积分补发", metadata: { source: "admin", eventKey: dto.eventKey.trim() } }));
+    const targetUserId = await this.resolveAdjustmentUserId(dto.username);
+    const applied = await this.prisma.$transaction((transaction) => this.reputationService.recordManualAdjustment(transaction, { userId: targetUserId, reason: ReputationReason.points_top_up, points: dto.points, eventKey: `points-top-up:${targetUserId}:${dto.eventKey.trim()}`, description: dto.note?.trim() || "管理员积分补发", metadata: { source: "admin", eventKey: dto.eventKey.trim(), username: dto.username.trim().replace(/^@+/, "") } }));
     return { applied };
   }
 
   async violation(dto: ResourceAdjustmentDto) {
-    const applied = await this.prisma.$transaction((transaction) => this.reputationService.recordManualAdjustment(transaction, { userId: dto.userId, reason: ReputationReason.violation_penalty, points: -dto.points, eventKey: `violation-penalty:${dto.userId}:${dto.eventKey.trim()}`, description: dto.note?.trim() || "违规处理扣除积分", metadata: { source: "admin", eventKey: dto.eventKey.trim() } }));
+    const targetUserId = await this.resolveAdjustmentUserId(dto.username);
+    const applied = await this.prisma.$transaction((transaction) => this.reputationService.recordManualAdjustment(transaction, { userId: targetUserId, reason: ReputationReason.violation_penalty, points: -dto.points, eventKey: `violation-penalty:${targetUserId}:${dto.eventKey.trim()}`, description: dto.note?.trim() || "违规处理扣除积分", metadata: { source: "admin", eventKey: dto.eventKey.trim(), username: dto.username.trim().replace(/^@+/, "") } }));
     return { applied };
+  }
+
+  private async resolveAdjustmentUserId(rawUsername: string): Promise<number> {
+    const username = rawUsername.trim().replace(/^@+/, "");
+    if (!username) throw new BadRequestException("请输入用户名。");
+    const target = await this.prisma.user.findUnique({ where: { username }, select: { id: true } });
+    if (!target) throw new NotFoundException("用户不存在。");
+    return target.id;
   }
 
   private deliveryInclude() {

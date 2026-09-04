@@ -97,10 +97,10 @@ describe("resource delivery lifecycle", () => {
 
   it("passes administrator point adjustments through the ledger with a stable event key", async () => {
     const recordManualAdjustment = jest.fn(async () => true);
-    const prisma = { $transaction: jest.fn(async (callback: (transaction: object) => Promise<boolean>) => callback({})) };
+    const prisma = { $transaction: jest.fn(async (callback: (transaction: object) => Promise<boolean>) => callback({})), user: { findUnique: jest.fn(async () => ({ id: 8 })) } };
     const service = new ResourcesService(prisma as unknown as PrismaService, { recordManualAdjustment } as unknown as ReputationService);
 
-    await expect(service.topUp({ userId: 8, points: 20, eventKey: "case-1", note: "补发" })).resolves.toEqual({ applied: true });
+    await expect(service.topUp({ username: "@author", points: 20, eventKey: "case-1", note: "补发" })).resolves.toEqual({ applied: true });
     expect(recordManualAdjustment).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       userId: 8,
       eventKey: "points-top-up:8:case-1",

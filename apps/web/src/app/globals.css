@@ -459,6 +459,8 @@
 .resource-adjustment-form .text-action { white-space: nowrap; }
 .resource-earnings-page { display: grid; gap: 12px; }
 .resource-earnings-page .profile-subpage-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.resource-page-title { display: inline-flex; align-items: center; gap: 7px; font-size: 1.58rem; }
+.resource-page-title svg { color: var(--accent-strong); flex: 0 0 auto; }
 .resource-earnings-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .resource-earnings-summary > div { display: flex; min-width: 0; align-items: center; gap: 8px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 82%, transparent); padding: 10px 12px; }
 .resource-earnings-summary svg { color: var(--accent-strong); flex: 0 0 auto; }
@@ -484,6 +486,7 @@
   .resource-adjustment-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .resource-adjustment-form > div { grid-column: 1 / -1; }
   .resource-earnings-page .profile-subpage-heading { display: grid; }
+  .resource-page-title { font-size: 1.42rem; }
   .resource-earnings-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .resource-earnings-aggregate-list > a, .resource-earnings-recent-list > article { grid-template-columns: minmax(0, 1fr); }
   .resource-earnings-aggregate-list > a > span:last-child, .resource-earnings-recent-list > article > span:last-child { justify-items: start; text-align: left; }
