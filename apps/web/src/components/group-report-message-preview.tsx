@@ -8,6 +8,7 @@ import { useLanguage } from "@/components/language-provider";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
 import { formatDate } from "@/lib/i18n";
+import { getNamedFallbackText } from "@/lib/user-display";
 import {
   downloadChatAttachment,
   downloadChatAttachmentThumbnail,
@@ -133,15 +134,11 @@ function ReportAttachmentPreview({ attachment, onClose }: { attachment: ChatAtta
 }
 
 function UserAvatar({ user }: { user: ReportPreviewUser }) {
-  return <span className="chat-user-avatar">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : fallbackText(user.nickname)}</span>;
+  return <span className="chat-user-avatar">{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : getNamedFallbackText(user.nickname)}</span>;
 }
 
 function GroupAvatar({ group }: { group: ReportPreviewGroup }) {
-  return <span className="group-admin-avatar group-admin-group-avatar">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <strong>{fallbackText(group.name)}</strong>}</span>;
-}
-
-function fallbackText(value: string): string {
-  return Array.from(value.trim()).slice(0, 2).join("").toUpperCase() || "群";
+  return <span className="group-admin-avatar group-admin-group-avatar">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <strong>{getNamedFallbackText(group.name, "群")}</strong>}</span>;
 }
 
 function formatMinute(value: string, locale: "zh-CN" | "en-US"): string {

@@ -29,6 +29,7 @@ import {
 } from "@/lib/discovery-api";
 import { isSiteManager } from "@/lib/user-permissions";
 import { localizedPath } from "@/lib/i18n";
+import { getNamedFallbackText } from "@/lib/user-display";
 
 const blankTopic: TopicEditorDraft = {
   title: "",
@@ -277,7 +278,7 @@ export default function TopicsPage() {
           {filteredTopics.map((topic) => {
             const cardContent = <>
                 <span className="topic-card-cover">
-                  {topic.coverPath ? <Image alt="" height={258} src={resolveApiUrl(topic.coverPath)} unoptimized width={344} /> : <strong>{topic.title.slice(0, 2)}</strong>}
+                  {topic.coverPath ? <Image alt="" height={258} src={resolveApiUrl(topic.coverPath)} unoptimized width={344} /> : <strong>{getNamedFallbackText(topic.title, phrase("专题", "TP"))}</strong>}
                   <small>{phrase(`${topic.articleCount} 篇`, `${topic.articleCount} articles`)}</small>
                   {topic.status === "disabled" ? <em>{phrase("已停用", "Disabled")}</em> : null}
                 </span>

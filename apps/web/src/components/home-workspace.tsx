@@ -37,6 +37,7 @@ import {
   type PortalPreferences,
 } from "@/lib/portal-api";
 import { formatDate as formatLocaleDate, localizedPath } from "@/lib/i18n";
+import { getNamedFallbackText } from "@/lib/user-display";
 
 interface HomeData {
   announcements: AnnouncementSummary[];
@@ -178,7 +179,7 @@ export function HomeWorkspace() {
 
             <section className="p8-surface p8-discovery-panel">
               <div className="p8-section-heading"><div><Compass aria-hidden="true" size={17} /><h2>{t("home.topic")}</h2></div><Link href={localizedPath("/topics", locale)}>{t("home.viewAll")}<ArrowRight aria-hidden="true" size={14} /></Link></div>
-              {data.topics.length ? <div className="p8-discovery-list">{data.topics.slice(0, 3).map((topic) => <Link href={localizedPath(`/topics/${topic.slug}`, locale)} key={topic.id}><span>{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <Compass aria-hidden="true" size={16} />}</span><strong>{topic.title}</strong><small>{t("home.articleCount", { count: topic.articleCount })}</small></Link>)}</div> : <P8Empty text={t("home.noTopics")} />}
+              {data.topics.length ? <div className="p8-discovery-list">{data.topics.slice(0, 3).map((topic) => <Link href={localizedPath(`/topics/${topic.slug}`, locale)} key={topic.id}><span>{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : getNamedFallbackText(topic.title)}</span><strong>{topic.title}</strong><small>{t("home.articleCount", { count: topic.articleCount })}</small></Link>)}</div> : <P8Empty text={t("home.noTopics")} />}
               {data.collections.length ? <><div className="p8-subsection-label"><FolderOpen aria-hidden="true" size={14} />{t("home.collection")}</div><div className="p8-collection-list">{data.collections.map((collection) => <Link href={localizedPath(`/collections/${collection.id}`, locale)} key={collection.id}><strong>{collection.name}</strong><small>{t("home.articleCount", { count: collection.articleCount })} · {collection.owner.nickname}</small></Link>)}</div></> : null}
             </section>
           </aside>

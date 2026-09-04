@@ -11,6 +11,7 @@ import { getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { formatDate, localizedPath, type TranslationKey } from "@/lib/i18n";
 import { isSiteManager } from "@/lib/user-permissions";
+import { getAvatarFallbackText, getNamedFallbackText } from "@/lib/user-display";
 import {
   banChatGroup,
   downloadChatAttachmentThumbnail,
@@ -196,7 +197,7 @@ export default function GroupReportsAdminPage() {
 function GroupAdminGrid({ groups, busyKey, locale, membersLoadingId, onBan, onLift, onOpenMembers, onOpenProfile, t }: { groups: ChatGroupSummary[]; busyKey: string; locale: "zh-CN" | "en-US"; membersLoadingId: number; onBan: (group: ChatGroupSummary) => void; onLift: (group: ChatGroupSummary) => Promise<void>; onOpenMembers: (group: ChatGroupSummary) => Promise<void>; onOpenProfile: (username: string) => void; t: Translate }) {
   if (!groups.length) return <div className="article-empty-state">{t("groupAdmin.noGroups")}</div>;
   return <div className="group-admin-grid">{groups.map((group) => <article className={`group-admin-card${group.isBanned ? " banned" : ""}`} key={group.id}>
-    <div className="group-admin-card-cover">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <strong>{fallbackText(group.name)}</strong>}<span>{group.isBanned ? <><Ban aria-hidden="true" size={14} />{t("groupAdmin.banned")}</> : t("groupAdmin.normal")}</span></div>
+    <div className="group-admin-card-cover">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <strong>{getNamedFallbackText(group.name, "群")}</strong>}<span>{group.isBanned ? <><Ban aria-hidden="true" size={14} />{t("groupAdmin.banned")}</> : t("groupAdmin.normal")}</span></div>
     <div className="group-admin-card-body"><div className="group-admin-card-title"><strong>{group.name}</strong><small>{t("common.people", { count: group.memberCount })} · {group.temporary ? t("groupAdmin.temporary") : t("groupAdmin.longTerm")}</small></div><p>{group.announcement || t("groupAdmin.noIntroduction")}</p><div className="group-admin-owner"><button className="group-admin-owner-profile" onClick={() => onOpenProfile(group.owner.username)} title={t("groupAdmin.viewOwner", { name: group.owner.nickname })} type="button"><Avatar className="group-admin-owner-avatar" user={group.owner} /><span><small>{t("groupAdmin.owner")}</small><strong>{group.owner.nickname}</strong></span></button><button aria-label={t("groupAdmin.viewMembers", { name: group.name })} className="group-admin-owner-members" disabled={membersLoadingId === group.id} onClick={() => void onOpenMembers(group)} title={t("groupAdmin.members")} type="button">{membersLoadingId === group.id ? <LoaderCircle aria-hidden="true" className="spin" size={14} /> : <UserRound aria-hidden="true" size={14} />}</button></div><footer>{group.isBanned ? <button className="icon-action" disabled={busyKey === `lift:${group.id}`} onClick={() => void onLift(group)} title={t("groupAdmin.liftBan")} type="button">{busyKey === `lift:${group.id}` ? <LoaderCircle className="spin" size={16} /> : <ShieldOff aria-hidden="true" size={16} />}</button> : <button className="icon-action danger" disabled={busyKey === `ban:${group.id}`} onClick={() => onBan(group)} title={t("groupAdmin.ban")} type="button">{busyKey === `ban:${group.id}` ? <LoaderCircle className="spin" size={16} /> : <Ban aria-hidden="true" size={16} />}</button>}<small>{group.isBanned ? group.bannedUntil ? t("groupAdmin.banUntil", { time: formatMinute(group.bannedUntil, locale) }) : t("groupAdmin.permanentBan") : t("groupAdmin.canSpeak")}</small></footer></div>
   </article>)}</div>;
 }
@@ -239,15 +240,11 @@ function ReportCardImage({ attachment, t }: { attachment: ChatAttachment; t: Tra
 }
 
 function Avatar({ user, className = "" }: { user: SocialUser; className?: string }) {
-  return <span className={`group-admin-avatar${className ? ` ${className}` : ""}`}>{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : <strong>{fallbackText(user.nickname)}</strong>}</span>;
+  return <span className={`group-admin-avatar${className ? ` ${className}` : ""}`}>{user.avatarUrl ? <img alt="" src={resolveApiUrl(user.avatarUrl)} /> : <strong>{getAvatarFallbackText(user)}</strong>}</span>;
 }
 
 function GroupAvatar({ group }: { group: Pick<ChatGroupSummary, "name" | "avatarUrl"> | ChatGroupReport["group"] }) {
-  return <span className="group-admin-avatar group-admin-group-avatar">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <strong>{fallbackText(group.name)}</strong>}</span>;
-}
-
-function fallbackText(value: string): string {
-  return Array.from(value.trim()).slice(0, 2).join("").toUpperCase() || "群";
+  return <span className="group-admin-avatar group-admin-group-avatar">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : <strong>{getNamedFallbackText(group.name, "群")}</strong>}</span>;
 }
 
 function memberRoleLabel(role: ChatGroupMember["role"], t: Translate): string {

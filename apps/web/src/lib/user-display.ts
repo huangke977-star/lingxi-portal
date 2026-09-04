@@ -8,6 +8,10 @@ export function getUserDisplayName(user: DisplayUser): string {
 }
 
 export function getAvatarFallbackText(user: DisplayUser): string {
-  const characters = Array.from(getUserDisplayName(user));
-  return characters.slice(-2).join("").toUpperCase();
+  return getNamedFallbackText(getUserDisplayName(user));
+}
+
+export function getNamedFallbackText(value: string, fallback = "?"): string {
+  const characters = Array.from(value.trim());
+  return characters.slice(-2).join("").toUpperCase() || fallback;
 }

@@ -18,7 +18,6 @@ import "./misans.css";
 import "./globals.css";
 
 const API_BASE_URL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
-const IOS_TOUCH_ICON_PATH = "/icon-192.png";
 
 interface PublicBrandSettings {
   siteName?: string;
@@ -43,7 +42,7 @@ export async function generateMetadata(): Promise<Metadata> {
     icons: {
       icon: [{ url: iconPath }],
       shortcut: [{ url: iconPath }],
-      apple: [{ url: IOS_TOUCH_ICON_PATH, sizes: "192x192", type: "image/png" }],
+      apple: [{ url: iconPath, sizes: "192x192", type: "image/png" }],
     },
     appleWebApp: { capable: true, statusBarStyle: "default", title: siteName },
     other: {

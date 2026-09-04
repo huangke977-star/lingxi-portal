@@ -132,7 +132,7 @@ import {
   type ChatDockOpenDetail,
   notifySocialStateChange,
 } from "@/lib/social-events";
-import { getAvatarFallbackText } from "@/lib/user-display";
+import { getAvatarFallbackText, getNamedFallbackText } from "@/lib/user-display";
 import { localizedPath } from "@/lib/i18n";
 import { chatSystemMessageBody, notificationBody, notificationTitle } from "@/lib/system-labels";
 import {
@@ -3082,7 +3082,7 @@ function ConversationAvatar({ conversation }: { conversation: Conversation }) {
   if (!conversation.group) return <UserAvatar user={conversation.user} />;
   return <span className="chat-user-avatar chat-group-conversation-avatar">{conversation.group.avatarUrl
     ? <img alt="" src={resolveApiUrl(conversation.group.avatarUrl)} />
-    : Array.from(conversation.group.name.trim()).slice(-2).join("").toUpperCase()}</span>;
+    : getNamedFallbackText(conversation.group.name, "群")}</span>;
 }
 
 function NotificationPanel({
@@ -3245,7 +3245,7 @@ function NotificationIdentity({
   const group = notification.context?.group;
   const useGroup = Boolean(group && (notification.context?.kind === "group_invitation" || notification.context?.kind === "group_report"));
   if (useGroup && group) {
-    return <button aria-label={phrase(`查看群聊 ${group.name}`, `View group ${group.name}`)} className="chat-notification-identity" onClick={() => onOpenGroup(group.id)} title={phrase("查看群资料", "View group details")} type="button"><span className="chat-user-avatar chat-group-conversation-avatar">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : Array.from(group.name.trim()).slice(-2).join("").toUpperCase()}</span></button>;
+    return <button aria-label={phrase(`查看群聊 ${group.name}`, `View group ${group.name}`)} className="chat-notification-identity" onClick={() => onOpenGroup(group.id)} title={phrase("查看群资料", "View group details")} type="button"><span className="chat-user-avatar chat-group-conversation-avatar">{group.avatarUrl ? <img alt="" src={resolveApiUrl(group.avatarUrl)} /> : getNamedFallbackText(group.name, phrase("群", "GR"))}</span></button>;
   }
   if (notification.actor) {
     return <button aria-label={phrase(`查看 ${notification.actor.nickname} 的主页`, `View ${notification.actor.nickname}'s profile`)} className="chat-notification-identity" onClick={() => onOpenProfile(notification.actor!.username)} title={phrase("查看主页", "View profile")} type="button"><UserAvatar user={notification.actor} /></button>;

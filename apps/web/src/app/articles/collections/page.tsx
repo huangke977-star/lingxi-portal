@@ -43,6 +43,7 @@ import {
   uploadCollectionCover,
 } from "@/lib/discovery-api";
 import { localizedPath, type Locale } from "@/lib/i18n";
+import { getNamedFallbackText } from "@/lib/user-display";
 
 type CollectionView = "mine" | "browse";
 type CollectionPage = Awaited<ReturnType<typeof listVisibleCollections>>;
@@ -417,7 +418,7 @@ export default function ArticleCollectionsPage() {
           {isLoading ? (
             <div className="article-empty-state">{phrase("正在读取合集。", "Loading collections.")}</div>
           ) : collections.length ? <div className="collection-browse-grid collection-mine-grid">{collections.map((collection) => <article aria-label={phrase(`打开合集 ${collection.name}`, `Open collection ${collection.name}`)} className="collection-browse-card collection-mine-card" key={collection.id} onClick={() => router.push(localizedPath(`/collections/${collection.id}`, locale))} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) router.push(localizedPath(`/collections/${collection.id}`, locale)); }} role="link" tabIndex={0}>
-            <span className="collection-browse-cover">{collection.coverPath ? <Image alt="" height={258} src={resolveApiUrl(collection.coverPath)} unoptimized width={344} /> : <FolderOpen aria-hidden="true" size={34} />}<small>{phrase(`${collection.articleCount} 篇`, `${collection.articleCount} articles`)}</small></span>
+            <span className="collection-browse-cover">{collection.coverPath ? <Image alt="" height={258} src={resolveApiUrl(collection.coverPath)} unoptimized width={344} /> : <strong>{getNamedFallbackText(collection.name, phrase("合集", "CO"))}</strong>}<small>{phrase(`${collection.articleCount} 篇`, `${collection.articleCount} articles`)}</small></span>
             <span className="collection-browse-copy"><strong>{collection.name}</strong><small>{collection.description || phrase("这个合集暂时没有说明。", "No collection description yet.")}</small><em>{phrase(`更新于 ${formatArticleDate(collection.updatedAt, locale)}`, `Updated ${formatArticleDate(collection.updatedAt, locale)}`)}</em></span>
             <footer><span>{collectionVisibilityLabel(collection.visibility, locale)} · {phrase(`${collection.subscriberCount} 人订阅`, `${collection.subscriberCount} subscribers`)}</span><button aria-label={phrase(`编辑 ${collection.name}`, `Edit ${collection.name}`)} onClick={(event) => { event.stopPropagation(); openCollectionEditor(collection); }} onKeyDown={(event) => event.stopPropagation()} title={phrase("编辑合集", "Edit collection")} type="button"><Pencil aria-hidden="true" size={15} /></button></footer>
           </article>)}</div> : <div className="article-empty-state">{phrase("还没有合集，先创建一个。", "No collections yet. Create one to begin.")}</div>}
@@ -500,7 +501,7 @@ function CollectionEditorDialog({
         <label className="wide"><span>{phrase("合集说明", "Collection description")}</span><textarea maxLength={300} onChange={(event) => onDescriptionChange(event.target.value)} rows={3} value={description} /></label>
       </div>
       <div className="collection-editor-cover-control">
-        <div className="collection-cover-preview">{coverPreview ? <Image alt={phrase("合集封面预览", "Collection cover preview")} height={258} src={coverPreview} unoptimized width={344} /> : <FolderOpen aria-hidden="true" size={28} />}</div>
+        <div className="collection-cover-preview">{coverPreview ? <Image alt={phrase("合集封面预览", "Collection cover preview")} height={258} src={coverPreview} unoptimized width={344} /> : <strong>{getNamedFallbackText(name, phrase("合集", "CO"))}</strong>}</div>
         <span><strong>{coverFile?.name || phrase("本地封面", "Local cover")}</strong><small>{phrase("支持 JPEG、PNG、WebP、AVIF，最大 10 MB；本地图片优先于图片地址。", "JPEG, PNG, WebP, and AVIF up to 10 MB. A local image overrides the image URL.")}</small></span>
         <label title={phrase("选择本地封面", "Choose local cover")}><ImagePlus aria-hidden="true" size={16} /><span>{phrase("上传图片", "Upload image")}</span><input accept="image/jpeg,image/png,image/webp,image/avif" disabled={isSaving} onChange={(event) => { onCoverFileChange(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} type="file" /></label>
       </div>
@@ -544,7 +545,7 @@ function BrowseCollections({
             <article className="collection-browse-card" key={collection.id}>
               <Link href={localizedPath(`/collections/${collection.id}`, locale)}>
                 <span className="collection-browse-cover">
-                  {collection.coverPath ? <Image alt="" height={258} src={resolveApiUrl(collection.coverPath)} unoptimized width={344} /> : <FolderOpen aria-hidden="true" size={34} />}
+                  {collection.coverPath ? <Image alt="" height={258} src={resolveApiUrl(collection.coverPath)} unoptimized width={344} /> : <strong>{getNamedFallbackText(collection.name, phrase("合集", "CO"))}</strong>}
                   <small>{phrase(`${collection.articleCount} 篇`, `${collection.articleCount} articles`)}</small>
                 </span>
                 <span className="collection-browse-copy">

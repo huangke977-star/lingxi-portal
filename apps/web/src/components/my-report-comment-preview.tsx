@@ -6,6 +6,7 @@ import { useLanguage } from "@/components/language-provider";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { formatDate } from "@/lib/i18n";
 import type { ModerationReport } from "@/lib/moderation-api";
+import { getNamedFallbackText } from "@/lib/user-display";
 
 export function MyReportCommentPreview({ report, onClose }: { report: ModerationReport; onClose: () => void }) {
   const { locale, phrase, t } = useLanguage();
@@ -21,7 +22,7 @@ export function MyReportCommentPreview({ report, onClose }: { report: Moderation
         </header>
         <div className="my-report-comment-preview-content">
           <div className="my-report-comment-author">
-            <span className="chat-user-avatar">{author?.avatarUrl ? <img alt="" src={resolveApiUrl(author.avatarUrl)} /> : author?.nickname?.slice(0, 1) || "?"}</span>
+            <span className="chat-user-avatar">{author?.avatarUrl ? <img alt="" src={resolveApiUrl(author.avatarUrl)} /> : getNamedFallbackText(author?.nickname || "", phrase("评论作者", "CA"))}</span>
             <div><strong>{author?.nickname || phrase("评论作者", "Comment author")}</strong><small>{formatDate(report.createdAt, locale, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })}</small></div>
           </div>
           <p>{report.comment.body || phrase("评论内容为空。", "This comment has no text.")}</p>

@@ -2,13 +2,14 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Check, Compass, LoaderCircle, SkipForward, UserRound } from "lucide-react";
+import { Check, Compass, LoaderCircle, SkipForward } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLanguage } from "@/components/language-provider";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { AUTH_STATE_CHANGE_EVENT, readAccessToken } from "@/lib/auth-storage";
 import { completeOnboarding, getOnboarding, type OnboardingState } from "@/lib/discovery-api";
+import { getNamedFallbackText } from "@/lib/user-display";
 
 export function OnboardingController() {
   const { phrase } = useLanguage();
@@ -82,7 +83,7 @@ export function OnboardingController() {
               {state.topics.map((topic) => {
                 const selected = selectedTopicIds.includes(topic.id);
                 return <button aria-pressed={selected} className={selected ? "active" : ""} key={topic.id} onClick={() => toggleTopic(topic.id)} type="button">
-                  <span className="onboarding-topic-cover">{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : <Compass aria-hidden="true" size={18} />}</span>
+                  <span className="onboarding-topic-cover">{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : getNamedFallbackText(topic.title, phrase("专题", "TP"))}</span>
                   <span><strong>{topic.title}</strong><small>{topic.description || phrase(`${topic.articleCount} 篇文章`, `${topic.articleCount} articles`)}</small></span>
                   {selected ? <Check aria-hidden="true" size={16} /> : null}
                 </button>;
@@ -96,7 +97,7 @@ export function OnboardingController() {
               {state.authors.map((author) => {
                 const selected = selectedAuthorIds.includes(author.id);
                 return <button aria-pressed={selected} className={selected ? "active" : ""} key={author.id} onClick={() => toggleAuthor(author.id)} type="button">
-                  <span className="onboarding-author-avatar">{author.avatarUrl ? <img alt="" src={resolveApiUrl(author.avatarUrl)} /> : <UserRound aria-hidden="true" size={18} />}</span>
+                  <span className="onboarding-author-avatar">{author.avatarUrl ? <img alt="" src={resolveApiUrl(author.avatarUrl)} /> : getNamedFallbackText(author.nickname)}</span>
                   <span><strong>{author.nickname}</strong><small>{phrase("常写：", "Writes: ")}{author.topCategory}</small></span>
                   {selected ? <Check aria-hidden="true" size={16} /> : null}
                 </button>;

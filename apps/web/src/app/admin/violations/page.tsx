@@ -12,11 +12,12 @@ import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
 import { isSiteManager } from "@/lib/user-permissions";
 import { getAdminArticle, getViolationAuthor, listViolationAuthors, updateViolationRestriction, type Article, type ViolationAuthor, type ViolationAuthorDetail } from "@/lib/article-api";
+import { getNamedFallbackText } from "@/lib/user-display";
 
 function date(value: string, locale: "zh-CN" | "en-US") { return new Date(value).toLocaleString(locale, { hour12: false }); }
 function avatar(user: { nickname: string; avatarUrl: string | null }) {
   const avatarUrl = user.avatarUrl ? resolveApiUrl(user.avatarUrl) : null;
-  return avatarUrl ? <img alt="" src={avatarUrl} /> : <span>{user.nickname.slice(0, 1)}</span>;
+  return avatarUrl ? <img alt="" src={avatarUrl} /> : <span>{getNamedFallbackText(user.nickname)}</span>;
 }
 
 export default function ViolationAuthorsPage() {

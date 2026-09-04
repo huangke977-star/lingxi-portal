@@ -32,6 +32,7 @@ import { AvatarManagementBadge } from "@/components/user-identity-badges";
 import { useRouter } from "next/navigation";
 import { resolveApiUrl } from "@/lib/auth-api";
 import { localizedPath } from "@/lib/i18n";
+import { getAvatarFallbackText, getNamedFallbackText } from "@/lib/user-display";
 import {
   type ChatGroup,
   type ChatGroupMember,
@@ -580,11 +581,11 @@ function GroupMemberAvatar({
 }
 
 function GroupAvatar({ group, large = false }: { group: Pick<ChatGroupSummary, "name" | "avatarUrl">; large?: boolean }) {
-  return <span className={`chat-group-avatar${large ? " large" : ""}`}>{group.avatarUrl ? <img alt="" draggable={false} src={resolveApiUrl(group.avatarUrl)} /> : fallbackText(group.name)}</span>;
+  return <span className={`chat-group-avatar${large ? " large" : ""}`}>{group.avatarUrl ? <img alt="" draggable={false} src={resolveApiUrl(group.avatarUrl)} /> : getNamedFallbackText(group.name, "群")}</span>;
 }
 
 function UserAvatar({ user }: { user: SocialUser }) {
-  return <span className="chat-user-avatar identity-avatar-host"><span className="identity-avatar-visual">{user.avatarUrl ? <img alt="" draggable={false} src={resolveApiUrl(user.avatarUrl)} /> : fallbackText(user.nickname)}</span><AvatarManagementBadge user={user} /></span>;
+  return <span className="chat-user-avatar identity-avatar-host"><span className="identity-avatar-visual">{user.avatarUrl ? <img alt="" draggable={false} src={resolveApiUrl(user.avatarUrl)} /> : getAvatarFallbackText(user)}</span><AvatarManagementBadge user={user} /></span>;
 }
 
 function muteDurationLabel(minutes: number, phrase: (chinese: string, english: string) => string): string {
@@ -620,9 +621,6 @@ function messageOf(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-function fallbackText(name: string): string {
-  return Array.from(name.trim()).slice(-2).join("").toUpperCase();
-}
 
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
