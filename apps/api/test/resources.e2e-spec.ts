@@ -107,4 +107,47 @@ describe("resource delivery lifecycle", () => {
       points: 20,
     }));
   });
+
+  it("lists only manual point adjustments in newest-first order", async () => {
+    const createdAt = new Date("2026-09-04T04:00:00.000Z");
+    const prisma = {
+      userReputationLedger: {
+        count: jest.fn(async () => 1),
+        findMany: jest.fn(async () => [{
+          id: 41,
+          reason: "violation_penalty",
+          eventKey: "violation-penalty:8:case-2",
+          description: "违规处理扣除积分",
+          pointDelta: -5,
+          pointsAfter: 95,
+          createdAt,
+          user: { id: 8, nickname: "作者", username: "author" },
+        }]),
+      },
+    };
+    const service = new ResourcesService(prisma as unknown as PrismaService, {} as ReputationService);
+
+    await expect(service.listAdminPointAdjustments()).resolves.toEqual({
+      items: [{
+        id: 41,
+        reason: "violation_penalty",
+        eventKey: "violation-penalty:8:case-2",
+        description: "违规处理扣除积分",
+        pointDelta: -5,
+        pointsAfter: 95,
+        createdAt: createdAt.toISOString(),
+        user: { id: 8, nickname: "作者", username: "author" },
+      }],
+      total: 1,
+      page: 1,
+      pageSize: 50,
+      totalPages: 1,
+    });
+    expect(prisma.userReputationLedger.count).toHaveBeenCalledWith({ where: { reason: { in: ["points_top_up", "violation_penalty"] } } });
+    expect(prisma.userReputationLedger.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: 0,
+      take: 50,
+    }));
+  });
 });

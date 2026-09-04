@@ -59,6 +59,40 @@ export class ResourcesService {
     return { items: items.map((item) => this.toDelivery(item as unknown as DeliveryItem)), total, page: safePage, pageSize: safePageSize, totalPages: Math.max(1, Math.ceil(total / safePageSize)) };
   }
 
+  async listAdminPointAdjustments(page = 1, pageSize = 50) {
+    const safePage = Math.max(1, Math.floor(page));
+    const safePageSize = Math.min(100, Math.max(1, Math.floor(pageSize)));
+    const where: Prisma.UserReputationLedgerWhereInput = {
+      reason: { in: [ReputationReason.points_top_up, ReputationReason.violation_penalty] },
+    };
+    const [total, items] = await Promise.all([
+      this.prisma.userReputationLedger.count({ where }),
+      this.prisma.userReputationLedger.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: (safePage - 1) * safePageSize,
+        take: safePageSize,
+        include: { user: { select: { id: true, nickname: true, username: true } } },
+      }),
+    ]);
+    return {
+      items: items.map((item) => ({
+        id: item.id,
+        user: item.user,
+        reason: item.reason,
+        eventKey: item.eventKey,
+        description: item.description,
+        pointDelta: item.pointDelta,
+        pointsAfter: item.pointsAfter,
+        createdAt: item.createdAt.toISOString(),
+      })),
+      total,
+      page: safePage,
+      pageSize: safePageSize,
+      totalPages: Math.max(1, Math.ceil(total / safePageSize)),
+    };
+  }
+
   async creatorEarnings(user: AuthenticatedUser) {
     await this.reputationService.settlePendingPoints();
     const items = await this.prisma.articleResourceExchange.findMany({

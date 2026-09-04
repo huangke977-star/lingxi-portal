@@ -38,6 +38,12 @@ export class ResourcesController {
     return this.resourcesService.listAdmin(Number(page ?? 1), Number(pageSize ?? 50));
   }
 
+  @Get("admin/points/adjustments")
+  @UseGuards(UserManagementGuard)
+  listAdminPointAdjustments(@Query("page") page?: string, @Query("pageSize") pageSize?: string) {
+    return this.resourcesService.listAdminPointAdjustments(Number(page ?? 1), Number(pageSize ?? 50));
+  }
+
   @Post("admin/deliveries/:id/fail")
   @UseGuards(SuperAdminGuard)
   markFailed(@Param("id", ParseIntPipe) id: number, @Body() dto: ResourceFailureDto) {

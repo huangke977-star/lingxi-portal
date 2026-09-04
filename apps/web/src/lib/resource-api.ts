@@ -7,6 +7,29 @@ export function listAdminResourceDeliveries(token: string, page = 1, pageSize = 
   return requestJson<ResourceDeliveryPage>(`/resources/admin/deliveries?page=${page}&pageSize=${pageSize}`, { cache: "no-store", headers: authHeaders(token) });
 }
 
+export interface AdminPointAdjustment {
+  id: number;
+  user: { id: number; nickname: string; username: string };
+  reason: "points_top_up" | "violation_penalty";
+  eventKey: string;
+  description: string;
+  pointDelta: number;
+  pointsAfter: number;
+  createdAt: string;
+}
+
+export interface AdminPointAdjustmentPage {
+  items: AdminPointAdjustment[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export function listAdminPointAdjustments(token: string, page = 1, pageSize = 50) {
+  return requestJson<AdminPointAdjustmentPage>(`/resources/admin/points/adjustments?page=${page}&pageSize=${pageSize}`, { cache: "no-store", headers: authHeaders(token) });
+}
+
 export function markResourceDeliveryFailed(token: string, id: number, error: string) {
   return requestJson(`/resources/admin/deliveries/${id}/fail`, { method: "POST", headers: authHeaders(token), body: JSON.stringify({ error }) });
 }
