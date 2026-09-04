@@ -359,6 +359,28 @@ export class ReputationService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /** Applies an administrator or reconciliation adjustment through the same immutable ledger as ordinary points. */
+  async recordManualAdjustment(
+    transaction: Prisma.TransactionClient,
+    input: {
+      userId: number;
+      reason: ReputationReason;
+      points: number;
+      eventKey: string;
+      description: string;
+      metadata?: Prisma.InputJsonValue;
+    },
+  ): Promise<boolean> {
+    return this.award(transaction, {
+      userId: input.userId,
+      reason: input.reason,
+      eventKey: input.eventKey,
+      description: input.description,
+      points: input.points,
+      metadata: input.metadata,
+    });
+  }
+
   /** Settles author earnings after the dispute window without double-crediting a ledger row. */
   async settlePendingPoints(): Promise<number> {
     // Some lightweight service tests use a partial Prisma double without the optional ledger delegate.

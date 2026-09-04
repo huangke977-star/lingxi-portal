@@ -135,6 +135,24 @@ export class DiscoveryController {
     return this.discoveryService.recordRecommendationFeedback(user, dto);
   }
 
+  @Get("recommendations/feedback")
+  @UseGuards(JwtAuthGuard)
+  listRecommendationFeedback(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("targetType") targetType?: RecommendationFeedbackDto["targetType"],
+  ) {
+    return this.discoveryService.listRecommendationFeedbackManagement(user, targetType);
+  }
+
+  @Delete("recommendations/feedback")
+  @UseGuards(JwtAuthGuard)
+  clearRecommendationFeedback(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("targetType") targetType?: RecommendationFeedbackDto["targetType"],
+  ) {
+    return this.discoveryService.clearRecommendationFeedback(user, targetType);
+  }
+
   @Delete("recommendations/feedback/:targetType/:targetId")
   @UseGuards(JwtAuthGuard)
   removeRecommendationFeedback(

@@ -409,6 +409,62 @@
   .deleted-users-page .admin-search-field input { min-width: 0; width: 100%; }
 }
 
+/* P18 recommendation and resource workflows share the compact portal controls. */
+.discovery-recommendation-header-actions { display: inline-flex; align-items: center; gap: 4px; }
+.discovery-recommendation-header-actions > a { color: var(--muted); font-size: .62rem; text-decoration: none; }
+.discovery-recommendation-header-actions > a:hover { color: var(--accent-strong); }
+.discovery-recommendation-reasons { color: var(--accent-strong) !important; font-size: .58rem !important; }
+.recommendation-feedback-page,
+.resource-orders-page,
+.admin-resources-page { display: grid; gap: 12px; }
+.recommendation-feedback-page .profile-subpage-heading,
+.resource-orders-page .profile-subpage-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.recommendation-feedback-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.resource-catalog-toolbar-actions { display: inline-flex; align-items: center; gap: 8px; }
+.recommendation-feedback-list,
+.resource-delivery-list,
+.resource-admin-delivery-list { display: grid; gap: 7px; }
+.recommendation-feedback-list article,
+.resource-delivery-list article,
+.resource-admin-delivery-list article { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; border-radius: 8px; background: color-mix(in srgb, var(--panel) 82%, transparent); padding: 11px 13px; }
+.recommendation-feedback-list article > span,
+.resource-delivery-main,
+.resource-admin-delivery-list article > span { display: grid; min-width: 0; gap: 3px; }
+.recommendation-feedback-list strong,
+.resource-delivery-list strong,
+.resource-admin-delivery-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; }
+.recommendation-feedback-list small,
+.resource-delivery-list small,
+.resource-admin-delivery-list small { color: var(--muted); font-size: .64rem; }
+.resource-delivery-status { width: fit-content; border-radius: 999px; color: var(--accent-strong); font-size: .62rem; }
+.resource-delivery-status.failed { color: #a04d54; }
+.resource-delivery-status.refunded { color: var(--muted); }
+.article-resource-income small.refunded { color: #a04d54; }
+.resource-delivery-actions,
+.resource-admin-delivery-list article > div { display: inline-flex; align-items: center; gap: 4px; }
+.resource-delivery-list details { grid-column: 1 / -1; color: var(--muted); font-size: .62rem; }
+.resource-delivery-list details summary { cursor: pointer; }
+.resource-delivery-list details > div { display: grid; gap: 3px; padding-top: 6px; }
+.resource-adjustment-panel,
+.resource-admin-delivery-panel { display: grid; gap: 10px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 82%, transparent); padding: 13px; }
+.resource-adjustment-panel > header,
+.resource-admin-delivery-panel > header { display: flex; align-items: center; gap: 6px; color: var(--accent-strong); }
+.resource-adjustment-panel > header strong,
+.resource-admin-delivery-panel > header strong { color: var(--foreground); font-size: .78rem; }
+.resource-admin-delivery-panel > header { justify-content: space-between; }
+.resource-admin-delivery-panel > header small { color: var(--muted); font-size: .66rem; }
+.resource-adjustment-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.resource-adjustment-form input { min-width: 0; border: 0; border-radius: 6px; background: color-mix(in srgb, var(--surface) 58%, transparent); color: var(--foreground); font: inherit; font-size: .7rem; outline: 0; padding: 8px 9px; }
+.resource-adjustment-form > div { display: inline-flex; gap: 6px; }
+.resource-adjustment-form .text-action { white-space: nowrap; }
+@media (max-width: 760px) {
+  .recommendation-feedback-page .profile-subpage-heading,
+  .resource-orders-page .profile-subpage-heading { display: grid; }
+  .recommendation-feedback-toolbar { align-items: stretch; flex-direction: column; }
+  .resource-adjustment-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .resource-adjustment-form > div { grid-column: 1 / -1; }
+}
+
 @media (min-width: 761px) and (max-width: 1080px) {
   .admin-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

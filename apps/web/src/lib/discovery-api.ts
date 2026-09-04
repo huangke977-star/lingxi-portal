@@ -92,15 +92,24 @@ export interface ProfileShowcase {
 }
 
 export interface DiscoveryRecommendations {
-  topics: Array<{ id: number; title: string; slug: string; description: string; coverPath: string | null; articleCount: number; subscriberCount: number; subscribed: boolean; updatedAt: string }>;
-  collections: Array<{ id: number; name: string; description: string; articleCount: number; subscriberCount: number; subscribed: boolean; owner: ArticleAuthor; updatedAt: string }>;
-  groups: Array<{ id: number; conversationId: number; name: string; avatarUrl: string | null; announcement: string; memberCount: number; joinMode: "approval" | "invite_only"; isMember: boolean; updatedAt: string }>;
-  authors: Array<ArticleAuthor & { topCategory: string; articleCount: number; engagementCount: number; subscribed: boolean }>;
+  topics: Array<{ id: number; title: string; slug: string; description: string; coverPath: string | null; articleCount: number; subscriberCount: number; subscribed: boolean; updatedAt: string; reasons: RecommendationReason[] }>;
+  collections: Array<{ id: number; name: string; description: string; articleCount: number; subscriberCount: number; subscribed: boolean; owner: ArticleAuthor; updatedAt: string; reasons: RecommendationReason[] }>;
+  groups: Array<{ id: number; conversationId: number; name: string; avatarUrl: string | null; announcement: string; memberCount: number; joinMode: "approval" | "invite_only"; isMember: boolean; updatedAt: string; reasons: RecommendationReason[] }>;
+  authors: Array<ArticleAuthor & { topCategory: string; articleCount: number; engagementCount: number; subscribed: boolean; reasons: RecommendationReason[] }>;
   batch: number;
   hasMore: boolean;
 }
 
 export type RecommendationTargetType = "article" | "topic" | "collection" | "author" | "group";
+export type RecommendationReason = "based_on_reading" | "based_on_subscription" | "based_on_interaction" | "popular" | "recently_active";
+
+export interface RecommendationFeedbackItem {
+  id: number;
+  targetType: RecommendationTargetType;
+  targetId: number;
+  label: string;
+  createdAt: string;
+}
 
 export interface ResourceCatalogItem {
   article: DiscoveryArticle;
@@ -111,6 +120,41 @@ export interface ResourceCatalogItem {
 
 export interface ResourceCatalog {
   items: ResourceCatalogItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export type ResourceDeliveryStatus = "unlocked" | "downloaded" | "failed" | "refunded";
+export interface ResourceDeliveryEvent {
+  id: number;
+  type: "redeemed" | "unlocked" | "downloaded" | "failed" | "retry" | "refunded";
+  attempt: number;
+  detail: string | null;
+  createdAt: string;
+}
+export interface ResourceDelivery {
+  id: number;
+  articleId: number;
+  article: { id: number; title: string; slug: string };
+  blockKey: string;
+  pointCost: number;
+  status: ResourceDeliveryStatus;
+  attemptCount: number;
+  lastError: string | null;
+  downloadedAt: string | null;
+  refundedAt: string | null;
+  createdAt: string;
+  availableAt: string;
+  settledAt: string | null;
+  buyer: { id: number; nickname: string; username: string };
+  author: { id: number; nickname: string; username: string };
+  events: ResourceDeliveryEvent[];
+}
+
+export interface ResourceDeliveryPage {
+  items: ResourceDelivery[];
   total: number;
   page: number;
   pageSize: number;
@@ -191,6 +235,14 @@ export function removeRecommendationFeedback(accessToken: string, targetType: Re
   });
 }
 
+export function listRecommendationFeedback(accessToken: string, targetType?: RecommendationTargetType) {
+  return requestJson<{ items: RecommendationFeedbackItem[] }>(`/discovery/recommendations/feedback${targetType ? `?targetType=${targetType}` : ""}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function clearRecommendationFeedback(accessToken: string, targetType?: RecommendationTargetType) {
+  return requestJson<{ count: number }>(`/discovery/recommendations/feedback${targetType ? `?targetType=${targetType}` : ""}`, { method: "DELETE", headers: authHeaders(accessToken) });
+}
+
 export function getOnboarding(accessToken: string) {
   return requestJson<OnboardingState>("/discovery/onboarding", { cache: "no-store", headers: authHeaders(accessToken) });
 }
@@ -206,6 +258,18 @@ export function listResourceCatalog(accessToken?: string | null, input: { q?: st
 
 export function getResourceCatalogSummary(accessToken: string) {
   return requestJson<{ purchasedBlocks: number; soldBlocks: number; pendingPoints: number }>("/discovery/resources/summary", { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function listMyResourceDeliveries(accessToken: string, page = 1, pageSize = 20) {
+  return requestJson<ResourceDeliveryPage>(`/resources/mine/deliveries?page=${page}&pageSize=${pageSize}`, { cache: "no-store", headers: authHeaders(accessToken) });
+}
+
+export function downloadResourceDelivery(accessToken: string, id: number) {
+  return requestJson<{ id: number; status: ResourceDeliveryStatus }>(`/resources/deliveries/${id}/download`, { method: "POST", headers: authHeaders(accessToken) });
+}
+
+export function retryResourceDelivery(accessToken: string, id: number) {
+  return requestJson<{ id: number; status: ResourceDeliveryStatus; attemptCount?: number }>(`/resources/deliveries/${id}/retry`, { method: "POST", headers: authHeaders(accessToken) });
 }
 
 export function subscribeTopic(accessToken: string, id: number) {

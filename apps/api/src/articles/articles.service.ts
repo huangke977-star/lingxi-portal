@@ -565,11 +565,11 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       }),
       this.prisma.articleResourceExchange.count({ where: { authorId: user.id } }),
       this.prisma.articleResourceExchange.aggregate({
-        where: { authorId: user.id, sellerSettledAt: null },
+        where: { authorId: user.id, sellerSettledAt: null, deliveryStatus: { not: "refunded" } },
         _sum: { pointCost: true },
       }),
       this.prisma.articleResourceExchange.aggregate({
-        where: { authorId: user.id, sellerSettledAt: { not: null } },
+        where: { authorId: user.id, sellerSettledAt: { not: null }, deliveryStatus: { not: "refunded" } },
         _sum: { pointCost: true },
       }),
       this.prisma.articleResourceExchange.findMany({
@@ -582,6 +582,10 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
           createdAt: true,
           sellerAvailableAt: true,
           sellerSettledAt: true,
+          blockKey: true,
+          deliveryStatus: true,
+          refundedAt: true,
+          buyer: { select: { id: true, nickname: true, username: true } },
           article: { select: { id: true, title: true, slug: true } },
         },
       }),
@@ -594,14 +598,24 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       resourceExchanges,
       pendingPoints: pending._sum.pointCost ?? 0,
       settledPoints: settled._sum.pointCost ?? 0,
-      recentResourceIncome: recentResourceIncome.map((item) => ({
-        id: item.id,
-        article: item.article,
-        pointCost: item.pointCost,
-        createdAt: item.createdAt.toISOString(),
-        availableAt: item.sellerAvailableAt.toISOString(),
-        settledAt: item.sellerSettledAt?.toISOString() ?? null,
-      })),
+      recentResourceIncome: recentResourceIncome.map((item) => {
+        const base = {
+          id: item.id,
+          article: item.article,
+          pointCost: item.pointCost,
+          createdAt: item.createdAt.toISOString(),
+          availableAt: item.sellerAvailableAt.toISOString(),
+          settledAt: item.sellerSettledAt?.toISOString() ?? null,
+        };
+        // Older migration test doubles deliberately omit P18 columns.
+        return item.deliveryStatus === undefined ? base : {
+          ...base,
+          blockKey: item.blockKey,
+          buyer: item.buyer,
+          deliveryStatus: item.deliveryStatus,
+          refundedAt: item.refundedAt?.toISOString() ?? null,
+        };
+      }),
     };
   }
 
@@ -1492,7 +1506,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
             select: { id: true },
           });
           if (existing) return;
-          await transaction.articleResourceExchange.create({
+          const exchange = await transaction.articleResourceExchange.create({
             data: {
               articleId: id,
               buyerId: user.id,
@@ -1502,6 +1516,11 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
               sellerAvailableAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
             },
           });
+          const deliveryEvents = (transaction as unknown as { articleResourceDeliveryEvent?: { create: (args: unknown) => Promise<unknown> } }).articleResourceDeliveryEvent;
+          if (deliveryEvents) {
+            await deliveryEvents.create({ data: { exchangeId: exchange.id, type: "redeemed", attempt: 0, detail: "资源兑换成功", eventKey: `resource-delivery:${exchange.id}:redeemed` } });
+            await deliveryEvents.create({ data: { exchangeId: exchange.id, type: "unlocked", attempt: 0, detail: "资源已解锁", eventKey: `resource-delivery:${exchange.id}:unlocked` } });
+          }
           await this.reputationService.transferResourcePoints(transaction, {
             buyerId: user.id,
             authorId: article.authorId,

@@ -8,7 +8,10 @@ export type ReputationReason =
   | "author_subscribed"
   | "resource_redeemed"
   | "resource_sold"
-  | "article_report_accepted";
+  | "article_report_accepted"
+  | "points_top_up"
+  | "resource_refund"
+  | "violation_penalty";
 
 export interface ReputationLevel {
   code: string;

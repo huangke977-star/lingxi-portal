@@ -1,3 +1,5 @@
+import type { RecommendationTargetType } from "../generated/prisma/client";
+
 export interface DiscoveryAuthorResponse {
   id: number;
   nickname: string;
@@ -138,22 +140,39 @@ export interface DiscoveryGroupRecommendation {
   joinMode: "approval" | "invite_only";
   isMember: boolean;
   updatedAt: string;
+  reasons: RecommendationReason[];
 }
+
+export type RecommendationReason =
+  | "based_on_reading"
+  | "based_on_subscription"
+  | "based_on_interaction"
+  | "popular"
+  | "recently_active";
 
 export interface DiscoveryAuthorRecommendation extends DiscoveryAuthorResponse {
   topCategory: string;
   articleCount: number;
   engagementCount: number;
   subscribed: boolean;
+  reasons: RecommendationReason[];
 }
 
 export interface DiscoveryRecommendationsResponse {
-  topics: Array<{ id: number; title: string; slug: string; description: string; coverPath: string | null; articleCount: number; subscriberCount: number; subscribed: boolean; updatedAt: string }>;
-  collections: Array<{ id: number; name: string; description: string; articleCount: number; subscriberCount: number; subscribed: boolean; owner: DiscoveryAuthorResponse; updatedAt: string }>;
+  topics: Array<{ id: number; title: string; slug: string; description: string; coverPath: string | null; articleCount: number; subscriberCount: number; subscribed: boolean; updatedAt: string; reasons: RecommendationReason[] }>;
+  collections: Array<{ id: number; name: string; description: string; articleCount: number; subscriberCount: number; subscribed: boolean; owner: DiscoveryAuthorResponse; updatedAt: string; reasons: RecommendationReason[] }>;
   groups: DiscoveryGroupRecommendation[];
   authors: DiscoveryAuthorRecommendation[];
   batch: number;
   hasMore: boolean;
+}
+
+export interface RecommendationFeedbackItemResponse {
+  id: number;
+  targetType: RecommendationTargetType;
+  targetId: number;
+  label: string;
+  createdAt: string;
 }
 
 export interface ProfileSettingsResponse {

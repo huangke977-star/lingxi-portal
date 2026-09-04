@@ -83,6 +83,25 @@ enum ReputationReason {
   resource_redeemed
   resource_sold
   article_report_accepted
+  points_top_up
+  resource_refund
+  violation_penalty
+}
+
+enum ResourceDeliveryStatus {
+  unlocked
+  downloaded
+  failed
+  refunded
+}
+
+enum ResourceDeliveryEventType {
+  redeemed
+  unlocked
+  downloaded
+  failed
+  retry
+  refunded
 }
 
 enum SiteAssetKind {
@@ -1420,13 +1439,35 @@ model ArticleResourceExchange {
   pointCost         Int       @map("point_cost")
   sellerAvailableAt DateTime  @map("seller_available_at")
   sellerSettledAt   DateTime? @map("seller_settled_at")
+  deliveryStatus    ResourceDeliveryStatus @default(unlocked) @map("delivery_status")
+  attemptCount      Int       @default(0) @map("attempt_count")
+  lastError         String?   @map("last_error") @db.VarChar(1000)
+  downloadedAt      DateTime? @map("downloaded_at")
+  refundedAt        DateTime? @map("refunded_at")
   createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deliveryEvents    ArticleResourceDeliveryEvent[]
 
   @@unique([articleId, buyerId, blockKey])
   @@index([articleId])
   @@index([buyerId, createdAt])
   @@index([authorId, sellerSettledAt, sellerAvailableAt], map: "article_resource_author_settle_idx")
   @@map("article_resource_exchanges")
+}
+
+model ArticleResourceDeliveryEvent {
+  id          Int                         @id @default(autoincrement())
+  exchangeId  Int                         @map("exchange_id")
+  exchange    ArticleResourceExchange     @relation(fields: [exchangeId], references: [id], onDelete: Cascade)
+  type        ResourceDeliveryEventType
+  attempt     Int                         @default(0)
+  detail      String?                     @db.VarChar(1000)
+  eventKey    String                      @unique @map("event_key") @db.VarChar(191)
+  createdAt   DateTime                    @default(now()) @map("created_at")
+
+  @@index([exchangeId, createdAt])
+  @@index([type, createdAt])
+  @@map("article_resource_delivery_events")
 }
 
 model SearchHistory {

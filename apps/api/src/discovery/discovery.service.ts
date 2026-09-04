@@ -57,6 +57,7 @@ import {
   OnboardingResponse,
   ProfileSettingsResponse,
   ProfileShowcaseResponse,
+  RecommendationFeedbackItemResponse,
   ResourceCatalogResponse,
   ResourceCatalogSummaryResponse,
   SubscriptionFeedResponse,
@@ -223,6 +224,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
   ): Promise<DiscoveryRecommendationsResponse> {
     const batch = query.batch ?? 0;
     const feedback = await this.listRecommendationFeedback(user.id);
+    const signals = await this.recommendationSignals(user);
     const topicWhere: Prisma.ArticleTopicWhereInput = {
       AND: [
         this.topicVisibleWhere(user),
@@ -270,16 +272,122 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
           _count: { select: { members: { where: { status: ChatGroupMemberStatus.active } } } },
         },
       }),
-      this.listRecommendedAuthors(user, feedback.authorIds, batch),
+      this.listRecommendedAuthors(user, feedback.authorIds, batch, signals),
     ]);
     return {
-      topics: topics.map((topic) => ({ id: topic.id, title: topic.title, slug: topic.slug, description: topic.description, coverPath: topic.coverPath, articleCount: topic._count.items, subscriberCount: topic._count.subscribers, subscribed: false, updatedAt: topic.updatedAt.toISOString() })),
-      collections: collections.map((collection) => ({ id: collection.id, name: collection.name, description: collection.description, articleCount: collection._count.items, subscriberCount: collection._count.subscribers, subscribed: false, owner: this.toAuthor(collection.owner), updatedAt: collection.updatedAt.toISOString() })),
-      groups: groups.map((group) => ({ id: group.id, conversationId: group.conversationId, name: group.name, avatarUrl: group.avatarStoredName ? `/social/groups/${group.id}/avatar` : group.avatarUrl, announcement: group.announcement, memberCount: group._count.members, joinMode: group.joinMode, isMember: Boolean(group.members.length), updatedAt: group.updatedAt.toISOString() })),
+      topics: topics.map((topic) => ({ id: topic.id, title: topic.title, slug: topic.slug, description: topic.description, coverPath: topic.coverPath, articleCount: topic._count.items, subscriberCount: topic._count.subscribers, subscribed: false, updatedAt: topic.updatedAt.toISOString(), reasons: this.recommendationReasons(signals.topicIds.has(topic.id), false, false, topic._count.items > 1) })),
+      collections: collections.map((collection) => ({ id: collection.id, name: collection.name, description: collection.description, articleCount: collection._count.items, subscriberCount: collection._count.subscribers, subscribed: false, owner: this.toAuthor(collection.owner), updatedAt: collection.updatedAt.toISOString(), reasons: this.recommendationReasons(signals.collectionIds.has(collection.id), signals.subscribedAuthorIds.has(collection.owner.id), false, collection._count.items > 1) })),
+      groups: groups.map((group) => ({ id: group.id, conversationId: group.conversationId, name: group.name, avatarUrl: group.avatarStoredName ? `/social/groups/${group.id}/avatar` : group.avatarUrl, announcement: group.announcement, memberCount: group._count.members, joinMode: group.joinMode, isMember: Boolean(group.members.length), updatedAt: group.updatedAt.toISOString(), reasons: ["popular"] })),
       authors,
       batch,
       hasMore: topics.length === 4 || collections.length === 4 || groups.length === 4 || authors.length === 4,
     };
+  }
+
+  private async recommendationSignals(user: AuthenticatedUser) {
+    type SignalRow = { articleId: number; article?: { authorId: number } | null };
+    type TopicSignalRow = { topicId: number };
+    type CollectionSignalRow = { collectionId: number };
+    type SubscriptionSignalRow = { authorId: number };
+    const prisma = this.prisma as unknown as {
+      articleReadingHistory?: { findMany: (args: unknown) => Promise<SignalRow[]> };
+      articleLike?: { findMany: (args: unknown) => Promise<SignalRow[]> };
+      articleFavorite?: { findMany: (args: unknown) => Promise<SignalRow[]> };
+      userSubscription?: { findMany: (args: unknown) => Promise<SubscriptionSignalRow[]> };
+      articleTopicItem?: { findMany: (args: unknown) => Promise<TopicSignalRow[]> };
+      articleCollectionItem?: { findMany: (args: unknown) => Promise<CollectionSignalRow[]> };
+    };
+    const read = prisma.articleReadingHistory?.findMany
+      ? prisma.articleReadingHistory.findMany({ where: { userId: user.id }, orderBy: [{ lastReadAt: "desc" }], take: 120, select: { articleId: true, article: { select: { authorId: true } } } })
+      : Promise.resolve([]);
+    const liked = prisma.articleLike?.findMany
+      ? prisma.articleLike.findMany({ where: { userId: user.id }, orderBy: [{ createdAt: "desc" }], take: 100, select: { articleId: true, article: { select: { authorId: true } } } })
+      : Promise.resolve([]);
+    const favorited = prisma.articleFavorite?.findMany
+      ? prisma.articleFavorite.findMany({ where: { userId: user.id }, orderBy: [{ createdAt: "desc" }], take: 100, select: { articleId: true, article: { select: { authorId: true } } } })
+      : Promise.resolve([]);
+    const subscriptions = prisma.userSubscription?.findMany
+      ? prisma.userSubscription.findMany({ where: { subscriberId: user.id }, select: { authorId: true } })
+      : Promise.resolve([]);
+    const [readRows, likeRows, favoriteRows, subscriptionRows] = await Promise.all([read, liked, favorited, subscriptions]);
+    const articleIds = [...new Set([...readRows, ...likeRows, ...favoriteRows].map((row) => row.articleId).filter(Number.isInteger))];
+    const topicRows = articleIds.length && prisma.articleTopicItem?.findMany
+      ? await prisma.articleTopicItem.findMany({ where: { articleId: { in: articleIds } }, select: { topicId: true } })
+      : [];
+    const collectionRows = articleIds.length && prisma.articleCollectionItem?.findMany
+      ? await prisma.articleCollectionItem.findMany({ where: { articleId: { in: articleIds } }, select: { collectionId: true } })
+      : [];
+    return {
+      topicIds: new Set(topicRows.map((row) => row.topicId)),
+      collectionIds: new Set(collectionRows.map((row) => row.collectionId)),
+      interactedAuthorIds: new Set(
+        [...readRows, ...likeRows, ...favoriteRows]
+          .map((row) => row.article?.authorId)
+          .filter((id): id is number => Number.isInteger(id)),
+      ),
+      subscribedAuthorIds: new Set(subscriptionRows.map((row) => row.authorId)),
+    };
+  }
+
+  private recommendationReasons(
+    basedOnReading: boolean,
+    basedOnSubscription: boolean,
+    basedOnInteraction: boolean,
+    recentlyActive: boolean,
+  ) {
+    const reasons: Array<"based_on_reading" | "based_on_subscription" | "based_on_interaction" | "popular" | "recently_active"> = [];
+    if (basedOnReading) reasons.push("based_on_reading");
+    if (basedOnSubscription) reasons.push("based_on_subscription");
+    if (basedOnInteraction) reasons.push("based_on_interaction");
+    if (recentlyActive) reasons.push("recently_active");
+    if (!reasons.length) reasons.push("popular");
+    return reasons;
+  }
+
+  async listRecommendationFeedbackManagement(
+    user: AuthenticatedUser,
+    targetTypeValue?: RecommendationFeedbackDto["targetType"],
+  ): Promise<{ items: RecommendationFeedbackItemResponse[] }> {
+    const targetType = targetTypeValue ? this.recommendationTargetType(targetTypeValue) : undefined;
+    const records = await this.prisma.recommendationFeedback.findMany({
+      where: { userId: user.id, ...(targetType ? { targetType } : {}) },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+    const items = await Promise.all(records.map(async (record) => ({
+      id: record.id,
+      targetType: record.targetType,
+      targetId: record.targetId,
+      label: await this.recommendationFeedbackLabel(user, record.targetType, record.targetId),
+      createdAt: record.createdAt.toISOString(),
+    })));
+    return { items };
+  }
+
+  async clearRecommendationFeedback(user: AuthenticatedUser, targetTypeValue?: RecommendationFeedbackDto["targetType"]) {
+    const targetType = targetTypeValue ? this.recommendationTargetType(targetTypeValue) : undefined;
+    const result = await this.prisma.recommendationFeedback.deleteMany({ where: { userId: user.id, ...(targetType ? { targetType } : {}) } });
+    return { count: result.count };
+  }
+
+  private async recommendationFeedbackLabel(user: AuthenticatedUser, targetType: RecommendationTargetType, targetId: number): Promise<string> {
+    if (targetType === RecommendationTargetType.article) {
+      const item = await this.prisma.article.findFirst({ where: { id: targetId, ...this.articleVisibleWhere(user) }, select: { title: true } });
+      return item?.title ?? "不可见文章";
+    }
+    if (targetType === RecommendationTargetType.topic) {
+      const item = await this.prisma.articleTopic.findFirst({ where: { id: targetId, ...this.topicVisibleWhere(user) }, select: { title: true } });
+      return item?.title ?? "不可见专题";
+    }
+    if (targetType === RecommendationTargetType.collection) {
+      const item = await this.prisma.articleCollection.findFirst({ where: { id: targetId, ...this.collectionVisibleWhere(user) }, select: { name: true } });
+      return item?.name ?? "不可见合集";
+    }
+    if (targetType === RecommendationTargetType.author) {
+      const item = await this.prisma.user.findFirst({ where: { id: targetId, status: UserStatus.active }, select: { nickname: true, username: true } });
+      return item ? `${item.nickname} (@${item.username})` : "不可见作者";
+    }
+    const item = await this.prisma.chatGroup.findFirst({ where: { id: targetId, status: ChatGroupStatus.active }, select: { name: true } });
+    return item?.name ?? "不可见群聊";
   }
 
   async recordRecommendationFeedback(user: AuthenticatedUser, dto: RecommendationFeedbackDto) {
@@ -385,6 +493,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
     user: AuthenticatedUser,
     excludedAuthorIds: Set<number>,
     batch: number,
+    signals: { interactedAuthorIds: Set<number>; subscribedAuthorIds: Set<number> },
   ): Promise<DiscoveryRecommendationsResponse["authors"]> {
     const categoryStats = await this.prisma.article.groupBy({
       by: ["authorId", "category"],
@@ -464,6 +573,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
         articleCount: candidates.get(authorId)!.articleCount,
         engagementCount: candidates.get(authorId)!.engagementCount,
         subscribed: false,
+        reasons: this.recommendationReasons(false, signals.subscribedAuthorIds.has(authorId), signals.interactedAuthorIds.has(authorId), candidates.get(authorId)!.articleCount > 1),
       }));
   }
 

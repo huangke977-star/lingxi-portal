@@ -170,6 +170,10 @@ export interface ArticleMineDashboard {
     createdAt: string;
     availableAt: string;
     settledAt: string | null;
+    blockKey?: string;
+    buyer?: { id: number; nickname: string; username: string };
+    deliveryStatus?: "unlocked" | "downloaded" | "failed" | "refunded";
+    refundedAt?: string | null;
   }>;
 }
 

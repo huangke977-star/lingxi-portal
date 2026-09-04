@@ -16,6 +16,9 @@ const reputationReasons: Record<ReputationReason, LocalizedPair> = {
   resource_redeemed: ["兑换文章资源", "Redeemed article resource"],
   resource_sold: ["文章资源兑换待入账", "Article resource redemption pending"],
   article_report_accepted: ["举报文章被采纳", "Article report accepted"],
+  points_top_up: ["管理员补发积分", "Administrator point top-up"],
+  resource_refund: ["文章资源退款", "Article resource refund"],
+  violation_penalty: ["违规处理扣分", "Violation penalty"],
 };
 
 const auditTargets: Record<string, LocalizedPair> = {
