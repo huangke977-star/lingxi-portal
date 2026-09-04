@@ -92,6 +92,7 @@ import {
 } from "./article-resources";
 import { ChatAttachmentsService, type StoredChatAttachmentInfo } from "../social/chat-attachments.service";
 import type { UploadedChatAttachment } from "../social/chat-attachment.storage";
+import { IntegrationsService } from "../integrations/integrations.service";
 
 export const ARTICLE_IMAGE_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 export const ARTICLE_IMAGE_MAX_FILES_PER_ARTICLE = 20;
@@ -372,6 +373,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     @Inject(ContentModerationService)
     private readonly contentModerationService: Pick<ContentModerationService, "enforce" | "recordAccepted"> = noOpContentModerationService,
     @Optional() private readonly chatAttachmentsService?: ChatAttachmentsService,
+    @Optional() private readonly integrations?: IntegrationsService,
   ) {}
 
   onModuleInit(): void {
@@ -797,6 +799,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
         return article;
       });
       await this.contentModerationService.recordAccepted({ source: "article", actorId: author.id, content: `${updated.title}\n${updated.content}`, contentRef: `article:${id}` });
+      this.emitArticlePublished(updated);
     } catch (error) {
       const message = this.errorMessage(error).slice(0, 500);
       await this.prisma.article.update({ where: { id }, data: { scheduleError: message } });
@@ -942,6 +945,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     });
     if (status === ArticleStatus.published) {
       await this.contentModerationService.recordAccepted({ source: "article", actorId: user.id, content: `${title}\n${articleContentToPlainText(content, contentFormat)}`, contentRef: `article:${article.id}` });
+      this.emitArticlePublished(article);
     }
     return this.toResponse(article, user);
   }
@@ -1167,6 +1171,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     if (status === ArticleStatus.published && !this.canManageContent(user)) {
       await this.contentModerationService.recordAccepted({ source: "article", actorId: user.id, content: `${title}\n${articleContentToPlainText(content, contentFormat)}`, contentRef: `article:${article.id}` });
     }
+    if (status === ArticleStatus.published && isNewPublication) this.emitArticlePublished(article);
     return this.toResponse(article, user);
   }
 
@@ -1202,6 +1207,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     if (!this.canManageContent(user)) {
       await this.contentModerationService.recordAccepted({ source: "article", actorId: user.id, content: `${article.title}\n${articleContentToPlainText(article.content, article.contentFormat)}`, contentRef: `article:${article.id}` });
     }
+    if (isNewPublication) this.emitArticlePublished(article);
     return this.toResponse(article, user);
   }
 
@@ -1498,6 +1504,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
     const parsed = parseArticleContent(article.content, article.contentFormat);
     const block = parsed.blocks.find((candidate) => candidate.key === dto.blockKey);
     if (!block) throw new BadRequestException("资源区域不存在或已经更新，请刷新文章后重试。");
+    let exchangeId: number | null = null;
     if (article.authorId !== user.id && !this.canManageContent(user)) {
       try {
         await this.prisma.$transaction(async (transaction) => {
@@ -1516,6 +1523,7 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
               sellerAvailableAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
             },
           });
+          exchangeId = exchange.id;
           const deliveryEvents = (transaction as unknown as { articleResourceDeliveryEvent?: { create: (args: unknown) => Promise<unknown> } }).articleResourceDeliveryEvent;
           if (deliveryEvents) {
             await deliveryEvents.create({ data: { exchangeId: exchange.id, type: "redeemed", attempt: 0, detail: "资源兑换成功", eventKey: `resource-delivery:${exchange.id}:redeemed` } });
@@ -1535,6 +1543,16 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
         }
         throw error;
       }
+    }
+    if (exchangeId !== null) {
+      void this.integrations?.emit("resource.redeemed", {
+        exchangeId,
+        articleId: article.id,
+        blockKey: block.key,
+        buyerId: user.id,
+        authorId: article.authorId,
+        pointCost: block.pointCost,
+      }, `exchange:${exchangeId}`).catch(() => undefined);
     }
     const [refreshed, readerState] = await Promise.all([
       this.getArticleOrThrow(id),
@@ -1682,6 +1700,13 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
         return created;
       });
       if (body.trim()) await this.contentModerationService.recordAccepted({ source: "comment", actorId: user.id, content: body.trim(), contentRef: `comment:${comment.id}` });
+      void this.integrations?.emit("article.commented", {
+        articleId: article.id,
+        articleSlug: article.slug,
+        commentId: comment.id,
+        authorId: user.id,
+        parentId: comment.parentId,
+      }, `comment:${comment.id}`).catch(() => undefined);
       return this.toCommentResponse(comment);
     } catch (error) {
       await Promise.all([
@@ -3086,6 +3111,16 @@ export class ArticlesService implements OnModuleInit, OnModuleDestroy {
       create: { articleId, userId, progress: 1, lastReadAt },
       update: { lastReadAt },
     });
+  }
+
+  private emitArticlePublished(article: Pick<ArticleRecord, "id" | "slug" | "title" | "authorId" | "publicationCount">): void {
+    void this.integrations?.emit("article.published", {
+      articleId: article.id,
+      slug: article.slug,
+      title: article.title,
+      authorId: article.authorId,
+      publicationCount: article.publicationCount,
+    }, `article:${article.id}:publication:${article.publicationCount}`).catch(() => undefined);
   }
 
   private async getReaderState(articleId: number, userId: number): Promise<ArticleReaderState> {

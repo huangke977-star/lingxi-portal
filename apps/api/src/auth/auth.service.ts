@@ -14,13 +14,14 @@ import { AccountSecurityService } from "../security/account-security.service";
 import { SecurityConfigurationService } from "../security/security-configuration.service";
 import { TurnstileService } from "../security/turnstile.service";
 import { PasswordRecoveryResetDto } from "../security/dto/security.dto";
-import { LoginSecurityEventType } from "../generated/prisma/client";
+import { ExternalAuthProvider, LoginSecurityEventType, Prisma } from "../generated/prisma/client";
 import { AccountPrivacyService } from "../account-privacy/account-privacy.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from "@simplewebauthn/server";
 import type { AuthenticatorTransportFuture, AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
 import { RenamePasskeyDto, VerifyPasskeyDeletionDto, VerifyPasskeyLoginDto, VerifyPasskeyRegistrationDto } from "./dto/passkey.dto";
 import { parseSensitiveAction, SensitiveAction } from "../security/sensitive-action";
+import { IntegrationsService } from "../integrations/integrations.service";
 
 interface TotpLoginChallenge {
   userId: number;
@@ -40,6 +41,23 @@ interface PasskeyChallenge {
   attempts: number;
 }
 
+interface GoogleOAuthState {
+  codeVerifier: string;
+  deviceFingerprint: string;
+  ip: string;
+  userAgent: string;
+  trustedDeviceToken?: string;
+  returnTo: string;
+}
+
+interface GoogleProfile {
+  sub?: string;
+  email?: string;
+  email_verified?: boolean;
+  name?: string;
+  picture?: string;
+}
+
 @Injectable()
 export class AuthService {
   private readonly loginFailureTtlSeconds = 15 * 60;
@@ -48,6 +66,8 @@ export class AuthService {
   private readonly totpLoginAttemptLimit = 5;
   private readonly passkeyChallengeTtlSeconds = 5 * 60;
   private readonly passkeyAttemptLimit = 5;
+  private readonly oauthStateTtlSeconds = 10 * 60;
+  private readonly oauthResultTtlSeconds = 90;
 
   constructor(
     private readonly usersService: UsersService,
@@ -61,6 +81,7 @@ export class AuthService {
     private readonly turnstile: TurnstileService,
     @Inject(forwardRef(() => AccountPrivacyService))
     private readonly accountPrivacy: AccountPrivacyService,
+    @Optional() private readonly integrations?: IntegrationsService,
     @Optional() private readonly prismaService?: PrismaService,
   ) {}
 
@@ -101,6 +122,11 @@ export class AuthService {
       await this.accountSecurity.trustCurrentDevice(user.id, context);
     }
     await this.accountSecurity.recordRegistrationLogin(user, context);
+    void this.integrations?.emit("user.registered", {
+      userId: user.id,
+      username: user.username,
+      nickname: user.nickname,
+    }, `user:${user.id}`).catch(() => undefined);
     return this.createAuthResponse(user, context);
   }
 
@@ -725,6 +751,111 @@ export class AuthService {
     await this.redis.del(this.passkeyChallengeKey("login", dto.challengeToken));
     return this.completePasskeyLogin(stored.user.id, context);
   }
+
+  getExternalAuthProviders() {
+    return { google: { enabled: Boolean(this.googleClientId() && this.googleClientSecret()), provider: "google" as const } };
+  }
+
+  async startGoogleLogin(context: RefreshSessionContext, returnTo?: string): Promise<string> {
+    if (!this.getExternalAuthProviders().google.enabled) throw new BadRequestException("Google 登录尚未配置。\nGoogle sign-in is not configured.");
+    const state = randomBytes(32).toString("base64url");
+    const codeVerifier = randomBytes(48).toString("base64url");
+    const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
+    const stateData: GoogleOAuthState = { codeVerifier, deviceFingerprint: this.loginDeviceFingerprint(context), ip: context.ip, userAgent: context.userAgent, trustedDeviceToken: context.trustedDeviceToken, returnTo: this.safeReturnTo(returnTo) };
+    await this.redis.set(this.oauthStateKey(state), JSON.stringify(stateData), this.oauthStateTtlSeconds);
+    const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    url.searchParams.set("client_id", this.googleClientId());
+    url.searchParams.set("redirect_uri", this.googleRedirectUri());
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("scope", "openid email profile");
+    url.searchParams.set("state", state);
+    url.searchParams.set("code_challenge", codeChallenge);
+    url.searchParams.set("code_challenge_method", "S256");
+    url.searchParams.set("prompt", "select_account");
+    return url.toString();
+  }
+
+  async finishGoogleLogin(code: string, state: string): Promise<{ redirectToken: string; returnTo: string }> {
+    const raw = await this.redis.getdel(this.oauthStateKey(state));
+    if (!raw) throw new BadRequestException("Google 登录请求已失效，请重新开始。\nThe Google sign-in request expired.");
+    let stateData: GoogleOAuthState;
+    try { stateData = JSON.parse(raw) as GoogleOAuthState; } catch { throw new BadRequestException("Google 登录请求无效。\nInvalid Google sign-in request."); }
+    const tokens = await this.exchangeGoogleCode(code, stateData.codeVerifier);
+    const profile = await this.fetchGoogleProfile(tokens.access_token);
+    const subject = profile.sub?.trim(); const email = profile.email?.trim().toLowerCase();
+    if (!subject || !email) throw new BadRequestException("Google 未返回可用的账号信息。\nGoogle did not return a usable identity.");
+    const context: RefreshSessionContext = { ip: stateData.ip, userAgent: stateData.userAgent, trustedDeviceToken: stateData.trustedDeviceToken };
+    const identity = await this.prismaService!.externalAuthIdentity.findUnique({ where: { provider_subject: { provider: ExternalAuthProvider.google, subject } }, select: { userId: true } });
+    let result: LoginResponse;
+    if (identity) {
+      await this.prismaService!.externalAuthIdentity.update({ where: { provider_subject: { provider: ExternalAuthProvider.google, subject } }, data: { email, emailVerified: profile.email_verified === true, profile: this.oauthProfileJson(profile), lastLoginAt: new Date() } });
+      result = await this.completeExternalLogin(identity.userId, context);
+    } else {
+      const existing = await this.prismaService!.user.findUnique({ where: { email }, select: { id: true } });
+      if (existing) {
+        const pendingToken = randomBytes(32).toString("base64url");
+        await this.redis.set(`oauth_pending:${this.hashToken(pendingToken)}`, JSON.stringify({ provider: "google", subject, email, profile: this.oauthProfileJson(profile) }), this.oauthStateTtlSeconds);
+        return { redirectToken: await this.storeOAuthResult({ oauthLinkRequired: true as const, pendingToken, email }), returnTo: stateData.returnTo };
+      }
+      const username = await this.generateGoogleUsername(email.split("@")[0]);
+      const nickname = this.normalizeGoogleNickname(profile.name || email.split("@")[0]);
+      const created = await this.usersService.createUser({ username, nickname, email, passwordHash: await this.passwordService.hashPassword(randomBytes(32).toString("base64url")), emailVerifiedAt: profile.email_verified === true ? new Date() : null });
+      await this.prismaService!.externalAuthIdentity.create({ data: { userId: created.id, provider: ExternalAuthProvider.google, subject, email, emailVerified: profile.email_verified === true, profile: this.oauthProfileJson(profile), lastLoginAt: new Date() } });
+      result = await this.completeLogin(created.id, context, false);
+    }
+    return { redirectToken: await this.storeOAuthResult(result), returnTo: stateData.returnTo };
+  }
+
+  async consumeOAuthResult(token: string): Promise<LoginResponse | { oauthLinkRequired: true; pendingToken: string; email: string }> {
+    const raw = await this.redis.getdel(`oauth_result:${this.hashToken(token)}`);
+    if (!raw) throw new BadRequestException("登录结果已失效，请重新开始。\nThe sign-in result expired.");
+    return JSON.parse(raw) as LoginResponse | { oauthLinkRequired: true; pendingToken: string; email: string };
+  }
+
+  async bindPendingGoogleIdentity(user: AuthenticatedUser, pendingToken: string, password: string) {
+    const raw = await this.redis.getdel(`oauth_pending:${this.hashToken(pendingToken)}`);
+    if (!raw) throw new BadRequestException("绑定请求已失效，请重新开始。\nThe linking request expired.");
+    const pending = JSON.parse(raw) as { provider: "google"; subject: string; email: string; profile: Prisma.JsonObject };
+    if (pending.email !== user.email.toLowerCase()) throw new ForbiddenException("Google 邮箱与当前账号不一致。\nGoogle email does not match this account.");
+    const account = await this.usersService.findForLogin(user.username);
+    if (!account || !(await this.passwordService.verifyPassword(password, account.passwordHash))) throw new UnauthorizedException("当前密码不正确。\nThe current password is incorrect.");
+    await this.prismaService!.externalAuthIdentity.create({ data: { userId: user.id, provider: ExternalAuthProvider.google, subject: pending.subject, email: pending.email, emailVerified: true, profile: pending.profile } });
+    return { success: true as const };
+  }
+
+  private async completeExternalLogin(userId: number, context: RefreshSessionContext): Promise<LoginResponse> {
+    const user = await this.usersService.findActiveById(userId);
+    if (await this.accountSecurity.isTrustedDevice(userId, context)) return this.completeLogin(userId, context, false);
+    const config = await this.securityConfiguration.getConfiguration();
+    if (config.smtpEnabled && config.untrustedDeviceEmailVerificationEnabled) return this.accountSecurity.requestDeviceLoginVerification(user, context);
+    if ((await this.accountPrivacy.verifyTotpForLogin(userId)) === "required") return this.requestTotpLoginVerification(userId, context, false);
+    return this.completeLogin(userId, context, false);
+  }
+
+  private async exchangeGoogleCode(code: string, codeVerifier: string): Promise<{ access_token: string }> {
+    const response = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ code, client_id: this.googleClientId(), client_secret: this.googleClientSecret(), redirect_uri: this.googleRedirectUri(), grant_type: "authorization_code", code_verifier: codeVerifier }), signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) throw new BadRequestException("Google 授权交换失败，请重试。\nGoogle authorization exchange failed.");
+    const payload = await response.json() as { access_token?: string };
+    if (!payload.access_token) throw new BadRequestException("Google 未返回访问凭据。\nGoogle did not return an access token.");
+    return { access_token: payload.access_token };
+  }
+
+  private async fetchGoogleProfile(accessToken: string): Promise<GoogleProfile> {
+    const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: { authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) throw new BadRequestException("Google 账号信息读取失败，请重试。\nCould not read the Google profile.");
+    return response.json() as Promise<GoogleProfile>;
+  }
+
+  private async storeOAuthResult(value: LoginResponse | { oauthLinkRequired: true; pendingToken: string; email: string }): Promise<string> { const token = randomBytes(32).toString("base64url"); await this.redis.set(`oauth_result:${this.hashToken(token)}`, JSON.stringify(value), this.oauthResultTtlSeconds); return token; }
+  private oauthStateKey(state: string) { return `oauth_google_state:${this.hashToken(state)}`; }
+  private hashToken(value: string) { return createHash("sha256").update(value).digest("hex"); }
+  private googleClientId() { return process.env.GOOGLE_OAUTH_CLIENT_ID?.trim() || ""; }
+  private googleClientSecret() { return process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim() || ""; }
+  private googleRedirectUri() { return process.env.GOOGLE_OAUTH_REDIRECT_URI?.trim() || `${(process.env.WEB_ORIGIN || "http://localhost:3000").replace(/\/$/, "")}/api/auth/google/callback`; }
+  private safeReturnTo(value?: string) { return value && value.startsWith("/") && !value.startsWith("//") ? value : "/dashboard"; }
+  private oauthProfileJson(profile: GoogleProfile): Prisma.InputJsonObject { return { sub: profile.sub || "", name: profile.name || "", picture: profile.picture || "", emailVerified: profile.email_verified === true }; }
+  private normalizeGoogleNickname(value: string) { return Array.from(value.trim() || "Google 用户").slice(0, 32).join(""); }
+  private async generateGoogleUsername(localPart: string): Promise<string> { const base = (localPart.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || "google_user").slice(0, 24); for (let index = 0; index < 100; index += 1) { const suffix = index ? `_${index + 1}` : ""; const candidate = `${base.slice(0, 32 - suffix.length)}${suffix}`; if (!(await this.usersService.findForLogin(candidate))) return candidate; } return `google_${randomBytes(5).toString("hex")}`; }
 
   private async completePasskeyLogin(
     userId: number,

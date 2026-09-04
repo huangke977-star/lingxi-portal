@@ -12,9 +12,10 @@ import { PasswordService } from "./password.service";
 import { RefreshTokenService } from "./refresh-token.service";
 import { AccountPrivacyModule } from "../account-privacy/account-privacy.module";
 import { PrismaModule } from "../prisma/prisma.module";
+import { IntegrationsModule } from "../integrations/integrations.module";
 
 @Module({
-  imports: [JwtModule.register({}), PrismaModule, RedisModule, UsersModule, SiteSettingsModule, SecurityModule, forwardRef(() => AccountPrivacyModule)],
+  imports: [JwtModule.register({}), PrismaModule, RedisModule, UsersModule, SiteSettingsModule, SecurityModule, IntegrationsModule, forwardRef(() => AccountPrivacyModule)],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard, OptionalJwtAuthGuard, PasswordService, RefreshTokenService],
   exports: [JwtModule, JwtAuthGuard, OptionalJwtAuthGuard, PasswordService, RefreshTokenService],

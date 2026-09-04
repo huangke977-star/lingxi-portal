@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Fingerprint } from "lucide-react";
+import { Fingerprint, Globe2 } from "lucide-react";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
@@ -11,7 +11,7 @@ import { useLanguage } from "@/components/language-provider";
 import { OtpCodeInput } from "@/components/otp-code-input";
 import { PasswordInput } from "@/components/password-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
-import { ApiRequestError, getPasskeyLoginOptions, login, resendDeviceLoginVerification, type DeviceLoginVerificationRequired, type TotpVerificationRequired, verifyDeviceLogin, verifyPasskeyLogin, verifyTotpLogin } from "@/lib/auth-api";
+import { ApiRequestError, consumeOAuthResult, getBrowserApiBaseUrl, getExternalAuthProviders, getPasskeyLoginOptions, login, resendDeviceLoginVerification, type DeviceLoginVerificationRequired, type TotpVerificationRequired, verifyDeviceLogin, verifyPasskeyLogin, verifyTotpLogin } from "@/lib/auth-api";
 import { saveAuthTokens } from "@/lib/auth-storage";
 import { getSecurityPolicy, type SecurityPolicy } from "@/lib/security-api";
 import { localizedPath } from "@/lib/i18n";
@@ -35,6 +35,7 @@ export default function LoginPage() {
   const [deviceCode, setDeviceCode] = useState("");
   const [retryAfter, setRetryAfter] = useState(0);
   const [passkeySupported, setPasskeySupported] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
   const isLeavingRef = useRef(false);
 
   useEffect(() => {
@@ -48,6 +49,37 @@ export default function LoginPage() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    void getExternalAuthProviders().then((providers) => setGoogleEnabled(Boolean(providers.google?.enabled))).catch(() => setGoogleEnabled(false));
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get("oauthError");
+    const oauthResult = params.get("oauthResult");
+    if (oauthError) window.setTimeout(() => setError(oauthError), 0);
+    if (!oauthResult) return;
+    window.history.replaceState({}, "", window.location.pathname);
+    window.setTimeout(() => setIsSubmitting(true), 0);
+    void consumeOAuthResult(oauthResult).then((result) => {
+      if ("oauthLinkRequired" in result) {
+        window.localStorage.setItem("hlovet.oauth.pending", result.pendingToken);
+        throw new Error(phrase(`该 Google 邮箱已绑定本地账号，请先登录该账号后在个人中心完成绑定：${result.email}`, `This Google email belongs to an existing local account. Sign in first, then finish linking it from your profile: ${result.email}`));
+      }
+      if ("deviceVerificationRequired" in result) {
+        setDeviceChallenge(result);
+        setRetryAfter(Math.max(1, result.retryAfterSeconds));
+        setNotice(phrase(`验证码已发送至 ${result.emailHint}`, `Verification code sent to ${result.emailHint}`));
+        return;
+      }
+      if ("totpVerificationRequired" in result) {
+        setTotpChallenge(result);
+        setTotpRecoveryMode(false);
+        setNotice(phrase("请输入身份验证器中的 6 位验证码。", "Enter the 6-digit code from your authenticator."));
+        return;
+      }
+      saveAuthTokens(result);
+      router.push(localizedPath("/dashboard", locale));
+    }).catch((oauthLoadError) => setError(oauthLoadError instanceof Error ? oauthLoadError.message : phrase("Google 登录失败。", "Google sign-in failed."))).finally(() => setIsSubmitting(false));
+  }, [locale, phrase, router]);
 
   useEffect(() => {
     const timer = window.setTimeout(
@@ -397,6 +429,12 @@ export default function LoginPage() {
                 >
                   <Fingerprint aria-hidden="true" size={17} />
                   {phrase("使用通行密钥登录", "Sign in with a passkey")}
+                </button>
+              ) : null}
+              {googleEnabled ? (
+                <button className="auth-passkey-button" disabled={isSubmitting} onClick={() => { window.location.href = `${getBrowserApiBaseUrl()}/auth/google/start?returnTo=${encodeURIComponent(new URLSearchParams(window.location.search).get("from") || "/dashboard")}`; }} type="button">
+                  <Globe2 aria-hidden="true" size={17} />
+                  {phrase("使用 Google 登录", "Continue with Google")}
                 </button>
               ) : null}
             </>

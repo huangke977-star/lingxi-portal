@@ -3,11 +3,12 @@
 /* eslint-disable @next/next/no-img-element */
 
 import type { ComponentType, CSSProperties, FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Cropper, { type Area, type CropperProps } from "react-easy-crop";
-import { BookOpen, Coins, Eye, EyeOff, KeyRound, LogOut, MonitorSmartphone, Pin, Sparkles, TrendingUp, X } from "lucide-react";
+import { BookOpen, Coins, Edit3, Eye, EyeOff, KeyRound, Link2, LogOut, MonitorSmartphone, Pin, Sparkles, TrendingUp, X } from "lucide-react";
 import { AppToast } from "@/components/app-toast";
 import { useConfirm } from "@/components/confirm-dialog";
 import { useLanguage } from "@/components/language-provider";
@@ -31,6 +32,7 @@ import {
   revokeSession,
   updateMyAppearance,
   updateMyProfile,
+  updateMyUsername,
   uploadMyAvatar,
 } from "@/lib/auth-api";
 
@@ -169,6 +171,9 @@ export default function ProfilePage() {
   const [nicknameDraft, setNicknameDraft] = useState("");
   const [emailDraft, setEmailDraft] = useState("");
   const [profileBioDraft, setProfileBioDraft] = useState("");
+  const [isUsernameDialogOpen, setIsUsernameDialogOpen] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [isSavingUsername, setIsSavingUsername] = useState(false);
   const [profileSettings, setProfileSettings] = useState<ProfileSettings>(defaultProfileSettings);
   const [profileArticles, setProfileArticles] = useState<Article[]>([]);
   const [profileCollections, setProfileCollections] = useState<ArticleCollection[]>([]);
@@ -261,6 +266,7 @@ export default function ProfilePage() {
         setNicknameDraft(currentUser.nickname);
         setEmailDraft(currentUser.email);
         setProfileBioDraft(currentUser.profileBio);
+        setUsernameDraft(currentUser.username);
         setPreference(accountPreference);
         writeThemePreference(accountPreference);
         void loadAccountSessions(readAccessToken());
@@ -618,6 +624,26 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleUsernameSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const token = readAccessToken();
+    if (!token || !usernameDraft.trim()) return;
+    setIsSavingUsername(true);
+    setError("");
+    try {
+      const updated = await updateMyUsername(token, usernameDraft);
+      setUser(updated);
+      setUsernameDraft(updated.username);
+      setIsUsernameDialogOpen(false);
+      window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
+      setNotice(phrase("用户名已更新。", "Username updated."));
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : phrase("用户名更新失败。", "Could not update username."));
+    } finally {
+      setIsSavingUsername(false);
+    }
+  }
+
   async function commitProfileSettings(patch: Partial<ProfileSettings>) {
     const token = readAccessToken();
     if (!token || isSavingProfileSettings) return;
@@ -913,7 +939,7 @@ export default function ProfilePage() {
                   <strong title={getUserDisplayName(user)}>
                     {getUserDisplayName(user)}
                   </strong>
-                  <p title={`@${user.username}`}>@{user.username}</p>
+                  <p title={`@${user.username}`}>@{user.username}<button aria-label={phrase("修改用户名", "Edit username")} className="profile-username-edit" onClick={() => { setUsernameDraft(user.username); setIsUsernameDialogOpen(true); }} title={phrase("修改用户名", "Edit username")} type="button"><Edit3 aria-hidden="true" size={13} /></button></p>
                 </div>
               </div>
             </div>
@@ -981,6 +1007,10 @@ export default function ProfilePage() {
                 <MonitorSmartphone aria-hidden="true" strokeWidth={1.8} />
               </button>
             </div>
+            <Link className="profile-integrations-link" href={localizedPath("/profile/integrations", locale)}>
+              <Link2 aria-hidden="true" size={15} />
+              {phrase("外部集成", "External integrations")}
+            </Link>
           </section>
 
           <section className="profile-panel profile-bio-panel">
@@ -1503,6 +1533,15 @@ export default function ProfilePage() {
             document.body,
           )
         : null}
+
+      {isUsernameDialogOpen && typeof document !== "undefined" ? createPortal(
+        <div className="modal-backdrop password-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !isSavingUsername) setIsUsernameDialogOpen(false); }} role="presentation">
+          <div aria-modal="true" className="modal-panel password-modal-panel" role="dialog">
+            <div className="password-modal-heading"><div className="modal-heading"><span className="section-label">{phrase("个人资料", "Personal profile")}</span><h2>{phrase("修改用户名", "Edit username")}</h2><p>{phrase("用户名用于 @ 提及和公开地址，30 天内只能修改一次。", "Your username is used for mentions and public URLs and can be changed once every 30 days.")}</p></div><button aria-label={phrase("关闭", "Close")} className="level-modal-close" disabled={isSavingUsername} onClick={() => setIsUsernameDialogOpen(false)} type="button"><X aria-hidden="true" size={18} /></button></div>
+            <form className="form-stack modal-form" onSubmit={(event) => void handleUsernameSubmit(event)}><label>{phrase("用户名", "Username")}<input autoFocus maxLength={32} minLength={3} onChange={(event) => setUsernameDraft(event.target.value.toLowerCase())} pattern="[a-zA-Z0-9_]{3,32}" required value={usernameDraft} /></label><div className="actions"><button className="button" disabled={isSavingUsername} type="submit">{isSavingUsername ? phrase("保存中", "Saving") : phrase("保存用户名", "Save username")}</button><button className="button secondary" disabled={isSavingUsername} onClick={() => setIsUsernameDialogOpen(false)} type="button">{phrase("取消", "Cancel")}</button></div></form>
+          </div>
+        </div>, document.body,
+      ) : null}
 
       <AppToast
         duration={error ? 4200 : 2600}

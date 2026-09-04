@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, Injectable, OnModuleDestroy, OnModuleInit, Optional } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import webpush from "web-push";
 import { AuthenticatedUser } from "../auth/auth.types";
 import { PrismaService } from "../prisma/prisma.service";
 import type { ChatMessageResponse } from "../social/social.types";
 import { PushSubscriptionDto } from "./dto/push.dto";
+import { IntegrationsService } from "../integrations/integrations.service";
 import { BrowserPushPayload, PushConfigResponse, PushStatusResponse } from "./push.types";
 
 @Injectable()
@@ -16,7 +17,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
   private pollTimer: NodeJS.Timeout | null = null;
   private polling = false;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, @Optional() private readonly integrations?: IntegrationsService) {}
 
   onModuleInit(): void {
     if (!this.enabled) return;
@@ -91,6 +92,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
       tag: `chat-${message.conversationId}`,
       dedupeKey: `chat-message-${message.id}-${recipientId}`,
     });
+    await this.integrations?.deliverExternalNotification(recipientId, "interaction", { type: "chat_message", messageId: message.id, conversationId: message.conversationId, body: message.body || "[attachment]", url: `/messages?conversation=${message.conversationId}` });
   }
 
   private async deliverPendingNotifications(): Promise<void> {
@@ -125,6 +127,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
               : `notification-${notification.id}`,
           });
         }
+        await this.integrations?.deliverExternalNotification(notification.userId, String(notification.channel), { notificationId: notification.id, type: notification.type, title: notification.title, body: notification.body, actionUrl: notification.actionUrl });
         await this.prisma.userNotification.update({
           where: { id: notification.id },
           data: { pushDeliveredAt: new Date() },

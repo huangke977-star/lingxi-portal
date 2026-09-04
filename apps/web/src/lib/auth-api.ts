@@ -63,6 +63,10 @@ export type LoginResponse = AuthResponse | DeviceLoginVerificationRequired | Tot
 
 export type DeviceLoginResponse = AuthResponse | TotpVerificationRequired;
 
+export interface ExternalAuthProviders {
+  google: { enabled: boolean; provider: "google" };
+}
+
 export interface AuthSession {
   id: string;
   issuedAt: string;
@@ -101,6 +105,10 @@ export class ApiRequestError extends Error {
   }
 }
 
+export function authHeaders(accessToken: string): HeadersInit {
+  return { Authorization: `Bearer ${accessToken}` };
+}
+
 export function isAuthExpiredError(error: unknown): boolean {
   return error instanceof ApiRequestError && error.status === 401;
 }
@@ -112,6 +120,18 @@ export async function login(input: { account: string; password: string; turnstil
   });
 
   return "deviceVerificationRequired" in response || "totpVerificationRequired" in response ? response : normalizeAuthResponse(response);
+}
+
+export function getExternalAuthProviders(): Promise<ExternalAuthProviders> {
+  return requestJson("/auth/providers", { cache: "no-store" });
+}
+
+export async function consumeOAuthResult(token: string): Promise<LoginResponse | { oauthLinkRequired: true; pendingToken: string; email: string }> {
+  return requestJson("/auth/oauth/result", { method: "POST", body: JSON.stringify({ token }) });
+}
+
+export function bindGoogleIdentity(accessToken: string, pendingToken: string, currentPassword: string): Promise<{ success: true }> {
+  return requestJson("/auth/google/bind", { method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ pendingToken, currentPassword }) });
 }
 
 export function getPasskeyLoginOptions(): Promise<
@@ -402,6 +422,11 @@ export async function updateMyProfile(accessToken: string, input: { nickname: st
   }
 
   return normalizedUser;
+}
+
+export async function updateMyUsername(accessToken: string, username: string): Promise<AuthUser> {
+  const user = await requestJson<AuthUser>("/auth/me/username", { method: "PATCH", headers: { Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ username }) });
+  return normalizeAuthUser(user);
 }
 
 export async function changeMyPassword(accessToken: string, input: { currentPassword: string; newPassword: string }): Promise<{ success: true; revokedSessions: number }> {

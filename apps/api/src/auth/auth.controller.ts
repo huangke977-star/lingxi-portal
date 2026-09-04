@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseIntPipe, Patch, Post, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Param, ParseIntPipe, Patch, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { createReadStream } from "node:fs";
@@ -6,6 +6,7 @@ import { UsersService, AVATAR_MAX_FILE_SIZE_BYTES } from "../users/users.service
 import { UpdateUserAppearanceDto } from "../users/dto/update-user-appearance.dto";
 import { UpdateUserProfileDto } from "../users/dto/update-user-profile.dto";
 import { UpdateUserLocaleDto } from "../users/dto/update-user-locale.dto";
+import { UpdateUserUsernameDto } from "../users/dto/update-user-username.dto";
 import { AuthService } from "./auth.service";
 import { AuthResponse, AuthenticatedUser, AuthSessionSummary, DeviceLoginResponse, LoginResponse, RefreshSessionContext } from "./auth.types";
 import { CurrentSessionId } from "./current-session-id.decorator";
@@ -34,6 +35,51 @@ export class AuthController {
   @Get("security-policy")
   securityPolicy() {
     return this.securityConfiguration.getPublicPolicy();
+  }
+
+  @Get("providers")
+  providers() {
+    return this.authService.getExternalAuthProviders();
+  }
+
+  @Get("google/start")
+  async googleStart(@Query("returnTo") returnTo: string | undefined, @Req() request: SessionRequest, @Res() response: Response) {
+    const context = this.sessionContext(request);
+    const shouldSetCookie = !context.trustedDeviceToken;
+    context.trustedDeviceToken ??= createTrustedDeviceToken();
+    const url = await this.authService.startGoogleLogin(context, returnTo);
+    if (shouldSetCookie) setTrustedDeviceCookie(response, context.trustedDeviceToken);
+    return response.redirect(url);
+  }
+
+  @Get("google/callback")
+  async googleCallback(@Query("code") code: string, @Query("state") state: string, @Res() response: Response) {
+    try {
+      const result = await this.authService.finishGoogleLogin(code, state);
+      const target = new URL("/login", process.env.WEB_ORIGIN ?? "http://localhost:3000");
+      target.searchParams.set("oauthResult", result.redirectToken);
+      if (result.returnTo !== "/dashboard") target.searchParams.set("from", result.returnTo);
+      return response.redirect(target.toString());
+    } catch (error) {
+      const target = new URL("/login", process.env.WEB_ORIGIN ?? "http://localhost:3000");
+      target.searchParams.set("oauthError", error instanceof Error ? error.message.split("\n")[0] : "Google sign-in failed.");
+      return response.redirect(target.toString());
+    }
+  }
+
+  @Post("oauth/result")
+  @HttpCode(200)
+  consumeOAuthResult(@Body() body: { token?: string }) {
+    if (!body?.token) throw new BadRequestException("登录结果无效。\nInvalid sign-in result.");
+    return this.authService.consumeOAuthResult(body.token);
+  }
+
+  @Post("google/bind")
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  bindGoogleIdentity(@CurrentUser() user: AuthenticatedUser, @Body() body: { pendingToken?: string; currentPassword?: string }) {
+    if (!body.pendingToken || !body.currentPassword) throw new BadRequestException("请提供绑定请求和当前密码。\nPending request and current password are required.");
+    return this.authService.bindPendingGoogleIdentity(user, body.pendingToken, body.currentPassword);
   }
 
   @Post("registration-code")
@@ -327,6 +373,12 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   updateProfile(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateUserProfileDto): Promise<AuthenticatedUser> {
     return this.usersService.updateOwnProfile(user.id, dto);
+  }
+
+  @Patch("me/username")
+  @UseGuards(JwtAuthGuard)
+  updateUsername(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateUserUsernameDto): Promise<AuthenticatedUser> {
+    return this.usersService.updateOwnUsername(user.id, dto);
   }
 
   @Patch("me/locale")

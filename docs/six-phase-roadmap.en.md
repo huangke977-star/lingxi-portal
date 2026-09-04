@@ -51,7 +51,7 @@ Status definitions:
 | Phase 16 | Stronger Community Interaction | Mentions, quotes, message search, group pins, message location, and subscription improvements | Completed |
 | Phase 17 | Content Distribution And Public Sharing | RSS/Atom, sitemaps, Open Graph, and email distribution | Completed |
 | Phase 18 | Deeper Recommendations And Resources | Recommendation explanations, recovery, redemption records, points rules, and creator earnings | Completed |
-| Phase 19 | External Integration Capability | Webhooks, read-only API tokens, external notifications, and third-party login | Not started |
+| Phase 19 | External Integration Capability | Webhooks, read-only API tokens, external notifications, and third-party login | Completed |
 | Phase 20 | Mobile And Offline Experience | Offline PWA reading, weak-network fallback, push improvements, and native-app assessment | Not started |
 | Phase 21 | Operational Resilience And Compliance Closeout | Real recovery drills, audit retention, dependency upgrades, load testing, and DR manual | Not started |
 
@@ -65,6 +65,7 @@ These are required only before their corresponding phase starts:
 | SMTP delivery configuration | Phase 2 | Used for verification, recovery, and login alerts |
 | Cloudflare Turnstile site and secret keys | Phase 2 | Used for registration and high-risk operations |
 | Group member limit | Phase 5 | Recommended default is 100 members |
+| Google OAuth Client ID, Client Secret, and Redirect URI | Phase 19 | Optional; configure in Google Cloud Console to enable Google sign-in, using an HTTPS callback in production |
 
 ## 5. Phase 1: Reliability Foundation
 
@@ -654,14 +655,20 @@ Goal: expose controlled external integration without exposing the internal datab
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P19-01 | Webhooks with event subscriptions, signatures, retry backoff, idempotency keys, failure records, and manual replay | Not started |
-| P19-02 | Read-only API tokens with account/resource scopes, expiry, rotation, revocation, rate limits, and access audit | Not started |
-| P19-03 | External notification channels with unified preferences, channel verification, failure fallback, and sensitive-data redaction | Not started |
-| P19-04 | Evaluate and implement third-party login or enterprise SSO only after confirming OIDC/SAML scope, account linking, unlinking, and recovery | Not started |
+| P19-01 | Webhooks with event subscriptions, signatures, retry backoff, idempotency keys, failure records, and manual replay | Completed |
+| P19-02 | Read-only API tokens with account/resource scopes, expiry, rotation, revocation, rate limits, and access audit | Completed |
+| P19-03 | External notification channels with unified preferences, channel verification, failure fallback, and sensitive-data redaction | Completed |
+| P19-04 | Evaluate and implement third-party login or enterprise SSO only after confirming OIDC/SAML scope, account linking, unlinking, and recovery | Completed (Google OIDC; SAML deferred) |
 
 Necessity: Decide from actual partner or enterprise demand. Webhooks and read-only tokens can come first; third-party login/SSO requires an explicit identity and security decision.
 
 Acceptance focus: least-privilege tokens, unforgeable webhooks, idempotent duplicate delivery, no secrets in logs, non-blocking external failures, and an explicit account-link confirmation flow.
+
+Phase 19 is complete. The admin console now manages Webhook endpoints and delivery records with HMAC-SHA256 signatures, idempotency keys, exponential backoff, failure records, and manual replay. The profile area manages read-only API tokens and external notification channels. Tokens are shown only once, stored only as hashes, and enforced with scopes, expiry, revocation, and per-minute rate limiting. External channels must be verified before activation; delivery failures are recorded without blocking in-site notifications, and outbound payloads are redacted.
+
+Google sign-in uses PKCE, one-time OAuth state, and one-time result tickets. New Google users receive a unique `@username` derived from the email prefix. Existing local accounts are never merged automatically; the user must sign in locally and confirm the link with the current password. A linked Google identity signs in directly on a trusted device and follows the existing risk-device verification policy otherwise. Passkey sign-in remains a separate direct flow with no additional factor.
+
+Automated acceptance: 47 API test suites and 328 tests passed; API/Web builds, API/Web lint, Prisma validation, and `git diff --check` passed. Production Google sign-in acceptance still requires a Google Cloud OAuth client configuration.
 
 ### Phase 20: Mobile And Offline Experience
 
@@ -697,7 +704,7 @@ Acceptance focus: restore results are reproducible, alerts reach owners, ordinar
 
 ### Later-Phase Dependencies And Order
 
-Phases 15 and 16 are complete. Phases 17 and 18 can run in parallel, but P17-05 requires SMTP. Phase 19 depends on a stable event and permission model; third-party login/SSO needs a separate decision. Phase 20 can follow once public URLs and content-cache boundaries from Phase 17 are clear. Phase 21 should collect operational evidence continuously and run its final acceptance after the main P15-P20 work is complete.
+Phases 15 through 19 are complete. P17-05 requires SMTP, and manual Google sign-in acceptance for P19 requires Google Cloud OAuth configuration. Phase 20 can follow once public URLs and content-cache boundaries from Phase 17 are clear. Phase 21 should collect operational evidence continuously and run its final acceptance after the main P15-P20 work is complete.
 
 The fixed execution order is P15 -> P16 -> P17/P18 -> P19 -> P20 -> P21. Each phase must complete code, migrations, tests, bilingual documentation, push, deployment, and production verification before its status changes to `Completed`.
 

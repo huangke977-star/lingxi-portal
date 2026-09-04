@@ -11,6 +11,7 @@ import { UpdateUserAppearanceDto } from "./dto/update-user-appearance.dto";
 import { UpdateUserLocaleDto } from "./dto/update-user-locale.dto";
 import { ListUsersQueryDto } from "./dto/list-users-query.dto";
 import { UpdateUserProfileDto } from "./dto/update-user-profile.dto";
+import { UpdateUserUsernameDto } from "./dto/update-user-username.dto";
 
 export const AVATAR_MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
 
@@ -350,6 +351,20 @@ export class UsersService {
     });
 
     return this.toAuthenticatedUser(user);
+  }
+
+  async updateOwnUsername(id: number, dto: UpdateUserUsernameDto): Promise<AuthenticatedUser> {
+    const username = dto.username.trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,32}$/.test(username)) throw new BadRequestException("用户名只能包含英文、数字和下划线，长度为 3-32 位。\\nUsername must contain only letters, numbers, and underscores.");
+    if (RESERVED_NICKNAMES.has(username)) throw new BadRequestException("该用户名不可用。\\nThis username is reserved.");
+    const current = await this.prisma.user.findUnique({ where: { id }, select: { username: true, usernameChangedAt: true } });
+    if (!current) throw new NotFoundException("User not found.");
+    if (current.username === username) return this.findActiveById(id);
+    if (current.usernameChangedAt && current.usernameChangedAt.getTime() > Date.now() - 30 * 24 * 60 * 60 * 1000) throw new BadRequestException("用户名修改后 30 天内不能再次修改。\\nUsername can be changed again 30 days after the last change.");
+    const owner = await this.prisma.user.findUnique({ where: { username }, select: { id: true } });
+    if (owner && owner.id !== id) throw new ConflictException("用户名已被使用。\\nUsername is already in use.");
+    const updated = await this.prisma.user.update({ where: { id }, data: { username, usernameChangedAt: new Date(), ...buildSearchFields([username]) }, select: this.userSelect() });
+    return this.toAuthenticatedUser(updated);
   }
 
   async updateOwnAvatar(id: number, file: UploadedAvatarFile | undefined): Promise<AuthenticatedUser> {

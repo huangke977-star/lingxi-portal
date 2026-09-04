@@ -9,9 +9,10 @@ import { ModerationModule } from "../moderation/moderation.module";
 import { SocialModule } from "../social/social.module";
 import { ArticlesController } from "./articles.controller";
 import { ArticlesService } from "./articles.service";
+import { IntegrationsModule } from "../integrations/integrations.module";
 
 @Module({
-  imports: [JwtModule.register({}), AuthModule, UsersModule, SiteSettingsModule, RedisModule, ReputationModule, SocialModule, forwardRef(() => ModerationModule)],
+  imports: [JwtModule.register({}), AuthModule, UsersModule, SiteSettingsModule, RedisModule, ReputationModule, SocialModule, IntegrationsModule, forwardRef(() => ModerationModule)],
   controllers: [ArticlesController],
   providers: [ArticlesService],
   exports: [ArticlesService],
