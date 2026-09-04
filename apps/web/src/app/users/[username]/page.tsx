@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Ban, Check, ChevronDown, ChevronUp, Clock3, Eye, FileText, FolderOpen, Heart, MessageCircle, Rss, Send, UserPlus, UsersRound, X } from "lucide-react";
+import { Ban, Check, ChevronDown, ChevronUp, Clock3, Eye, FileText, FolderOpen, Heart, MessageCircle, Radio, Rss, Send, UserPlus, UsersRound, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -226,16 +226,18 @@ export default function UserProfilePage() {
         </div>
         <div className="public-user-side">
           {profile.visibleFields.stats || profile.visibleFields.followingCount ? <div className="public-user-stats">{profile.publicArticleCount !== null ? <span><FileText aria-hidden="true" size={16} /><small>{phrase("公开文章", "Public articles")}</small><strong>{profile.publicArticleCount}</strong></span> : null}{profile.receivedLikeCount !== null ? <span><Heart aria-hidden="true" size={16} /><small>{phrase("累计获赞", "Likes received")}</small><strong>{profile.receivedLikeCount}</strong></span> : null}{profile.publicViewCount !== null ? <span><Eye aria-hidden="true" size={16} /><small>{phrase("公开阅读", "Public views")}</small><strong>{profile.publicViewCount}</strong></span> : null}{profile.subscriberCount !== null ? <span><UsersRound aria-hidden="true" size={16} /><small>{phrase("订阅者", "Subscribers")}</small><strong>{profile.subscriberCount}</strong></span> : null}{profile.followingCount !== null ? <span><Rss aria-hidden="true" size={16} /><small>{phrase("已订阅", "Following")}</small><strong>{profile.followingCount}</strong></span> : null}{showcase?.visitCount !== null && showcase?.visitCount !== undefined ? <span><Eye aria-hidden="true" size={16} /><small>{phrase("主页访问", "Profile visits")}</small><strong>{showcase.visitCount}</strong></span> : null}</div> : null}
-          <a aria-label={phrase("订阅此作者的 RSS", "Subscribe to this author via RSS")} className="public-feed-link" href={resolveApiUrl(`/distribution/feeds/authors/${encodeURIComponent(profile.username)}.rss`)} rel="alternate" title={phrase("RSS 订阅源", "RSS feed")}><Rss aria-hidden="true" size={16} /></a>
-          {!profile.isSelf ? <div className="public-user-actions">
-            <button className={profile.subscribed ? "active" : ""} disabled={isActing} onClick={() => void toggleSubscription()} type="button"><Rss aria-hidden="true" size={16} />{profile.subscribed ? phrase("已订阅", "Subscribed") : phrase("订阅", "Subscribe")}</button>
-            {!relationship && profile.canRequestFriend ? <button disabled={isActing} onClick={() => setIsFriendRequestOpen(true)} type="button"><UserPlus aria-hidden="true" size={16} />{phrase("加好友", "Add friend")}</button> : null}
-            {relationship?.direction === "outgoing" ? <span><Clock3 aria-hidden="true" size={15} />{phrase("等待确认", "Pending")}</span> : null}
-            {relationship?.direction === "incoming" ? <><button disabled={isActing} onClick={() => void respond("accepted")} type="button"><Check aria-hidden="true" size={16} />{phrase("接受", "Accept")}</button><button disabled={isActing} onClick={() => void respond("declined")} type="button"><X aria-hidden="true" size={16} />{phrase("拒绝", "Decline")}</button></> : null}
-            {profile.messageAccess === "conversation" ? <button disabled={isActing} onClick={() => void startChat()} type="button"><MessageCircle aria-hidden="true" size={16} />{phrase("发消息", "Message")}</button> : null}
-            {profile.messageAccess === "request" ? <button disabled={isActing} onClick={() => setIsMessageRequestOpen(true)} type="button"><Send aria-hidden="true" size={16} />{phrase("消息请求", "Message request")}</button> : null}
-            <button aria-label={phrase("加入黑名单", "Block user")} disabled={isActing} onClick={() => setIsBlockConfirmOpen(true)} title={phrase("加入黑名单", "Block user")} type="button"><Ban aria-hidden="true" size={16} /></button>
-          </div> : null}
+          <div className="public-user-actions">
+            <a aria-label={phrase("通过 RSS 阅读器订阅作者更新", "Subscribe to this author's updates in an RSS reader")} className="public-external-feed-link" href={resolveApiUrl(`/distribution/feeds/authors/${encodeURIComponent(profile.username)}.rss`)} rel="alternate" title={phrase("通过 RSS 阅读器订阅作者更新", "Subscribe to this author's updates in an RSS reader")}><Radio aria-hidden="true" size={16} />{phrase("站外订阅", "External feed")}</a>
+            {!profile.isSelf ? <>
+              <button className={profile.subscribed ? "active" : ""} disabled={isActing} onClick={() => void toggleSubscription()} type="button"><Rss aria-hidden="true" size={16} />{profile.subscribed ? phrase("已订阅", "Subscribed") : phrase("订阅", "Subscribe")}</button>
+              {!relationship && profile.canRequestFriend ? <button disabled={isActing} onClick={() => setIsFriendRequestOpen(true)} type="button"><UserPlus aria-hidden="true" size={16} />{phrase("加好友", "Add friend")}</button> : null}
+              {relationship?.direction === "outgoing" ? <span><Clock3 aria-hidden="true" size={15} />{phrase("等待确认", "Pending")}</span> : null}
+              {relationship?.direction === "incoming" ? <><button disabled={isActing} onClick={() => void respond("accepted")} type="button"><Check aria-hidden="true" size={16} />{phrase("接受", "Accept")}</button><button disabled={isActing} onClick={() => void respond("declined")} type="button"><X aria-hidden="true" size={16} />{phrase("拒绝", "Decline")}</button></> : null}
+              {profile.messageAccess === "conversation" ? <button disabled={isActing} onClick={() => void startChat()} type="button"><MessageCircle aria-hidden="true" size={16} />{phrase("发消息", "Message")}</button> : null}
+              {profile.messageAccess === "request" ? <button disabled={isActing} onClick={() => setIsMessageRequestOpen(true)} type="button"><Send aria-hidden="true" size={16} />{phrase("消息请求", "Message request")}</button> : null}
+              <button aria-label={phrase("加入黑名单", "Block user")} disabled={isActing} onClick={() => setIsBlockConfirmOpen(true)} title={phrase("加入黑名单", "Block user")} type="button"><Ban aria-hidden="true" size={16} /></button>
+            </> : null}
+          </div>
         </div>
       </div>
     </section>

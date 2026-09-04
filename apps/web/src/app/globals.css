@@ -5784,10 +5784,13 @@ a.entry-item:hover {
 .public-user-side { display: grid; min-width: 0; align-content: center; gap: 9px; }
 .public-user-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .public-user-actions button,
+.public-user-actions > a,
 .public-user-actions > span { display: inline-flex; min-height: 34px; align-items: center; gap: 6px; border: 0; border-radius: 7px; background: color-mix(in srgb, var(--surface) 54%, transparent); color: var(--muted-strong); font: inherit; font-size: 0.76rem; padding: 0 10px; }
 .public-user-actions button { cursor: pointer; }
+.public-user-actions > a { text-decoration: none; white-space: nowrap; }
 .public-user-actions button:hover,
-.public-user-actions button.active { background: color-mix(in srgb, var(--accent-soft) 66%, transparent); color: var(--accent-strong); }
+.public-user-actions button.active,
+.public-user-actions > a:hover { background: color-mix(in srgb, var(--accent-soft) 66%, transparent); color: var(--accent-strong); }
 .public-user-articles { display: grid; gap: 8px; }
 .public-user-articles > header { display: flex; align-items: center; gap: 7px; padding: 0 3px; }
 .public-user-articles > header span { color: var(--muted); font-size: 0.72rem; }
@@ -17477,8 +17480,6 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .content-group-header.topic.with-cover .content-group-subscribe { color: rgba(255, 255, 255, 0.88); }
 .content-group-header.topic.with-cover .content-group-subscribe.active { background: rgba(255, 255, 255, 0.2); color: #fff; }
 .content-group-header.topic.with-cover .content-group-feed-link { background: rgba(255, 255, 255, 0.2); color: #fff; }
-.public-feed-link { display: inline-grid; width: 30px; height: 30px; place-items: center; align-self: end; justify-self: end; border-radius: 50%; background: color-mix(in srgb, var(--surface) 54%, transparent); color: var(--muted); }
-.public-feed-link:hover { background: var(--accent-soft); color: var(--accent-strong); }
 
 .subscription-management-panel { gap: 10px; }
 .subscription-management-groups { display: grid; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
