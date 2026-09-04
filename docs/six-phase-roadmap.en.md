@@ -50,7 +50,7 @@ Status definitions:
 | Phase 15 | Account And Privacy Completeness | Data export, deletion, blocking, two-factor authentication, and authorization records | Completed |
 | Phase 16 | Stronger Community Interaction | Mentions, quotes, message search, group pins, message location, and subscription improvements | Completed |
 | Phase 17 | Content Distribution And Public Sharing | RSS/Atom, sitemaps, Open Graph, and email distribution | Completed |
-| Phase 18 | Deeper Recommendations And Resources | Recommendation explanations, recovery, redemption records, points rules, and creator earnings | Not started |
+| Phase 18 | Deeper Recommendations And Resources | Recommendation explanations, recovery, redemption records, points rules, and creator earnings | Completed |
 | Phase 19 | External Integration Capability | Webhooks, read-only API tokens, external notifications, and third-party login | Not started |
 | Phase 20 | Mobile And Offline Experience | Offline PWA reading, weak-network fallback, push improvements, and native-app assessment | Not started |
 | Phase 21 | Operational Resilience And Compliance Closeout | Real recovery drills, audit retention, dependency upgrades, load testing, and DR manual | Not started |
@@ -360,6 +360,7 @@ A phase can be marked `Completed` only when all conditions are met:
 | Phase 8 | 2026-08-14 | `d809d19` | Deployed 2026-08-14 with the portal-preference migration applied | Home, dashboard, tools center, personal shortcuts, administrator recommendations, and mobile restore-dialog centering are complete; focused portal API tests, builds, and desktop/mobile no-overflow checks passed |
 | Phase 10 P10-01 | 2026-08-21 | `fc183f4` | Deployed 2026-08-21; Actions `32441111237` succeeded with no pending migrations | Article, comment, and group-message reports now share one queue; all 41 API suites and 270 tests passed, desktop/mobile acceptance and production route, health, and log checks passed, and the previous API/Web images were removed |
 | Phase 10 | 2026-08-24 | `d4b0d3a`, `ab3edcb` | Deployed; Actions `32681800667` and `32683906735` succeeded; P10 migration applied | P10-02 through P10-04 complete rule enforcement, batch governance, deadline notices, audit, statistics, and permission boundaries. Production health and `/admin/reports` returned `200`; the empty partial-migration tables were safely recovered, and the bootstrap container plus dangling images were removed |
+| Phase 18 | 2026-09-04 | `0e2a876` | Deployed; Actions `33831934044` succeeded; P18 migration applied | Explainable recommendations and feedback recovery, delivery records, download/failure retry, idempotent refunds, point top-ups/violation penalties, creator earnings details, and administrator boundaries are complete. 46 API suites and 325 tests passed; API/Web lint, production builds, Prisma validation, and production health checks passed; stopped containers and Lingxi dangling images were removed |
 
 ## 13. Phase 7 And Beyond Delivery Plan
 
@@ -630,15 +631,22 @@ Goal: make recommendations more transparent and recoverable, and extend points r
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P18-01 | Explainable recommendation reasons based on interests, subscriptions, reading, or interaction without exposing another user's private behavior | Not started |
-| P18-02 | Manage and restore not-interested feedback by type, with cache invalidation and cleanup | Not started |
-| P18-03 | Resource-delivery records for redemption, unlock, download, failure, and retry, queryable by the owning user | Not started |
-| P18-04 | Points top-up, refund, and violation rules covering duplicate deductions, takedowns, failed orders, and administrator boundaries | Not started |
-| P18-05 | Creator-resource earnings view for pending, settled, refunded, and article/resource-block aggregates | Not started |
+| P18-01 | Explainable recommendation reasons based on interests, subscriptions, reading, or interaction without exposing another user's private behavior | Completed |
+| P18-02 | Manage and restore not-interested feedback by type, with cache invalidation and cleanup | Completed |
+| P18-03 | Resource-delivery records for redemption, unlock, download, failure, and retry, queryable by the owning user | Completed |
+| P18-04 | Points top-up, refund, and violation rules covering duplicate deductions, takedowns, failed orders, and administrator boundaries | Completed |
+| P18-05 | Creator-resource earnings view for pending, settled, refunded, and article/resource-block aggregates | Completed |
 
 Necessity: Medium. Build on the existing recommendation and resource ledger, prioritizing explainability and reconciliation before complex ranking models.
 
 Acceptance focus: reasons match actual ranking inputs; feedback cannot bypass visibility; redemption retries are idempotent; refunds cannot be issued twice; creator earnings reconcile to the points ledger.
+
+### P18 Acceptance Record
+
+- The recommendation sidebar now explains topic, collection, author, and group results with reading, subscription, interaction, activity, or popularity reason labels. Feedback management supports type filtering, single-item restore, and bulk cleanup, while target validation continues to enforce current visibility and role access.
+- Redemptions record redeemed, unlocked, downloaded, failed, retried, and refunded events. Users can review their own delivery status and download/retry actions; administrators can read delivery records, while only super administrators can refund, top up points, or apply violation penalties.
+- Refunds use delivery status and ledger event keys for idempotency. Top-ups and penalties use unique ledger event keys. Creator earnings distinguish pending, settled, and refunded values and retain article, block, buyer, and delivery-state details.
+- Prisma migration `20260904100000_add_p18_recommendations_and_resources` is applied in production. The full API suite passed with 46 suites and 325 tests; API/Web lint, production builds, Prisma validation, and `git diff --check` passed. Actions `33831934044` built both API/Web images successfully; local and public health endpoints returned `status: ok`, and the home page returned HTTP 200.
 
 ### Phase 19: External Integration Capability
 
