@@ -130,6 +130,12 @@ export interface OAuthLinkRequired {
   oauthLinkRequired: true;
   pendingToken: string;
   email: string;
+  methods: {
+    passkey: boolean;
+    email: boolean;
+    totp: boolean;
+    password: boolean;
+  };
 }
 
 export async function consumeOAuthResult(token: string): Promise<LoginResponse | OAuthLinkRequired> {
@@ -138,6 +144,48 @@ export async function consumeOAuthResult(token: string): Promise<LoginResponse |
 
 export function bindGoogleIdentity(accessToken: string, pendingToken: string, verificationToken: string): Promise<{ success: true }> {
   return requestJson("/auth/google/bind", { method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ pendingToken, verificationToken }) });
+}
+
+export function getGoogleLinkPasskeyOptions(pendingToken: string): Promise<PasskeyOptionsResponse<PublicKeyCredentialRequestOptionsJSON>> {
+  return requestJson("/auth/google/link/passkey/options", {
+    method: "POST",
+    body: JSON.stringify({ pendingToken }),
+  });
+}
+
+export function verifyGoogleLinkPasskey(input: { pendingToken: string; challengeToken: string; response: AuthenticationResponseJSON }): Promise<AuthResponse> {
+  return requestJson("/auth/google/link/passkey/verify", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function requestGoogleLinkEmail(pendingToken: string): Promise<{ success: true; challengeToken: string; emailHint: string; retryAfterSeconds: number }> {
+  return requestJson("/auth/google/link/email", {
+    method: "POST",
+    body: JSON.stringify({ pendingToken }),
+  });
+}
+
+export function verifyGoogleLinkEmail(input: { pendingToken: string; challengeToken: string; code: string }): Promise<AuthResponse> {
+  return requestJson("/auth/google/link/email/verify", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function verifyGoogleLinkTotp(pendingToken: string, code: string): Promise<AuthResponse> {
+  return requestJson("/auth/google/link/totp", {
+    method: "POST",
+    body: JSON.stringify({ pendingToken, code }),
+  });
+}
+
+export function verifyGoogleLinkPassword(pendingToken: string, currentPassword: string): Promise<AuthResponse> {
+  return requestJson("/auth/google/link/password", {
+    method: "POST",
+    body: JSON.stringify({ pendingToken, currentPassword }),
+  });
 }
 
 export function getPasskeyLoginOptions(): Promise<

@@ -14,6 +14,7 @@ import { CurrentUser } from "./current-user.decorator";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { DeviceLoginVerificationDto, DeviceLoginVerificationResendDto, LoginDto, TotpLoginVerificationDto } from "./dto/login.dto";
 import { PasskeyDeletionCodeDto, PasskeyDeletionEmailVerifyDto, PasskeyDeletionPasswordDto, RenamePasskeyDto, SensitiveActionVerificationTokenDto, VerifyPasskeyDeletionDto, VerifyPasskeyLoginDto, VerifyPasskeyRegistrationDto } from "./dto/passkey.dto";
+import { GoogleLinkCodeDto, GoogleLinkEmailVerifyDto, GoogleLinkPasswordDto, GoogleLinkPendingTokenDto, VerifyGoogleLinkPasskeyDto } from "./dto/google-link.dto";
 import { RefreshTokenDto } from "./dto/refresh-token.dto";
 import { RegisterDto } from "./dto/register.dto";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
@@ -80,6 +81,42 @@ export class AuthController {
   bindGoogleIdentity(@CurrentUser() user: AuthenticatedUser, @Body() body: { pendingToken?: string; verificationToken?: string }, @Req() request: SessionRequest) {
     if (!body.pendingToken || !body.verificationToken) throw new BadRequestException("请先完成安全验证。\nComplete security verification first.");
     return this.authService.bindPendingGoogleIdentity(user, body.pendingToken, body.verificationToken, this.sessionContext(request));
+  }
+
+  @Post("google/link/passkey/options")
+  @HttpCode(200)
+  beginGoogleLinkPasskey(@Body() dto: GoogleLinkPendingTokenDto, @Req() request: SessionRequest) {
+    return this.authService.beginPendingGoogleLinkPasskey(dto, this.sessionContext(request));
+  }
+
+  @Post("google/link/passkey/verify")
+  @HttpCode(200)
+  finishGoogleLinkPasskey(@Body() dto: VerifyGoogleLinkPasskeyDto, @Req() request: SessionRequest) {
+    return this.authService.finishPendingGoogleLinkPasskey(dto, this.sessionContext(request));
+  }
+
+  @Post("google/link/email")
+  @HttpCode(200)
+  requestGoogleLinkEmail(@Body() dto: GoogleLinkPendingTokenDto, @Req() request: SessionRequest) {
+    return this.authService.requestPendingGoogleLinkEmail(dto, this.sessionContext(request));
+  }
+
+  @Post("google/link/email/verify")
+  @HttpCode(200)
+  verifyGoogleLinkEmail(@Body() dto: GoogleLinkEmailVerifyDto, @Req() request: SessionRequest) {
+    return this.authService.verifyPendingGoogleLinkEmail(dto, this.sessionContext(request));
+  }
+
+  @Post("google/link/totp")
+  @HttpCode(200)
+  verifyGoogleLinkTotp(@Body() dto: GoogleLinkCodeDto, @Req() request: SessionRequest) {
+    return this.authService.verifyPendingGoogleLinkTotp(dto, this.sessionContext(request));
+  }
+
+  @Post("google/link/password")
+  @HttpCode(200)
+  verifyGoogleLinkPassword(@Body() dto: GoogleLinkPasswordDto, @Req() request: SessionRequest) {
+    return this.authService.verifyPendingGoogleLinkPassword(dto, this.sessionContext(request));
   }
 
   @Post("registration-code")

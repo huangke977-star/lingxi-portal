@@ -21171,6 +21171,8 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 
 .auth-google-link-choice,
+.auth-google-link-methods,
+.auth-google-link-verification,
 .integrations-google-config-panel,
 .integrations-google-link-verification {
   display: grid;
@@ -21178,12 +21180,59 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 
 .auth-google-link-choice p,
+.auth-google-link-methods > p,
+.auth-google-link-verification > p,
 .integrations-google-config-help,
 .integrations-google-link-verification p {
   margin: 0;
   color: var(--muted);
   font-size: 0.74rem;
   line-height: 1.55;
+}
+
+.auth-google-link-method {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface-soft) 76%, transparent);
+  color: var(--muted-strong);
+  cursor: pointer;
+  font: inherit;
+  padding: 8px 11px;
+  text-align: left;
+}
+
+.auth-google-link-method:hover {
+  background: color-mix(in srgb, var(--accent-soft) 62%, transparent);
+  color: var(--accent-strong);
+}
+
+.auth-google-link-method:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.auth-google-link-method > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.auth-google-link-method strong {
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.auth-google-link-method small {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.auth-google-link-verification > .text-action {
+  justify-self: start;
 }
 
 .integrations-google-config-form {

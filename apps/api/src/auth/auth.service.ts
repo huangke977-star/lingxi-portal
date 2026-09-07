@@ -20,6 +20,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from "@simplewebauthn/server";
 import type { AuthenticatorTransportFuture, AuthenticationResponseJSON, PublicKeyCredentialCreationOptionsJSON, PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
 import { RenamePasskeyDto, VerifyPasskeyDeletionDto, VerifyPasskeyLoginDto, VerifyPasskeyRegistrationDto } from "./dto/passkey.dto";
+import { GoogleLinkCodeDto, GoogleLinkEmailVerifyDto, GoogleLinkPasswordDto, GoogleLinkPendingTokenDto, VerifyGoogleLinkPasskeyDto } from "./dto/google-link.dto";
 import { parseSensitiveAction, SensitiveAction } from "../security/sensitive-action";
 import { IntegrationsService } from "../integrations/integrations.service";
 
@@ -30,12 +31,13 @@ interface TotpLoginChallenge {
   attempts: number;
 }
 
-type PasskeyChallengeKind = "registration" | "login" | "delete" | "totp-disable" | "sensitive";
+type PasskeyChallengeKind = "registration" | "login" | "delete" | "totp-disable" | "sensitive" | "google-link";
 
 interface PasskeyChallenge {
   userId?: number;
   targetPasskeyId?: number;
   action?: SensitiveAction;
+  pendingTokenHash?: string;
   expectedChallenge: string;
   deviceFingerprint: string;
   attempts: number;
@@ -56,6 +58,20 @@ interface GoogleProfile {
   email_verified?: boolean;
   name?: string;
   picture?: string;
+}
+
+export interface GoogleLinkVerificationMethods {
+  passkey: boolean;
+  email: boolean;
+  totp: boolean;
+  password: boolean;
+}
+
+interface PendingGoogleIdentity {
+  provider: "google";
+  subject: string;
+  email: string;
+  profile: Prisma.JsonObject;
 }
 
 @Injectable()
@@ -797,7 +813,7 @@ export class AuthService {
       if (existing) {
         const pendingToken = randomBytes(32).toString("base64url");
         await this.redis.set(`oauth_pending:${this.hashToken(pendingToken)}`, JSON.stringify({ provider: "google", subject, email, profile: this.oauthProfileJson(profile) }), this.oauthStateTtlSeconds);
-        return { redirectToken: await this.storeOAuthResult({ oauthLinkRequired: true as const, pendingToken, email }), returnTo: stateData.returnTo };
+        return { redirectToken: await this.storeOAuthResult({ oauthLinkRequired: true as const, pendingToken, email, methods: await this.googleLinkVerificationMethods(existing.id) }), returnTo: stateData.returnTo };
       }
       const username = await this.generateGoogleUsername(email.split("@")[0]);
       const nickname = this.normalizeGoogleNickname(profile.name || email.split("@")[0]);
@@ -808,10 +824,199 @@ export class AuthService {
     return { redirectToken: await this.storeOAuthResult(result), returnTo: stateData.returnTo };
   }
 
-  async consumeOAuthResult(token: string): Promise<LoginResponse | { oauthLinkRequired: true; pendingToken: string; email: string }> {
+  async consumeOAuthResult(token: string): Promise<LoginResponse | { oauthLinkRequired: true; pendingToken: string; email: string; methods: GoogleLinkVerificationMethods }> {
     const raw = await this.redis.getdel(`oauth_result:${this.hashToken(token)}`);
     if (!raw) throw new BadRequestException("登录结果已失效，请重新开始。\nThe sign-in result expired.");
-    return JSON.parse(raw) as LoginResponse | { oauthLinkRequired: true; pendingToken: string; email: string };
+    return JSON.parse(raw) as LoginResponse | { oauthLinkRequired: true; pendingToken: string; email: string; methods: GoogleLinkVerificationMethods };
+  }
+
+  async beginPendingGoogleLinkPasskey(dto: GoogleLinkPendingTokenDto, context: RefreshSessionContext): Promise<{
+    options: PublicKeyCredentialRequestOptionsJSON;
+    challengeToken: string;
+    expiresAt: string;
+  }> {
+    const { user } = await this.requirePendingGoogleLink(dto.pendingToken);
+    const credentials = await this.prismaService!.webAuthnCredential.findMany({
+      where: { userId: user.id },
+      select: { credentialId: true, transports: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    if (!credentials.length) throw new BadRequestException("当前账号没有可用的通行密钥。\nNo passkey is available for this account.");
+    const options = await generateAuthenticationOptions({
+      rpID: this.passkeyRpId(),
+      userVerification: "required",
+      timeout: 60_000,
+      allowCredentials: credentials.map((credential) => ({
+        id: credential.credentialId,
+        transports: this.passkeyTransports(credential.transports),
+      })),
+    });
+    const challengeToken = randomBytes(32).toString("base64url");
+    await this.redis.set(
+      this.passkeyChallengeKey("google-link", challengeToken),
+      JSON.stringify({
+        userId: user.id,
+        action: "google_account_link",
+        pendingTokenHash: this.hashToken(dto.pendingToken),
+        expectedChallenge: options.challenge,
+        deviceFingerprint: this.loginDeviceFingerprint(context),
+        attempts: 0,
+      } satisfies PasskeyChallenge),
+      this.passkeyChallengeTtlSeconds,
+    );
+    return {
+      options,
+      challengeToken,
+      expiresAt: new Date(Date.now() + this.passkeyChallengeTtlSeconds * 1000).toISOString(),
+    };
+  }
+
+  async finishPendingGoogleLinkPasskey(dto: VerifyGoogleLinkPasskeyDto, context: RefreshSessionContext): Promise<AuthResponse> {
+    const { user } = await this.requirePendingGoogleLink(dto.pendingToken);
+    const challenge = await this.requirePasskeyChallenge("google-link", dto.challengeToken, context, user.id);
+    if (challenge.action !== "google_account_link" || challenge.pendingTokenHash !== this.hashToken(dto.pendingToken)) {
+      throw new BadRequestException("Google 关联验证信息不匹配，请重试。\nThe Google linking verification does not match this request.");
+    }
+    const credentialId = typeof (dto.response as { id?: unknown }).id === "string" ? (dto.response as { id: string }).id : "";
+    if (!credentialId) {
+      await this.recordPasskeyFailure("google-link", dto.challengeToken, challenge);
+      throw new BadRequestException("通行密钥验证失败，请重试。\nPasskey verification failed. Please try again.");
+    }
+    const stored = await this.prismaService!.webAuthnCredential.findFirst({ where: { credentialId, userId: user.id } });
+    if (!stored) {
+      await this.recordPasskeyFailure("google-link", dto.challengeToken, challenge);
+      throw new UnauthorizedException("通行密钥验证失败，请重试。\nPasskey verification failed. Please try again.");
+    }
+    let verified;
+    try {
+      verified = await verifyAuthenticationResponse({
+        response: dto.response as unknown as AuthenticationResponseJSON,
+        expectedChallenge: challenge.expectedChallenge,
+        expectedOrigin: this.passkeyExpectedOrigins(),
+        expectedRPID: this.passkeyRpId(),
+        requireUserVerification: true,
+        credential: {
+          id: stored.credentialId,
+          publicKey: Buffer.from(stored.publicKey, "base64url"),
+          counter: stored.counter,
+          transports: this.passkeyTransports(stored.transports),
+        },
+      });
+    } catch {
+      await this.recordPasskeyFailure("google-link", dto.challengeToken, challenge);
+      throw new UnauthorizedException("通行密钥验证失败，请重试。\nPasskey verification failed. Please try again.");
+    }
+    if (!verified.verified) {
+      await this.recordPasskeyFailure("google-link", dto.challengeToken, challenge);
+      throw new UnauthorizedException("通行密钥验证失败，请重试。\nPasskey verification failed.");
+    }
+    await this.prismaService!.webAuthnCredential.update({
+      where: { id: stored.id },
+      data: {
+        counter: Math.max(stored.counter, verified.authenticationInfo.newCounter),
+        lastUsedAt: new Date(),
+      },
+    });
+    await this.redis.del(this.passkeyChallengeKey("google-link", dto.challengeToken));
+    return this.completePendingGoogleLink(dto.pendingToken, user, context);
+  }
+
+  async verifyPendingGoogleLinkPassword(dto: GoogleLinkPasswordDto, context: RefreshSessionContext): Promise<AuthResponse> {
+    const { user } = await this.requirePendingGoogleLink(dto.pendingToken);
+    if (!(await this.passwordService.verifyPassword(dto.currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException("当前密码不正确。\nThe current password is incorrect.");
+    }
+    return this.completePendingGoogleLink(dto.pendingToken, user, context);
+  }
+
+  async verifyPendingGoogleLinkTotp(dto: GoogleLinkCodeDto, context: RefreshSessionContext): Promise<AuthResponse> {
+    const { user } = await this.requirePendingGoogleLink(dto.pendingToken);
+    if ((await this.accountPrivacy.verifyTotpForLogin(user.id, dto.code)) !== true) {
+      throw new UnauthorizedException("双因素验证码不正确。\nThe authenticator code is incorrect.");
+    }
+    return this.completePendingGoogleLink(dto.pendingToken, user, context);
+  }
+
+  async requestPendingGoogleLinkEmail(dto: GoogleLinkPendingTokenDto, context: RefreshSessionContext) {
+    const { user } = await this.requirePendingGoogleLink(dto.pendingToken);
+    const result = await this.accountSecurity.requestSensitiveActionVerification(user, "google_account_link", context);
+    return { ...result, emailHint: this.maskEmail(user.email) };
+  }
+
+  async verifyPendingGoogleLinkEmail(dto: GoogleLinkEmailVerifyDto, context: RefreshSessionContext): Promise<AuthResponse> {
+    const { user } = await this.requirePendingGoogleLink(dto.pendingToken);
+    const verificationToken = await this.accountSecurity.consumeSensitiveActionVerification(user, "google_account_link", dto.challengeToken, dto.code, context);
+    await this.accountSecurity.consumeSensitiveActionGrant(user.id, "google_account_link", verificationToken, context);
+    return this.completePendingGoogleLink(dto.pendingToken, user, context);
+  }
+
+  private async googleLinkVerificationMethods(userId: number): Promise<GoogleLinkVerificationMethods> {
+    const [credentialCount, totpCredential, securityConfiguration] = await Promise.all([
+      this.prismaService!.webAuthnCredential.count({ where: { userId } }),
+      this.prismaService!.userTotpCredential.findUnique({ where: { userId }, select: { enabled: true } }),
+      this.securityConfiguration.getConfiguration(),
+    ]);
+    return {
+      passkey: credentialCount > 0,
+      email: securityConfiguration.smtpEnabled,
+      totp: Boolean(totpCredential?.enabled),
+      password: true,
+    };
+  }
+
+  private async requirePendingGoogleLink(pendingToken: string): Promise<{ pending: PendingGoogleIdentity; user: AuthenticatedUser & { passwordHash: string } }> {
+    const raw = await this.redis.get(`oauth_pending:${this.hashToken(pendingToken)}`);
+    if (!raw) throw new BadRequestException("绑定请求已失效，请重新开始。\nThe linking request expired.");
+    let pending: PendingGoogleIdentity;
+    try {
+      pending = JSON.parse(raw) as PendingGoogleIdentity;
+    } catch {
+      throw new BadRequestException("绑定请求无效，请重新开始。\nThe linking request is invalid.");
+    }
+    if (pending.provider !== "google" || !pending.subject || !pending.email) {
+      throw new BadRequestException("绑定请求无效，请重新开始。\nThe linking request is invalid.");
+    }
+    const user = await this.usersService.findForLogin(pending.email);
+    if (!user || user.status !== "active" || user.email.toLowerCase() !== pending.email.toLowerCase()) {
+      throw new ForbiddenException("关联的本地账号不可用。\nThe local account cannot be linked.");
+    }
+    return { pending, user };
+  }
+
+  private async completePendingGoogleLink(pendingToken: string, user: AuthenticatedUser & { passwordHash: string }, context: RefreshSessionContext): Promise<AuthResponse> {
+    const raw = await this.redis.getdel(`oauth_pending:${this.hashToken(pendingToken)}`);
+    if (!raw) throw new BadRequestException("绑定请求已失效，请重新开始。\nThe linking request expired.");
+    let pending: PendingGoogleIdentity;
+    try {
+      pending = JSON.parse(raw) as PendingGoogleIdentity;
+    } catch {
+      throw new BadRequestException("绑定请求无效，请重新开始。\nThe linking request is invalid.");
+    }
+    if (pending.provider !== "google" || pending.email.toLowerCase() !== user.email.toLowerCase()) {
+      throw new ForbiddenException("Google 邮箱与本地账号不一致。\nGoogle email does not match the local account.");
+    }
+    try {
+      await this.prismaService!.externalAuthIdentity.create({
+        data: {
+          userId: user.id,
+          provider: ExternalAuthProvider.google,
+          subject: pending.subject,
+          email: pending.email,
+          emailVerified: true,
+          profile: pending.profile,
+        },
+      });
+    } catch (error) {
+      if (this.isPrismaUniqueError(error)) throw new ConflictException("该 Google 账号已经绑定其他账号。\nThis Google account is already linked to another account.");
+      throw error;
+    }
+    return this.completeLogin(user.id, context, false);
+  }
+
+  private maskEmail(email: string): string {
+    const [local, domain] = email.split("@");
+    if (!local || !domain) return email;
+    return `${local.slice(0, 2)}${"*".repeat(Math.max(2, local.length - 2))}@${domain}`;
   }
 
   async bindPendingGoogleIdentity(user: AuthenticatedUser, pendingToken: string, verificationToken: string, context: RefreshSessionContext) {
@@ -853,7 +1058,7 @@ export class AuthService {
     return response.json() as Promise<GoogleProfile>;
   }
 
-  private async storeOAuthResult(value: LoginResponse | { oauthLinkRequired: true; pendingToken: string; email: string }): Promise<string> { const token = randomBytes(32).toString("base64url"); await this.redis.set(`oauth_result:${this.hashToken(token)}`, JSON.stringify(value), this.oauthResultTtlSeconds); return token; }
+  private async storeOAuthResult(value: LoginResponse | { oauthLinkRequired: true; pendingToken: string; email: string; methods: GoogleLinkVerificationMethods }): Promise<string> { const token = randomBytes(32).toString("base64url"); await this.redis.set(`oauth_result:${this.hashToken(token)}`, JSON.stringify(value), this.oauthResultTtlSeconds); return token; }
   private oauthStateKey(state: string) { return `oauth_google_state:${this.hashToken(state)}`; }
   private hashToken(value: string) { return createHash("sha256").update(value).digest("hex"); }
   private safeReturnTo(value?: string) { return value && value.startsWith("/") && !value.startsWith("//") ? value : "/dashboard"; }

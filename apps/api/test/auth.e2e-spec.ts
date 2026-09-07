@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
@@ -196,6 +197,9 @@ function createPrismaMock() {
           return withRole(user);
         }),
       },
+      externalAuthIdentity: {
+        create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: 1, ...data })),
+      },
     },
   };
 }
@@ -218,6 +222,11 @@ function createRedisMock() {
         store.set(key, value);
       }),
       get: jest.fn(async (key: string) => store.get(key) ?? null),
+      getdel: jest.fn(async (key: string) => {
+        const value = store.get(key) ?? null;
+        store.delete(key);
+        return value;
+      }),
       del: jest.fn(async (key: string) => deleteKey(key)),
       delMany: jest.fn(async (keys: string[]) => {
         return keys.reduce((deleted, key) => deleted + deleteKey(key), 0);
@@ -411,6 +420,34 @@ describe("AuthController (e2e)", () => {
     const response = await request(app.getHttpServer()).post("/auth/login").send({ account: "email-login@example.com", password: "Secret123!" }).expect(200);
 
     expect(response.body.user.username).toBe("email_user");
+  });
+
+  it("links a Google identity directly after pre-authenticated password verification", async () => {
+    await register("google_existing", "google-existing@example.com").expect(200);
+    const pendingToken = "google-pending-token-for-existing-account";
+    const pendingKey = `oauth_pending:${createHash("sha256").update(pendingToken).digest("hex")}`;
+    redisState.store.set(pendingKey, JSON.stringify({
+      provider: "google",
+      subject: "google-subject-1",
+      email: "google-existing@example.com",
+      profile: { sub: "google-subject-1", emailVerified: true },
+    }));
+
+    const response = await request(app.getHttpServer())
+      .post("/auth/google/link/password")
+      .send({ pendingToken, currentPassword: "Secret123!" })
+      .expect(200);
+
+    expect(response.body.user.username).toBe("google_existing");
+    expect(response.body.accessToken).toEqual(expect.any(String));
+    expect(redisState.store.has(pendingKey)).toBe(false);
+    expect(prismaState.prisma.externalAuthIdentity.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 1,
+        subject: "google-subject-1",
+        provider: "google",
+      }),
+    });
   });
 
   it("trusts the registration browser after verified email registration", async () => {
