@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Fingerprint, Globe2 } from "lucide-react";
+import { Fingerprint } from "lucide-react";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { AppToast } from "@/components/app-toast";
@@ -11,7 +11,7 @@ import { useLanguage } from "@/components/language-provider";
 import { OtpCodeInput } from "@/components/otp-code-input";
 import { PasswordInput } from "@/components/password-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
-import { ApiRequestError, consumeOAuthResult, getBrowserApiBaseUrl, getExternalAuthProviders, getPasskeyLoginOptions, login, resendDeviceLoginVerification, type DeviceLoginVerificationRequired, type TotpVerificationRequired, verifyDeviceLogin, verifyPasskeyLogin, verifyTotpLogin } from "@/lib/auth-api";
+import { ApiRequestError, consumeOAuthResult, getBrowserApiBaseUrl, getExternalAuthProviders, getPasskeyLoginOptions, login, resendDeviceLoginVerification, type DeviceLoginVerificationRequired, type OAuthLinkRequired, type TotpVerificationRequired, verifyDeviceLogin, verifyPasskeyLogin, verifyTotpLogin } from "@/lib/auth-api";
 import { saveAuthTokens } from "@/lib/auth-storage";
 import { getSecurityPolicy, type SecurityPolicy } from "@/lib/security-api";
 import { localizedPath } from "@/lib/i18n";
@@ -36,6 +36,8 @@ export default function LoginPage() {
   const [retryAfter, setRetryAfter] = useState(0);
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [googleLinkRequired, setGoogleLinkRequired] = useState<OAuthLinkRequired | null>(null);
+  const [googleLinkMode, setGoogleLinkMode] = useState(false);
   const isLeavingRef = useRef(false);
 
   useEffect(() => {
@@ -61,8 +63,9 @@ export default function LoginPage() {
     window.setTimeout(() => setIsSubmitting(true), 0);
     void consumeOAuthResult(oauthResult).then((result) => {
       if ("oauthLinkRequired" in result) {
-        window.localStorage.setItem("hlovet.oauth.pending", result.pendingToken);
-        throw new Error(phrase(`该 Google 邮箱已绑定本地账号，请先登录该账号后在个人中心完成绑定：${result.email}`, `This Google email belongs to an existing local account. Sign in first, then finish linking it from your profile: ${result.email}`));
+        setGoogleLinkRequired(result);
+        setNotice(phrase("Google 身份已验证，请选择是否关联已有账号。", "Google identity verified. Choose whether to link the existing account."));
+        return;
       }
       if ("deviceVerificationRequired" in result) {
         setDeviceChallenge(result);
@@ -105,6 +108,23 @@ export default function LoginPage() {
     }
 
     router.push(localizedPath("/", locale));
+  }
+
+  function cancelGoogleLink() {
+    window.localStorage.removeItem("hlovet.oauth.pending");
+    window.localStorage.removeItem("hlovet.oauth.pending.email");
+    setGoogleLinkRequired(null);
+    setGoogleLinkMode(false);
+    setNotice(phrase("本次未关联 Google 账号。", "Google account was not linked."));
+  }
+
+  function continueGoogleLink() {
+    if (!googleLinkRequired) return;
+    window.localStorage.setItem("hlovet.oauth.pending", googleLinkRequired.pendingToken);
+    window.localStorage.setItem("hlovet.oauth.pending.email", googleLinkRequired.email);
+    setGoogleLinkMode(true);
+    setError("");
+    setNotice(phrase("请登录已有账号，登录后将继续进行安全验证。", "Sign in to the existing account. Security verification will continue after sign-in."));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -152,7 +172,7 @@ export default function LoginPage() {
       }
 
       saveAuthTokens(response);
-      router.push(localizedPath("/dashboard", locale));
+      router.push(postLoginPath());
     } catch (loginError) {
       if (isLeavingRef.current) return;
 
@@ -216,7 +236,7 @@ export default function LoginPage() {
         return;
       }
       saveAuthTokens(result);
-      router.push(localizedPath("/dashboard", locale));
+      router.push(postLoginPath());
     } catch (passkeyError) {
       if (!isLeavingRef.current)
         setError(
@@ -256,7 +276,7 @@ export default function LoginPage() {
         return;
       }
       saveAuthTokens(response);
-      router.push(localizedPath("/dashboard", locale));
+      router.push(postLoginPath());
     } catch (verificationError) {
       setError(verificationError instanceof Error ? verificationError.message : t("auth.deviceFailed"));
     } finally {
@@ -314,13 +334,17 @@ export default function LoginPage() {
       });
       if (isLeavingRef.current) return;
       saveAuthTokens(response);
-      router.push(localizedPath("/dashboard", locale));
+      router.push(postLoginPath());
     } catch (verificationError) {
       setTotpCode("");
       setError(verificationError instanceof Error ? verificationError.message : phrase("双因素认证失败。", "Two-factor verification failed."));
     } finally {
       if (!isLeavingRef.current) setIsSubmitting(false);
     }
+  }
+
+  function postLoginPath() {
+    return localizedPath(window.localStorage.getItem("hlovet.oauth.pending") ? "/profile/integrations" : "/dashboard", locale);
   }
 
   return (
@@ -332,10 +356,18 @@ export default function LoginPage() {
         <button aria-label={t("auth.back")} className="auth-close" onClick={handleCancel} title={t("auth.back")} type="button" />
         <div className="auth-panel-head">
           <span className="section-label">HLOVET</span>
-          <h1>{deviceChallenge ? t("auth.newDevice") : totpChallenge ? phrase("双因素验证", "Two-factor verification") : t("auth.accountLogin")}</h1>
+          <h1>{googleLinkRequired && !googleLinkMode ? phrase("关联 Google 账号", "Link Google account") : deviceChallenge ? t("auth.newDevice") : totpChallenge ? phrase("双因素验证", "Two-factor verification") : t("auth.accountLogin")}</h1>
         </div>
-        <form className="form-stack" onSubmit={totpChallenge ? (event) => event.preventDefault() : deviceChallenge ? handleDeviceVerification : handleSubmit}>
-          {deviceChallenge ? (
+        <form className="form-stack" onSubmit={googleLinkRequired && !googleLinkMode ? (event) => event.preventDefault() : totpChallenge ? (event) => event.preventDefault() : deviceChallenge ? handleDeviceVerification : handleSubmit}>
+          {googleLinkRequired && !googleLinkMode ? (
+            <div className="auth-google-link-choice">
+              <p>{phrase(`Google 邮箱 ${googleLinkRequired.email} 已对应一个本地账号。为避免创建重复邮箱账号，请选择是否关联。`, `The Google email ${googleLinkRequired.email} already belongs to a local account. Choose whether to link it to avoid a duplicate email account.`)}</p>
+              <div className="actions">
+                <button className="button" onClick={continueGoogleLink} type="button">{phrase("关联已有账号", "Link existing account")}</button>
+                <button className="button secondary" onClick={cancelGoogleLink} type="button">{phrase("暂不关联", "Not now")}</button>
+              </div>
+            </div>
+          ) : deviceChallenge ? (
             <>
               <label>
                 <span>{t("auth.emailCode")}</span>
@@ -432,8 +464,8 @@ export default function LoginPage() {
                 </button>
               ) : null}
               {googleEnabled ? (
-                <button className="auth-passkey-button" disabled={isSubmitting} onClick={() => { window.location.href = `${getBrowserApiBaseUrl()}/auth/google/start?returnTo=${encodeURIComponent(new URLSearchParams(window.location.search).get("from") || "/dashboard")}`; }} type="button">
-                  <Globe2 aria-hidden="true" size={17} />
+                <button className="auth-passkey-button" disabled={isSubmitting || googleLinkMode} onClick={() => { window.location.href = `${getBrowserApiBaseUrl()}/auth/google/start?returnTo=${encodeURIComponent(new URLSearchParams(window.location.search).get("from") || "/dashboard")}`; }} type="button">
+                  <img alt="" aria-hidden="true" className="google-brand-icon" height="17" src="/google-g.svg" width="17" />
                   {phrase("使用 Google 登录", "Continue with Google")}
                 </button>
               ) : null}

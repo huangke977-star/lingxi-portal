@@ -77,9 +77,9 @@ export class AuthController {
   @Post("google/bind")
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
-  bindGoogleIdentity(@CurrentUser() user: AuthenticatedUser, @Body() body: { pendingToken?: string; currentPassword?: string }) {
-    if (!body.pendingToken || !body.currentPassword) throw new BadRequestException("请提供绑定请求和当前密码。\nPending request and current password are required.");
-    return this.authService.bindPendingGoogleIdentity(user, body.pendingToken, body.currentPassword);
+  bindGoogleIdentity(@CurrentUser() user: AuthenticatedUser, @Body() body: { pendingToken?: string; verificationToken?: string }, @Req() request: SessionRequest) {
+    if (!body.pendingToken || !body.verificationToken) throw new BadRequestException("请先完成安全验证。\nComplete security verification first.");
+    return this.authService.bindPendingGoogleIdentity(user, body.pendingToken, body.verificationToken, this.sessionContext(request));
   }
 
   @Post("registration-code")

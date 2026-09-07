@@ -126,12 +126,18 @@ export function getExternalAuthProviders(): Promise<ExternalAuthProviders> {
   return requestJson("/auth/providers", { cache: "no-store" });
 }
 
-export async function consumeOAuthResult(token: string): Promise<LoginResponse | { oauthLinkRequired: true; pendingToken: string; email: string }> {
+export interface OAuthLinkRequired {
+  oauthLinkRequired: true;
+  pendingToken: string;
+  email: string;
+}
+
+export async function consumeOAuthResult(token: string): Promise<LoginResponse | OAuthLinkRequired> {
   return requestJson("/auth/oauth/result", { method: "POST", body: JSON.stringify({ token }) });
 }
 
-export function bindGoogleIdentity(accessToken: string, pendingToken: string, currentPassword: string): Promise<{ success: true }> {
-  return requestJson("/auth/google/bind", { method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ pendingToken, currentPassword }) });
+export function bindGoogleIdentity(accessToken: string, pendingToken: string, verificationToken: string): Promise<{ success: true }> {
+  return requestJson("/auth/google/bind", { method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ pendingToken, verificationToken }) });
 }
 
 export function getPasskeyLoginOptions(): Promise<
@@ -275,7 +281,7 @@ export function verifyTotpDisablePasskey(accessToken: string, input: { challenge
   });
 }
 
-export type SensitiveAction = "account_deletion" | "passkey_registration" | "totp_enrollment";
+export type SensitiveAction = "account_deletion" | "passkey_registration" | "totp_enrollment" | "google_account_link";
 
 export function getSensitiveActionPasskeyOptions(accessToken: string, action: SensitiveAction): Promise<PasskeyOptionsResponse<PublicKeyCredentialRequestOptionsJSON>> {
   return requestJson(`/auth/me/security-verification/${encodeURIComponent(action)}/passkey/options`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({}) });

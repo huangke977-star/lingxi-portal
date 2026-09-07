@@ -121,7 +121,7 @@ export function beginTotpEnrollment(accessToken: string, verificationToken: stri
   return requestJson<{ secret: string; otpAuthUri: string }>("/account-privacy/me/totp/enroll", { method: "POST", headers: auth(accessToken), body: JSON.stringify({ verificationToken }) });
 }
 
-export type SensitiveAction = "account_deletion" | "passkey_registration" | "totp_enrollment";
+export type SensitiveAction = "account_deletion" | "passkey_registration" | "totp_enrollment" | "google_account_link";
 
 export function requestSensitiveActionEmailVerification(accessToken: string, action: SensitiveAction) {
   return requestJson<{ success: true; challengeToken: string; retryAfterSeconds: number }>(`/account-privacy/me/security-verification/${encodeURIComponent(action)}/email`, { method: "POST", headers: auth(accessToken) });

@@ -310,7 +310,9 @@ export class AccountSecurityService {
       ? "注销账号"
       : normalizedAction === "passkey_registration"
         ? "添加通行密钥"
-        : "绑定双因素认证";
+        : normalizedAction === "totp_enrollment"
+          ? "绑定双因素认证"
+          : "绑定 Google 账号";
     try {
       await this.mail.send({
         type: MailJobType.security_notice,

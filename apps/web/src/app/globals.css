@@ -21165,6 +21165,149 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   line-height: 1.5;
 }
 
+.google-brand-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.auth-google-link-choice,
+.integrations-google-config-panel,
+.integrations-google-link-verification {
+  display: grid;
+  gap: 10px;
+}
+
+.auth-google-link-choice p,
+.integrations-google-config-help,
+.integrations-google-link-verification p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.55;
+}
+
+.integrations-google-config-form {
+  display: grid;
+  min-width: 0;
+  gap: 9px;
+}
+
+.integrations-google-config-form > label:not(.integrations-google-toggle) {
+  display: grid;
+  gap: 5px;
+  color: var(--muted-strong);
+  font-size: 0.7rem;
+}
+
+.integrations-google-config-form > label:not(.integrations-google-toggle) input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid color-mix(in srgb, var(--control-line) 66%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-strong) 72%, transparent);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.74rem;
+  outline: 0;
+  padding: 7px 9px;
+}
+
+.integrations-google-config-form > label:not(.integrations-google-toggle) input:focus {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--control-line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.integrations-google-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted-strong);
+  font-size: 0.72rem;
+}
+
+.integrations-google-toggle input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.integrations-google-config-form > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.integrations-google-config-form > footer small {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.65rem;
+  line-height: 1.4;
+}
+
+.integrations-google-link-methods {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.integrations-google-link-method {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-strong) 54%, transparent);
+  color: var(--muted-strong);
+  cursor: pointer;
+  padding: 9px;
+  text-align: left;
+}
+
+.integrations-google-link-method:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-soft) 64%, transparent);
+  color: var(--accent-strong);
+}
+
+.integrations-google-link-method:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.integrations-google-link-method > svg {
+  flex: 0 0 auto;
+  color: var(--accent-strong);
+}
+
+.integrations-google-link-method > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.integrations-google-link-method strong,
+.integrations-google-link-method small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.integrations-google-link-method strong {
+  font-size: 0.72rem;
+}
+
+.integrations-google-link-method small {
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.integrations-google-link-verification .button {
+  justify-self: start;
+}
+
 .integrations-google-link-form {
   display: flex;
   min-width: 0;
@@ -21321,6 +21464,19 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
 
 @media (max-width: 680px) {
+  .integrations-google-link-methods {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .integrations-google-config-form > footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .integrations-google-config-form > footer .button {
+    align-self: start;
+  }
+
   .integrations-google-link-form {
     align-items: stretch;
     flex-direction: column;

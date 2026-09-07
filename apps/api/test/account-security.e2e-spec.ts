@@ -86,6 +86,11 @@ function securityConfiguration(overrides: Partial<SecurityConfiguration> = {}): 
     createdAt: now,
     updatedAt: now,
     ...overrides,
+    googleOauthManaged: overrides.googleOauthManaged ?? false,
+    googleOauthEnabled: overrides.googleOauthEnabled ?? false,
+    googleOauthClientId: overrides.googleOauthClientId ?? null,
+    googleOauthClientSecretEncrypted: overrides.googleOauthClientSecretEncrypted ?? null,
+    googleOauthRedirectUri: overrides.googleOauthRedirectUri ?? null,
   };
 }
 
@@ -512,6 +517,67 @@ describe("P2 account security", () => {
           turnstileSiteKey: "site-key-only",
         }),
       ).rejects.toThrow("完整配置 Site Key 和 Secret Key");
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("stores the Google client secret encrypted and never returns it", async () => {
+      const stored = securityConfiguration();
+      const update = jest.fn(async ({ data }: { data: Partial<SecurityConfiguration> }) => ({
+        ...stored,
+        ...data,
+        updatedAt: new Date("2026-08-07T00:00:00.000Z"),
+      }));
+      const prisma = {
+        securityConfiguration: {
+          upsert: jest.fn(async () => stored),
+          update,
+        },
+      } as unknown as PrismaService;
+      const service = new SecurityConfigurationService(prisma, new SecretCryptoService());
+
+      const response = await service.updateGoogleOAuth({
+        enabled: true,
+        clientId: "google-client-id",
+        clientSecret: "google-client-secret",
+        redirectUri: "https://5200918.xyz/api/auth/google/callback",
+      });
+
+      const saved = update.mock.calls[0]?.[0]?.data as Partial<SecurityConfiguration>;
+      expect(saved.googleOauthManaged).toBe(true);
+      expect(saved.googleOauthEnabled).toBe(true);
+      expect(saved.googleOauthClientId).toBe("google-client-id");
+      expect(saved.googleOauthClientSecretEncrypted).toMatch(/^v1\./);
+      expect(saved.googleOauthClientSecretEncrypted).not.toContain("google-client-secret");
+      expect(response).toMatchObject({
+        enabled: true,
+        clientId: "google-client-id",
+        clientSecretConfigured: true,
+        redirectUri: "https://5200918.xyz/api/auth/google/callback",
+        source: "database",
+      });
+      expect(JSON.stringify(response)).not.toContain("google-client-secret");
+    });
+
+    it("rejects enabling Google sign-in with a non-HTTPS redirect URI", async () => {
+      const stored = securityConfiguration();
+      const update = jest.fn(async () => stored);
+      const crypto = new SecretCryptoService();
+      const prisma = {
+        securityConfiguration: {
+          upsert: jest.fn(async () => stored),
+          update,
+        },
+      } as unknown as PrismaService;
+      const service = new SecurityConfigurationService(prisma, crypto);
+
+      await expect(
+        service.updateGoogleOAuth({
+          enabled: true,
+          clientId: "google-client-id",
+          clientSecret: "google-client-secret",
+          redirectUri: "http://example.com/api/auth/google/callback",
+        }),
+      ).rejects.toThrow("有效的 HTTPS");
       expect(update).not.toHaveBeenCalled();
     });
   });

@@ -26,7 +26,6 @@ export class SecurityAdminController {
   updateConfiguration(@Body() dto: UpdateSecurityConfigurationDto) {
     return this.configuration.update(dto);
   }
-
   @Post("smtp/test")
   @UseGuards(SuperAdminGuard)
   testSmtp() {

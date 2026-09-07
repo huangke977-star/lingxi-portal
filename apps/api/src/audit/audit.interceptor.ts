@@ -106,6 +106,7 @@ export class AuditInterceptor implements NestInterceptor {
     if (path.startsWith("/backgrounds")) return this.entry(method, path, "security", "background", "站点背景管理");
     if (path.startsWith("/android-releases")) return this.entry(method, path, "security", "android_release", "安装包管理");
     if (path.startsWith("/resources/admin")) return this.entry(method, path, "business", "resource_management", "资源交付与积分管理");
+    if (path.startsWith("/integrations/admin")) return this.entry(method, path, "security", "external_integration", "外部集成管理");
     return null;
   }
 

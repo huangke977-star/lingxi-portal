@@ -6,11 +6,13 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { SuperAdminGuard } from "../auth/guards/super-admin.guard";
 import { UserManagementGuard } from "../auth/guards/user-management.guard";
 import { CreateExternalChannelDto, CreateReadOnlyTokenDto, CreateWebhookDto, ReadOnlyArticlesQueryDto, UpdateExternalChannelDto, UpdateWebhookDto, VerifyExternalChannelDto } from "./dto/integrations.dto";
+import { UpdateGoogleOAuthConfigurationDto } from "../security/dto/security.dto";
+import { SecurityConfigurationService } from "../security/security-configuration.service";
 import { IntegrationsService } from "./integrations.service";
 
 @Controller("integrations")
 export class IntegrationsController {
-  constructor(private readonly integrations: IntegrationsService) {}
+  constructor(private readonly integrations: IntegrationsService, private readonly securityConfiguration: SecurityConfigurationService) {}
 
   @Get("admin/webhooks") @UseGuards(JwtAuthGuard, UserManagementGuard, SuperAdminGuard) listWebhooks() { return this.integrations.listWebhooks(); }
   @Post("admin/webhooks") @UseGuards(JwtAuthGuard, UserManagementGuard, SuperAdminGuard) createWebhook(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateWebhookDto) { return this.integrations.createWebhook(user, dto); }
@@ -19,6 +21,8 @@ export class IntegrationsController {
   @Get("admin/webhook-deliveries") @UseGuards(JwtAuthGuard, UserManagementGuard, SuperAdminGuard) listDeliveries(@Query("endpointId") endpointId?: string) { return this.integrations.listDeliveries(endpointId ? Number(endpointId) : undefined); }
   @Post("admin/webhook-deliveries/:id/replay") @UseGuards(JwtAuthGuard, UserManagementGuard, SuperAdminGuard) replayDelivery(@Param("id", ParseIntPipe) id: number) { return this.integrations.replayDelivery(id); }
   @Post("admin/webhooks/test") @UseGuards(JwtAuthGuard, UserManagementGuard, SuperAdminGuard) testWebhook() { return this.integrations.emit("integration.test", { source: "admin" }); }
+  @Get("admin/google-oauth") @UseGuards(JwtAuthGuard, UserManagementGuard, SuperAdminGuard) getGoogleOAuthConfiguration() { return this.securityConfiguration.getAdminGoogleOAuthConfiguration(); }
+  @Patch("admin/google-oauth") @UseGuards(JwtAuthGuard, UserManagementGuard, SuperAdminGuard) updateGoogleOAuthConfiguration(@Body() dto: UpdateGoogleOAuthConfigurationDto) { return this.securityConfiguration.updateGoogleOAuth(dto); }
 
   @Get("tokens") @UseGuards(JwtAuthGuard) listTokens(@CurrentUser() user: AuthenticatedUser) { return this.integrations.listTokens(user); }
   @Post("tokens") @UseGuards(JwtAuthGuard) createToken(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateReadOnlyTokenDto) { return this.integrations.createToken(user, dto); }

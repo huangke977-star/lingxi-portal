@@ -72,6 +72,13 @@ export interface SecurityAdminConfig {
   turnstileLoginEnabled: boolean;
   turnstileRecoveryEnabled: boolean;
   loginFailureTurnstileThreshold: number;
+  googleOauthManaged: boolean;
+  googleOauthEnabled: boolean;
+  googleOauthClientId: string;
+  googleOauthClientSecret?: string;
+  googleOauthClientSecretConfigured: boolean;
+  googleOauthRedirectUri: string;
+  googleOauthSource: "database" | "environment";
   encryptionConfigured: boolean;
   updatedAt: string;
 }
@@ -96,6 +103,11 @@ export type SecurityAdminConfigUpdate = Pick<
 > & {
   smtpPassword?: string;
   turnstileSecret?: string;
+  googleOauthManaged?: boolean;
+  googleOauthEnabled?: boolean;
+  googleOauthClientId?: string;
+  googleOauthRedirectUri?: string;
+  googleOauthClientSecret?: string;
 };
 
 export type SecurityAdminTab =

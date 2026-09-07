@@ -3,6 +3,16 @@ import { authHeaders, requestJson } from "./auth-api";
 export type ReadOnlyScope = "read_articles" | "read_profile" | "read_notifications";
 export interface ReadOnlyToken { id: number; name: string; tokenPrefix: string; scopes: string[]; expiresAt: string | null; lastUsedAt: string | null; revokedAt: string | null; createdAt: string; }
 export interface WebhookEndpoint { id: number; name: string; url: string; events: string[]; enabled: boolean; deliveryCount: number; lastDeliveredAt: string | null; lastError: string | null; createdAt: string; updatedAt: string; }
+export interface AdminGoogleOAuthConfiguration {
+  managed: boolean;
+  enabled: boolean;
+  clientId: string;
+  clientSecretConfigured: boolean;
+  redirectUri: string;
+  source: "database" | "environment";
+  encryptionConfigured: boolean;
+  updatedAt: string;
+}
 export interface ExternalChannel { id: number; kind: string; endpoint: string; preferences: Record<string, boolean>; enabled: boolean; verified: boolean; failureCount: number; lastError: string | null; lastDeliveredAt: string | null; createdAt: string; }
 
 export function listReadOnlyTokens(token: string) { return requestJson<ReadOnlyToken[]>("/integrations/tokens", { headers: authHeaders(token), cache: "no-store" }); }
@@ -20,3 +30,5 @@ export function deleteAdminWebhook(token: string, id: number) { return requestJs
 export function testAdminWebhook(token: string) { return requestJson<void>("/integrations/admin/webhooks/test", { method: "POST", headers: authHeaders(token) }); }
 export function listAdminWebhookDeliveries(token: string) { return requestJson<Array<{ id: number; endpointId: number; eventId: string; eventType: string; status: string; attempts: number; lastError: string | null; createdAt: string }>>("/integrations/admin/webhook-deliveries", { headers: authHeaders(token), cache: "no-store" }); }
 export function replayAdminWebhookDelivery(token: string, id: number) { return requestJson<void>(`/integrations/admin/webhook-deliveries/${id}/replay`, { method: "POST", headers: authHeaders(token) }); }
+export function getAdminGoogleOAuthConfiguration(token: string) { return requestJson<AdminGoogleOAuthConfiguration>("/integrations/admin/google-oauth", { headers: authHeaders(token), cache: "no-store" }); }
+export function updateAdminGoogleOAuthConfiguration(token: string, input: { enabled: boolean; clientId: string; clientSecret?: string; redirectUri: string }) { return requestJson<AdminGoogleOAuthConfiguration>("/integrations/admin/google-oauth", { method: "PATCH", headers: authHeaders(token), body: JSON.stringify(input) }); }

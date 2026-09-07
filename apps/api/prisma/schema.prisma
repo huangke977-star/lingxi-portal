@@ -2538,6 +2538,11 @@ model SecurityConfiguration {
   turnstileLoginEnabled                   Boolean  @default(false) @map("turnstile_login_enabled")
   turnstileRecoveryEnabled                Boolean  @default(false) @map("turnstile_recovery_enabled")
   loginFailureTurnstileThreshold          Int      @default(3) @map("login_failure_turnstile_threshold")
+  googleOauthManaged                      Boolean  @default(false) @map("google_oauth_managed")
+  googleOauthEnabled                      Boolean  @default(false) @map("google_oauth_enabled")
+  googleOauthClientId                     String?  @map("google_oauth_client_id") @db.VarChar(255)
+  googleOauthClientSecretEncrypted        String?  @map("google_oauth_client_secret_encrypted") @db.Text
+  googleOauthRedirectUri                  String?  @map("google_oauth_redirect_uri") @db.VarChar(512)
   createdAt                               DateTime @default(now()) @map("created_at")
   updatedAt                               DateTime @updatedAt @map("updated_at")
 

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import type { SecurityConfiguration } from "../generated/prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
-import { UpdateSecurityConfigurationDto } from "./dto/security.dto";
+import { UpdateGoogleOAuthConfigurationDto, UpdateSecurityConfigurationDto } from "./dto/security.dto";
 import { SecretCryptoService } from "./secret-crypto.service";
 
 @Injectable()
@@ -41,6 +41,77 @@ export class SecurityConfigurationService {
     return this.toAdminResponse(await this.getConfiguration());
   }
 
+  async getGoogleOAuthConfig(): Promise<{
+    enabled: boolean;
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+    source: "database" | "environment";
+  }> {
+    const config = await this.getConfiguration();
+    const managed = config.googleOauthManaged;
+    const clientId = managed
+      ? config.googleOauthClientId?.trim() ?? ""
+      : process.env.GOOGLE_OAUTH_CLIENT_ID?.trim() ?? "";
+    const clientSecret = managed
+      ? config.googleOauthClientSecretEncrypted
+        ? this.crypto.decrypt(config.googleOauthClientSecretEncrypted)
+        : ""
+      : process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim() ?? "";
+    const redirectUri = managed
+      ? config.googleOauthRedirectUri?.trim() ?? ""
+      : process.env.GOOGLE_OAUTH_REDIRECT_URI?.trim() || this.defaultGoogleRedirectUri();
+    return {
+      enabled: managed
+        ? config.googleOauthEnabled && Boolean(clientId && clientSecret && redirectUri)
+        : Boolean(clientId && clientSecret && redirectUri),
+      clientId,
+      clientSecret,
+      redirectUri: redirectUri || this.defaultGoogleRedirectUri(),
+      source: managed ? "database" : "environment",
+    };
+  }
+
+  async getAdminGoogleOAuthConfiguration() {
+    const config = await this.getConfiguration();
+    const google = await this.getGoogleOAuthConfig();
+    return {
+      managed: config.googleOauthManaged,
+      enabled: google.enabled,
+      clientId: google.clientId,
+      clientSecretConfigured: Boolean(google.clientSecret),
+      redirectUri: google.redirectUri,
+      source: google.source,
+      encryptionConfigured: this.crypto.isConfigured(),
+      updatedAt: config.updatedAt.toISOString(),
+    };
+  }
+
+  async updateGoogleOAuth(dto: UpdateGoogleOAuthConfigurationDto) {
+    const current = await this.getConfiguration();
+    const clientId = dto.clientId.trim();
+    const redirectUri = dto.redirectUri.trim();
+    let clientSecretEncrypted = current.googleOauthClientSecretEncrypted;
+    if (dto.clientSecret?.trim()) {
+      clientSecretEncrypted = this.crypto.encrypt(dto.clientSecret.trim());
+    } else if (!current.googleOauthManaged && process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim() && this.crypto.isConfigured()) {
+      clientSecretEncrypted = this.crypto.encrypt(process.env.GOOGLE_OAUTH_CLIENT_SECRET.trim());
+    }
+    const next = {
+      googleOauthManaged: true,
+      googleOauthEnabled: dto.enabled,
+      googleOauthClientId: clientId || null,
+      googleOauthClientSecretEncrypted: clientSecretEncrypted,
+      googleOauthRedirectUri: redirectUri || null,
+    };
+    this.validateGoogle(next);
+    const saved = await this.prisma.securityConfiguration.update({
+      where: { id: 1 },
+      data: next,
+    });
+    return this.getAdminGoogleOAuthConfigurationFrom(saved);
+  }
+
   async update(dto: UpdateSecurityConfigurationDto) {
     const current = await this.getConfiguration();
     const smtpPasswordEncrypted = dto.clearSmtpPassword
@@ -77,6 +148,19 @@ export class SecurityConfigurationService {
       turnstileLoginEnabled: dto.turnstileLoginEnabled ?? current.turnstileLoginEnabled,
       turnstileRecoveryEnabled: smtpEnabled ? (dto.turnstileRecoveryEnabled ?? current.turnstileRecoveryEnabled) : false,
       loginFailureTurnstileThreshold: dto.loginFailureTurnstileThreshold ?? current.loginFailureTurnstileThreshold,
+      googleOauthManaged: dto.googleOauthManaged ?? current.googleOauthManaged,
+      googleOauthEnabled: dto.googleOauthEnabled ?? current.googleOauthEnabled,
+      googleOauthClientId: this.optionalText(
+        dto.googleOauthClientId,
+        current.googleOauthManaged ? current.googleOauthClientId : process.env.GOOGLE_OAUTH_CLIENT_ID?.trim() || current.googleOauthClientId,
+      ),
+      googleOauthClientSecretEncrypted: dto.googleOauthClientSecret?.trim()
+        ? this.crypto.encrypt(dto.googleOauthClientSecret.trim())
+        : current.googleOauthClientSecretEncrypted,
+      googleOauthRedirectUri: this.optionalText(
+        dto.googleOauthRedirectUri,
+        current.googleOauthManaged ? current.googleOauthRedirectUri : process.env.GOOGLE_OAUTH_REDIRECT_URI?.trim() || current.googleOauthRedirectUri,
+      ),
     };
     this.validate(next);
     const saved = await this.prisma.securityConfiguration.update({
@@ -112,6 +196,11 @@ export class SecurityConfigurationService {
       | "turnstileRegistrationEnabled"
       | "turnstileLoginEnabled"
       | "turnstileRecoveryEnabled"
+      | "googleOauthManaged"
+      | "googleOauthEnabled"
+      | "googleOauthClientId"
+      | "googleOauthClientSecretEncrypted"
+      | "googleOauthRedirectUri"
     >,
   ): void {
     const mailRequired =
@@ -123,9 +212,24 @@ export class SecurityConfigurationService {
     if (turnstileRequired && (!config.turnstileSiteKey || !config.turnstileSecretEncrypted)) {
       throw new BadRequestException("启用 Turnstile 前请完整配置 Site Key 和 Secret Key。");
     }
+    this.validateGoogle(config);
   }
 
-  private toAdminResponse(config: SecurityConfiguration) {
+  private validateGoogle(config: Pick<SecurityConfiguration, "googleOauthManaged" | "googleOauthEnabled" | "googleOauthClientId" | "googleOauthClientSecretEncrypted" | "googleOauthRedirectUri">): void {
+    if (!config.googleOauthManaged || !config.googleOauthEnabled) return;
+    if (!config.googleOauthClientId || !config.googleOauthClientSecretEncrypted || !config.googleOauthRedirectUri) {
+      throw new BadRequestException("启用 Google 登录前请完整配置 Client ID、Client Secret 和回调地址。\nConfigure the Google client ID, client secret, and redirect URI before enabling Google sign-in.");
+    }
+    try {
+      const redirect = new URL(config.googleOauthRedirectUri);
+      if (!redirect.hostname || !["http:", "https:"].includes(redirect.protocol) || (redirect.protocol === "http:" && redirect.hostname !== "localhost")) throw new Error("invalid");
+    } catch {
+      throw new BadRequestException("Google 回调地址必须是有效的 HTTPS 地址（本地开发可使用 localhost）。\nThe Google redirect URI must be a valid HTTPS URL (localhost is allowed for development).");
+    }
+  }
+
+  private async toAdminResponse(config: SecurityConfiguration) {
+    const google = await this.getGoogleOAuthConfig();
     return {
       smtpEnabled: config.smtpEnabled,
       smtpHost: config.smtpHost ?? "",
@@ -144,6 +248,26 @@ export class SecurityConfigurationService {
       turnstileLoginEnabled: config.turnstileLoginEnabled,
       turnstileRecoveryEnabled: config.turnstileRecoveryEnabled,
       loginFailureTurnstileThreshold: config.loginFailureTurnstileThreshold,
+      googleOauthManaged: config.googleOauthManaged,
+      googleOauthEnabled: google.enabled,
+      googleOauthClientId: google.clientId,
+      googleOauthClientSecretConfigured: Boolean(google.clientSecret),
+      googleOauthRedirectUri: google.redirectUri,
+      googleOauthSource: google.source,
+      encryptionConfigured: this.crypto.isConfigured(),
+      updatedAt: config.updatedAt.toISOString(),
+    };
+  }
+
+  private getAdminGoogleOAuthConfigurationFrom(config: SecurityConfiguration) {
+    const managed = config.googleOauthManaged;
+    return {
+      managed,
+      enabled: managed && config.googleOauthEnabled && Boolean(config.googleOauthClientId && config.googleOauthClientSecretEncrypted && config.googleOauthRedirectUri),
+      clientId: config.googleOauthClientId ?? "",
+      clientSecretConfigured: Boolean(config.googleOauthClientSecretEncrypted),
+      redirectUri: config.googleOauthRedirectUri ?? this.defaultGoogleRedirectUri(),
+      source: managed ? "database" as const : "environment" as const,
       encryptionConfigured: this.crypto.isConfigured(),
       updatedAt: config.updatedAt.toISOString(),
     };
@@ -151,5 +275,9 @@ export class SecurityConfigurationService {
 
   private optionalText(value: string | undefined, current: string | null): string | null {
     return value === undefined ? current : value.trim() || null;
+  }
+
+  private defaultGoogleRedirectUri(): string {
+    return `${(process.env.WEB_ORIGIN || "http://localhost:3000").replace(/\/$/, "")}/api/auth/google/callback`;
   }
 }

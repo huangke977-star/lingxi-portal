@@ -31,6 +31,29 @@ export class UpdateSecurityConfigurationDto {
   @Min(1)
   @Max(5)
   loginFailureTurnstileThreshold?: number;
+  @IsOptional() @IsBoolean() googleOauthManaged?: boolean;
+  @IsOptional() @IsBoolean() googleOauthEnabled?: boolean;
+  @IsOptional() @IsString() @MaxLength(255) googleOauthClientId?: string;
+  @IsOptional() @IsString() @MaxLength(500) googleOauthClientSecret?: string;
+  @IsOptional() @IsString() @MaxLength(512) googleOauthRedirectUri?: string;
+}
+
+export class UpdateGoogleOAuthConfigurationDto {
+  @IsBoolean()
+  enabled!: boolean;
+
+  @IsString()
+  @MaxLength(255)
+  clientId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  clientSecret?: string;
+
+  @IsString()
+  @MaxLength(512)
+  redirectUri!: string;
 }
 
 export class RegistrationCodeDto {
