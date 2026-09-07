@@ -1,6 +1,6 @@
-import { BadRequestException, ForbiddenException, GoneException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, UnauthorizedException, forwardRef, Inject } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, GoneException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, UnauthorizedException, forwardRef, Inject } from "@nestjs/common";
 import { createHash, randomBytes, randomInt } from "node:crypto";
-import { Prisma, UserStatus, DataExportJobStatus } from "../generated/prisma/client";
+import { LoginSecurityEventType, Prisma, UserStatus, DataExportJobStatus } from "../generated/prisma/client";
 import { AuthenticatedUser, RefreshSessionContext } from "../auth/auth.types";
 import { PasswordService } from "../auth/password.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -49,6 +49,7 @@ export class AccountPrivacyService implements OnModuleInit, OnModuleDestroy {
       this.prisma.user.findUnique({
         where: { id: user.id },
         select: {
+          email: true,
           status: true,
           deletionRequestedAt: true,
           deletionScheduledAt: true,
@@ -70,6 +71,7 @@ export class AccountPrivacyService implements OnModuleInit, OnModuleDestroy {
         scheduledAt: account.deletionScheduledAt?.toISOString() ?? null,
         deletedAt: account.deletedAt?.toISOString() ?? null,
       },
+      email: account.email,
       totp: {
         enabled: Boolean(credential?.enabled),
         confirmedAt: credential?.confirmedAt?.toISOString() ?? null,
@@ -227,6 +229,33 @@ export class AccountPrivacyService implements OnModuleInit, OnModuleDestroy {
       throw new UnauthorizedException("双因素验证码不正确。\nThe authenticator code is incorrect.");
     }
     return { success: true as const, verificationToken: await this.accountSecurity.issueSensitiveActionGrant(user.id, normalizedAction, context) };
+  }
+
+  async changePasswordAfterVerification(user: AuthenticatedUser, verificationToken: string, newPassword: string, context: RefreshSessionContext, sessionId: string | null) {
+    await this.accountSecurity.consumeSensitiveActionGrant(user.id, "password_change", verificationToken, context);
+    const stored = await this.prisma.user.findUnique({ where: { id: user.id }, select: { passwordHash: true, status: true } });
+    if (!stored || stored.status !== UserStatus.active) throw new NotFoundException("用户不存在或不可用。\nThe account is unavailable.");
+    if (await this.passwordService.verifyPassword(newPassword, stored.passwordHash)) {
+      throw new BadRequestException("新密码不能与当前密码相同。\nThe new password must be different.");
+    }
+    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: await this.passwordService.hashPassword(newPassword) } });
+    const revokedSessions = await this.refreshTokens.revokeOtherSessions(user.id, sessionId);
+    await this.accountSecurity.recordPasswordEvent(user.id, LoginSecurityEventType.password_changed, context);
+    await this.recordAudit(user.id, "password_changed", undefined, context);
+    return { success: true as const, revokedSessions };
+  }
+
+  async changeEmailAfterVerification(user: AuthenticatedUser, verificationToken: string, email: string, context: RefreshSessionContext) {
+    await this.accountSecurity.consumeSensitiveActionGrant(user.id, "email_change", verificationToken, context);
+    const current = await this.prisma.user.findUnique({ where: { id: user.id }, select: { email: true, status: true } });
+    if (!current || current.status !== UserStatus.active) throw new NotFoundException("用户不存在或不可用。\nThe account is unavailable.");
+    const normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail === current.email) return { success: true as const, email: current.email };
+    const owner = await this.prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
+    if (owner && owner.id !== user.id) throw new ConflictException("邮箱已被使用。\nEmail already exists.");
+    await this.prisma.user.update({ where: { id: user.id }, data: { email: normalizedEmail, emailVerifiedAt: null } });
+    await this.recordAudit(user.id, "email_changed", undefined, context);
+    return { success: true as const, email: normalizedEmail };
   }
 
   async confirmTotp(user: AuthenticatedUser, code: string, context: RefreshSessionContext) {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Fingerprint, KeyRound, Mail, ShieldCheck } from "lucide-react";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 import { FormEvent, useEffect, useRef, useState } from "react";
@@ -18,12 +18,14 @@ import { localizedPath } from "@/lib/i18n";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { locale, phrase, t } = useLanguage();
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [oauthResultResolved, setOauthResultResolved] = useState(false);
   const [policy, setPolicy] = useState<SecurityPolicy | null>(null);
   const [turnstileRequired, setTurnstileRequired] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
@@ -66,7 +68,6 @@ export default function LoginPage() {
     if (oauthError) window.setTimeout(() => setError(oauthError), 0);
     if (!oauthResult) return;
     window.history.replaceState({}, "", window.location.pathname);
-    window.setTimeout(() => setIsSubmitting(true), 0);
     void consumeOAuthResult(oauthResult).then((result) => {
       if ("oauthLinkRequired" in result) {
         setGoogleLinkRequired(result);
@@ -89,7 +90,10 @@ export default function LoginPage() {
       }
       saveAuthTokens(result);
       router.push(localizedPath("/dashboard", locale));
-    }).catch((oauthLoadError) => setError(oauthLoadError instanceof Error ? oauthLoadError.message : phrase("Google 登录失败。", "Google sign-in failed."))).finally(() => setIsSubmitting(false));
+    }).catch((oauthLoadError) => setError(oauthLoadError instanceof Error ? oauthLoadError.message : phrase("Google 登录失败。", "Google sign-in failed."))).finally(() => {
+      setOauthResultResolved(true);
+      setIsSubmitting(false);
+    });
   }, [locale, phrase, router]);
 
   useEffect(() => {
@@ -459,6 +463,17 @@ export default function LoginPage() {
 
   function postLoginPath() {
     return localizedPath("/dashboard", locale);
+  }
+
+  if (Boolean(searchParams.get("oauthResult")) && !oauthResultResolved) {
+    return (
+      <section className="page-shell auth-page">
+        <div className="auth-panel auth-oauth-loading" role="status">
+          <span className="section-label">{phrase("身份验证", "Authentication")}</span>
+          <p>{phrase("正在完成 Google 登录…", "Completing Google sign-in…")}</p>
+        </div>
+      </section>
+    );
   }
 
   return (

@@ -1,5 +1,5 @@
 import { Transform, Type } from "class-transformer";
-import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from "class-validator";
+import { IsEmail, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from "class-validator";
 
 export class RequestAccountDeletionDto {
   @IsString()
@@ -33,6 +33,20 @@ export class SensitiveActionTokenDto {
   @MinLength(20)
   @MaxLength(512)
   verificationToken!: string;
+}
+
+export class ChangePasswordAfterVerificationDto extends SensitiveActionTokenDto {
+  @IsString()
+  @MinLength(8)
+  @MaxLength(256)
+  newPassword!: string;
+}
+
+export class ChangeEmailAfterVerificationDto extends SensitiveActionTokenDto {
+  @Transform(({ value }) => (typeof value === "string" ? value.trim().toLowerCase() : value))
+  @IsEmail()
+  @MaxLength(191)
+  email!: string;
 }
 
 export class TotpDisablePasswordDto {

@@ -749,7 +749,7 @@ describe("AuthController (e2e)", () => {
     });
   });
 
-  it("updates current user nickname, email, and profile bio", async () => {
+  it("updates current user nickname and profile bio while requiring verified email changes", async () => {
     const registered = await register("bio_user", "bio@example.com").expect(200);
     const accessToken = registered.body.accessToken as string;
 
@@ -758,17 +758,23 @@ describe("AuthController (e2e)", () => {
       .set("Authorization", `Bearer ${accessToken}`)
       .send({
         nickname: "一颗测试星",
-        email: "BIO-UPDATED@example.com",
+        email: "bio@example.com",
         profileBio: "我就喜欢这个范。",
       })
       .expect(200);
 
     expect(response.body.nickname).toBe("一颗测试星");
-    expect(response.body.email).toBe("bio-updated@example.com");
+    expect(response.body.email).toBe("bio@example.com");
     expect(response.body.profileBio).toBe("我就喜欢这个范。");
     expect(prismaState.users.find((item) => item.username === "bio_user")?.nickname).toBe("一颗测试星");
-    expect(prismaState.users.find((item) => item.username === "bio_user")?.email).toBe("bio-updated@example.com");
+    expect(prismaState.users.find((item) => item.username === "bio_user")?.email).toBe("bio@example.com");
     expect(prismaState.users.find((item) => item.username === "bio_user")?.profileBio).toBe("我就喜欢这个范。");
+
+    await request(app.getHttpServer())
+      .patch("/auth/me/profile")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ nickname: "一颗测试星", email: "bio-updated@example.com", profileBio: "我就喜欢这个范。" })
+      .expect(400);
   });
 
   it("persists the current user locale and rejects unsupported locale values", async () => {
@@ -786,7 +792,7 @@ describe("AuthController (e2e)", () => {
     await request(app.getHttpServer()).patch("/auth/me/locale").set("Authorization", authorization).send({ locale: "fr-FR" }).expect(400);
   });
 
-  it("changes the current user password and revokes other sessions", async () => {
+  it("requires sensitive-action verification before changing the current user password", async () => {
     const registered = await register("password_user", "password@example.com").expect(200);
     const registeredTokenId = (registered.body.refreshToken as string).split(".")[0];
     const currentLogin = await request(app.getHttpServer()).post("/auth/login").send({ account: "password_user", password: "Secret123!" }).expect(200);
@@ -796,14 +802,14 @@ describe("AuthController (e2e)", () => {
       .patch("/auth/me/password")
       .set("Authorization", `Bearer ${currentLogin.body.accessToken as string}`)
       .send({ currentPassword: "Secret123!", newPassword: "NewSecret456!" })
-      .expect(200);
+      .expect(400);
 
-    expect(response.body).toEqual({ success: true, revokedSessions: 1 });
-    expect(redisState.store.has(`refresh_token:${registeredTokenId}`)).toBe(false);
+    expect(response.body.message).toContain("隐私与数据");
+    expect(redisState.store.has(`refresh_token:${registeredTokenId}`)).toBe(true);
     expect(redisState.store.has(`refresh_token:${currentTokenId}`)).toBe(true);
 
-    await request(app.getHttpServer()).post("/auth/login").send({ account: "password_user", password: "Secret123!" }).expect(401);
-    await request(app.getHttpServer()).post("/auth/login").send({ account: "password_user", password: "NewSecret456!" }).expect(200);
+    await request(app.getHttpServer()).post("/auth/login").send({ account: "password_user", password: "Secret123!" }).expect(200);
+    await request(app.getHttpServer()).post("/auth/login").send({ account: "password_user", password: "NewSecret456!" }).expect(401);
   });
 
   it("rejects an incorrect current password and an unchanged new password", async () => {

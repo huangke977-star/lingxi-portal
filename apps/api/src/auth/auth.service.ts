@@ -1264,26 +1264,12 @@ export class AuthService {
     return user;
   }
 
-  async changePassword(user: AuthenticatedUser, sessionId: string | null, dto: ChangePasswordDto, context: RefreshSessionContext): Promise<{ success: true; revokedSessions: number }> {
-    const storedUser = await this.usersService.findForLogin(user.username);
-    if (!storedUser) {
-      throw new BadRequestException("Current password is incorrect.");
-    }
-
-    const currentPasswordMatches = await this.passwordService.verifyPassword(dto.currentPassword, storedUser.passwordHash);
-    if (!currentPasswordMatches) {
-      throw new BadRequestException("Current password is incorrect.");
-    }
-
-    const passwordIsUnchanged = await this.passwordService.verifyPassword(dto.newPassword, storedUser.passwordHash);
-    if (passwordIsUnchanged) {
-      throw new BadRequestException("New password must be different.");
-    }
-
-    await this.usersService.updateOwnPassword(user.id, dto.newPassword);
-    const revokedSessions = await this.refreshTokenService.revokeOtherSessions(user.id, sessionId);
-    await this.accountSecurity.recordPasswordEvent(user.id, LoginSecurityEventType.password_changed, context);
-    return { success: true, revokedSessions };
+  async changePassword(_user: AuthenticatedUser, _sessionId: string | null, _dto: ChangePasswordDto, _context: RefreshSessionContext): Promise<{ success: true; revokedSessions: number }> {
+    void _user;
+    void _sessionId;
+    void _dto;
+    void _context;
+    throw new BadRequestException("密码修改请前往隐私与数据完成安全验证。\nChange your password from Privacy and data after security verification.");
   }
 
   async resetPassword(dto: PasswordRecoveryResetDto, context: RefreshSessionContext): Promise<{ success: true; revokedSessions: number }> {

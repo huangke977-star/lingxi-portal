@@ -1,10 +1,11 @@
 import { Body, Controller, Get, Header, Param, ParseIntPipe, Patch, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import type { Response } from "express";
 import { CurrentUser } from "../auth/current-user.decorator";
+import { CurrentSessionId } from "../auth/current-session-id.decorator";
 import { AuthenticatedUser, RefreshSessionContext } from "../auth/auth.types";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { AccountPrivacyService } from "./account-privacy.service";
-import { ListDeletedUsersQueryDto, PrivacyAuditQueryDto, RequestAccountDeletionDto, SensitiveActionCodeDto, SensitiveActionEmailVerifyDto, SensitiveActionPasswordDto, SensitiveActionTokenDto, TotpCodeDto, TotpDisablePasswordDto } from "./dto/account-privacy.dto";
+import { ChangeEmailAfterVerificationDto, ChangePasswordAfterVerificationDto, ListDeletedUsersQueryDto, PrivacyAuditQueryDto, RequestAccountDeletionDto, SensitiveActionCodeDto, SensitiveActionEmailVerifyDto, SensitiveActionPasswordDto, SensitiveActionTokenDto, TotpCodeDto, TotpDisablePasswordDto } from "./dto/account-privacy.dto";
 
 @Controller("account-privacy")
 @UseGuards(JwtAuthGuard)
@@ -66,6 +67,16 @@ export class AccountPrivacyController {
   @Post("me/security-verification/:action/totp")
   verifySensitiveActionTotp(@CurrentUser() user: AuthenticatedUser, @Param("action") action: string, @Body() dto: SensitiveActionCodeDto, @Req() request: PrivacyRequest) {
     return this.privacy.verifySensitiveActionTotp(user, action, dto.code, this.context(request));
+  }
+
+  @Patch("me/password")
+  changePasswordAfterVerification(@CurrentUser() user: AuthenticatedUser, @CurrentSessionId() sessionId: string | null, @Body() dto: ChangePasswordAfterVerificationDto, @Req() request: PrivacyRequest) {
+    return this.privacy.changePasswordAfterVerification(user, dto.verificationToken, dto.newPassword, this.context(request), sessionId);
+  }
+
+  @Patch("me/email")
+  changeEmailAfterVerification(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChangeEmailAfterVerificationDto, @Req() request: PrivacyRequest) {
+    return this.privacy.changeEmailAfterVerification(user, dto.verificationToken, dto.email, this.context(request));
   }
 
   @Patch("me/deletion/cancel")

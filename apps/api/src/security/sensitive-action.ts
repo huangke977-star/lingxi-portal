@@ -3,6 +3,8 @@ export const sensitiveActionValues = [
   "passkey_registration",
   "totp_enrollment",
   "google_account_link",
+  "password_change",
+  "email_change",
 ] as const;
 
 export type SensitiveAction = (typeof sensitiveActionValues)[number];

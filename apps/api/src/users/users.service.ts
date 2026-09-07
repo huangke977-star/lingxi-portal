@@ -336,6 +336,7 @@ export class UsersService {
       if (emailOwner && emailOwner.id !== id) {
         throw new ConflictException("Email already exists.");
       }
+      throw new BadRequestException("邮箱修改请前往隐私与数据完成安全验证。\nChange your email from Privacy and data after security verification.");
     }
 
     const user = await this.prisma.user.update({

@@ -1,6 +1,7 @@
 import { requestBlob, requestJson } from "./auth-api";
 
 export interface AccountPrivacyOverview {
+  email: string;
   deletion: {
     pending: boolean;
     requestedAt: string | null;
@@ -121,7 +122,7 @@ export function beginTotpEnrollment(accessToken: string, verificationToken: stri
   return requestJson<{ secret: string; otpAuthUri: string }>("/account-privacy/me/totp/enroll", { method: "POST", headers: auth(accessToken), body: JSON.stringify({ verificationToken }) });
 }
 
-export type SensitiveAction = "account_deletion" | "passkey_registration" | "totp_enrollment" | "google_account_link";
+export type SensitiveAction = "account_deletion" | "passkey_registration" | "totp_enrollment" | "google_account_link" | "password_change" | "email_change";
 
 export function requestSensitiveActionEmailVerification(accessToken: string, action: SensitiveAction) {
   return requestJson<{ success: true; challengeToken: string; retryAfterSeconds: number }>(`/account-privacy/me/security-verification/${encodeURIComponent(action)}/email`, { method: "POST", headers: auth(accessToken) });
@@ -137,6 +138,22 @@ export function verifySensitiveActionPassword(accessToken: string, action: Sensi
 
 export function verifySensitiveActionTotp(accessToken: string, action: SensitiveAction, code: string) {
   return requestJson<{ success: true; verificationToken: string }>(`/account-privacy/me/security-verification/${encodeURIComponent(action)}/totp`, { method: "POST", headers: auth(accessToken), body: JSON.stringify({ code }) });
+}
+
+export function changePasswordAfterVerification(accessToken: string, verificationToken: string, newPassword: string) {
+  return requestJson<{ success: true; revokedSessions: number }>("/account-privacy/me/password", {
+    method: "PATCH",
+    headers: auth(accessToken),
+    body: JSON.stringify({ verificationToken, newPassword }),
+  });
+}
+
+export function changeEmailAfterVerification(accessToken: string, verificationToken: string, email: string) {
+  return requestJson<{ success: true; email: string }>("/account-privacy/me/email", {
+    method: "PATCH",
+    headers: auth(accessToken),
+    body: JSON.stringify({ verificationToken, email }),
+  });
 }
 
 export function confirmTotp(accessToken: string, code: string) {

@@ -9,10 +9,10 @@ import { AppToast } from "@/components/app-toast";
 import { PasswordInput } from "@/components/password-input";
 import { OtpCodeInput } from "@/components/otp-code-input";
 import { useLanguage } from "@/components/language-provider";
-import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { AUTH_STATE_CHANGE_EVENT, clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { deletePasskeyWithEmail, deletePasskeyWithPassword, deletePasskeyWithTotp, getPasskeyDeletionOptions, getPasskeyRegistrationOptions, getSensitiveActionPasskeyOptions, getTotpDisablePasskeyOptions, isAuthExpiredError, listPasskeys, renamePasskey, requestPasskeyDeletionEmail, verifyPasskeyDeletion, verifyPasskeyRegistration, verifySensitiveActionPasskey, verifyTotpDisablePasskey, type PasskeySummary } from "@/lib/auth-api";
 import { localizedPath } from "@/lib/i18n";
-import { beginTotpEnrollment, cancelAccountDeletion, confirmTotp, disableTotp, disableTotpWithEmail, disableTotpWithPassword, downloadDataExport, getAccountPrivacyOverview, getDataExport, listPrivacyAudit, requestAccountDeletion, requestDataExport, requestSensitiveActionEmailVerification, verifySensitiveActionEmail, verifySensitiveActionPassword, verifySensitiveActionTotp, requestTotpDisableEmailVerification, type AccountPrivacyOverview, type ExportJob, type SensitiveAction } from "@/lib/account-privacy-api";
+import { beginTotpEnrollment, cancelAccountDeletion, changeEmailAfterVerification, changePasswordAfterVerification, confirmTotp, disableTotp, disableTotpWithEmail, disableTotpWithPassword, downloadDataExport, getAccountPrivacyOverview, getDataExport, listPrivacyAudit, requestAccountDeletion, requestDataExport, requestSensitiveActionEmailVerification, verifySensitiveActionEmail, verifySensitiveActionPassword, verifySensitiveActionTotp, requestTotpDisableEmailVerification, type AccountPrivacyOverview, type ExportJob, type SensitiveAction } from "@/lib/account-privacy-api";
 import { unblockFriendship } from "@/lib/social-api";
 
 export default function AccountPrivacyPage() {
@@ -28,6 +28,9 @@ export default function AccountPrivacyPage() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [passkeys, setPasskeys] = useState<PasskeySummary[]>([]);
   const [passkeyName, setPasskeyName] = useState("");
+  const [emailDraft, setEmailDraft] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [editingPasskeyId, setEditingPasskeyId] = useState<number | null>(null);
   const [editingPasskeyName, setEditingPasskeyName] = useState("");
   const [securityVerificationTarget, setSecurityVerificationTarget] = useState<"passkey" | "totp" | SensitiveAction | null>(null);
@@ -73,6 +76,7 @@ export default function AccountPrivacyPage() {
     try {
       const [nextOverview, nextAudit, nextPasskeys] = await Promise.all([getAccountPrivacyOverview(currentToken), listPrivacyAudit(currentToken), listPasskeys(currentToken)]);
       setOverview(nextOverview);
+      setEmailDraft(nextOverview.email);
       setAudit(nextAudit);
       setPasskeys(nextPasskeys);
     } catch (loadError) {
@@ -197,6 +201,36 @@ export default function AccountPrivacyPage() {
     setSecurityVerificationEmailCooldown(0);
   }
 
+  function requestEmailChange() {
+    const nextEmail = emailDraft.trim().toLowerCase();
+    if (!nextEmail || !/^\S+@\S+\.\S+$/.test(nextEmail)) {
+      setError(phrase("请输入有效的邮箱地址。", "Enter a valid email address."));
+      setNotice("");
+      return;
+    }
+    if (nextEmail === overview?.email) {
+      setError(phrase("新邮箱与当前邮箱相同。", "The new email is the same as the current email."));
+      setNotice("");
+      return;
+    }
+    setEmailDraft(nextEmail);
+    openSensitiveAction("email_change");
+  }
+
+  function requestPasswordChange() {
+    if (newPassword.length < 8) {
+      setError(phrase("新密码至少需要 8 位。", "New password must be at least 8 characters."));
+      setNotice("");
+      return;
+    }
+    if (newPassword !== passwordConfirmation) {
+      setError(phrase("两次输入的新密码不一致。", "The new passwords do not match."));
+      setNotice("");
+      return;
+    }
+    openSensitiveAction("password_change");
+  }
+
   async function executeSensitiveAction(verificationToken: string) {
     if (!token || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget)) return;
     const target = securityVerificationTarget;
@@ -212,6 +246,23 @@ export default function AccountPrivacyPage() {
       setTotpSecret(result.secret);
       setTotpUri(result.otpAuthUri);
       setNotice(phrase("请将密钥添加到身份验证器后输入验证码确认。", "Add the secret to your authenticator, then enter a code to confirm."));
+      return;
+    }
+    if (target === "password_change") {
+      const result = await changePasswordAfterVerification(token, verificationToken, newPassword);
+      setNewPassword("");
+      setPasswordConfirmation("");
+      setNotice(result.revokedSessions
+        ? phrase(`密码已更新，并退出了 ${result.revokedSessions} 个其他设备会话。`, `Password updated and ${result.revokedSessions} other device session(s) were signed out.`)
+        : phrase("密码已更新。", "Password updated."));
+      return;
+    }
+    if (target === "email_change") {
+      const result = await changeEmailAfterVerification(token, verificationToken, emailDraft);
+      setEmailDraft(result.email);
+      window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
+      await load(token);
+      setNotice(phrase("邮箱已更新。", "Email updated."));
       return;
     }
     const challenge = await getPasskeyRegistrationOptions(token, verificationToken);
@@ -455,6 +506,43 @@ export default function AccountPrivacyPage() {
         </div>
       </header>
       <div className="privacy-grid">
+        <section className="profile-panel privacy-card privacy-credentials-card">
+          <div className="privacy-card-heading">
+            <ShieldCheck size={18} />
+            <div>
+              <h2>{phrase("账号凭据", "Account credentials")}</h2>
+              <p>{phrase("修改邮箱或密码前，需要通过一种安全验证。", "Choose one security method before changing your email or password.")}</p>
+            </div>
+          </div>
+          <div className="privacy-credential-section">
+            <label className="privacy-field">
+              <span>{phrase("当前邮箱", "Current email")}</span>
+              <input readOnly value={overview.email} />
+            </label>
+            <label className="privacy-field">
+              <span>{phrase("新邮箱", "New email")}</span>
+              <input autoComplete="email" onChange={(event) => setEmailDraft(event.target.value)} placeholder={phrase("输入新的邮箱地址", "Enter a new email address")} type="email" value={emailDraft} />
+            </label>
+            <button className="button secondary" disabled={busy !== ""} onClick={requestEmailChange} type="button">
+              <Mail size={15} />
+              {phrase("修改邮箱", "Change email")}
+            </button>
+          </div>
+          <div className="privacy-credential-section">
+            <label className="privacy-field">
+              <span>{phrase("新密码", "New password")}</span>
+              <PasswordInput autoComplete="new-password" onChange={(event) => setNewPassword(event.target.value)} placeholder={phrase("至少 8 位", "At least 8 characters")} value={newPassword} />
+            </label>
+            <label className="privacy-field">
+              <span>{phrase("确认新密码", "Confirm new password")}</span>
+              <PasswordInput autoComplete="new-password" onChange={(event) => setPasswordConfirmation(event.target.value)} placeholder={phrase("再次输入新密码", "Enter the new password again")} value={passwordConfirmation} />
+            </label>
+            <button className="button secondary" disabled={busy !== ""} onClick={requestPasswordChange} type="button">
+              <KeyRound size={15} />
+              {phrase("修改密码", "Change password")}
+            </button>
+          </div>
+        </section>
         <section className="profile-panel privacy-card">
           <div className="privacy-card-heading">
             <Download size={18} />
@@ -754,6 +842,10 @@ export default function AccountPrivacyPage() {
                           ? phrase("验证后添加通行密钥", "Verify to add a passkey")
                           : securityVerificationTarget === "totp_enrollment"
                             ? phrase("验证后绑定双因素认证", "Verify to enable two-factor authentication")
+                            : securityVerificationTarget === "password_change"
+                              ? phrase("验证后修改密码", "Verify to change password")
+                              : securityVerificationTarget === "email_change"
+                                ? phrase("验证后修改邮箱", "Verify to change email")
                             : phrase("验证后移除通行密钥", "Verify to remove passkey")}
                 </h2>
                 <p>
@@ -766,8 +858,12 @@ export default function AccountPrivacyPage() {
                         : securityVerificationTarget === "passkey_registration"
                           ? phrase("验证成功后继续使用当前设备添加通行密钥。", "After verification, continue adding a passkey on this device.")
                           : securityVerificationTarget === "totp_enrollment"
-                            ? phrase("验证成功后生成双因素认证绑定信息。", "After verification, enrollment details for two-factor authentication will be generated.")
-                            : phrase("验证成功后只会移除当前选中的通行密钥。", "Only the selected passkey will be removed after verification.")}
+                          ? phrase("验证成功后生成双因素认证绑定信息。", "After verification, enrollment details for two-factor authentication will be generated.")
+                          : securityVerificationTarget === "password_change"
+                            ? phrase("验证成功后会更新密码，并退出其他设备。", "Your password will be updated and other devices will be signed out after verification.")
+                            : securityVerificationTarget === "email_change"
+                              ? phrase("验证成功后会更新当前账号邮箱。", "Your account email will be updated after verification.")
+                          : phrase("验证成功后只会移除当前选中的通行密钥。", "Only the selected passkey will be removed after verification.")}
                 </p>
               </div>
               <div className="passkey-delete-heading-actions">
@@ -862,5 +958,5 @@ function isPasskeyCancellation(error: unknown): boolean {
 }
 
 function isSensitiveActionTarget(target: "passkey" | "totp" | SensitiveAction | null): target is SensitiveAction {
-  return target === "account_deletion" || target === "passkey_registration" || target === "totp_enrollment";
+  return target === "account_deletion" || target === "passkey_registration" || target === "totp_enrollment" || target === "password_change" || target === "email_change";
 }

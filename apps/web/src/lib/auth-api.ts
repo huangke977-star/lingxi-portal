@@ -329,7 +329,7 @@ export function verifyTotpDisablePasskey(accessToken: string, input: { challenge
   });
 }
 
-export type SensitiveAction = "account_deletion" | "passkey_registration" | "totp_enrollment" | "google_account_link";
+export type SensitiveAction = "account_deletion" | "passkey_registration" | "totp_enrollment" | "google_account_link" | "password_change" | "email_change";
 
 export function getSensitiveActionPasskeyOptions(accessToken: string, action: SensitiveAction): Promise<PasskeyOptionsResponse<PublicKeyCredentialRequestOptionsJSON>> {
   return requestJson(`/auth/me/security-verification/${encodeURIComponent(action)}/passkey/options`, { method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({}) });

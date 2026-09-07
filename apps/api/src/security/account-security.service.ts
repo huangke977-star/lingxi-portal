@@ -312,7 +312,11 @@ export class AccountSecurityService {
         ? "添加通行密钥"
         : normalizedAction === "totp_enrollment"
           ? "绑定双因素认证"
-          : "绑定 Google 账号";
+          : normalizedAction === "password_change"
+            ? "修改密码"
+            : normalizedAction === "email_change"
+              ? "修改邮箱"
+              : "绑定 Google 账号";
     try {
       await this.mail.send({
         type: MailJobType.security_notice,

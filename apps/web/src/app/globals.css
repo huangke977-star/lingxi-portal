@@ -324,6 +324,14 @@
 .privacy-card-heading h2 { margin: 0; color: var(--foreground); font-size: 1rem; }
 .privacy-card-heading p { margin: 5px 0 0; color: var(--muted); font-size: 0.78rem; line-height: 1.55; }
 .privacy-card > .button { justify-self: start; min-height: 34px; font-size: 0.78rem; }
+.privacy-credentials-card { gap: 12px; }
+.privacy-credential-section { display: grid; gap: 8px; }
+.privacy-credential-section + .privacy-credential-section { border-top: 1px solid var(--control-line); padding-top: 12px; }
+.privacy-field { display: grid; gap: 5px; color: var(--muted-strong); font-size: 0.76rem; }
+.privacy-field input { box-sizing: border-box; width: 100%; min-height: 35px; border: 0; border-radius: 6px; background: var(--surface-soft); color: var(--foreground); font: inherit; outline: none; padding: 7px 9px; }
+.privacy-field input:focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+.privacy-field input[readonly] { color: var(--muted); cursor: default; }
+.privacy-credential-section > .button { justify-self: start; min-height: 32px; font-size: 0.74rem; }
 .privacy-card .button.danger { color: var(--danger); }
 .privacy-job-status { display: grid; gap: 5px; border-radius: 7px; background: var(--surface-soft); padding: 9px 10px; color: var(--muted-strong); font-size: 0.76rem; }
 .privacy-job-status small { color: var(--muted); }
@@ -2282,13 +2290,31 @@ a.entry-item:hover {
 }
 
 .profile-bio-heading {
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: baseline;
   column-gap: 10px;
 }
 
 .profile-bio-heading strong {
   font-size: 1.35rem;
+}
+
+.profile-username-edit,
+.profile-username-edit:hover,
+.profile-username-edit:focus-visible {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 3px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  outline: none;
 }
 
 .profile-password-trigger {
