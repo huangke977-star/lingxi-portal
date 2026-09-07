@@ -543,7 +543,7 @@ export default function AccountPrivacyPage() {
             </button>
           </div>
         </section>
-        <section className="profile-panel privacy-card">
+        <section className="profile-panel privacy-card privacy-data-export-card">
           <div className="privacy-card-heading">
             <Download size={18} />
             <div>
@@ -575,7 +575,7 @@ export default function AccountPrivacyPage() {
             </div>
           ) : null}
         </section>
-        <section className="profile-panel privacy-card">
+        <section className="profile-panel privacy-card privacy-deletion-card">
           <div className="privacy-card-heading">
             <Trash2 size={18} />
             <div>
@@ -596,7 +596,7 @@ export default function AccountPrivacyPage() {
             </button>
           )}
         </section>
-        <section className="profile-panel privacy-card">
+        <section className="profile-panel privacy-card privacy-passkey-card">
           <div className="privacy-card-heading">
             <Fingerprint size={18} />
             <div>
@@ -737,7 +737,7 @@ export default function AccountPrivacyPage() {
             ) : null}
           </div>
         </section>
-        <section className="profile-panel privacy-card">
+        <section className="profile-panel privacy-card privacy-totp-card">
           <div className="privacy-card-heading">
             <KeyRound size={18} />
             <div>
@@ -781,7 +781,7 @@ export default function AccountPrivacyPage() {
             </div>
           ) : null}
         </section>
-        <section className="profile-panel privacy-card">
+        <section className="profile-panel privacy-card privacy-blocked-card">
           <div className="privacy-card-heading">
             <UserRoundX size={18} />
             <div>

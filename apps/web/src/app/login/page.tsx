@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Fingerprint, KeyRound, Mail, ShieldCheck } from "lucide-react";
 import { browserSupportsWebAuthn, startAuthentication } from "@simplewebauthn/browser";
 import { FormEvent, useEffect, useRef, useState } from "react";
@@ -18,7 +18,6 @@ import { localizedPath } from "@/lib/i18n";
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { locale, phrase, t } = useLanguage();
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
@@ -61,12 +60,20 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
+    let active = true;
     void getExternalAuthProviders().then((providers) => setGoogleEnabled(Boolean(providers.google?.enabled))).catch(() => setGoogleEnabled(false));
     const params = new URLSearchParams(window.location.search);
     const oauthError = params.get("oauthError");
     const oauthResult = params.get("oauthResult");
     if (oauthError) window.setTimeout(() => setError(oauthError), 0);
-    if (!oauthResult) return;
+    if (!oauthResult) {
+      window.setTimeout(() => {
+        if (active) setOauthResultResolved(true);
+      }, 0);
+      return () => {
+        active = false;
+      };
+    }
     window.history.replaceState({}, "", window.location.pathname);
     void consumeOAuthResult(oauthResult).then((result) => {
       if ("oauthLinkRequired" in result) {
@@ -91,9 +98,14 @@ export default function LoginPage() {
       saveAuthTokens(result);
       router.push(localizedPath("/dashboard", locale));
     }).catch((oauthLoadError) => setError(oauthLoadError instanceof Error ? oauthLoadError.message : phrase("Google 登录失败。", "Google sign-in failed."))).finally(() => {
-      setOauthResultResolved(true);
-      setIsSubmitting(false);
+      if (active) {
+        setOauthResultResolved(true);
+        setIsSubmitting(false);
+      }
     });
+    return () => {
+      active = false;
+    };
   }, [locale, phrase, router]);
 
   useEffect(() => {
@@ -465,7 +477,7 @@ export default function LoginPage() {
     return localizedPath("/dashboard", locale);
   }
 
-  if (Boolean(searchParams.get("oauthResult")) && !oauthResultResolved) {
+  if (!oauthResultResolved) {
     return (
       <section className="page-shell auth-page">
         <div className="auth-panel auth-oauth-loading" role="status">
