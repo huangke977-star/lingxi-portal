@@ -506,7 +506,8 @@ export default function AccountPrivacyPage() {
         </div>
       </header>
       <div className="privacy-grid">
-        <section className="profile-panel privacy-card privacy-credentials-card">
+        <div className="privacy-column privacy-column-credentials">
+          <section className="profile-panel privacy-card privacy-credentials-card">
           <div className="privacy-card-heading">
             <ShieldCheck size={18} />
             <div>
@@ -542,8 +543,10 @@ export default function AccountPrivacyPage() {
               {phrase("修改密码", "Change password")}
             </button>
           </div>
-        </section>
-        <section className="profile-panel privacy-card privacy-data-export-card">
+          </section>
+        </div>
+        <div className="privacy-column privacy-column-security">
+          <section className="profile-panel privacy-card privacy-deletion-card">
           <div className="privacy-card-heading">
             <Download size={18} />
             <div>
@@ -574,8 +577,8 @@ export default function AccountPrivacyPage() {
               </small>
             </div>
           ) : null}
-        </section>
-        <section className="profile-panel privacy-card privacy-deletion-card">
+          </section>
+          <section className="profile-panel privacy-card privacy-totp-card">
           <div className="privacy-card-heading">
             <Trash2 size={18} />
             <div>
@@ -595,8 +598,10 @@ export default function AccountPrivacyPage() {
               {phrase("申请注销", "Request deletion")}
             </button>
           )}
-        </section>
-        <section className="profile-panel privacy-card privacy-passkey-card">
+          </section>
+        </div>
+        <div className="privacy-column privacy-column-access">
+          <section className="profile-panel privacy-card privacy-passkey-card">
           <div className="privacy-card-heading">
             <Fingerprint size={18} />
             <div>
@@ -736,8 +741,8 @@ export default function AccountPrivacyPage() {
               </p>
             ) : null}
           </div>
-        </section>
-        <section className="profile-panel privacy-card privacy-totp-card">
+          </section>
+          <section className="profile-panel privacy-card privacy-data-export-card">
           <div className="privacy-card-heading">
             <KeyRound size={18} />
             <div>
@@ -780,8 +785,8 @@ export default function AccountPrivacyPage() {
               <code>{recoveryCodes.join("  ")}</code>
             </div>
           ) : null}
-        </section>
-        <section className="profile-panel privacy-card privacy-blocked-card">
+          </section>
+          <section className="profile-panel privacy-card privacy-blocked-card">
           <div className="privacy-card-heading">
             <UserRoundX size={18} />
             <div>
@@ -801,7 +806,8 @@ export default function AccountPrivacyPage() {
           ) : (
             <p className="privacy-empty">{phrase("暂无屏蔽用户。", "No blocked users.")}</p>
           )}
-        </section>
+          </section>
+        </div>
       </div>
       <section className="profile-panel privacy-audit-card">
         <div className="privacy-card-heading">

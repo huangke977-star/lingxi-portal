@@ -24,6 +24,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [googleSignInStarting, setGoogleSignInStarting] = useState(false);
   const [oauthResultResolved, setOauthResultResolved] = useState(false);
   const [policy, setPolicy] = useState<SecurityPolicy | null>(null);
   const [turnstileRequired, setTurnstileRequired] = useState(false);
@@ -477,7 +478,7 @@ export default function LoginPage() {
     return localizedPath("/dashboard", locale);
   }
 
-  if (!oauthResultResolved) {
+  if (googleSignInStarting || !oauthResultResolved) {
     return (
       <section className="page-shell auth-page">
         <div className="auth-panel auth-oauth-loading" role="status">
@@ -626,7 +627,7 @@ export default function LoginPage() {
                 </button>
               ) : null}
               {googleEnabled ? (
-                <button className="auth-passkey-button" disabled={isSubmitting || googleLinkMode} onClick={() => { window.location.href = `${getBrowserApiBaseUrl()}/auth/google/start?returnTo=${encodeURIComponent(new URLSearchParams(window.location.search).get("from") || "/dashboard")}`; }} type="button">
+                <button className="auth-passkey-button" disabled={isSubmitting || googleLinkMode} onClick={() => { setGoogleSignInStarting(true); setIsSubmitting(true); window.location.assign(`${getBrowserApiBaseUrl()}/auth/google/start?returnTo=${encodeURIComponent(new URLSearchParams(window.location.search).get("from") || "/dashboard")}`); }} type="button">
                   <img alt="" aria-hidden="true" className="google-brand-icon" height="17" src="/google-g.svg" width="17" />
                   {phrase("使用 Google 登录", "Continue with Google")}
                 </button>

@@ -319,12 +319,7 @@
 .privacy-page-header h1 { margin: 4px 0 5px; font-size: 1.45rem; }
 .privacy-page-header p { margin: 0; color: var(--muted); font-size: 0.82rem; }
 .privacy-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.privacy-credentials-card { grid-column: 1; grid-row: 1; }
-.privacy-deletion-card { grid-column: 2; grid-row: 1; }
-.privacy-passkey-card { grid-column: 3; grid-row: 1; }
-.privacy-data-export-card { grid-column: 1; grid-row: 2; }
-.privacy-totp-card { grid-column: 2; grid-row: 2; }
-.privacy-blocked-card { grid-column: 3; grid-row: 2; }
+.privacy-column { display: grid; min-width: 0; align-content: start; gap: 8px; }
 .privacy-card, .privacy-audit-card { min-width: 0; align-content: start; }
 .privacy-card-heading { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px; color: var(--accent-strong); }
 .privacy-card-heading h2 { margin: 0; color: var(--foreground); font-size: 1rem; }
@@ -416,7 +411,6 @@
 
 @media (max-width: 760px) {
   .privacy-grid { grid-template-columns: minmax(0, 1fr); }
-  .privacy-grid > .privacy-card { grid-column: auto; grid-row: auto; }
   .privacy-page-header { align-items: start; flex-direction: column; }
   .privacy-totp-enrollment { grid-template-columns: minmax(0, 1fr); }
   .privacy-qr-code { justify-self: center; }
