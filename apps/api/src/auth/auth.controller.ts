@@ -57,9 +57,13 @@ export class AuthController {
   async googleCallback(@Query("code") code: string, @Query("state") state: string, @Res() response: Response) {
     try {
       const result = await this.authService.finishGoogleLogin(code, state);
-      const target = new URL("/login", process.env.WEB_ORIGIN ?? "http://localhost:3000");
+      const target = new URL(result.requiresInteraction ? "/login" : "/dashboard", process.env.WEB_ORIGIN ?? "http://localhost:3000");
       target.searchParams.set("oauthResult", result.redirectToken);
-      if (result.returnTo !== "/dashboard") target.searchParams.set("from", result.returnTo);
+      if (result.requiresInteraction) {
+        if (result.returnTo !== "/dashboard") target.searchParams.set("from", result.returnTo);
+      } else if (result.returnTo !== "/dashboard") {
+        target.searchParams.set("oauthReturnTo", result.returnTo);
+      }
       return response.redirect(target.toString());
     } catch (error) {
       const target = new URL("/login", process.env.WEB_ORIGIN ?? "http://localhost:3000");

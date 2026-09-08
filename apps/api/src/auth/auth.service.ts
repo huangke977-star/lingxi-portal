@@ -793,7 +793,7 @@ export class AuthService {
     return url.toString();
   }
 
-  async finishGoogleLogin(code: string, state: string): Promise<{ redirectToken: string; returnTo: string }> {
+  async finishGoogleLogin(code: string, state: string): Promise<{ redirectToken: string; returnTo: string; requiresInteraction: boolean }> {
     const raw = await this.redis.getdel(this.oauthStateKey(state));
     if (!raw) throw new BadRequestException("Google 登录请求已失效，请重新开始。\nThe Google sign-in request expired.");
     let stateData: GoogleOAuthState;
@@ -813,7 +813,7 @@ export class AuthService {
       if (existing) {
         const pendingToken = randomBytes(32).toString("base64url");
         await this.redis.set(`oauth_pending:${this.hashToken(pendingToken)}`, JSON.stringify({ provider: "google", subject, email, profile: this.oauthProfileJson(profile) }), this.oauthStateTtlSeconds);
-        return { redirectToken: await this.storeOAuthResult({ oauthLinkRequired: true as const, pendingToken, email, methods: await this.googleLinkVerificationMethods(existing.id) }), returnTo: stateData.returnTo };
+        return { redirectToken: await this.storeOAuthResult({ oauthLinkRequired: true as const, pendingToken, email, methods: await this.googleLinkVerificationMethods(existing.id) }), returnTo: stateData.returnTo, requiresInteraction: true };
       }
       const username = await this.generateGoogleUsername(email.split("@")[0]);
       const nickname = this.normalizeGoogleNickname(profile.name || email.split("@")[0]);
@@ -821,7 +821,11 @@ export class AuthService {
       await this.prismaService!.externalAuthIdentity.create({ data: { userId: created.id, provider: ExternalAuthProvider.google, subject, email, emailVerified: profile.email_verified === true, profile: this.oauthProfileJson(profile), lastLoginAt: new Date() } });
       result = await this.completeLogin(created.id, context, false);
     }
-    return { redirectToken: await this.storeOAuthResult(result), returnTo: stateData.returnTo };
+    return {
+      redirectToken: await this.storeOAuthResult(result),
+      returnTo: stateData.returnTo,
+      requiresInteraction: "deviceVerificationRequired" in result || "totpVerificationRequired" in result,
+    };
   }
 
   async consumeOAuthResult(token: string): Promise<LoginResponse | { oauthLinkRequired: true; pendingToken: string; email: string; methods: GoogleLinkVerificationMethods }> {

@@ -10,8 +10,8 @@ import { useLanguage } from "@/components/language-provider";
 import { SuggestionsPanel } from "@/components/suggestions-panel";
 import { AvatarManagementBadge } from "@/components/user-identity-badges";
 import { getMyArticleSummary, type ArticleMineSummary } from "@/lib/article-api";
-import { AuthUser, getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
-import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { AuthUser, consumeOAuthResult, getMe, isAuthExpiredError, resolveApiUrl } from "@/lib/auth-api";
+import { clearAuthTokens, readAccessToken, saveAuthTokens } from "@/lib/auth-storage";
 import { getModerationReportSummary } from "@/lib/moderation-api";
 import { getSocialSummary, listChatGroups } from "@/lib/social-api";
 import { openChatDock } from "@/lib/social-events";
@@ -41,8 +41,6 @@ export function DashboardWorkspace() {
 
   useEffect(() => {
     let active = true;
-    const accessToken = readAccessToken();
-    if (!accessToken) { window.location.replace("/login?from=%2Fdashboard"); return; }
 
     async function load(token: string) {
       setIsLoading(true);
@@ -65,7 +63,41 @@ export function DashboardWorkspace() {
       } finally { if (active) setIsLoading(false); }
     }
 
-    void load(accessToken);
+    async function resolveAccessToken(): Promise<string | null> {
+      const url = new URL(window.location.href);
+      const oauthResult = url.searchParams.get("oauthResult");
+      if (!oauthResult) {
+        const accessToken = readAccessToken();
+        if (!accessToken) window.location.replace("/login?from=%2Fdashboard");
+        return accessToken;
+      }
+
+      try {
+        const result = await consumeOAuthResult(oauthResult);
+        if ("oauthLinkRequired" in result || "deviceVerificationRequired" in result || "totpVerificationRequired" in result) {
+          window.location.replace("/login?oauthError=Google+登录需要额外验证，请重新开始");
+          return null;
+        }
+        saveAuthTokens(result);
+        url.searchParams.delete("oauthResult");
+        const returnTo = url.searchParams.get("oauthReturnTo");
+        url.searchParams.delete("oauthReturnTo");
+        window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+        if (returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//") && returnTo !== "/dashboard") {
+          window.location.replace(returnTo);
+          return null;
+        }
+        return result.accessToken;
+      } catch {
+        window.location.replace("/login?oauthError=Google+登录结果已失效，请重新开始");
+        return null;
+      }
+    }
+
+    void resolveAccessToken().then((accessToken) => {
+      if (!active || !accessToken) return;
+      void load(accessToken);
+    });
     return () => { active = false; };
   }, [t]);
 
