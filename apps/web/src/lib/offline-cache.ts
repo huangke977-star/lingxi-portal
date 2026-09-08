@@ -218,12 +218,17 @@ function collectMediaUrls(sources: Array<string | null | undefined>): string[] {
   };
   for (const source of sources) {
     if (!source) continue;
-    add(source);
+    if (looksLikeMediaUrl(source)) add(source);
     for (const match of source.matchAll(/(?:src|href)=["']([^"']+)["']/gi)) add(match[1]);
     for (const match of source.matchAll(/!\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)/g)) add(match[1]);
-    for (const match of source.matchAll(/\[[^\]]*\]\(((?:https?:\/\/[^\s)]+)?\/)?(?:api\/)?articles\/attachments\/\d+\/(?:download|thumbnail)[^\s)]*\)/gi)) add(match[1]);
+    for (const match of source.matchAll(/\[[^\]]*\]\(((?:https?:\/\/[^\s)]+)?\/(?:api\/)?articles\/attachments\/\d+\/(?:download|thumbnail)[^\s)]*)\)/gi)) add(match[1]);
   }
   return Array.from(values).slice(0, MAX_MEDIA_PER_ENTRY);
+}
+
+function looksLikeMediaUrl(value: string): boolean {
+  const trimmed = value.trim();
+  return !/\s/.test(trimmed) && (/^(?:https?:\/\/|data:image\/)/i.test(trimmed) || /^\/(?:api\/)?(?:uploads|media|articles\/attachments)\//i.test(trimmed));
 }
 
 function normalizeMediaUrl(value: string | undefined): string | null {
