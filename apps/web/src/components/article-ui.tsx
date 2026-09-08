@@ -13,6 +13,7 @@ import type { MouseEvent, ReactNode } from "react";
 import type { Article, ArticleAuthor, ArticleContentFormat, ArticleContentSegment } from "@/lib/article-api";
 import { requestBlob, resolveApiUrl } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
+import { getOfflineMediaBlob } from "@/lib/offline-cache";
 import { getAvatarFallbackText } from "@/lib/user-display";
 import { PublicProfilePopover } from "@/components/public-profile-popover";
 import { AvatarManagementBadge } from "@/components/user-identity-badges";
@@ -189,10 +190,10 @@ export const ArticleBody = memo(function ArticleBody({
   const [previewImage, setPreviewImage] = useState<{ alt: string; src: string } | null>(null);
   const contentFormat = requestedFormat ?? (looksLikeHtml(content) ? "html" : "markdown");
   const segments = contentSegments?.length ? contentSegments : parseArticleContentForDisplay(content, contentFormat);
-  const attachmentImagePaths = useMemo(() => Array.from(new Set(
-    segments.flatMap((segment) => extractArticleImageAttachmentPaths(segment.content ?? "")),
+  const articleImageSources = useMemo(() => Array.from(new Set(
+    segments.flatMap((segment) => extractArticleImageSources(segment.content ?? "")),
   )), [segments]);
-  const attachmentImageUrls = useArticleAttachmentImageUrls(attachmentImagePaths);
+  const attachmentImageUrls = useArticleAttachmentImageUrls(articleImageSources);
   return (
     <div className="article-body">
       {segments.map((segment, index) => segment.type === "resource" ? (
@@ -289,20 +290,23 @@ function useArticleAttachmentImageUrls(paths: string[]): Record<string, string> 
     }
     void Promise.all(paths.map(async (path) => {
       try {
-        const blob = await requestBlob(path, token ? { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" } : { cache: "no-store" });
+        const cachedBlob = await getOfflineMediaBlob(path);
+        const attachmentPath = getArticleAttachmentPath(path);
+        const blob = cachedBlob ?? (attachmentPath ? await requestBlob(attachmentPath, token ? { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" } : { cache: "no-store" }) : null);
+        if (!blob) return null;
         const url = URL.createObjectURL(blob);
         if (!active) {
           URL.revokeObjectURL(url);
           return null;
         }
         createdUrls.push(url);
-        return [path, url] as const;
+        return [path, url, attachmentPath] as const;
       } catch {
         return null;
       }
     })).then((entries) => {
       if (!active) return;
-      setUrls(Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry))));
+      setUrls(Object.fromEntries(entries.filter((entry): entry is readonly [string, string, string | null] => Boolean(entry)).flatMap(([path, url, attachmentPath]) => attachmentPath ? [[path, url], [attachmentPath, url]] : [[path, url]])));
     });
     return () => {
       active = false;
@@ -314,14 +318,10 @@ function useArticleAttachmentImageUrls(paths: string[]): Record<string, string> 
   return urls;
 }
 
-function extractArticleImageAttachmentPaths(content: string): string[] {
+function extractArticleImageSources(content: string): string[] {
   const paths = new Set<string>();
-  const add = (value: string | undefined) => {
-    const path = getArticleAttachmentPath(value);
-    if (path) paths.add(path);
-  };
-  for (const match of content.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)) add(match[1]);
-  for (const match of content.matchAll(/!\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)/g)) add(match[1]);
+  for (const match of content.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)) paths.add(match[1]);
+  for (const match of content.matchAll(/!\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)/g)) paths.add(match[1]);
   return Array.from(paths);
 }
 
@@ -334,7 +334,7 @@ function getArticleAttachmentPath(value: unknown): string | null {
 function resolveArticleImageUrl(source: string, pendingImageUrls: Record<string, string> | undefined, attachmentImageUrls: Record<string, string>): string {
   if (pendingImageUrls?.[source]) return pendingImageUrls[source];
   const attachmentPath = getArticleAttachmentPath(source);
-  return attachmentPath ? attachmentImageUrls[attachmentPath] ?? resolveApiUrl(attachmentPath) : resolveApiUrl(source);
+  return attachmentImageUrls[source] ?? (attachmentPath ? attachmentImageUrls[attachmentPath] ?? resolveApiUrl(attachmentPath) : resolveApiUrl(source));
 }
 
 function resolveHtmlArticleAttachmentUrls(content: string, attachmentImageUrls: Record<string, string>): string {
@@ -351,7 +351,9 @@ function resolveHtmlArticleAttachmentUrls(content: string, attachmentImageUrls: 
 async function downloadArticleAttachment(path: string, fileName: string): Promise<void> {
   const token = readAccessToken();
   try {
-    const blob = await requestBlob(path, token ? { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" } : { cache: "no-store" });
+    const cachedBlob = await getOfflineMediaBlob(path);
+    const attachmentPath = getArticleAttachmentPath(path) ?? path;
+    const blob = cachedBlob ?? await requestBlob(attachmentPath, token ? { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" } : { cache: "no-store" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;

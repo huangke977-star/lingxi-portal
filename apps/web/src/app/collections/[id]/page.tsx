@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { Rss } from "lucide-react";
+import { Radio, Rss } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { DiscoveryArticleRow } from "@/components/discovery-ui";
@@ -24,6 +24,14 @@ export default function PublicCollectionPage() {
   useEffect(() => {
     const token = readAccessToken();
     void (async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const offlineCollection = await getOfflineEntry<ArticleCollection>("collection", String(params.id)).then((entry) => entry?.data ?? null).catch(() => null);
+        setUser(null);
+        setCollection(offlineCollection);
+        if (offlineCollection) setNotice(phrase("当前为离线阅读，订阅操作暂不可用。", "Offline reading is active. Subscription actions are unavailable."));
+        else setError(phrase("当前没有网络，且这个合集尚未保存到本机。", "You are offline and this collection has not been saved on this device."));
+        return;
+      }
       const [userResult, collectionResult] = await Promise.allSettled([
         token ? getMe(token).catch(() => null) : Promise.resolve(null),
         getCollection(Number(params.id), token),
@@ -55,7 +63,7 @@ export default function PublicCollectionPage() {
       setIsActing(false);
     }
   }
-  return <section className="page-shell public-collection-page"><ArticleCenterNav active="collections" isLoggedIn={Boolean(user)} user={user} />{collection ? <><header className="content-group-header"><a aria-label={phrase("订阅此合集的 RSS", "Subscribe to this collection via RSS")} className="content-group-feed-link" href={resolveApiUrl(`/distribution/feeds/collections/${collection.id}.rss`)} rel="alternate" title={phrase("RSS 订阅源", "RSS feed")}><Rss aria-hidden="true" size={16} /></a>{user && collection.owner.id !== user.id ? <button aria-label={collection.subscribed ? t("common.unsubscribe") : t("common.subscribe")} className={`content-group-subscribe${collection.subscribed ? " active" : ""}`} disabled={isActing} onClick={() => void toggleSubscription()} title={collection.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={17} /></button> : null}<OfflineSaveButton data={collection} id={String(collection.id)} kind="collection" route={`/collections/${collection.id}`} title={collection.name} updatedAt={collection.updatedAt} /><span>{phrase("文章合集", "Article collection")}</span><h1>{collection.name}</h1><p>{collection.description || phrase("这个合集暂时没有说明。", "No collection description yet.")}</p><small>{phrase(`${collection.owner.nickname} · ${collection.articleCount} 篇 · ${collection.subscriberCount} 人订阅`, `${collection.owner.nickname} · ${collection.articleCount} articles · ${collection.subscriberCount} subscribers`)}</small></header><div className="discovery-feed-list">{collection.articles.map((article) => <DiscoveryArticleRow article={article} key={article.id} />)}</div>{!collection.articles.length ? <div className="article-empty-state">{phrase("这个合集还没有可见文章。", "This collection has no visible articles yet.")}</div> : null}</> : <div className="article-empty-state">{phrase("正在读取合集。", "Loading collection.")}</div>}<AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} /></section>;
+  return <section className="page-shell public-collection-page"><ArticleCenterNav active="collections" isLoggedIn={Boolean(user)} user={user} />{collection ? <><header className="content-group-header"><div className="content-group-header-copy"><h1>{collection.name}</h1><small>{phrase(`${collection.articleCount} 篇文章 · ${collection.subscriberCount} 人订阅`, `${collection.articleCount} articles · ${collection.subscriberCount} subscribers`)}</small></div><div className="content-group-actions"><a aria-label={phrase("通过 RSS 阅读器订阅合集更新", "Subscribe to this collection in an RSS reader")} className="content-group-feed-link" href={resolveApiUrl(`/distribution/feeds/collections/${collection.id}.rss`)} rel="alternate" title={phrase("站外订阅", "External feed")}><Radio aria-hidden="true" size={16} /><span>{phrase("站外订阅", "External feed")}</span></a>{user && collection.owner.id !== user.id ? <button aria-label={collection.subscribed ? t("common.unsubscribe") : t("common.subscribe")} className={`content-group-subscribe${collection.subscribed ? " active" : ""}`} disabled={isActing} onClick={() => void toggleSubscription()} title={collection.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={17} /></button> : null}<OfflineSaveButton data={collection} id={String(collection.id)} kind="collection" mediaUrls={offlineCollectionEntry(collection).mediaUrls} route={`/collections/${collection.id}`} title={collection.name} updatedAt={collection.updatedAt} /></div></header><div className="discovery-feed-list">{collection.articles.map((article) => <DiscoveryArticleRow article={article} key={article.id} />)}</div>{!collection.articles.length ? <div className="article-empty-state">{phrase("这个合集还没有可见文章。", "This collection has no visible articles yet.")}</div> : null}</> : <div className="article-empty-state">{error || phrase("正在读取合集。", "Loading collection.")}</div>}<AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} /></section>;
 }
 
 async function refreshOfflineCollection(collection: ArticleCollection): Promise<void> {

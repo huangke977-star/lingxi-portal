@@ -20981,6 +20981,115 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   white-space: nowrap;
 }
 
+/* P20 group detail headers keep the title block compact and the three actions
+   aligned on the same right edge. Topic covers are intentionally not used here. */
+.content-group-header {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 16px;
+}
+
+.content-group-header-copy {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 4px;
+}
+
+.content-group-header-copy h1 {
+  overflow: hidden;
+  font-size: 1.18rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-group-header-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-group-actions {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.content-group-actions .offline-save-button {
+  width: auto;
+  min-height: 30px;
+}
+
+.content-group-feed-link {
+  position: static;
+  display: inline-flex;
+  width: auto;
+  height: 30px;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 8px;
+  text-decoration: none;
+}
+
+.content-group-feed-link span {
+  font: inherit;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.content-group-feed-link:hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.content-group-actions .content-group-subscribe {
+  position: static;
+  width: 30px;
+  height: 30px;
+  background: transparent;
+}
+
+.content-group-header.topic,
+.content-group-header.topic.with-cover {
+  min-height: 68px;
+  color: var(--foreground);
+  background: var(--panel);
+}
+
+@media (max-width: 620px) {
+  .content-group-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .content-group-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* Offline media is browser-local and deliberately bounded by offline-cache.ts. */
+.offline-entry-main > span {
+  display: block;
+}
+
+.offline-page-header > .button {
+  min-height: 28px;
+  font-size: 0.68rem;
+  padding: 0 8px;
+}
+
 .chat-message-search-result strong {
   line-height: 1.25;
 }

@@ -20,6 +20,7 @@ export function OfflineSaveButton<T extends OfflineEntryData>({
   route,
   title,
   updatedAt,
+  mediaUrls,
 }: {
   data: T;
   id: string;
@@ -27,6 +28,7 @@ export function OfflineSaveButton<T extends OfflineEntryData>({
   route: string;
   title: string;
   updatedAt: string;
+  mediaUrls?: string[];
 }) {
   const { phrase } = useLanguage();
   const [cached, setCached] = useState(false);
@@ -49,7 +51,7 @@ export function OfflineSaveButton<T extends OfflineEntryData>({
       if (cached) {
         await removeOfflineEntry(kind, id);
       } else {
-        await saveOfflineEntry({ kind, id, title, route, updatedAt, data });
+        await saveOfflineEntry({ kind, id, title, route, updatedAt, data, mediaUrls });
       }
       setCached(!cached);
     } catch (actionError) {

@@ -1,5 +1,7 @@
 import type { Article } from "./article-api";
 import type { ArticleCollection, ArticleTopic } from "./discovery-api";
+import { resolveApiUrl } from "./auth-api";
+import { readAccessToken } from "./auth-storage";
 
 export const OFFLINE_CACHE_CHANGE_EVENT = "hlovet:offline-cache-change";
 export const OFFLINE_CACHE_MAX_ENTRIES = 30;
@@ -18,6 +20,8 @@ export interface OfflineEntry<T extends OfflineEntryData = OfflineEntryData> {
   cachedAt: string;
   stale: boolean;
   sizeBytes: number;
+  mediaSizeBytes: number;
+  mediaUrls: string[];
   data: T;
 }
 
@@ -29,7 +33,10 @@ export interface OfflineCacheInfo {
 }
 
 const CACHE_NAME = "hlovet-offline-content-v1";
+const MEDIA_CACHE_NAME = "hlovet-offline-media-v1";
 const INDEX_KEY = "/__hlovet_offline_index__";
+const MAX_MEDIA_ITEM_BYTES = 4 * 1024 * 1024;
+const MAX_MEDIA_PER_ENTRY = 40;
 
 export function isOfflineCacheSupported(): boolean {
   return typeof window !== "undefined" && "caches" in window;
@@ -42,7 +49,7 @@ export async function getOfflineEntry<T extends OfflineEntryData>(kind: OfflineE
   if (!response) return null;
   try {
     const entry = await response.json() as OfflineEntry<T>;
-    return { ...entry, stale: entry.stale || isStale(entry.cachedAt) };
+    return normalizeEntry(entry);
   } catch {
     await cache.delete(recordKey(kind, id));
     return null;
@@ -56,7 +63,7 @@ export async function listOfflineEntries(): Promise<OfflineEntry[]> {
   if (!response) return [];
   try {
     const entries = await response.json() as unknown;
-    return Array.isArray(entries) ? entries.filter(isOfflineEntry).map((entry) => ({ ...entry, stale: entry.stale || isStale(entry.cachedAt) })) : [];
+    return Array.isArray(entries) ? entries.filter(isOfflineEntry).map(normalizeEntry) : [];
   } catch {
     return [];
   }
@@ -70,10 +77,20 @@ export async function saveOfflineEntry<T extends OfflineEntryData>(input: {
   updatedAt: string;
   data: T;
   stale?: boolean;
+  mediaUrls?: string[];
 }): Promise<OfflineEntry<T>> {
   if (!isOfflineCacheSupported()) throw new Error("当前浏览器不支持离线缓存。\nThis browser does not support offline storage.");
-  const serialized = JSON.stringify({ ...input, cachedAt: new Date().toISOString(), stale: input.stale ?? false });
-  const sizeBytes = new Blob([serialized]).size;
+  const existingEntries = await listOfflineEntries();
+  const media = await cacheMedia(input.mediaUrls ?? []);
+  const baseEntry = {
+    ...input,
+    mediaUrls: media.map((item) => item.url),
+    mediaSizeBytes: media.reduce((total, item) => total + item.sizeBytes, 0),
+    cachedAt: new Date().toISOString(),
+    stale: input.stale ?? false,
+  };
+  const serialized = JSON.stringify(baseEntry);
+  const sizeBytes = new Blob([serialized]).size + baseEntry.mediaSizeBytes;
   if (sizeBytes > OFFLINE_CACHE_MAX_BYTES) {
     throw new Error("这项内容超过离线缓存大小限制。\nThis content exceeds the offline cache size limit.");
   }
@@ -82,7 +99,7 @@ export async function saveOfflineEntry<T extends OfflineEntryData>(input: {
   const cache = await caches.open(CACHE_NAME);
   await cache.put(recordKey(entry.kind, entry.id), new Response(JSON.stringify(entry), { headers: { "Content-Type": "application/json" } }));
 
-  const entries = [entry, ...(await listOfflineEntries()).filter((candidate) => candidate.kind !== entry.kind || candidate.id !== entry.id)];
+  const entries = [entry, ...existingEntries.filter((candidate) => candidate.kind !== entry.kind || candidate.id !== entry.id)];
   let total = 0;
   const retained: OfflineEntry[] = [];
   for (const candidate of entries) {
@@ -94,6 +111,7 @@ export async function saveOfflineEntry<T extends OfflineEntryData>(input: {
     total += candidate.sizeBytes;
   }
   await writeIndex(cache, retained);
+  await removeOrphanedMedia(retained);
   notifyCacheChange();
   return entry;
 }
@@ -102,13 +120,16 @@ export async function removeOfflineEntry(kind: OfflineEntryKind, id: string): Pr
   if (!isOfflineCacheSupported()) return;
   const cache = await caches.open(CACHE_NAME);
   await cache.delete(recordKey(kind, id));
-  await writeIndex(cache, (await listOfflineEntries()).filter((entry) => entry.kind !== kind || entry.id !== id));
+  const retained = (await listOfflineEntries()).filter((entry) => entry.kind !== kind || entry.id !== id);
+  await writeIndex(cache, retained);
+  await removeOrphanedMedia(retained);
   notifyCacheChange();
 }
 
 export async function clearOfflineCache(): Promise<void> {
   if (!isOfflineCacheSupported()) return;
   await caches.delete(CACHE_NAME);
+  await caches.delete(MEDIA_CACHE_NAME);
   notifyCacheChange();
 }
 
@@ -132,15 +153,29 @@ export async function getOfflineCacheInfo(): Promise<OfflineCacheInfo> {
 }
 
 export function offlineArticleEntry(article: Article) {
-  return { kind: "article" as const, id: article.slug, title: article.title, route: `/articles/${article.slug}`, updatedAt: article.updatedAt, data: article };
+  return { kind: "article" as const, id: article.slug, title: article.title, route: `/articles/${article.slug}`, updatedAt: article.updatedAt, data: article, mediaUrls: getOfflineArticleMediaUrls(article) };
 }
 
 export function offlineTopicEntry(topic: ArticleTopic) {
-  return { kind: "topic" as const, id: topic.slug, title: topic.title, route: `/topics/${topic.slug}`, updatedAt: topic.updatedAt, data: topic };
+  return { kind: "topic" as const, id: topic.slug, title: topic.title, route: `/topics/${topic.slug}`, updatedAt: topic.updatedAt, data: topic, mediaUrls: getOfflineGroupMediaUrls(topic.coverPath, topic.articles) };
 }
 
 export function offlineCollectionEntry(collection: ArticleCollection) {
-  return { kind: "collection" as const, id: String(collection.id), title: collection.name, route: `/collections/${collection.id}`, updatedAt: collection.updatedAt, data: collection };
+  return { kind: "collection" as const, id: String(collection.id), title: collection.name, route: `/collections/${collection.id}`, updatedAt: collection.updatedAt, data: collection, mediaUrls: getOfflineGroupMediaUrls(collection.coverPath, collection.articles) };
+}
+
+export function getOfflineArticleMediaUrls(article: Article): string[] {
+  const sources = [article.coverPath, ...article.images, article.content, ...article.contentSegments.map((segment) => segment.content ?? "")];
+  return collectMediaUrls(sources);
+}
+
+export async function getOfflineMediaBlob(value: string): Promise<Blob | null> {
+  if (!isOfflineCacheSupported()) return null;
+  const url = normalizeMediaUrl(value);
+  if (!url) return null;
+  const cache = await caches.open(MEDIA_CACHE_NAME);
+  const response = await cache.match(url);
+  return response ? response.blob() : null;
 }
 
 function recordKey(kind: OfflineEntryKind, id: string): string {
@@ -160,6 +195,80 @@ function isOfflineEntry(value: unknown): value is OfflineEntry {
     && typeof entry.route === "string"
     && typeof entry.sizeBytes === "number"
     && Boolean(entry.data);
+}
+
+function normalizeEntry<T extends OfflineEntryData>(entry: OfflineEntry<T>): OfflineEntry<T> {
+  return {
+    ...entry,
+    mediaUrls: Array.isArray(entry.mediaUrls) ? entry.mediaUrls : [],
+    mediaSizeBytes: typeof entry.mediaSizeBytes === "number" ? entry.mediaSizeBytes : 0,
+    stale: entry.stale || isStale(entry.cachedAt),
+  };
+}
+
+function getOfflineGroupMediaUrls(coverPath: string | null, articles: Array<{ coverPath: string | null }>): string[] {
+  return collectMediaUrls([coverPath, ...articles.map((article) => article.coverPath)]);
+}
+
+function collectMediaUrls(sources: Array<string | null | undefined>): string[] {
+  const values = new Set<string>();
+  const add = (value: string | undefined) => {
+    const url = normalizeMediaUrl(value);
+    if (url) values.add(url);
+  };
+  for (const source of sources) {
+    if (!source) continue;
+    add(source);
+    for (const match of source.matchAll(/(?:src|href)=["']([^"']+)["']/gi)) add(match[1]);
+    for (const match of source.matchAll(/!\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)/g)) add(match[1]);
+    for (const match of source.matchAll(/\[[^\]]*\]\(((?:https?:\/\/[^\s)]+)?\/)?(?:api\/)?articles\/attachments\/\d+\/(?:download|thumbnail)[^\s)]*\)/gi)) add(match[1]);
+  }
+  return Array.from(values).slice(0, MAX_MEDIA_PER_ENTRY);
+}
+
+function normalizeMediaUrl(value: string | undefined): string | null {
+  if (!value || !isOfflineCacheSupported()) return null;
+  try {
+    const url = new URL(resolveApiUrl(value), window.location.origin);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+async function cacheMedia(values: string[]): Promise<Array<{ url: string; sizeBytes: number }>> {
+  const cache = await caches.open(MEDIA_CACHE_NAME);
+  const token = readAccessToken();
+  const uniqueValues = Array.from(new Set(values)).slice(0, MAX_MEDIA_PER_ENTRY);
+  const results = await Promise.all(uniqueValues.map(async (value) => {
+    const url = normalizeMediaUrl(value);
+    if (!url) return null;
+    try {
+      const cached = await cache.match(url);
+      if (cached) {
+        const sizeBytes = (await cached.clone().blob()).size;
+        return sizeBytes <= MAX_MEDIA_ITEM_BYTES ? { url, sizeBytes } : null;
+      }
+      const headers = new Headers();
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+      const response = await fetch(url, { credentials: "include", headers, cache: "no-store" });
+      if (!response.ok) return null;
+      const sizeBytes = (await response.clone().blob()).size;
+      if (sizeBytes > MAX_MEDIA_ITEM_BYTES) return null;
+      await cache.put(url, response.clone());
+      return { url, sizeBytes };
+    } catch {
+      return null;
+    }
+  }));
+  return results.filter((item): item is { url: string; sizeBytes: number } => Boolean(item));
+}
+
+async function removeOrphanedMedia(entries: OfflineEntry[]): Promise<void> {
+  const referenced = new Set(entries.flatMap((entry) => entry.mediaUrls ?? []));
+  const cache = await caches.open(MEDIA_CACHE_NAME);
+  const requests = await cache.keys();
+  await Promise.all(requests.filter((request) => !referenced.has(request.url)).map((request) => cache.delete(request)));
 }
 
 function notifyCacheChange(): void {

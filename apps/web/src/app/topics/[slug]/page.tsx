@@ -1,9 +1,7 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
-
 import { useParams } from "next/navigation";
-import { Rss } from "lucide-react";
+import { Radio, Rss } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ArticleCenterNav } from "@/components/article-center-nav";
 import { DiscoveryArticleRow } from "@/components/discovery-ui";
@@ -26,6 +24,14 @@ export default function TopicDetailPage() {
   useEffect(() => {
     const token = readAccessToken();
     void (async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const offlineTopic = await getOfflineEntry<ArticleTopic>("topic", decodeURIComponent(params.slug)).then((entry) => entry?.data ?? null).catch(() => null);
+        setUser(null);
+        setTopic(offlineTopic);
+        if (offlineTopic) setNotice(phrase("当前为离线阅读，订阅操作暂不可用。", "Offline reading is active. Subscription actions are unavailable."));
+        else setError(phrase("当前没有网络，且这个专题尚未保存到本机。", "You are offline and this topic has not been saved on this device."));
+        return;
+      }
       const [userResult, topicResult] = await Promise.allSettled([
         token ? getMe(token).catch(() => null) : Promise.resolve(null),
         getTopic(decodeURIComponent(params.slug), token),
@@ -57,7 +63,7 @@ export default function TopicDetailPage() {
       setIsActing(false);
     }
   }
-  return <section className="page-shell topic-detail-page"><ArticleCenterNav active="topics" isLoggedIn={Boolean(user)} user={user} />{topic ? <><header className={`content-group-header topic${topic.coverPath ? " with-cover" : ""}`}>{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : null}<a aria-label={phrase("订阅此专题的 RSS", "Subscribe to this topic via RSS")} className="content-group-feed-link" href={resolveApiUrl(`/distribution/feeds/topics/${encodeURIComponent(topic.slug)}.rss`)} rel="alternate" title={phrase("RSS 订阅源", "RSS feed")}><Rss aria-hidden="true" size={16} /></a>{user ? <button aria-label={topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} className={`content-group-subscribe topic-detail-subscribe${topic.subscribed ? " active" : ""}`} disabled={isActing} onClick={() => void toggleSubscription()} title={topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={17} /></button> : null}<OfflineSaveButton data={topic} id={topic.slug} kind="topic" route={`/topics/${topic.slug}`} title={topic.title} updatedAt={topic.updatedAt} /><span>{phrase("内容专题", "Content topic")}</span><h1>{topic.title}</h1><p>{topic.description || phrase("这个专题暂时没有说明。", "No topic description yet.")}</p><small>{phrase(`${topic.articleCount} 篇文章 · ${topic.subscriberCount} 人订阅`, `${topic.articleCount} articles · ${topic.subscriberCount} subscribers`)}</small></header><div className="discovery-feed-list">{topic.articles.map((article) => <DiscoveryArticleRow article={article} key={article.id} />)}</div>{!topic.articles.length ? <div className="article-empty-state">{phrase("这个专题还没有可见文章。", "This topic has no visible articles yet.")}</div> : null}</> : <div className="article-empty-state">{phrase("正在读取专题。", "Loading topic.")}</div>}<AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} /></section>;
+  return <section className="page-shell topic-detail-page"><ArticleCenterNav active="topics" isLoggedIn={Boolean(user)} user={user} />{topic ? <><header className="content-group-header"><div className="content-group-header-copy"><h1>{topic.title}</h1><small>{phrase(`${topic.articleCount} 篇文章 · ${topic.subscriberCount} 人订阅`, `${topic.articleCount} articles · ${topic.subscriberCount} subscribers`)}</small></div><div className="content-group-actions"><a aria-label={phrase("通过 RSS 阅读器订阅专题更新", "Subscribe to this topic in an RSS reader")} className="content-group-feed-link" href={resolveApiUrl(`/distribution/feeds/topics/${encodeURIComponent(topic.slug)}.rss`)} rel="alternate" title={phrase("站外订阅", "External feed")}><Radio aria-hidden="true" size={16} /><span>{phrase("站外订阅", "External feed")}</span></a>{user ? <button aria-label={topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} className={`content-group-subscribe topic-detail-subscribe${topic.subscribed ? " active" : ""}`} disabled={isActing} onClick={() => void toggleSubscription()} title={topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={17} /></button> : null}<OfflineSaveButton data={topic} id={topic.slug} kind="topic" mediaUrls={offlineTopicEntry(topic).mediaUrls} route={`/topics/${topic.slug}`} title={topic.title} updatedAt={topic.updatedAt} /></div></header><div className="discovery-feed-list">{topic.articles.map((article) => <DiscoveryArticleRow article={article} key={article.id} />)}</div>{!topic.articles.length ? <div className="article-empty-state">{phrase("这个专题还没有可见文章。", "This topic has no visible articles yet.")}</div> : null}</> : <div className="article-empty-state">{error || phrase("正在读取专题。", "Loading topic.")}</div>}<AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} /></section>;
 }
 
 async function refreshOfflineTopic(topic: ArticleTopic): Promise<void> {

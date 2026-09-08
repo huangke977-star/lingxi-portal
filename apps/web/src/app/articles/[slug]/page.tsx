@@ -41,7 +41,7 @@ import { localizedPath } from "@/lib/i18n";
 import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-api";
 import { getPublicProfile, PublicProfile, searchSocialUsers, SocialUserSearchResult, subscribeToAuthor, unsubscribeFromAuthor } from "@/lib/social-api";
 import { notifySocialStateChange } from "@/lib/social-events";
-import { getOfflineEntry, offlineArticleEntry, saveOfflineEntry } from "@/lib/offline-cache";
+import { getOfflineEntry, getOfflineArticleMediaUrls, offlineArticleEntry, saveOfflineEntry } from "@/lib/offline-cache";
 import { OfflineSaveButton } from "@/components/offline-save-button";
 
 const COMMENT_PAGE_SIZE = 10;
@@ -153,6 +153,18 @@ export default function ArticleDetailPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoggedIn(Boolean(token));
     void (async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const offlineArticle = await getOfflineEntry<Article>("article", slug).then((entry) => entry?.data ?? null).catch(() => null);
+        setUser(null);
+        setArticle(offlineArticle);
+        setComments([]);
+        setCommentNextCursor(null);
+        setHasMoreComments(false);
+        if (offlineArticle) setNotice(phrase("当前为离线阅读，评论和互动暂不可用。", "Offline reading is active. Comments and interactions are unavailable."));
+        else setError(phrase("当前没有网络，且这篇文章尚未保存到本机。", "You are offline and this article has not been saved on this device."));
+        setIsLoading(false);
+        return;
+      }
       const results = await Promise.allSettled([
         token ? getMe(token) : Promise.resolve(null),
         token ? getVisibleArticle(token, slug) : getPublicArticle(slug),
@@ -589,7 +601,7 @@ export default function ArticleDetailPage() {
               <span className="like-action-wrap"><button className={article.favorited ? "active" : undefined} onClick={() => void handleInteraction("favorite")} type="button"><Bookmark aria-hidden="true" fill={article.favorited ? "currentColor" : "none"} size={17} />{article.favorited ? phrase("已收藏", "Saved") : phrase("收藏", "Save")}</button><LikeBurst burst={articleFavoriteBurst} variant="bookmark" /></span>
             </div>
             <ArticleStats article={article} />
-            {isLoggedIn ? <OfflineSaveButton data={article} id={article.slug} kind="article" route={`/articles/${article.slug}`} title={article.title} updatedAt={article.updatedAt} /> : null}
+             {isLoggedIn ? <OfflineSaveButton data={article} id={article.slug} kind="article" mediaUrls={getOfflineArticleMediaUrls(article)} route={`/articles/${article.slug}`} title={article.title} updatedAt={article.updatedAt} /> : null}
             <dl className="article-aside-meta">
               <div><dt><Tag aria-hidden="true" size={15} />{phrase("分类", "Category")}</dt><dd>{article.category || phrase("随笔", "Notes")}</dd></div>
               <div><dt><CalendarDays aria-hidden="true" size={15} />{phrase("发布时间", "Published")}</dt><dd>{formatArticleDate(article.publishedAt, locale)}</dd></div>
