@@ -319,7 +319,7 @@
 .privacy-page-header h1 { margin: 4px 0 5px; font-size: 1.45rem; }
 .privacy-page-header p { margin: 0; color: var(--muted); font-size: 0.82rem; }
 .privacy-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.privacy-column { display: grid; min-width: 0; align-content: stretch; grid-auto-rows: minmax(min-content, 1fr); gap: 8px; }
+.privacy-column { display: grid; min-width: 0; align-content: start; gap: 8px; }
 .privacy-card, .privacy-audit-card { min-width: 0; align-content: start; }
 .privacy-card-heading { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px; color: var(--accent-strong); }
 .privacy-card-heading h2 { margin: 0; color: var(--foreground); font-size: 1rem; }

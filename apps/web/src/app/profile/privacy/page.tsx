@@ -59,9 +59,10 @@ export default function AccountPrivacyPage() {
   }, [locale, router]);
 
   useEffect(() => {
-    if (!token || !exportJob || !["queued", "processing"].includes(exportJob.status)) return;
+    const currentToken = readAccessToken() ?? token;
+    if (!currentToken || !exportJob || !["queued", "processing"].includes(exportJob.status)) return;
     const timer = window.setInterval(() => {
-      void getDataExport(token, exportJob.id).then(setExportJob).catch(showError);
+      void getDataExport(readAccessToken() ?? currentToken, exportJob.id).then(setExportJob).catch(showError);
     }, 1600);
     return () => window.clearInterval(timer);
   }, [exportJob, token]);
@@ -75,6 +76,7 @@ export default function AccountPrivacyPage() {
   async function load(currentToken: string) {
     try {
       const [nextOverview, nextAudit, nextPasskeys] = await Promise.all([getAccountPrivacyOverview(currentToken), listPrivacyAudit(currentToken), listPasskeys(currentToken)]);
+      setToken(readAccessToken() ?? currentToken);
       setOverview(nextOverview);
       setEmailDraft(nextOverview.email);
       setAudit(nextAudit);
@@ -84,8 +86,20 @@ export default function AccountPrivacyPage() {
     }
   }
 
+  function getCurrentToken() {
+    const currentToken = readAccessToken();
+    if (currentToken && currentToken !== token) setToken(currentToken);
+    return currentToken ?? token;
+  }
+
   function showError(loadError: unknown) {
     if (isAuthExpiredError(loadError)) {
+      const latestToken = readAccessToken();
+      if (latestToken && latestToken !== token) {
+        setToken(latestToken);
+        setError(phrase("登录状态已刷新，请重试当前操作。", "Your session was refreshed. Please retry this action."));
+        return;
+      }
       clearAuthTokens();
       router.replace(localizedPath("/", locale));
       return;
@@ -111,18 +125,20 @@ export default function AccountPrivacyPage() {
   }
 
   async function handleExport() {
-    if (!token) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken) return;
     await run("export", async () => {
-      const job = await requestDataExport(token);
+      const job = await requestDataExport(currentToken);
       setExportJob(job);
       setNotice(phrase("数据导出任务已创建，完成后可下载。", "The data export is being prepared. You can download it when ready."));
     });
   }
 
   async function handleDownload() {
-    if (!token || !exportJob) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken || !exportJob) return;
     await run("download", async () => {
-      const blob = await downloadDataExport(token, exportJob.id);
+      const blob = await downloadDataExport(currentToken, exportJob.id);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -134,16 +150,17 @@ export default function AccountPrivacyPage() {
   }
 
   async function handleCancelDeletion() {
-    if (!token) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken) return;
     await run("cancel-delete", async () => {
-      await cancelAccountDeletion(token);
-      await load(token);
+      await cancelAccountDeletion(currentToken);
+      await load(readAccessToken() ?? currentToken);
       setNotice(phrase("注销申请已撤回。", "The deletion request was cancelled."));
     });
   }
 
   function openSensitiveAction(target: SensitiveAction) {
-    if (!token || busy) return;
+    if (!getCurrentToken() || busy) return;
     setError("");
     setNotice("");
     setSecurityVerificationTarget(target);
@@ -156,18 +173,19 @@ export default function AccountPrivacyPage() {
   }
 
   async function handleRenamePasskey(id: number) {
-    if (!token || !editingPasskeyName.trim()) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken || !editingPasskeyName.trim()) return;
     await run(`rename-passkey-${id}`, async () => {
-      await renamePasskey(token, id, editingPasskeyName);
+      await renamePasskey(currentToken, id, editingPasskeyName);
       setEditingPasskeyId(null);
       setEditingPasskeyName("");
-      await load(token);
+      await load(readAccessToken() ?? currentToken);
       setNotice(phrase("通行密钥名称已更新。", "Passkey name updated."));
     });
   }
 
   async function handleDeletePasskey(id: number) {
-    if (!token) return;
+    if (!getCurrentToken()) return;
     setError("");
     setNotice("");
     setSecurityVerificationTarget("passkey");
@@ -232,24 +250,25 @@ export default function AccountPrivacyPage() {
   }
 
   async function executeSensitiveAction(verificationToken: string) {
-    if (!token || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget)) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget)) return;
     const target = securityVerificationTarget;
     closeSecurityVerification();
     if (target === "account_deletion") {
-      await requestAccountDeletion(token, verificationToken);
-      await load(token);
+      await requestAccountDeletion(currentToken, verificationToken);
+      await load(readAccessToken() ?? currentToken);
       setNotice(phrase("账号已进入 7 天注销冷静期，可在此期间撤回。", "Your account entered a 7-day deletion cooling-off period. You can cancel it during this period."));
       return;
     }
     if (target === "totp_enrollment") {
-      const result = await beginTotpEnrollment(token, verificationToken);
+      const result = await beginTotpEnrollment(currentToken, verificationToken);
       setTotpSecret(result.secret);
       setTotpUri(result.otpAuthUri);
       setNotice(phrase("请将密钥添加到身份验证器后输入验证码确认。", "Add the secret to your authenticator, then enter a code to confirm."));
       return;
     }
     if (target === "password_change") {
-      const result = await changePasswordAfterVerification(token, verificationToken, newPassword);
+      const result = await changePasswordAfterVerification(currentToken, verificationToken, newPassword);
       setNewPassword("");
       setPasswordConfirmation("");
       setNotice(result.revokedSessions
@@ -258,14 +277,14 @@ export default function AccountPrivacyPage() {
       return;
     }
     if (target === "email_change") {
-      const result = await changeEmailAfterVerification(token, verificationToken, emailDraft);
+      const result = await changeEmailAfterVerification(currentToken, verificationToken, emailDraft);
       setEmailDraft(result.email);
       window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
-      await load(token);
+      await load(readAccessToken() ?? currentToken);
       setNotice(phrase("邮箱已更新。", "Email updated."));
       return;
     }
-    const challenge = await getPasskeyRegistrationOptions(token, verificationToken);
+    const challenge = await getPasskeyRegistrationOptions(currentToken, verificationToken);
     let response;
     try {
       response = await startRegistration({ optionsJSON: challenge.options });
@@ -276,26 +295,28 @@ export default function AccountPrivacyPage() {
       }
       throw registrationError;
     }
-    await verifyPasskeyRegistration(token, {
+    await verifyPasskeyRegistration(currentToken, {
       challengeToken: challenge.challengeToken,
       response,
       name: passkeyName.trim() || undefined,
     });
     setPasskeyName("");
-    await load(token);
+    await load(readAccessToken() ?? currentToken);
     setNotice(phrase("通行密钥已添加。", "Passkey added."));
   }
 
   async function completeSecurityVerification() {
-    if (!token) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken) return;
     const target = securityVerificationTarget;
     closeSecurityVerification();
-    await load(token);
+    await load(readAccessToken() ?? currentToken);
     setNotice(target === "totp" ? phrase("双因素认证已关闭。", "Two-factor authentication is disabled.") : phrase("通行密钥已移除。", "Passkey removed."));
   }
 
   async function handleSelectSecurityVerificationMethod(method: "passkey" | "email" | "password" | "totp") {
-    if (!token || !securityVerificationTarget || busy) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken || !securityVerificationTarget || busy) return;
     const target = securityVerificationTarget;
     const passkeyId = securityVerificationId;
     setError("");
@@ -309,7 +330,7 @@ export default function AccountPrivacyPage() {
       }
       if (method === "email") {
         await run(`${target}-email`, async () => {
-          const result = await requestSensitiveActionEmailVerification(token, target);
+          const result = await requestSensitiveActionEmailVerification(currentToken, target);
           setSecurityVerificationEmailChallenge(result.challengeToken);
           setSecurityVerificationEmailCooldown(result.retryAfterSeconds);
           setNotice(phrase("验证码已发送至你的邮箱。", "A verification code was sent to your email."));
@@ -325,11 +346,11 @@ export default function AccountPrivacyPage() {
     if (method === "email") {
       await run(`${target}-disable-email`, async () => {
         if (target === "passkey" && passkeyId !== null) {
-          const result = await requestPasskeyDeletionEmail(token, passkeyId);
+          const result = await requestPasskeyDeletionEmail(currentToken, passkeyId);
           setSecurityVerificationEmailChallenge(result.challengeToken);
           setSecurityVerificationEmailCooldown(result.retryAfterSeconds);
         } else {
-          const result = await requestTotpDisableEmailVerification(token);
+          const result = await requestTotpDisableEmailVerification(currentToken);
           setSecurityVerificationEmailCooldown(result.retryAfterSeconds);
         }
         setNotice(phrase("验证码已发送至你的邮箱。", "A verification code was sent to your email."));
@@ -338,10 +359,11 @@ export default function AccountPrivacyPage() {
   }
 
   async function handleVerifySensitiveActionPasskey(action: SensitiveAction) {
-    if (!token || securityVerificationSubmitRef.current) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken || securityVerificationSubmitRef.current) return;
     securityVerificationSubmitRef.current = true;
     await run(`${action}-passkey`, async () => {
-      const challenge = await getSensitiveActionPasskeyOptions(token, action);
+      const challenge = await getSensitiveActionPasskeyOptions(currentToken, action);
       let response;
       try {
         response = await startAuthentication({ optionsJSON: challenge.options });
@@ -352,43 +374,46 @@ export default function AccountPrivacyPage() {
         }
         throw verificationError;
       }
-      const result = await verifySensitiveActionPasskey(token, action, { challengeToken: challenge.challengeToken, response });
+      const result = await verifySensitiveActionPasskey(currentToken, action, { challengeToken: challenge.challengeToken, response });
       await executeSensitiveAction(result.verificationToken);
     });
     securityVerificationSubmitRef.current = false;
   }
 
   async function handleVerifySensitiveActionCode(method: "email" | "totp", code: string) {
-    if (!token || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget) || securityVerificationSubmitRef.current) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget) || securityVerificationSubmitRef.current) return;
     if (method === "email" && !securityVerificationEmailChallenge) return;
     const action = securityVerificationTarget;
     securityVerificationSubmitRef.current = true;
     await run(`${action}-${method}`, async () => {
       const result = method === "email"
-        ? await verifySensitiveActionEmail(token, action, securityVerificationEmailChallenge, code)
-        : await verifySensitiveActionTotp(token, action, code);
+        ? await verifySensitiveActionEmail(currentToken, action, securityVerificationEmailChallenge, code)
+        : await verifySensitiveActionTotp(currentToken, action, code);
       await executeSensitiveAction(result.verificationToken);
     });
     securityVerificationSubmitRef.current = false;
   }
 
   async function handleVerifySensitiveActionPassword() {
-    if (!token || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget) || !securityVerificationPassword.trim()) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget) || !securityVerificationPassword.trim()) return;
     const action = securityVerificationTarget;
     await run(`${action}-password`, async () => {
-      const result = await verifySensitiveActionPassword(token, action, securityVerificationPassword);
+      const result = await verifySensitiveActionPassword(currentToken, action, securityVerificationPassword);
       await executeSensitiveAction(result.verificationToken);
     });
   }
 
   async function handleVerifySecurityPasskey(target: "passkey" | "totp", passkeyId: number | null) {
-    if (!token || securityVerificationSubmitRef.current) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken || securityVerificationSubmitRef.current) return;
     if (target === "passkey" && passkeyId === null) return;
     securityVerificationSubmitRef.current = true;
     await run(`${target}-disable-passkey`, async () => {
       const challenge = target === "passkey" && passkeyId !== null
-        ? await getPasskeyDeletionOptions(token, passkeyId)
-        : await getTotpDisablePasskeyOptions(token);
+        ? await getPasskeyDeletionOptions(currentToken, passkeyId)
+        : await getTotpDisablePasskeyOptions(currentToken);
       let response;
       try {
         response = await startAuthentication({ optionsJSON: challenge.options });
@@ -400,9 +425,9 @@ export default function AccountPrivacyPage() {
         throw verificationError;
       }
       if (target === "passkey" && passkeyId !== null) {
-        await verifyPasskeyDeletion(token, passkeyId, { challengeToken: challenge.challengeToken, response });
+        await verifyPasskeyDeletion(currentToken, passkeyId, { challengeToken: challenge.challengeToken, response });
       } else {
-        await verifyTotpDisablePasskey(token, { challengeToken: challenge.challengeToken, response });
+        await verifyTotpDisablePasskey(currentToken, { challengeToken: challenge.challengeToken, response });
       }
       await completeSecurityVerification();
     });
@@ -410,7 +435,8 @@ export default function AccountPrivacyPage() {
   }
 
   async function handleVerifySecurityCode(method: "email" | "totp", code: string) {
-    if (!token || !securityVerificationTarget || securityVerificationSubmitRef.current) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken || !securityVerificationTarget || securityVerificationSubmitRef.current) return;
     if (method === "email" && securityVerificationTarget === "passkey" && !securityVerificationEmailChallenge) return;
     const target = securityVerificationTarget;
     const passkeyId = securityVerificationId;
@@ -419,15 +445,15 @@ export default function AccountPrivacyPage() {
     await run(`${target}-disable-${method}`, async () => {
       if (target === "passkey" && passkeyId !== null) {
         if (method === "email") {
-          await deletePasskeyWithEmail(token, passkeyId, securityVerificationEmailChallenge, code);
+          await deletePasskeyWithEmail(currentToken, passkeyId, securityVerificationEmailChallenge, code);
         } else {
-          await deletePasskeyWithTotp(token, passkeyId, code);
+          await deletePasskeyWithTotp(currentToken, passkeyId, code);
         }
       } else {
         if (method === "email") {
-          await disableTotpWithEmail(token, code);
+          await disableTotpWithEmail(currentToken, code);
         } else {
-          await disableTotp(token, code);
+          await disableTotp(currentToken, code);
         }
       }
       await completeSecurityVerification();
@@ -436,38 +462,41 @@ export default function AccountPrivacyPage() {
   }
 
   async function handleVerifySecurityPassword() {
-    if (!token || !securityVerificationTarget || !securityVerificationPassword.trim()) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken || !securityVerificationTarget || !securityVerificationPassword.trim()) return;
     const target = securityVerificationTarget;
     const passkeyId = securityVerificationId;
     if (target === "passkey" && passkeyId === null) return;
     await run(`${target}-disable-password`, async () => {
       if (target === "passkey" && passkeyId !== null) {
-        await deletePasskeyWithPassword(token, passkeyId, securityVerificationPassword);
+        await deletePasskeyWithPassword(currentToken, passkeyId, securityVerificationPassword);
       } else {
-        await disableTotpWithPassword(token, securityVerificationPassword);
+        await disableTotpWithPassword(currentToken, securityVerificationPassword);
       }
       await completeSecurityVerification();
     });
   }
 
   async function handleConfirmTotp() {
-    if (!token || !totpCode) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken || !totpCode) return;
     await run("confirm-totp", async () => {
-      const result = await confirmTotp(token, totpCode);
+      const result = await confirmTotp(currentToken, totpCode);
       setRecoveryCodes(result.recoveryCodes);
       setTotpCode("");
       setTotpSecret("");
       setTotpUri("");
-      await load(token);
+      await load(readAccessToken() ?? currentToken);
       setNotice(phrase("双因素认证已启用，请保存恢复码。", "Two-factor authentication is enabled. Save your recovery codes."));
     });
   }
 
   async function handleUnblock(friendshipId: number) {
-    if (!token) return;
+    const currentToken = getCurrentToken();
+    if (!currentToken) return;
     await run(`unblock-${friendshipId}`, async () => {
-      await unblockFriendship(token, friendshipId);
-      await load(token);
+      await unblockFriendship(currentToken, friendshipId);
+      await load(readAccessToken() ?? currentToken);
     });
   }
 
