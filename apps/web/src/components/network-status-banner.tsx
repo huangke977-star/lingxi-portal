@@ -7,7 +7,9 @@ import { getBrowserApiBaseUrl } from "@/lib/auth-api";
 
 export function NetworkStatusBanner() {
   const { t } = useLanguage();
-  const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
+  // Start optimistically online. Some browser profiles report a transient
+  // false value during hydration and do not emit the matching online event.
+  const [online, setOnline] = useState(true);
   const [showRecovery, setShowRecovery] = useState(false);
 
   useEffect(() => {
@@ -42,6 +44,7 @@ export function NetworkStatusBanner() {
           window.clearTimeout(timeout);
         }
       }
+      if (active && navigator.onLine === false) setOnline(false);
     };
     void probe();
     return () => {
