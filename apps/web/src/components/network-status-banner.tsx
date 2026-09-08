@@ -22,22 +22,17 @@ export function NetworkStatusBanner() {
     };
     window.addEventListener("offline", handleOffline);
     window.addEventListener("online", handleOnline);
-    // The first client render can inherit a stale SSR/hydration value. Read
-    // the live browser state once after mounting before waiting for events.
-    if (navigator.onLine) setOnline(true);
     // navigator.onLine can remain false in a browser profile that has a working
     // connection. A small health probe corrects that initial state without
     // turning a temporarily unavailable API into a false offline banner.
-    if (navigator.onLine === false) {
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 2500);
-      void fetch(`${getBrowserApiBaseUrl()}/health`, { cache: "no-store", credentials: "omit", signal: controller.signal })
-        .then((response) => {
-          if (active && response.ok) setOnline(true);
-        })
-        .catch(() => undefined)
-        .finally(() => window.clearTimeout(timeout));
-    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 2500);
+    void fetch(`${getBrowserApiBaseUrl()}/health`, { cache: "no-store", credentials: "omit", signal: controller.signal })
+      .then((response) => {
+        if (active && response.ok) setOnline(true);
+      })
+      .catch(() => undefined)
+      .finally(() => window.clearTimeout(timeout));
     return () => {
       active = false;
       window.removeEventListener("offline", handleOffline);
