@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useLanguage } from "@/components/language-provider";
 
 export function NetworkStatusBanner() {
-  const { phrase } = useLanguage();
+  const { t } = useLanguage();
   const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
   const [showRecovery, setShowRecovery] = useState(false);
 
@@ -30,6 +30,6 @@ export function NetworkStatusBanner() {
   if (online && !showRecovery) return null;
   return <div aria-live="polite" className={`network-status-banner${online ? " recovered" : ""}`} role="status">
     {online ? <Wifi aria-hidden="true" size={15} /> : <CloudOff aria-hidden="true" size={15} />}
-    <span>{online ? phrase("网络已恢复，正在继续同步。", "Connection restored. Sync is continuing.") : phrase("当前处于离线状态，已保存内容仍可查看。", "You are offline. Saved content is still available.")}</span>
+    <span>{online ? t("network.recoveredStatus") : t("network.offlineStatus")}</span>
   </div>;
 }
