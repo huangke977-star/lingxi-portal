@@ -269,9 +269,8 @@ export default function AccountPrivacyPage() {
     openSensitiveAction("password_change");
   }
 
-  async function executeSensitiveAction(verificationToken: string) {
-    if (!getCurrentToken() || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget)) return;
-    const target = securityVerificationTarget;
+  async function executeSensitiveAction(target: SensitiveAction, verificationToken: string) {
+    if (!getCurrentToken()) return;
     closeSecurityVerification();
     if (target === "account_deletion") {
       await withFreshToken((currentToken) => requestAccountDeletion(currentToken, verificationToken));
@@ -393,7 +392,7 @@ export default function AccountPrivacyPage() {
         throw verificationError;
       }
       const result = await withFreshToken((accessToken) => verifySensitiveActionPasskey(accessToken, action, { challengeToken: challenge.challengeToken, response }));
-      await executeSensitiveAction(result.verificationToken);
+      await executeSensitiveAction(action, result.verificationToken);
     });
     securityVerificationSubmitRef.current = false;
   }
@@ -408,7 +407,7 @@ export default function AccountPrivacyPage() {
       const result = method === "email"
         ? await withFreshToken((accessToken) => verifySensitiveActionEmail(accessToken, action, securityVerificationEmailChallenge, code))
         : await withFreshToken((accessToken) => verifySensitiveActionTotp(accessToken, action, code));
-      await executeSensitiveAction(result.verificationToken);
+      await executeSensitiveAction(action, result.verificationToken);
     });
     securityVerificationSubmitRef.current = false;
   }
@@ -417,10 +416,17 @@ export default function AccountPrivacyPage() {
     const currentToken = getCurrentToken();
     if (!currentToken || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget) || !securityVerificationPassword.trim()) return;
     const action = securityVerificationTarget;
-    await run(`${action}-password`, async () => {
-      const result = await withFreshToken((accessToken) => verifySensitiveActionPassword(accessToken, action, securityVerificationPassword));
-      await executeSensitiveAction(result.verificationToken);
-    });
+    const password = securityVerificationPassword;
+    if (securityVerificationSubmitRef.current) return;
+    securityVerificationSubmitRef.current = true;
+    try {
+      await run(`${action}-password`, async () => {
+        const result = await withFreshToken((accessToken) => verifySensitiveActionPassword(accessToken, action, password));
+        await executeSensitiveAction(action, result.verificationToken);
+      });
+    } finally {
+      securityVerificationSubmitRef.current = false;
+    }
   }
 
   async function handleVerifySecurityPasskey(target: "passkey" | "totp", passkeyId: number | null) {
