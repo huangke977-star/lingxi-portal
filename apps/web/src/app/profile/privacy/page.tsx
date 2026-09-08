@@ -82,6 +82,12 @@ export default function AccountPrivacyPage() {
       setAudit(nextAudit);
       setPasskeys(nextPasskeys);
     } catch (loadError) {
+      const latestToken = readAccessToken();
+      if (isAuthExpiredError(loadError) && latestToken && latestToken !== currentToken) {
+        setToken(latestToken);
+        await load(latestToken);
+        return;
+      }
       handleAuthError(loadError);
     }
   }
@@ -97,7 +103,6 @@ export default function AccountPrivacyPage() {
       const latestToken = readAccessToken();
       if (latestToken && latestToken !== token) {
         setToken(latestToken);
-        setError(phrase("登录状态已刷新，请重试当前操作。", "Your session was refreshed. Please retry this action."));
         return;
       }
       clearAuthTokens();
@@ -105,6 +110,21 @@ export default function AccountPrivacyPage() {
       return;
     }
     setError(loadError instanceof Error ? loadError.message : phrase("操作失败。", "The operation failed."));
+  }
+
+  async function withFreshToken<T>(operation: (accessToken: string) => Promise<T>): Promise<T> {
+    const initialToken = getCurrentToken();
+    if (!initialToken) throw new Error(phrase("登录状态已失效。", "Your session has expired."));
+    try {
+      return await operation(initialToken);
+    } catch (requestError) {
+      const latestToken = readAccessToken();
+      if (isAuthExpiredError(requestError) && latestToken && latestToken !== initialToken) {
+        setToken(latestToken);
+        return operation(latestToken);
+      }
+      throw requestError;
+    }
   }
 
   function handleAuthError(loadError: unknown) {
@@ -250,25 +270,24 @@ export default function AccountPrivacyPage() {
   }
 
   async function executeSensitiveAction(verificationToken: string) {
-    const currentToken = getCurrentToken();
-    if (!currentToken || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget)) return;
+    if (!getCurrentToken() || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget)) return;
     const target = securityVerificationTarget;
     closeSecurityVerification();
     if (target === "account_deletion") {
-      await requestAccountDeletion(currentToken, verificationToken);
-      await load(readAccessToken() ?? currentToken);
+      await withFreshToken((currentToken) => requestAccountDeletion(currentToken, verificationToken));
+      await load(readAccessToken()!);
       setNotice(phrase("账号已进入 7 天注销冷静期，可在此期间撤回。", "Your account entered a 7-day deletion cooling-off period. You can cancel it during this period."));
       return;
     }
     if (target === "totp_enrollment") {
-      const result = await beginTotpEnrollment(currentToken, verificationToken);
+      const result = await withFreshToken((currentToken) => beginTotpEnrollment(currentToken, verificationToken));
       setTotpSecret(result.secret);
       setTotpUri(result.otpAuthUri);
       setNotice(phrase("请将密钥添加到身份验证器后输入验证码确认。", "Add the secret to your authenticator, then enter a code to confirm."));
       return;
     }
     if (target === "password_change") {
-      const result = await changePasswordAfterVerification(currentToken, verificationToken, newPassword);
+      const result = await withFreshToken((currentToken) => changePasswordAfterVerification(currentToken, verificationToken, newPassword));
       setNewPassword("");
       setPasswordConfirmation("");
       setNotice(result.revokedSessions
@@ -277,14 +296,14 @@ export default function AccountPrivacyPage() {
       return;
     }
     if (target === "email_change") {
-      const result = await changeEmailAfterVerification(currentToken, verificationToken, emailDraft);
+      const result = await withFreshToken((currentToken) => changeEmailAfterVerification(currentToken, verificationToken, emailDraft));
       setEmailDraft(result.email);
       window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
-      await load(readAccessToken() ?? currentToken);
+      await load(readAccessToken()!);
       setNotice(phrase("邮箱已更新。", "Email updated."));
       return;
     }
-    const challenge = await getPasskeyRegistrationOptions(currentToken, verificationToken);
+    const challenge = await withFreshToken((currentToken) => getPasskeyRegistrationOptions(currentToken, verificationToken));
     let response;
     try {
       response = await startRegistration({ optionsJSON: challenge.options });
@@ -295,22 +314,21 @@ export default function AccountPrivacyPage() {
       }
       throw registrationError;
     }
-    await verifyPasskeyRegistration(currentToken, {
+    await withFreshToken((currentToken) => verifyPasskeyRegistration(currentToken, {
       challengeToken: challenge.challengeToken,
       response,
       name: passkeyName.trim() || undefined,
-    });
+    }));
     setPasskeyName("");
-    await load(readAccessToken() ?? currentToken);
+    await load(readAccessToken()!);
     setNotice(phrase("通行密钥已添加。", "Passkey added."));
   }
 
   async function completeSecurityVerification() {
-    const currentToken = getCurrentToken();
-    if (!currentToken) return;
+    if (!getCurrentToken()) return;
     const target = securityVerificationTarget;
     closeSecurityVerification();
-    await load(readAccessToken() ?? currentToken);
+    await load(readAccessToken()!);
     setNotice(target === "totp" ? phrase("双因素认证已关闭。", "Two-factor authentication is disabled.") : phrase("通行密钥已移除。", "Passkey removed."));
   }
 
@@ -330,7 +348,7 @@ export default function AccountPrivacyPage() {
       }
       if (method === "email") {
         await run(`${target}-email`, async () => {
-          const result = await requestSensitiveActionEmailVerification(currentToken, target);
+          const result = await withFreshToken((accessToken) => requestSensitiveActionEmailVerification(accessToken, target));
           setSecurityVerificationEmailChallenge(result.challengeToken);
           setSecurityVerificationEmailCooldown(result.retryAfterSeconds);
           setNotice(phrase("验证码已发送至你的邮箱。", "A verification code was sent to your email."));
@@ -346,11 +364,11 @@ export default function AccountPrivacyPage() {
     if (method === "email") {
       await run(`${target}-disable-email`, async () => {
         if (target === "passkey" && passkeyId !== null) {
-          const result = await requestPasskeyDeletionEmail(currentToken, passkeyId);
+          const result = await withFreshToken((accessToken) => requestPasskeyDeletionEmail(accessToken, passkeyId));
           setSecurityVerificationEmailChallenge(result.challengeToken);
           setSecurityVerificationEmailCooldown(result.retryAfterSeconds);
         } else {
-          const result = await requestTotpDisableEmailVerification(currentToken);
+          const result = await withFreshToken((accessToken) => requestTotpDisableEmailVerification(accessToken));
           setSecurityVerificationEmailCooldown(result.retryAfterSeconds);
         }
         setNotice(phrase("验证码已发送至你的邮箱。", "A verification code was sent to your email."));
@@ -363,7 +381,7 @@ export default function AccountPrivacyPage() {
     if (!currentToken || securityVerificationSubmitRef.current) return;
     securityVerificationSubmitRef.current = true;
     await run(`${action}-passkey`, async () => {
-      const challenge = await getSensitiveActionPasskeyOptions(currentToken, action);
+      const challenge = await withFreshToken((accessToken) => getSensitiveActionPasskeyOptions(accessToken, action));
       let response;
       try {
         response = await startAuthentication({ optionsJSON: challenge.options });
@@ -374,7 +392,7 @@ export default function AccountPrivacyPage() {
         }
         throw verificationError;
       }
-      const result = await verifySensitiveActionPasskey(currentToken, action, { challengeToken: challenge.challengeToken, response });
+      const result = await withFreshToken((accessToken) => verifySensitiveActionPasskey(accessToken, action, { challengeToken: challenge.challengeToken, response }));
       await executeSensitiveAction(result.verificationToken);
     });
     securityVerificationSubmitRef.current = false;
@@ -388,8 +406,8 @@ export default function AccountPrivacyPage() {
     securityVerificationSubmitRef.current = true;
     await run(`${action}-${method}`, async () => {
       const result = method === "email"
-        ? await verifySensitiveActionEmail(currentToken, action, securityVerificationEmailChallenge, code)
-        : await verifySensitiveActionTotp(currentToken, action, code);
+        ? await withFreshToken((accessToken) => verifySensitiveActionEmail(accessToken, action, securityVerificationEmailChallenge, code))
+        : await withFreshToken((accessToken) => verifySensitiveActionTotp(accessToken, action, code));
       await executeSensitiveAction(result.verificationToken);
     });
     securityVerificationSubmitRef.current = false;
@@ -400,7 +418,7 @@ export default function AccountPrivacyPage() {
     if (!currentToken || !securityVerificationTarget || !isSensitiveActionTarget(securityVerificationTarget) || !securityVerificationPassword.trim()) return;
     const action = securityVerificationTarget;
     await run(`${action}-password`, async () => {
-      const result = await verifySensitiveActionPassword(currentToken, action, securityVerificationPassword);
+      const result = await withFreshToken((accessToken) => verifySensitiveActionPassword(accessToken, action, securityVerificationPassword));
       await executeSensitiveAction(result.verificationToken);
     });
   }
@@ -412,8 +430,8 @@ export default function AccountPrivacyPage() {
     securityVerificationSubmitRef.current = true;
     await run(`${target}-disable-passkey`, async () => {
       const challenge = target === "passkey" && passkeyId !== null
-        ? await getPasskeyDeletionOptions(currentToken, passkeyId)
-        : await getTotpDisablePasskeyOptions(currentToken);
+        ? await withFreshToken((accessToken) => getPasskeyDeletionOptions(accessToken, passkeyId))
+        : await withFreshToken((accessToken) => getTotpDisablePasskeyOptions(accessToken));
       let response;
       try {
         response = await startAuthentication({ optionsJSON: challenge.options });
@@ -425,9 +443,9 @@ export default function AccountPrivacyPage() {
         throw verificationError;
       }
       if (target === "passkey" && passkeyId !== null) {
-        await verifyPasskeyDeletion(currentToken, passkeyId, { challengeToken: challenge.challengeToken, response });
+        await withFreshToken((accessToken) => verifyPasskeyDeletion(accessToken, passkeyId, { challengeToken: challenge.challengeToken, response }));
       } else {
-        await verifyTotpDisablePasskey(currentToken, { challengeToken: challenge.challengeToken, response });
+        await withFreshToken((accessToken) => verifyTotpDisablePasskey(accessToken, { challengeToken: challenge.challengeToken, response }));
       }
       await completeSecurityVerification();
     });
@@ -445,15 +463,15 @@ export default function AccountPrivacyPage() {
     await run(`${target}-disable-${method}`, async () => {
       if (target === "passkey" && passkeyId !== null) {
         if (method === "email") {
-          await deletePasskeyWithEmail(currentToken, passkeyId, securityVerificationEmailChallenge, code);
+          await withFreshToken((accessToken) => deletePasskeyWithEmail(accessToken, passkeyId, securityVerificationEmailChallenge, code));
         } else {
-          await deletePasskeyWithTotp(currentToken, passkeyId, code);
+          await withFreshToken((accessToken) => deletePasskeyWithTotp(accessToken, passkeyId, code));
         }
       } else {
         if (method === "email") {
-          await disableTotpWithEmail(currentToken, code);
+          await withFreshToken((accessToken) => disableTotpWithEmail(accessToken, code));
         } else {
-          await disableTotp(currentToken, code);
+          await withFreshToken((accessToken) => disableTotp(accessToken, code));
         }
       }
       await completeSecurityVerification();
@@ -469,9 +487,9 @@ export default function AccountPrivacyPage() {
     if (target === "passkey" && passkeyId === null) return;
     await run(`${target}-disable-password`, async () => {
       if (target === "passkey" && passkeyId !== null) {
-        await deletePasskeyWithPassword(currentToken, passkeyId, securityVerificationPassword);
+        await withFreshToken((accessToken) => deletePasskeyWithPassword(accessToken, passkeyId, securityVerificationPassword));
       } else {
-        await disableTotpWithPassword(currentToken, securityVerificationPassword);
+        await withFreshToken((accessToken) => disableTotpWithPassword(accessToken, securityVerificationPassword));
       }
       await completeSecurityVerification();
     });
@@ -481,12 +499,12 @@ export default function AccountPrivacyPage() {
     const currentToken = getCurrentToken();
     if (!currentToken || !totpCode) return;
     await run("confirm-totp", async () => {
-      const result = await confirmTotp(currentToken, totpCode);
+      const result = await withFreshToken((accessToken) => confirmTotp(accessToken, totpCode));
       setRecoveryCodes(result.recoveryCodes);
       setTotpCode("");
       setTotpSecret("");
       setTotpUri("");
-      await load(readAccessToken() ?? currentToken);
+      await load(readAccessToken()!);
       setNotice(phrase("双因素认证已启用，请保存恢复码。", "Two-factor authentication is enabled. Save your recovery codes."));
     });
   }
@@ -495,8 +513,8 @@ export default function AccountPrivacyPage() {
     const currentToken = getCurrentToken();
     if (!currentToken) return;
     await run(`unblock-${friendshipId}`, async () => {
-      await unblockFriendship(currentToken, friendshipId);
-      await load(readAccessToken() ?? currentToken);
+      await withFreshToken((accessToken) => unblockFriendship(accessToken, friendshipId));
+      await load(readAccessToken()!);
     });
   }
 
@@ -626,6 +644,27 @@ export default function AccountPrivacyPage() {
             <button className="button danger" disabled={busy !== ""} onClick={() => openSensitiveAction("account_deletion")} type="button">
               {phrase("申请注销", "Request deletion")}
             </button>
+          )}
+          </section>
+          <section className="profile-panel privacy-card privacy-blocked-card">
+          <div className="privacy-card-heading">
+            <UserRoundX size={18} />
+            <div>
+              <h2>{phrase("屏蔽关系", "Blocked users")}</h2>
+              <p>{phrase("被屏蔽的用户不会出现在发现、搜索、推荐和消息关系中。", "Blocked users are filtered from discovery, search, recommendations, and messaging relationships.")}</p>
+            </div>
+          </div>
+          {overview.blocked.length ? (
+            overview.blocked.map((item) => (
+              <div className="privacy-blocked-row" key={item.friendshipId}>
+                <span>{item.user.nickname || item.user.username}</span>
+                <button aria-label={phrase("解除屏蔽", "Unblock user")} className="table-icon-action" disabled={busy !== ""} onClick={() => void handleUnblock(item.friendshipId)} title={phrase("解除屏蔽", "Unblock user")} type="button">
+                  <ShieldCheck size={16} />
+                </button>
+              </div>
+            ))
+          ) : (
+            <p className="privacy-empty">{phrase("暂无屏蔽用户。", "No blocked users.")}</p>
           )}
           </section>
         </div>
@@ -814,27 +853,6 @@ export default function AccountPrivacyPage() {
               <code>{recoveryCodes.join("  ")}</code>
             </div>
           ) : null}
-          </section>
-          <section className="profile-panel privacy-card privacy-blocked-card">
-          <div className="privacy-card-heading">
-            <UserRoundX size={18} />
-            <div>
-              <h2>{phrase("屏蔽关系", "Blocked users")}</h2>
-              <p>{phrase("被屏蔽的用户不会出现在发现、搜索、推荐和消息关系中。", "Blocked users are filtered from discovery, search, recommendations, and messaging relationships.")}</p>
-            </div>
-          </div>
-          {overview.blocked.length ? (
-            overview.blocked.map((item) => (
-              <div className="privacy-blocked-row" key={item.friendshipId}>
-                <span>{item.user.nickname || item.user.username}</span>
-                <button aria-label={phrase("解除屏蔽", "Unblock user")} className="table-icon-action" disabled={busy !== ""} onClick={() => void handleUnblock(item.friendshipId)} title={phrase("解除屏蔽", "Unblock user")} type="button">
-                  <ShieldCheck size={16} />
-                </button>
-              </div>
-            ))
-          ) : (
-            <p className="privacy-empty">{phrase("暂无屏蔽用户。", "No blocked users.")}</p>
-          )}
           </section>
         </div>
       </div>
