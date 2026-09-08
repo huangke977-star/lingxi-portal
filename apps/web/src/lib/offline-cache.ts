@@ -34,6 +34,7 @@ export interface OfflineCacheInfo {
 
 const CACHE_NAME = "hlovet-offline-content-v1";
 const MEDIA_CACHE_NAME = "hlovet-offline-media-v1";
+const OFFLINE_ROUTE_CACHE_NAME = "hlovet-offline-routes-v1";
 const INDEX_KEY = "/__hlovet_offline_index__";
 const MAX_MEDIA_ITEM_BYTES = 4 * 1024 * 1024;
 const MAX_MEDIA_PER_ENTRY = 40;
@@ -112,17 +113,43 @@ export async function saveOfflineEntry<T extends OfflineEntryData>(input: {
   }
   await writeIndex(cache, retained);
   await removeOrphanedMedia(retained);
+  await removeOrphanedRoutes(retained);
+  void cacheOfflineRoutes(input.route);
   notifyCacheChange();
   return entry;
 }
 
+async function cacheOfflineRoutes(route: string): Promise<void> {
+  if (!isOfflineCacheSupported()) return;
+  const routes = routeVariants(route);
+  const cache = await caches.open(OFFLINE_ROUTE_CACHE_NAME).catch(() => null);
+  if (!cache) return;
+  await Promise.all(routes.map(async (value) => {
+    try {
+      const url = new URL(value, window.location.origin);
+      const response = await fetch(url.href, { credentials: "include", cache: "no-store" });
+      if (response.ok) await cache.put(url.href, response.clone());
+    } catch {
+      // The content entry remains usable even when the shell route cannot be cached.
+    }
+  }));
+}
+
+export async function warmOfflineRoutes(): Promise<void> {
+  if (!isOfflineCacheSupported() || navigator.onLine === false) return;
+  const entries = await listOfflineEntries();
+  await Promise.all(entries.map((entry) => cacheOfflineRoutes(entry.route)));
+}
+
 export async function removeOfflineEntry(kind: OfflineEntryKind, id: string): Promise<void> {
   if (!isOfflineCacheSupported()) return;
+  const entry = await getOfflineEntry(kind, id);
   const cache = await caches.open(CACHE_NAME);
   await cache.delete(recordKey(kind, id));
   const retained = (await listOfflineEntries()).filter((entry) => entry.kind !== kind || entry.id !== id);
   await writeIndex(cache, retained);
   await removeOrphanedMedia(retained);
+  if (entry) await removeOfflineRoutes(entry.route);
   notifyCacheChange();
 }
 
@@ -130,6 +157,7 @@ export async function clearOfflineCache(): Promise<void> {
   if (!isOfflineCacheSupported()) return;
   await caches.delete(CACHE_NAME);
   await caches.delete(MEDIA_CACHE_NAME);
+  await caches.delete(OFFLINE_ROUTE_CACHE_NAME);
   notifyCacheChange();
 }
 
@@ -274,6 +302,24 @@ async function removeOrphanedMedia(entries: OfflineEntry[]): Promise<void> {
   const cache = await caches.open(MEDIA_CACHE_NAME);
   const requests = await cache.keys();
   await Promise.all(requests.filter((request) => !referenced.has(request.url)).map((request) => cache.delete(request)));
+}
+
+async function removeOrphanedRoutes(entries: OfflineEntry[]): Promise<void> {
+  const referenced = new Set(entries.flatMap((entry) => routeVariants(entry.route).map((route) => new URL(route, window.location.origin).href)));
+  const cache = await caches.open(OFFLINE_ROUTE_CACHE_NAME).catch(() => null);
+  if (!cache) return;
+  const requests = await cache.keys();
+  await Promise.all(requests.filter((request) => !referenced.has(request.url)).map((request) => cache.delete(request)));
+}
+
+async function removeOfflineRoutes(route: string): Promise<void> {
+  const cache = await caches.open(OFFLINE_ROUTE_CACHE_NAME).catch(() => null);
+  if (!cache) return;
+  await Promise.all(routeVariants(route).map((value) => cache.delete(new URL(value, window.location.origin).href)));
+}
+
+function routeVariants(route: string): string[] {
+  return Array.from(new Set([route, route.startsWith("/") ? `/en${route}` : route]));
 }
 
 function notifyCacheChange(): void {

@@ -1,5 +1,6 @@
-const VERSION = "hlovet-pwa-v8";
+const VERSION = "hlovet-pwa-v9";
 const SHELL_CACHE = `${VERSION}-shell`;
+const OFFLINE_ROUTE_CACHE = "hlovet-offline-routes-v1";
 const PUSH_IDENTITY_CACHE = `${VERSION}-identity`;
 const PUSH_DEDUP_CACHE = `${VERSION}-dedup`;
 const PUSH_IDENTITY_KEY = "/__hlovet_push_identity__";
@@ -103,7 +104,8 @@ async function networkFirst(request) {
     }
     return response;
   } catch {
-    const cached = await cache.match(request);
+    const routeCache = await caches.open(OFFLINE_ROUTE_CACHE);
+    const cached = await cache.match(request) || await routeCache.match(request.url);
     if (cached) return cached;
     if (request.mode === "navigate") return (await cache.match("/")) || Response.error();
     throw new Error("Offline resource unavailable");

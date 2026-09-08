@@ -24,11 +24,15 @@ export default function PublicCollectionPage() {
   useEffect(() => {
     const token = readAccessToken();
     void (async () => {
+      const collectionId = String(params.id);
+      const cachedCollection = await getOfflineEntry<ArticleCollection>("collection", collectionId).then((entry) => entry?.data ?? null).catch(() => null);
+      if (cachedCollection) {
+        setCollection(cachedCollection);
+      }
       if (typeof navigator !== "undefined" && !navigator.onLine) {
-        const offlineCollection = await getOfflineEntry<ArticleCollection>("collection", String(params.id)).then((entry) => entry?.data ?? null).catch(() => null);
         setUser(null);
-        setCollection(offlineCollection);
-        if (offlineCollection) setNotice(phrase("当前为离线阅读，订阅操作暂不可用。", "Offline reading is active. Subscription actions are unavailable."));
+        setCollection(cachedCollection);
+        if (cachedCollection) setNotice(phrase("当前为离线阅读，订阅操作暂不可用。", "Offline reading is active. Subscription actions are unavailable."));
         else setError(phrase("当前没有网络，且这个合集尚未保存到本机。", "You are offline and this collection has not been saved on this device."));
         return;
       }
@@ -41,7 +45,7 @@ export default function PublicCollectionPage() {
       if (currentCollection) {
         void refreshOfflineCollection(currentCollection);
       } else {
-        currentCollection = await getOfflineEntry<ArticleCollection>("collection", String(params.id)).then((entry) => entry?.data ?? null).catch(() => null);
+        currentCollection = cachedCollection;
         if (currentCollection) setNotice(phrase("当前为离线阅读，订阅操作暂不可用。", "Offline reading is active. Subscription actions are unavailable."));
       }
       setUser(currentUser);

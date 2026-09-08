@@ -24,24 +24,28 @@ export default function TopicDetailPage() {
   useEffect(() => {
     const token = readAccessToken();
     void (async () => {
+      const topicSlug = decodeURIComponent(params.slug);
+      const cachedTopic = await getOfflineEntry<ArticleTopic>("topic", topicSlug).then((entry) => entry?.data ?? null).catch(() => null);
+      if (cachedTopic) {
+        setTopic(cachedTopic);
+      }
       if (typeof navigator !== "undefined" && !navigator.onLine) {
-        const offlineTopic = await getOfflineEntry<ArticleTopic>("topic", decodeURIComponent(params.slug)).then((entry) => entry?.data ?? null).catch(() => null);
         setUser(null);
-        setTopic(offlineTopic);
-        if (offlineTopic) setNotice(phrase("当前为离线阅读，订阅操作暂不可用。", "Offline reading is active. Subscription actions are unavailable."));
+        setTopic(cachedTopic);
+        if (cachedTopic) setNotice(phrase("当前为离线阅读，订阅操作暂不可用。", "Offline reading is active. Subscription actions are unavailable."));
         else setError(phrase("当前没有网络，且这个专题尚未保存到本机。", "You are offline and this topic has not been saved on this device."));
         return;
       }
       const [userResult, topicResult] = await Promise.allSettled([
         token ? getMe(token).catch(() => null) : Promise.resolve(null),
-        getTopic(decodeURIComponent(params.slug), token),
+        getTopic(topicSlug, token),
       ] as const);
       const currentUser = userResult.status === "fulfilled" ? userResult.value : null;
       let currentTopic: ArticleTopic | null = topicResult.status === "fulfilled" ? topicResult.value : null;
       if (currentTopic) {
         void refreshOfflineTopic(currentTopic);
       } else {
-        currentTopic = await getOfflineEntry<ArticleTopic>("topic", decodeURIComponent(params.slug)).then((entry) => entry?.data ?? null).catch(() => null);
+        currentTopic = cachedTopic;
         if (currentTopic) setNotice(phrase("当前为离线阅读，订阅操作暂不可用。", "Offline reading is active. Subscription actions are unavailable."));
       }
       setUser(currentUser);

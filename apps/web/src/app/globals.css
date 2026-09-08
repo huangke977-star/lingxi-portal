@@ -20337,6 +20337,64 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .article-publish-preview-grid { margin-top: 14px; }
 }
 
+/* Keep discovery labels readable without allowing a long taxonomy to widen a
+   card. Each chip is atomic; the containing row can scroll when necessary. */
+.article-card,
+.discovery-article-row,
+.article-feed-list,
+.discovery-feed-list,
+.article-card-main,
+.article-card-meta,
+.article-card-aside,
+.article-card-meta-accessory,
+.discovery-row-main,
+.discovery-row-meta,
+.discovery-row-stats {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.article-card-meta .article-taxonomy,
+.discovery-row-meta {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.article-card-meta .article-taxonomy::-webkit-scrollbar,
+.discovery-row-meta::-webkit-scrollbar { display: none; }
+
+.article-category,
+.article-tag-chip,
+.article-tag-more,
+.article-group-chip {
+  flex: 0 0 auto;
+  max-width: 12em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.article-card-date {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .article-card,
+  .discovery-article-row { width: 100%; overflow: hidden; }
+  .article-card-main,
+  .article-card-meta,
+  .article-card-aside,
+  .discovery-row-main,
+  .discovery-row-meta,
+  .discovery-row-stats { width: 100%; }
+  .article-card-aside { min-width: 0; }
+  .discovery-row-stats { min-width: 0; }
+}
+
 /* Account verification controls use one compact, touch-friendly code treatment. */
 .otp-code-input {
   display: grid;

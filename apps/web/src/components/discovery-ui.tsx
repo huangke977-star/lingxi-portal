@@ -35,7 +35,7 @@ export function DiscoveryArticleRow({
           <Link href={localizedPath(`/users/${encodeURIComponent(article.author.username)}`, locale)}>{article.author.nickname}</Link>
           <span>{formatArticleDate(article.publishedAt, locale)}</span>
           <span className="article-category">{article.category || t("article.defaultCategory")}</span>
-          {article.tags.slice(0, 2).map((tag) => <span className="article-tag-chip" key={tag}>#{tag}</span>)}
+          {article.tags.slice(0, 2).map((tag) => <span className="article-tag-chip" key={tag} title={`#${tag}`}>#{tag}</span>)}
           {article.collections.slice(0, 2).map((item) => <Link className="article-group-chip collection" href={item.href} key={`c-${item.id}`}>{item.label}</Link>)}
           {article.topics.slice(0, 2).map((item) => <Link className="article-group-chip topic" href={item.href} key={`t-${item.id}`}>{item.label}</Link>)}
         </div>

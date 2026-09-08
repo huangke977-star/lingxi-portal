@@ -153,14 +153,20 @@ export default function ArticleDetailPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoggedIn(Boolean(token));
     void (async () => {
+      // Read the local copy first. navigator.onLine is only a hint and may still
+      // report online briefly after the connection has already disappeared.
+      const cachedArticle = await getOfflineEntry<Article>("article", slug).then((entry) => entry?.data ?? null).catch(() => null);
+      if (cachedArticle) {
+        setArticle(cachedArticle);
+        setIsLoading(false);
+      }
       if (typeof navigator !== "undefined" && !navigator.onLine) {
-        const offlineArticle = await getOfflineEntry<Article>("article", slug).then((entry) => entry?.data ?? null).catch(() => null);
         setUser(null);
-        setArticle(offlineArticle);
+        setArticle(cachedArticle);
         setComments([]);
         setCommentNextCursor(null);
         setHasMoreComments(false);
-        if (offlineArticle) setNotice(phrase("当前为离线阅读，评论和互动暂不可用。", "Offline reading is active. Comments and interactions are unavailable."));
+        if (cachedArticle) setNotice(phrase("当前为离线阅读，评论和互动暂不可用。", "Offline reading is active. Comments and interactions are unavailable."));
         else setError(phrase("当前没有网络，且这篇文章尚未保存到本机。", "You are offline and this article has not been saved on this device."));
         setIsLoading(false);
         return;
