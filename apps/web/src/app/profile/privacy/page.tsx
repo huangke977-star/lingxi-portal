@@ -10,7 +10,7 @@ import { PasswordInput } from "@/components/password-input";
 import { OtpCodeInput } from "@/components/otp-code-input";
 import { useLanguage } from "@/components/language-provider";
 import { AUTH_STATE_CHANGE_EVENT, clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
-import { deletePasskeyWithEmail, deletePasskeyWithPassword, deletePasskeyWithTotp, getPasskeyDeletionOptions, getPasskeyRegistrationOptions, getSensitiveActionPasskeyOptions, getTotpDisablePasskeyOptions, isAuthExpiredError, listPasskeys, renamePasskey, requestPasskeyDeletionEmail, verifyPasskeyDeletion, verifyPasskeyRegistration, verifySensitiveActionPasskey, verifyTotpDisablePasskey, type PasskeySummary } from "@/lib/auth-api";
+import { ApiRequestError, deletePasskeyWithEmail, deletePasskeyWithPassword, deletePasskeyWithTotp, getPasskeyDeletionOptions, getPasskeyRegistrationOptions, getSensitiveActionPasskeyOptions, getTotpDisablePasskeyOptions, isAuthExpiredError, listPasskeys, renamePasskey, requestPasskeyDeletionEmail, verifyPasskeyDeletion, verifyPasskeyRegistration, verifySensitiveActionPasskey, verifyTotpDisablePasskey, type PasskeySummary } from "@/lib/auth-api";
 import { localizedPath } from "@/lib/i18n";
 import { beginTotpEnrollment, cancelAccountDeletion, changeEmailAfterVerification, changePasswordAfterVerification, confirmTotp, disableTotp, disableTotpWithEmail, disableTotpWithPassword, downloadDataExport, getAccountPrivacyOverview, getDataExport, listPrivacyAudit, requestAccountDeletion, requestDataExport, requestSensitiveActionEmailVerification, verifySensitiveActionEmail, verifySensitiveActionPassword, verifySensitiveActionTotp, requestTotpDisableEmailVerification, type AccountPrivacyOverview, type ExportJob, type SensitiveAction } from "@/lib/account-privacy-api";
 import { unblockFriendship } from "@/lib/social-api";
@@ -291,7 +291,7 @@ export default function AccountPrivacyPage() {
       setPasswordConfirmation("");
       setNotice(result.revokedSessions
         ? phrase(`密码已更新，并退出了 ${result.revokedSessions} 个其他设备会话。`, `Password updated and ${result.revokedSessions} other device session(s) were signed out.`)
-        : phrase("密码已更新。", "Password updated."));
+        : phrase("密码修改成功。", "Password changed successfully."));
       return;
     }
     if (target === "email_change") {
@@ -299,7 +299,7 @@ export default function AccountPrivacyPage() {
       setEmailDraft(result.email);
       window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
       await load(readAccessToken()!);
-      setNotice(phrase("邮箱已更新。", "Email updated."));
+      setNotice(phrase("邮箱修改成功。", "Email changed successfully."));
       return;
     }
     const challenge = await withFreshToken((currentToken) => getPasskeyRegistrationOptions(currentToken, verificationToken));
@@ -421,8 +421,16 @@ export default function AccountPrivacyPage() {
     securityVerificationSubmitRef.current = true;
     try {
       await run(`${action}-password`, async () => {
-        const result = await withFreshToken((accessToken) => verifySensitiveActionPassword(accessToken, action, password));
-        await executeSensitiveAction(action, result.verificationToken);
+        try {
+          const result = await withFreshToken((accessToken) => verifySensitiveActionPassword(accessToken, action, password));
+          await executeSensitiveAction(action, result.verificationToken);
+        } catch (verificationError) {
+          if (isIncorrectPasswordError(verificationError)) {
+            setError(phrase("当前密码不正确。", "The current password is incorrect."));
+            return;
+          }
+          throw verificationError;
+        }
       });
     } finally {
       securityVerificationSubmitRef.current = false;
@@ -492,13 +500,25 @@ export default function AccountPrivacyPage() {
     const passkeyId = securityVerificationId;
     if (target === "passkey" && passkeyId === null) return;
     await run(`${target}-disable-password`, async () => {
-      if (target === "passkey" && passkeyId !== null) {
-        await withFreshToken((accessToken) => deletePasskeyWithPassword(accessToken, passkeyId, securityVerificationPassword));
-      } else {
-        await withFreshToken((accessToken) => disableTotpWithPassword(accessToken, securityVerificationPassword));
+      try {
+        if (target === "passkey" && passkeyId !== null) {
+          await withFreshToken((accessToken) => deletePasskeyWithPassword(accessToken, passkeyId, securityVerificationPassword));
+        } else {
+          await withFreshToken((accessToken) => disableTotpWithPassword(accessToken, securityVerificationPassword));
+        }
+        await completeSecurityVerification();
+      } catch (verificationError) {
+        if (isIncorrectPasswordError(verificationError)) {
+          setError(phrase("当前密码不正确。", "The current password is incorrect."));
+          return;
+        }
+        throw verificationError;
       }
-      await completeSecurityVerification();
     });
+  }
+
+  function isIncorrectPasswordError(value: unknown): boolean {
+    return value instanceof ApiRequestError && (value.message.includes("当前密码不正确") || value.message.includes("current password is incorrect"));
   }
 
   async function handleConfirmTotp() {
