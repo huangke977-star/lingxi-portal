@@ -25,14 +25,25 @@ export function NetworkStatusBanner() {
     // navigator.onLine can remain false in a browser profile that has a working
     // connection. A small health probe corrects that initial state without
     // turning a temporarily unavailable API into a false offline banner.
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 2500);
-    void fetch(`${getBrowserApiBaseUrl()}/health`, { cache: "no-store", credentials: "omit", signal: controller.signal })
-      .then((response) => {
-        if (active && response.ok) setOnline(true);
-      })
-      .catch(() => undefined)
-      .finally(() => window.clearTimeout(timeout));
+    const probe = async () => {
+      const probeUrls = Array.from(new Set(["/api/health", `${getBrowserApiBaseUrl()}/health`]));
+      for (const url of probeUrls) {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 2500);
+        try {
+          const response = await fetch(url, { cache: "no-store", credentials: "omit", signal: controller.signal });
+          if (active && response.ok) {
+            setOnline(true);
+            return;
+          }
+        } catch {
+          // Try the configured API origin after the same-origin route fails.
+        } finally {
+          window.clearTimeout(timeout);
+        }
+      }
+    };
+    void probe();
     return () => {
       active = false;
       window.removeEventListener("offline", handleOffline);
