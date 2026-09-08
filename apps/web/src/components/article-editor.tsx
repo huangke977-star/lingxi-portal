@@ -38,6 +38,7 @@ import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-api";
 import { growthLevelLabel } from "@/lib/system-labels";
 import { localizedPath } from "@/lib/i18n";
+import { compressImageForUpload } from "@/lib/media-compression";
 
 const MAX_ARTICLE_IMAGES = 20;
 const MAX_ARTICLE_ATTACHMENTS = 50;
@@ -79,6 +80,7 @@ interface LocalArticleDraft {
 }
 
 type AutosaveState = "idle" | "waiting" | "saving" | "saved" | "offline";
+type AutosaveRunner = (serverDraft?: ArticleInput, signature?: string, storageKey?: string) => Promise<void>;
 
 const emptyDraft: ArticleInput = {
   title: "",
@@ -122,6 +124,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   const lastSavedSignatureRef = useRef("");
   const autosaveTimerRef = useRef<number | null>(null);
   const autosaveRequestRef = useRef<Promise<void> | null>(null);
+  const autosaveRunnerRef = useRef<AutosaveRunner | null>(null);
   const [isCategoryPickerOpen, setIsCategoryPickerOpen] = useState(false);
   const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
   const [templates, setTemplates] = useState<ArticleTemplate[]>([]);
@@ -330,7 +333,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     if (autosaveTimerRef.current !== null) window.clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = window.setTimeout(() => {
       autosaveTimerRef.current = null;
-      void runAutosave(serverDraft, signature, localDraftKey);
+      void autosaveRunnerRef.current?.(serverDraft, signature, localDraftKey);
     }, ARTICLE_AUTOSAVE_DELAY_MS);
     return () => {
       if (autosaveTimerRef.current !== null) {
@@ -339,7 +342,6 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       }
     };
     // runAutosave reads identity and pending-file state through refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, pendingImages, user, isLoading, isSaving, localDraftKey]);
 
   async function runAutosave(
@@ -417,8 +419,23 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     return accepted;
   }
 
+  useEffect(() => {
+    autosaveRunnerRef.current = runAutosave;
+  });
+
+  useEffect(() => {
+    function retryWhenOnline() {
+      if (!navigator.onLine || autosaveRequestRef.current || autosaveState !== "offline") return;
+      void autosaveRunnerRef.current?.();
+    }
+    window.addEventListener("online", retryWhenOnline);
+    return () => window.removeEventListener("online", retryWhenOnline);
+    // The ref keeps the retry bound to the latest editor value.
+  }, [autosaveState]);
+
   async function addAttachments(files: File[]): Promise<RichEditorAttachment[]> {
-    const accepted = prepareAttachments(files);
+    const preparedFiles = await Promise.all(files.map(compressImageForUpload));
+    const accepted = prepareAttachments(preparedFiles);
     if (!accepted.length) return [];
     setPendingImages((current) => [...current, ...accepted]);
     return accepted.map((attachment) => ({

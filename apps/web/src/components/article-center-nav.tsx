@@ -17,9 +17,9 @@ import type { AuthUser } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
 import { isSiteManager } from "@/lib/user-permissions";
 
-export type ArticleCenterSection = "discover" | "subscriptions" | "resources" | "collections" | "topics" | "mine" | "reading" | "manage";
+export type ArticleCenterSection = "discover" | "subscriptions" | "resources" | "collections" | "topics" | "mine" | "reading" | "offline" | "manage";
 
-const sections: Array<{ id: Exclude<ArticleCenterSection, "manage">; href: string; labelKey: "discover.discover" | "discover.subscriptions" | "discover.resources" | "discover.collections" | "discover.topics" | "discover.myWriting" | "discover.myReading"; protected?: boolean; count?: "discover" | "subscriptions" | "mine" }> = [
+const sections: Array<{ id: Exclude<ArticleCenterSection, "manage">; href: string; labelKey: "discover.discover" | "discover.subscriptions" | "discover.resources" | "discover.collections" | "discover.topics" | "discover.myWriting" | "discover.myReading" | "discover.offline"; protected?: boolean; count?: "discover" | "subscriptions" | "mine" }> = [
   { id: "discover", href: "/articles", labelKey: "discover.discover", count: "discover" },
   { id: "subscriptions", href: "/articles/subscriptions", labelKey: "discover.subscriptions", protected: true, count: "subscriptions" },
   { id: "resources", href: "/articles/resources", labelKey: "discover.resources" },
@@ -27,6 +27,7 @@ const sections: Array<{ id: Exclude<ArticleCenterSection, "manage">; href: strin
   { id: "topics", href: "/topics", labelKey: "discover.topics" },
   { id: "mine", href: "/articles/mine", labelKey: "discover.myWriting", protected: true, count: "mine" },
   { id: "reading", href: "/articles/reading", labelKey: "discover.myReading", protected: true },
+  { id: "offline", href: "/offline", labelKey: "discover.offline", protected: true },
 ];
 
 const emptySummary: ArticleCenterSummary = {

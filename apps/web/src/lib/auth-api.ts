@@ -531,21 +531,14 @@ export async function requestJson<T>(path: string, init: RequestInit = {}): Prom
   }
   appendDeviceIdHeader(headers);
 
-  let response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
-    credentials: "include",
-    ...init,
-    headers,
-  });
+  const request = { credentials: "include", ...init, headers } satisfies RequestInit;
+  let response = await fetchWithRetry(`${getBrowserApiBaseUrl()}${path}`, request);
 
   if (response.status === 401 && path !== "/auth/refresh" && headers.has("Authorization") && readRefreshToken()) {
     const session = await refreshStoredSession();
     if (session) {
       headers.set("Authorization", `Bearer ${session.accessToken}`);
-      response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
-        credentials: "include",
-        ...init,
-        headers,
-      });
+      response = await fetchWithRetry(`${getBrowserApiBaseUrl()}${path}`, request);
     }
   }
 
@@ -560,21 +553,14 @@ export async function requestJson<T>(path: string, init: RequestInit = {}): Prom
 export async function requestBlob(path: string, init: RequestInit = {}): Promise<Blob> {
   const headers = new Headers(init.headers);
   appendDeviceIdHeader(headers);
-  let response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
-    credentials: "include",
-    ...init,
-    headers,
-  });
+  const request = { credentials: "include", ...init, headers } satisfies RequestInit;
+  let response = await fetchWithRetry(`${getBrowserApiBaseUrl()}${path}`, request);
 
   if (response.status === 401 && path !== "/auth/refresh" && headers.has("Authorization") && readRefreshToken()) {
     const session = await refreshStoredSession();
     if (session) {
       headers.set("Authorization", `Bearer ${session.accessToken}`);
-      response = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
-        credentials: "include",
-        ...init,
-        headers,
-      });
+      response = await fetchWithRetry(`${getBrowserApiBaseUrl()}${path}`, request);
     }
   }
 
@@ -805,5 +791,44 @@ async function readApiError(response: Response): Promise<{ message: string; code
     return { message: body.message ?? fallback, code: body.code };
   } catch {
     return { message: fallback };
+  }
+}
+
+const NETWORK_TIMEOUT_MS = 12_000;
+const MAX_READ_ATTEMPTS = 3;
+
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const retryable = method === "GET" || method === "HEAD";
+  const attempts = retryable ? MAX_READ_ATTEMPTS : 1;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(url, init, NETWORK_TIMEOUT_MS);
+      if (!retryable || !isRetryableStatus(response.status) || attempt === attempts - 1) return response;
+    } catch (error) {
+      lastError = error;
+      if (!retryable || attempt === attempts - 1) throw error;
+    }
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 250 * (attempt + 1)));
+  }
+  throw lastError instanceof Error ? lastError : new Error("Network request failed.");
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  const abort = () => controller.abort();
+  if (init.signal?.aborted) controller.abort();
+  else init.signal?.addEventListener("abort", abort, { once: true });
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    globalThis.clearTimeout(timeout);
+    init.signal?.removeEventListener("abort", abort);
   }
 }

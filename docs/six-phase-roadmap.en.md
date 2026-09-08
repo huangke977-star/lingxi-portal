@@ -2,8 +2,8 @@
 
 - Document status: Active
 - Created: 2026-08-04
-- Last updated: 2026-09-02
-- Current phase: Phase 16 completed
+- Last updated: 2026-09-08
+- Current phase: Phase 20 completed
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -52,7 +52,7 @@ Status definitions:
 | Phase 17 | Content Distribution And Public Sharing | RSS/Atom, sitemaps, Open Graph, and email distribution | Completed |
 | Phase 18 | Deeper Recommendations And Resources | Recommendation explanations, recovery, redemption records, points rules, and creator earnings | Completed |
 | Phase 19 | External Integration Capability | Webhooks, read-only API tokens, external notifications, and third-party login | Completed |
-| Phase 20 | Mobile And Offline Experience | Offline PWA reading, weak-network fallback, push improvements, and native-app assessment | Not started |
+| Phase 20 | Mobile And Offline Experience | Offline PWA reading, weak-network fallback, push improvements, and native-app assessment | Completed |
 | Phase 21 | Operational Resilience And Compliance Closeout | Real recovery drills, audit retention, dependency upgrades, load testing, and DR manual | Not started |
 
 ## 4. External Prerequisites
@@ -676,14 +676,22 @@ Goal: improve usability on mobile networks and assess native Android/iOS investm
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P20-01 | Offline PWA reading for user-saved articles, topics, and collections with stale markers and cache management | Not started |
-| P20-02 | Weak-network fallback with timeouts, offline retry, image compression, offline queueing, and recovery feedback | Not started |
-| P20-03 | Web Push improvements for permission guidance, expired-subscription cleanup, categories, deep links, and bilingual payloads | Not started |
-| P20-04 | Android/iOS assessment based on active users, push delivery, and offline needs; native development is not assumed by default | Not started |
+| P20-01 | Offline PWA reading for user-saved articles, topics, and collections with stale markers and cache management | Completed |
+| P20-02 | Weak-network fallback with timeouts, offline retry, image compression, offline queueing, and recovery feedback | Completed |
+| P20-03 | Web Push improvements for permission guidance, expired-subscription cleanup, categories, deep links, and bilingual payloads | Completed |
+| P20-04 | Android/iOS assessment based on active users, push delivery, and offline needs; native development is not assumed by default | Completed |
 
 Necessity: Medium. Prioritize PWA and weak-network behavior; treat native apps as an evidence-based assessment.
 
 Acceptance focus: offline content never includes unauthorized data; caches can be deleted within a size limit; weak-network actions do not submit twice; push clicks reach the correct content; major desktop and mobile browsers are covered.
+
+### P20 Acceptance Record
+
+- Added explicit offline caching and the `/offline` management page for articles, topics, and collections, capped at 30 entries and 25 MB. Entries older than seven days show a stale marker, and users can remove one entry or clear all entries.
+- Detail pages now use an online-first/cache-fallback strategy. Only content explicitly saved by the user is refreshed; sign-out or account switching clears offline content. Service Worker v8 caches the app shell and same-origin static resources while excluding APIs, uploads, and realtime connections.
+- GET/HEAD requests now have a 12-second timeout and bounded retries for network errors, 408, 429, and 5xx responses. POST/PATCH/DELETE requests are not retried automatically. Article autosave keeps a browser-local draft offline and resumes after connectivity returns; large JPEG/WebP uploads are compressed in the browser when appropriate.
+- Web Push payloads now carry category, locale, English body text, deep links, and deduplication data. Automatic 404/410 subscription cleanup remains enabled, and notification clicks keep using the existing deep-link navigation. PWA screens continue to explain permission, browser-support, and server-configuration states.
+- Added bilingual documentation in `docs/mobile-offline-and-push.zh-CN.md` and `docs/mobile-offline-and-push.en.md`, including PWA limits, acceptance steps, and native Android/iOS investment criteria. The current decision is to continue with the PWA and defer native apps.
 
 ### Phase 21: Operational Resilience And Compliance Closeout
 

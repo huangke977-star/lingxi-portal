@@ -6,6 +6,7 @@ import { readAccessToken } from "@/lib/auth-storage";
 import type { ContentAttachment } from "@/lib/content-attachments";
 import { useLanguage } from "@/components/language-provider";
 import { MentionTextarea } from "@/components/mention-ui";
+import { compressImageForUpload } from "@/lib/media-compression";
 
 const MAX_ATTACHMENTS = 9;
 const MAX_BATCH_SIZE = 50 * 1024 * 1024;
@@ -78,9 +79,11 @@ export function ContentAttachmentComposer({
     return true;
   }
 
-  function addFiles(files: File[]) {
+  async function addFiles(files: File[]) {
     if (disabled || !files.length || !validate(files)) return;
-    setPending((current) => [...current, ...files.map((file) => ({
+    const preparedFiles = await Promise.all(files.map(compressImageForUpload));
+    if (!validate(preparedFiles)) return;
+    setPending((current) => [...current, ...preparedFiles.map((file) => ({
       id: `${Date.now()}-${crypto.randomUUID()}`,
       file,
       previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
@@ -115,18 +118,18 @@ export function ContentAttachmentComposer({
         .filter((file): file is File => Boolean(file));
     if (!files.length) return;
     event.preventDefault();
-    addFiles(files);
+    void addFiles(files);
   }
 
   function handleDrop(event: DragEvent<HTMLFormElement>) {
     event.preventDefault();
-    addFiles(Array.from(event.dataTransfer.files));
+    void addFiles(Array.from(event.dataTransfer.files));
   }
 
   return <>
     <form className="content-attachment-composer" onDrop={handleDrop} onDragOver={(event) => event.preventDefault()} onSubmit={submit}>
       <div className={`content-attachment-input-wrap${pending.length ? " has-pending" : ""}`}>
-        <input accept=".jpg,.jpeg,.png,.webp,.webm,.m4a,.mp3,.wav,.ogg,.mp4,.mov,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.md,.csv,.json,.xml,.rtf,.zip,.rar,.7z,.gz,.tar" hidden multiple onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} type="file" />
+        <input accept=".jpg,.jpeg,.png,.webp,.webm,.m4a,.mp3,.wav,.ogg,.mp4,.mov,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.md,.csv,.json,.xml,.rtf,.zip,.rar,.7z,.gz,.tar" hidden multiple onChange={(event) => { void addFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} type="file" />
         <MentionTextarea aria-label={ariaLabel} disabled={disabled} maxLength={2000} mentionsEnabled={mentionsEnabled} onChange={(nextValue, cursor) => { onChange(nextValue); onCursorChange?.(cursor); }} onCursorChange={onCursorChange} onKeyDown={onKeyDown} onPaste={handlePaste} placeholder={placeholder} rows={3} textareaRef={textareaRef} value={value} />
         {pending.length ? <div className="content-attachment-pending">{pending.map((item) => <span key={item.id}>{item.previewUrl ? <img alt="" src={item.previewUrl} /> : item.kind === "audio" ? <FileAudio aria-hidden="true" size={24} /> : item.kind === "video" ? <FileVideo aria-hidden="true" size={24} /> : <FileText aria-hidden="true" size={22} />}<small title={item.file.name}>{item.file.name}</small><button aria-label={phrase(`移除 ${item.file.name}`, `Remove ${item.file.name}`)} onClick={() => removeFile(item.id)} type="button"><X aria-hidden="true" size={13} /></button></span>)}</div> : null}
         <div className="content-attachment-actions">

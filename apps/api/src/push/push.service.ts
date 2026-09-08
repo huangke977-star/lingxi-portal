@@ -88,6 +88,9 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
     await this.sendToUser(recipientId, {
       title: message.sender.nickname || message.sender.username,
       body: message.body || (message.attachments.length > 1 ? `发来 ${message.attachments.length} 个附件` : "发来一个附件"),
+      titleEn: message.sender.nickname || message.sender.username,
+      bodyEn: message.body || (message.attachments.length > 1 ? `sent ${message.attachments.length} attachments` : "sent an attachment"),
+      category: "interaction",
       url: `/messages?conversation=${message.conversationId}`,
       tag: `chat-${message.conversationId}`,
       dedupeKey: `chat-message-${message.id}-${recipientId}`,
@@ -103,7 +106,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
         where: { pushDeliveredAt: null },
         orderBy: [{ id: "asc" }],
         take: 50,
-        select: { id: true, userId: true, channel: true, title: true, body: true, actionUrl: true, type: true, messageId: true, message: { select: { id: true } } },
+        select: { id: true, userId: true, channel: true, title: true, body: true, bodyEn: true, actionUrl: true, type: true, messageId: true, message: { select: { id: true } }, user: { select: { preferredLocale: true } } },
       });
       for (const notification of notifications) {
         const state = await this.prisma.userNotificationChannelState.findUnique({
@@ -119,7 +122,11 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
           }
           await this.sendToUser(notification.userId, {
             title: notification.title,
+            titleEn: this.englishPushTitle(notification.type, notification.title),
             body: notification.body,
+            bodyEn: notification.bodyEn || notification.body,
+            locale: notification.user.preferredLocale === "en-US" ? "en-US" : "zh-CN",
+            category: notification.channel === "subscription" ? "subscription" : notification.channel === "interaction" ? "interaction" : "system",
             url: notificationUrl,
             tag: `notification-${notification.id}`,
             dedupeKey: notification.messageId
@@ -177,6 +184,32 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
     } catch {
       return false;
     }
+  }
+
+  private englishPushTitle(type: string, fallback: string): string {
+    const titles: Record<string, string> = {
+      friend_request_received: "New friend request",
+      friend_request_accepted: "Friend request accepted",
+      comment_report_resolved: "Comment report handled",
+      comment_report_rejected: "Comment report rejected",
+      article_report_received: "New article report",
+      article_report_resolved: "Article report handled",
+      article_report_rejected: "Article report rejected",
+      article_liked: "Your article was liked",
+      article_favorited: "Your article was saved",
+      article_commented: "New article comment",
+      comment_replied: "New comment reply",
+      mention_received: "You were mentioned",
+      author_subscribed: "New subscriber",
+      subscription_published: "New content from a subscription",
+      announcement_published: "New announcement",
+      suggestion_updated: "Suggestion updated",
+      feedback_updated: "Feedback updated",
+      article_scheduled_publish: "Article published on schedule",
+      article_scheduled_publish_failed: "Scheduled publication failed",
+      article_scheduled_unpublish: "Article taken offline on schedule",
+    };
+    return titles[type] || fallback;
   }
 
   private async configuredPwaIcon(): Promise<string> {

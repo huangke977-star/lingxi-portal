@@ -1,15 +1,24 @@
-const VERSION = "hlovet-pwa-v7";
+const VERSION = "hlovet-pwa-v8";
+const SHELL_CACHE = `${VERSION}-shell`;
 const PUSH_IDENTITY_CACHE = `${VERSION}-identity`;
 const PUSH_DEDUP_CACHE = `${VERSION}-dedup`;
 const PUSH_IDENTITY_KEY = "/__hlovet_push_identity__";
 const PWA_ICON_KEY = "/__hlovet_pwa_icon__";
 
-self.addEventListener("install", () => {
-  self.skipWaiting();
+self.addEventListener("install", (event) => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(SHELL_CACHE);
+    await Promise.all(["/", "/offline"].map((path) => cache.add(path).catch(() => undefined)));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((key) => key.startsWith("hlovet-pwa-v") && !key.startsWith(VERSION)).map((key) => caches.delete(key)));
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("message", (event) => {
@@ -37,18 +46,20 @@ self.addEventListener("push", (event) => {
     const recipientUserId = normalizeUserId(payload.recipientUserId);
     if (recipientUserId && recipientUserId !== await readActivePushUser()) return;
 
-    const title = payload.title || "HLOVET";
+    const locale = payload.locale === "en-US" ? "en-US" : "zh-CN";
+    const title = locale === "en-US" ? (payload.titleEn || payload.title || "HLOVET") : (payload.title || "HLOVET");
+    const body = locale === "en-US" ? (payload.bodyEn || payload.body || "You have a new notification.") : (payload.body || "你有一条新消息。");
     const tag = payload.tag || "hlovet-notification";
     const dedupeKey = payload.dedupeKey || (tag.startsWith("notification-") ? tag : "");
     if (dedupeKey && await isDuplicatePush(dedupeKey)) return;
     const fallbackIcon = await readPwaIcon();
     await self.registration.showNotification(title, {
-      body: payload.body || "你有一条新消息。",
+      body,
       icon: payload.icon || fallbackIcon,
       badge: payload.badge || "/favicon-48x48.png",
       tag,
       renotify: !tag.startsWith("notification-"),
-      data: { url: payload.url || "/", recipientUserId },
+      data: { url: payload.url || "/", recipientUserId, category: payload.category || "system" },
     });
   })());
 });
@@ -74,12 +85,30 @@ self.addEventListener("notificationclick", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET" || !request.url.startsWith("http")) return;
-
-  // Keep the app fully network-driven. This pass-through fetch handler gives
-  // Chromium an installable service-worker lifecycle without caching auth,
-  // uploads, or realtime data.
-  event.respondWith(fetch(request));
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin || isExcludedPath(url.pathname)) return;
+  event.respondWith(networkFirst(request));
 });
+
+function isExcludedPath(pathname) {
+  return pathname === "/api" || pathname.startsWith("/api/") || pathname.startsWith("/socket.io/") || pathname.startsWith("/uploads/") || pathname.startsWith("/media/");
+}
+
+async function networkFirst(request) {
+  const cache = await caches.open(SHELL_CACHE);
+  try {
+    const response = await fetch(request);
+    if (response.ok && (request.mode === "navigate" || response.type === "basic")) {
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    if (request.mode === "navigate") return (await cache.match("/")) || Response.error();
+    throw new Error("Offline resource unavailable");
+  }
+}
 
 async function writeActivePushUser(value) {
   const cache = await caches.open(PUSH_IDENTITY_CACHE);

@@ -21064,6 +21064,63 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   white-space: nowrap;
 }
 
+/* P20 offline reading and weak-network feedback. */
+.offline-save-button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent-soft) 82%, transparent);
+  color: var(--accent-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0 10px;
+}
+.offline-save-button:hover,
+.offline-save-button.active { background: color-mix(in srgb, var(--accent-soft) 96%, transparent); }
+.offline-save-button:disabled { cursor: wait; opacity: 0.58; }
+.article-reading-aside .offline-save-button { width: 100%; }
+.content-group-header .offline-save-button { justify-self: start; }
+.offline-content-page { gap: 10px; }
+.offline-page-header { display: flex; min-width: 0; align-items: end; justify-content: space-between; gap: 16px; }
+.offline-page-header > div { min-width: 0; }
+.offline-page-header h1 { margin: 6px 0 0; font-size: 1.28rem; }
+.offline-page-header p { margin: 5px 0 0; color: var(--muted); font-size: 0.76rem; }
+.offline-page-header .section-label { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-strong); font-size: 0.72rem; }
+.offline-storage-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.offline-storage-summary > span { display: flex; min-width: 0; align-items: baseline; gap: 6px; border-radius: 7px; background: var(--panel); padding: 9px 11px; }
+.offline-storage-summary svg { flex: 0 0 auto; color: var(--accent-strong); }
+.offline-storage-summary strong { font-size: 0.92rem; }
+.offline-storage-summary small { color: var(--muted); font-size: 0.68rem; }
+.offline-entry-list { display: grid; gap: 7px; }
+.offline-entry-list > article { display: grid; min-width: 0; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 9px; border-radius: 8px; background: var(--panel); padding: 10px 12px; }
+.offline-entry-list > article.stale { background: color-mix(in srgb, var(--warning-soft) 52%, var(--panel)); }
+.offline-entry-icon { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 7px; background: var(--accent-soft); color: var(--accent-strong); }
+.offline-entry-main { display: grid; min-width: 0; gap: 2px; }
+.offline-entry-main a { min-width: 0; overflow: hidden; color: var(--foreground); text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.offline-entry-main strong { font-size: 0.8rem; }
+.offline-entry-main span,
+.offline-entry-main small { overflow: hidden; color: var(--muted); font-size: 0.68rem; text-overflow: ellipsis; white-space: nowrap; }
+.offline-entry-main small { color: var(--warning); }
+.offline-remove-button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.offline-remove-button:hover { background: var(--danger-soft); color: var(--danger); }
+.offline-remove-button:disabled { cursor: wait; opacity: 0.5; }
+.network-status-banner { position: fixed; z-index: 14000; top: calc(var(--topbar-offset, 64px) + 8px); left: 50%; display: inline-flex; max-width: min(92vw, 460px); align-items: center; gap: 7px; transform: translateX(-50%); border: 1px solid color-mix(in srgb, var(--control-line) 62%, transparent); border-radius: 7px; background: var(--chat-avatar-bubble-background); box-shadow: var(--chat-avatar-bubble-shadow); color: var(--foreground); font-size: 0.74rem; padding: 8px 12px; backdrop-filter: var(--chat-avatar-bubble-backdrop); -webkit-backdrop-filter: var(--chat-avatar-bubble-backdrop); }
+.network-status-banner svg { color: var(--accent-strong); }
+.network-status-banner:not(.recovered) svg { color: var(--warning); }
+@media (max-width: 620px) {
+  .offline-page-header { align-items: stretch; flex-direction: column; }
+  .offline-page-header .button { align-self: start; }
+  .offline-storage-summary { gap: 5px; }
+  .offline-storage-summary > span { display: grid; gap: 2px; padding: 8px; }
+  .offline-storage-summary small { font-size: 0.62rem; }
+  .offline-entry-list > article { grid-template-columns: 28px minmax(0, 1fr) auto; padding: 9px; }
+}
+
 /* P19: keep integration management consistent with the compact admin surfaces. */
 .integrations-admin-page,
 .integrations-user-page {

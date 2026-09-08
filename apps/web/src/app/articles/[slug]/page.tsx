@@ -35,12 +35,14 @@ import {
   updateArticleReadingProgress,
 } from "@/lib/article-api";
 import { buildArticleCommentThreads } from "@/lib/article-comments";
-import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
-import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
+import { AuthUser, getMe } from "@/lib/auth-api";
+import { readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
 import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-api";
 import { getPublicProfile, PublicProfile, searchSocialUsers, SocialUserSearchResult, subscribeToAuthor, unsubscribeFromAuthor } from "@/lib/social-api";
 import { notifySocialStateChange } from "@/lib/social-events";
+import { getOfflineEntry, offlineArticleEntry, saveOfflineEntry } from "@/lib/offline-cache";
+import { OfflineSaveButton } from "@/components/offline-save-button";
 
 const COMMENT_PAGE_SIZE = 10;
 
@@ -150,44 +152,43 @@ export default function ArticleDetailPage() {
     // Authentication is stored outside React and must be synchronized after mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoggedIn(Boolean(token));
-    Promise.all([
-      token ? getMe(token) : Promise.resolve(null),
-      token ? getVisibleArticle(token, slug) : getPublicArticle(slug),
-      listArticleComments(slug, token ?? undefined, { pageSize: COMMENT_PAGE_SIZE, focusId: requestedCommentId || undefined }),
-      getPublicSiteSettings().catch(() => null),
-    ])
-      .then(([currentUser, loadedArticle, loadedComments, loadedSettings]) => {
-        setUser(currentUser);
-        setArticle(loadedArticle);
+    void (async () => {
+      const results = await Promise.allSettled([
+        token ? getMe(token) : Promise.resolve(null),
+        token ? getVisibleArticle(token, slug) : getPublicArticle(slug),
+        listArticleComments(slug, token ?? undefined, { pageSize: COMMENT_PAGE_SIZE, focusId: requestedCommentId || undefined }),
+        getPublicSiteSettings().catch(() => null),
+      ] as const);
+      const currentUser = results[0].status === "fulfilled" ? results[0].value : null;
+      let loadedArticle: Article | null = results[1].status === "fulfilled" ? results[1].value : null;
+      if (!loadedArticle) {
+        loadedArticle = await getOfflineEntry<Article>("article", slug).then((entry) => entry?.data ?? null).catch(() => null);
+        if (loadedArticle) setNotice(phrase("当前为离线阅读，评论和互动暂不可用。", "Offline reading is active. Comments and interactions are unavailable."));
+      } else {
+        void refreshOfflineArticle(loadedArticle);
+      }
+      setUser(currentUser);
+      setArticle(loadedArticle);
+      const loadedComments = results[2].status === "fulfilled" ? results[2].value : null;
+      if (loadedComments) {
         setComments(loadedComments.items);
         setCommentNextCursor(loadedComments.nextCursor);
         setHasMoreComments(loadedComments.hasMore);
-        setSiteSettings(loadedSettings);
-        if (token && currentUser && currentUser.id !== loadedArticle.author.id) {
-          void getPublicProfile(token, loadedArticle.author.id).then(setAuthorProfile).catch(() => undefined);
-        }
-      })
-      .catch(async (loadError) => {
-        if (isAuthExpiredError(loadError)) {
-          clearAuthTokens();
-          try {
-            const loadedArticle = await getPublicArticle(slug);
-            setUser(null);
-            setIsLoggedIn(false);
-            setArticle(loadedArticle);
-            const loadedComments = await listArticleComments(slug, undefined, { pageSize: COMMENT_PAGE_SIZE, focusId: requestedCommentId || undefined });
-            setComments(loadedComments.items);
-            setCommentNextCursor(loadedComments.nextCursor);
-            setHasMoreComments(loadedComments.hasMore);
-            return;
-          } catch (fallbackError) {
-            setError(fallbackError instanceof Error ? fallbackError.message : phrase("文章加载失败。", "Could not load this article."));
-            return;
-          }
-        }
+      } else {
+        setComments([]);
+        setCommentNextCursor(null);
+        setHasMoreComments(false);
+      }
+      setSiteSettings(results[3].status === "fulfilled" ? results[3].value : null);
+      if (token && currentUser && loadedArticle && currentUser.id !== loadedArticle.author.id) {
+        void getPublicProfile(token, loadedArticle.author.id).then(setAuthorProfile).catch(() => undefined);
+      }
+      if (!loadedArticle && results[1].status === "rejected") {
+        const loadError = results[1].reason;
         setError(loadError instanceof Error ? loadError.message : phrase("文章加载失败。", "Could not load this article."));
-      })
-      .finally(() => setIsLoading(false));
+      }
+      setIsLoading(false);
+    })();
   }, [params.slug, phrase, requestedCommentId]);
 
   useEffect(() => {
@@ -588,6 +589,7 @@ export default function ArticleDetailPage() {
               <span className="like-action-wrap"><button className={article.favorited ? "active" : undefined} onClick={() => void handleInteraction("favorite")} type="button"><Bookmark aria-hidden="true" fill={article.favorited ? "currentColor" : "none"} size={17} />{article.favorited ? phrase("已收藏", "Saved") : phrase("收藏", "Save")}</button><LikeBurst burst={articleFavoriteBurst} variant="bookmark" /></span>
             </div>
             <ArticleStats article={article} />
+            {isLoggedIn ? <OfflineSaveButton data={article} id={article.slug} kind="article" route={`/articles/${article.slug}`} title={article.title} updatedAt={article.updatedAt} /> : null}
             <dl className="article-aside-meta">
               <div><dt><Tag aria-hidden="true" size={15} />{phrase("分类", "Category")}</dt><dd>{article.category || phrase("随笔", "Notes")}</dd></div>
               <div><dt><CalendarDays aria-hidden="true" size={15} />{phrase("发布时间", "Published")}</dt><dd>{formatArticleDate(article.publishedAt, locale)}</dd></div>
@@ -630,4 +632,10 @@ function mergeArticleComments(current: ArticleComment[], incoming: ArticleCommen
   return Array.from(comments.values()).sort((left, right) =>
     new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime() || right.id - left.id
   );
+}
+
+async function refreshOfflineArticle(article: Article): Promise<void> {
+  const existing = await getOfflineEntry<Article>("article", article.slug).catch(() => null);
+  if (!existing) return;
+  await saveOfflineEntry({ ...offlineArticleEntry(article), stale: false }).catch(() => undefined);
 }

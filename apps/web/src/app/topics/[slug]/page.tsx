@@ -12,6 +12,8 @@ import { useLanguage } from "@/components/language-provider";
 import { getMe, resolveApiUrl, type AuthUser } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
 import { getTopic, subscribeTopic, unsubscribeTopic, type ArticleTopic } from "@/lib/discovery-api";
+import { getOfflineEntry, offlineTopicEntry, saveOfflineEntry } from "@/lib/offline-cache";
+import { OfflineSaveButton } from "@/components/offline-save-button";
 
 export default function TopicDetailPage() {
   const params = useParams<{ slug: string }>();
@@ -23,9 +25,23 @@ export default function TopicDetailPage() {
   const [isActing, setIsActing] = useState(false);
   useEffect(() => {
     const token = readAccessToken();
-    Promise.all([token ? getMe(token).catch(() => null) : Promise.resolve(null), getTopic(decodeURIComponent(params.slug), token)])
-      .then(([currentUser, currentTopic]) => { setUser(currentUser); setTopic(currentTopic); })
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : phrase("专题加载失败。", "Could not load the topic.")));
+    void (async () => {
+      const [userResult, topicResult] = await Promise.allSettled([
+        token ? getMe(token).catch(() => null) : Promise.resolve(null),
+        getTopic(decodeURIComponent(params.slug), token),
+      ] as const);
+      const currentUser = userResult.status === "fulfilled" ? userResult.value : null;
+      let currentTopic: ArticleTopic | null = topicResult.status === "fulfilled" ? topicResult.value : null;
+      if (currentTopic) {
+        void refreshOfflineTopic(currentTopic);
+      } else {
+        currentTopic = await getOfflineEntry<ArticleTopic>("topic", decodeURIComponent(params.slug)).then((entry) => entry?.data ?? null).catch(() => null);
+        if (currentTopic) setNotice(phrase("当前为离线阅读，订阅操作暂不可用。", "Offline reading is active. Subscription actions are unavailable."));
+      }
+      setUser(currentUser);
+      setTopic(currentTopic);
+      if (!currentTopic && topicResult.status === "rejected") setError(topicResult.reason instanceof Error ? topicResult.reason.message : phrase("专题加载失败。", "Could not load the topic."));
+    })();
   }, [params.slug, phrase]);
   async function toggleSubscription() {
     const token = readAccessToken();
@@ -41,5 +57,11 @@ export default function TopicDetailPage() {
       setIsActing(false);
     }
   }
-  return <section className="page-shell topic-detail-page"><ArticleCenterNav active="topics" isLoggedIn={Boolean(user)} user={user} />{topic ? <><header className={`content-group-header topic${topic.coverPath ? " with-cover" : ""}`}>{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : null}<a aria-label={phrase("订阅此专题的 RSS", "Subscribe to this topic via RSS")} className="content-group-feed-link" href={resolveApiUrl(`/distribution/feeds/topics/${encodeURIComponent(topic.slug)}.rss`)} rel="alternate" title={phrase("RSS 订阅源", "RSS feed")}><Rss aria-hidden="true" size={16} /></a>{user ? <button aria-label={topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} className={`content-group-subscribe topic-detail-subscribe${topic.subscribed ? " active" : ""}`} disabled={isActing} onClick={() => void toggleSubscription()} title={topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={17} /></button> : null}<span>{phrase("内容专题", "Content topic")}</span><h1>{topic.title}</h1><p>{topic.description || phrase("这个专题暂时没有说明。", "No topic description yet.")}</p><small>{phrase(`${topic.articleCount} 篇文章 · ${topic.subscriberCount} 人订阅`, `${topic.articleCount} articles · ${topic.subscriberCount} subscribers`)}</small></header><div className="discovery-feed-list">{topic.articles.map((article) => <DiscoveryArticleRow article={article} key={article.id} />)}</div>{!topic.articles.length ? <div className="article-empty-state">{phrase("这个专题还没有可见文章。", "This topic has no visible articles yet.")}</div> : null}</> : <div className="article-empty-state">{phrase("正在读取专题。", "Loading topic.")}</div>}<AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} /></section>;
+  return <section className="page-shell topic-detail-page"><ArticleCenterNav active="topics" isLoggedIn={Boolean(user)} user={user} />{topic ? <><header className={`content-group-header topic${topic.coverPath ? " with-cover" : ""}`}>{topic.coverPath ? <img alt="" src={resolveApiUrl(topic.coverPath)} /> : null}<a aria-label={phrase("订阅此专题的 RSS", "Subscribe to this topic via RSS")} className="content-group-feed-link" href={resolveApiUrl(`/distribution/feeds/topics/${encodeURIComponent(topic.slug)}.rss`)} rel="alternate" title={phrase("RSS 订阅源", "RSS feed")}><Rss aria-hidden="true" size={16} /></a>{user ? <button aria-label={topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} className={`content-group-subscribe topic-detail-subscribe${topic.subscribed ? " active" : ""}`} disabled={isActing} onClick={() => void toggleSubscription()} title={topic.subscribed ? t("common.unsubscribe") : t("common.subscribe")} type="button"><Rss aria-hidden="true" size={17} /></button> : null}<OfflineSaveButton data={topic} id={topic.slug} kind="topic" route={`/topics/${topic.slug}`} title={topic.title} updatedAt={topic.updatedAt} /><span>{phrase("内容专题", "Content topic")}</span><h1>{topic.title}</h1><p>{topic.description || phrase("这个专题暂时没有说明。", "No topic description yet.")}</p><small>{phrase(`${topic.articleCount} 篇文章 · ${topic.subscriberCount} 人订阅`, `${topic.articleCount} articles · ${topic.subscriberCount} subscribers`)}</small></header><div className="discovery-feed-list">{topic.articles.map((article) => <DiscoveryArticleRow article={article} key={article.id} />)}</div>{!topic.articles.length ? <div className="article-empty-state">{phrase("这个专题还没有可见文章。", "This topic has no visible articles yet.")}</div> : null}</> : <div className="article-empty-state">{phrase("正在读取专题。", "Loading topic.")}</div>}<AppToast message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} /></section>;
+}
+
+async function refreshOfflineTopic(topic: ArticleTopic): Promise<void> {
+  const existing = await getOfflineEntry<ArticleTopic>("topic", topic.slug).catch(() => null);
+  if (!existing) return;
+  await saveOfflineEntry({ ...offlineTopicEntry(topic), stale: false }).catch(() => undefined);
 }

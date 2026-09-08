@@ -10,6 +10,10 @@ export interface PushStatusResponse extends PushConfigResponse {
 export interface BrowserPushPayload {
   title: string;
   body: string;
+  titleEn?: string;
+  bodyEn?: string;
+  locale?: "zh-CN" | "en-US";
+  category?: "system" | "subscription" | "interaction";
   url: string;
   tag: string;
   dedupeKey?: string;

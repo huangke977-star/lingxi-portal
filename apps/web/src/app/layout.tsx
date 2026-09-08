@@ -13,6 +13,7 @@ import { ScrollToTop } from "@/components/scroll-to-top";
 import { ThemeController } from "@/components/theme-controller";
 import { isLocale, type Locale } from "@/lib/i18n";
 import { TopNav } from "@/components/top-nav";
+import { NetworkStatusBanner } from "@/components/network-status-banner";
 import "@fontsource-variable/noto-sans-sc/index.css";
 import "./misans.css";
 import "./globals.css";
@@ -118,6 +119,7 @@ export default async function RootLayout({
             <ThemeController />
             <ScrollContainment />
             <TopNav />
+            <NetworkStatusBanner />
             <main className="content-shell">
               <RouteBackButton />
               {children}

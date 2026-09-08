@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   ACCESS_TOKEN_KEY,
   AUTH_STATE_CHANGE_EVENT,
@@ -10,11 +10,30 @@ import {
 } from "@/lib/auth-storage";
 import { syncBrowserPushOwner } from "@/lib/push-api";
 import { getPublicSiteSettings } from "@/lib/site-settings-api";
+import { clearOfflineCache } from "@/lib/offline-cache";
 
 const PUSH_IDENTITY_MESSAGE = "SET_ACTIVE_PUSH_USER";
 const PWA_ICON_MESSAGE = "SET_PWA_ICON";
 
 export function PwaController() {
+  const previousUserIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const handleIdentityChange = () => {
+      const nextUserId = readAccessTokenUserId();
+      const previousUserId = previousUserIdRef.current;
+      if (previousUserId !== null && previousUserId !== nextUserId) void clearOfflineCache();
+      previousUserIdRef.current = nextUserId;
+    };
+    handleIdentityChange();
+    window.addEventListener(AUTH_STATE_CHANGE_EVENT, handleIdentityChange);
+    window.addEventListener("storage", handleIdentityChange);
+    return () => {
+      window.removeEventListener(AUTH_STATE_CHANGE_EVENT, handleIdentityChange);
+      window.removeEventListener("storage", handleIdentityChange);
+    };
+  }, []);
+
   useEffect(() => {
     const isLocalhost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
     const canUseServiceWorker = "serviceWorker" in navigator && (window.location.protocol === "https:" || isLocalhost);
