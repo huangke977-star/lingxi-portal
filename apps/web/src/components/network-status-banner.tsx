@@ -22,6 +22,9 @@ export function NetworkStatusBanner() {
     };
     window.addEventListener("offline", handleOffline);
     window.addEventListener("online", handleOnline);
+    // The first client render can inherit a stale SSR/hydration value. Read
+    // the live browser state once after mounting before waiting for events.
+    if (navigator.onLine) setOnline(true);
     // navigator.onLine can remain false in a browser profile that has a working
     // connection. A small health probe corrects that initial state without
     // turning a temporarily unavailable API into a false offline banner.
