@@ -63,10 +63,12 @@ import {
   type BackupConfiguration,
   type BackupConfigurationUpdate,
   type BackupRestorePreflight,
+  type DatabaseBackup,
   type MediaBackupJob,
   type MediaBackupJobDetail,
   type P21OperationsOverview,
   type OperationalAlert,
+  type OperationalRun,
   type StorageOverview,
   type SystemStatus,
 } from "@/lib/system-status-api";
@@ -93,6 +95,7 @@ export default function SystemStatusPage() {
   const [mediaJobs, setMediaJobs] = useState<MediaBackupJob[]>([]);
   const [selectedMediaJob, setSelectedMediaJob] = useState<MediaBackupJobDetail | null>(null);
   const [operations, setOperations] = useState<P21OperationsOverview | null>(null);
+  const [selectedRun, setSelectedRun] = useState<OperationalRun | null>(null);
   const [auditPolicyForm, setAuditPolicyForm] = useState<P21OperationsOverview["auditPolicy"] | null>(null);
   const [operationsBusy, setOperationsBusy] = useState("");
   const [mediaBusy, setMediaBusy] = useState("");
@@ -194,8 +197,11 @@ export default function SystemStatusPage() {
     [status],
   );
 
-  async function refreshAfterBackup(message: string) {
+  async function refreshAfterBackup(message: string, createdBackup?: DatabaseBackup) {
     if (!accessToken) return;
+    if (createdBackup) {
+      setStatus((current) => current ? { ...current, backups: mergeCreatedBackup(current.backups, createdBackup) } : current);
+    }
     await Promise.all([loadStatus(accessToken), loadBackupConfiguration(accessToken)]);
     setNotice(message);
   }
@@ -206,7 +212,7 @@ export default function SystemStatusPage() {
     setError("");
     try {
       const backup = await createDatabaseBackup(accessToken);
-      await refreshAfterBackup(backup.warning || phrase(`备份已创建：${backup.name}`, `Backup created: ${backup.name}`));
+      await refreshAfterBackup(backup.warning || phrase(`备份已创建：${backup.name}`, `Backup created: ${backup.name}`), backup);
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : phrase("数据库备份创建失败。", "Could not create the database backup."));
     } finally {
@@ -407,9 +413,15 @@ export default function SystemStatusPage() {
     setOperationsBusy(`${action}:${alert.id}`);
     setError("");
     try {
-      if (action === "acknowledge") await acknowledgeP21Alert(accessToken, alert.id);
-      else await resolveP21Alert(accessToken, alert.id);
-      await loadOperations(accessToken);
+      const updated = action === "acknowledge"
+        ? await acknowledgeP21Alert(accessToken, alert.id)
+        : await resolveP21Alert(accessToken, alert.id);
+      setOperations((current) => current ? {
+        ...current,
+        alerts: updated.status === "resolved"
+          ? current.alerts.filter((item) => item.id !== updated.id)
+          : current.alerts.map((item) => item.id === updated.id ? { ...item, ...updated } : item),
+      } : current);
       setNotice(action === "acknowledge" ? phrase("告警已确认。", "Alert acknowledged.") : phrase("告警已标记为已解决。", "Alert marked as resolved."));
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : phrase("告警状态更新失败。", "Could not update the alert."));
@@ -590,13 +602,15 @@ export default function SystemStatusPage() {
             <span><ClipboardCheck aria-hidden="true" size={17} /><strong>{phrase("P21 运营韧性", "P21 operational resilience")}</strong></span>
             <div className="p21-heading-actions">
               <button disabled={Boolean(operationsBusy)} onClick={() => void handleRunAlertCheck()} type="button"><RefreshCcw aria-hidden="true" size={14} />{operationsBusy === "alert-check" ? phrase("检查中", "Checking") : phrase("检查告警", "Check alerts")}</button>
-              <button disabled={Boolean(operationsBusy)} onClick={() => void handleRecoveryDrill("local")} type="button"><RotateCcw aria-hidden="true" size={14} />{operationsBusy === "drill:local" ? phrase("演练中", "Running") : phrase("本地演练", "Local drill")}</button>
               <button disabled={Boolean(operationsBusy)} onClick={() => void handleDependencyReview()} type="button"><ClipboardCheck aria-hidden="true" size={14} />{operationsBusy === "dependency-review" ? phrase("评估中", "Reviewing") : phrase("依赖评估", "Dependencies")}</button>
-              <button disabled={Boolean(operationsBusy) || !operations.externalStorage.ossConfigured} onClick={() => void handleRecoveryDrill("oss")} title={phrase("配置 OSS 后可执行", "Configure OSS to enable")} type="button"><Cloud aria-hidden="true" size={14} />OSS</button>
-              <button disabled={Boolean(operationsBusy) || !operations.externalStorage.r2Configured} onClick={() => void handleRecoveryDrill("r2")} title={phrase("配置 R2 后可执行", "Configure R2 to enable")} type="button"><Cloud aria-hidden="true" size={14} />R2</button>
             </div>
           </header>
           <p className="p21-intro">{phrase("集中查看恢复目标、备份告警、依赖评估和审计留存。所有演练均会记录结果；未配置 OSS/R2 时不会伪造远端成功。", "Review recovery targets, backup alerts, dependency assessment, and audit retention in one place. Every drill is recorded; missing OSS/R2 configuration never appears as remote success.")}</p>
+          <section className="p21-subpanel p21-drill-panel"><header><strong>{phrase("恢复演练", "Recovery drills")}</strong><small>{phrase("每次执行都会生成一条可查看详情的运行记录。", "Every run creates a record with inspectable details.")}</small></header><div className="p21-drill-actions">
+            <button disabled={Boolean(operationsBusy)} onClick={() => void handleRecoveryDrill("local")} type="button"><RotateCcw aria-hidden="true" size={16} /><span><strong>{operationsBusy === "drill:local" ? phrase("演练中", "Running") : phrase("本地恢复演练", "Local recovery drill")}</strong><small>{phrase("配对数据库与媒体快照，非破坏性校验", "Verify paired database and media snapshots without overwriting production")}</small></span></button>
+            <button disabled={Boolean(operationsBusy) || !operations.externalStorage.ossConfigured} onClick={() => void handleRecoveryDrill("oss")} title={phrase("配置 OSS 后可执行", "Configure OSS to enable")} type="button"><Cloud aria-hidden="true" size={16} /><span><strong>{phrase("OSS 恢复演练", "OSS recovery drill")}</strong><small>{operations.externalStorage.ossConfigured ? phrase("验证远端上传与恢复结果", "Verify remote upload and restore result") : phrase("待配置 OSS 凭据", "Configure OSS credentials first")}</small></span></button>
+            <button disabled={Boolean(operationsBusy) || !operations.externalStorage.r2Configured} onClick={() => void handleRecoveryDrill("r2")} title={phrase("配置 R2 后可执行", "Configure R2 to enable")} type="button"><Cloud aria-hidden="true" size={16} /><span><strong>{phrase("R2 恢复演练", "R2 recovery drill")}</strong><small>{operations.externalStorage.r2Configured ? phrase("验证远端上传与恢复结果", "Verify remote upload and restore result") : phrase("待配置 R2 凭据", "Configure R2 credentials first")}</small></span></button>
+          </div></section>
           <div className="p21-summary-grid">
             <div><small>{phrase("远端备份", "Remote backup")}</small><strong>{operations.externalStorage.ossConfigured || operations.externalStorage.r2Configured ? phrase("已配置", "Configured") : phrase("待配置", "Not configured")}</strong><span>{operations.externalStorage.message}</span></div>
             <div><small>{phrase("加密密钥", "Encryption key")}</small><strong>{operations.externalStorage.encryptionConfigured ? phrase("已配置", "Configured") : phrase("缺失", "Missing")}</strong><span>{phrase("远端凭据和备份对象都不会在页面明文显示。", "Remote credentials and backup objects are never shown in plain text.")}</span></div>
@@ -612,7 +626,7 @@ export default function SystemStatusPage() {
             <section className="p21-subpanel"><header><strong>{phrase("依赖兼容性评估", "Dependency compatibility")}</strong><small>{formatDateTime(operations.dependencyAssessment.generatedAt, locale)}</small></header><div className="p21-dependency-list">{operations.dependencyAssessment.items.map((item) => <div key={item.name}><span><strong>{item.name}</strong><small>{item.note}</small></span><b>{item.current}</b><em className={item.status}>{item.status === "pinned" ? phrase("固定", "Pinned") : item.status === "range" ? phrase("范围", "Range") : phrase("未读取", "Missing")}</em></div>)}</div></section>
             <section className="p21-subpanel"><header><strong>{phrase("审计留存", "Audit retention")}</strong><small>{operations.auditPolicy.lastCleanupAt ? phrase(`上次清理 ${formatDateTime(operations.auditPolicy.lastCleanupAt, locale)}`, `Last cleanup ${formatDateTime(operations.auditPolicy.lastCleanupAt, locale)}`) : phrase("尚未执行清理", "No cleanup yet")}</small></header>{auditPolicyForm ? <div className="p21-audit-policy"><label><input checked={auditPolicyForm.cleanupEnabled} onChange={(event) => setAuditPolicyForm({ ...auditPolicyForm, cleanupEnabled: event.target.checked })} type="checkbox" /><span>{phrase("启用自动清理", "Enable automatic cleanup")}</span></label><div><label><span>{phrase("业务", "Business")}</span><input max={3650} min={7} onChange={(event) => setAuditPolicyForm({ ...auditPolicyForm, businessDays: Number(event.target.value) })} type="number" value={auditPolicyForm.businessDays} /></label><label><span>{phrase("安全", "Security")}</span><input max={3650} min={7} onChange={(event) => setAuditPolicyForm({ ...auditPolicyForm, securityDays: Number(event.target.value) })} type="number" value={auditPolicyForm.securityDays} /></label><label><span>{phrase("服务器", "Server")}</span><input max={3650} min={7} onChange={(event) => setAuditPolicyForm({ ...auditPolicyForm, serverDays: Number(event.target.value) })} type="number" value={auditPolicyForm.serverDays} /></label></div><p>{phrase(`上次清理删除 ${operations.auditPolicy.lastCleanupCount} 条记录。`, `${operations.auditPolicy.lastCleanupCount} entries removed in the last cleanup.`)}</p><footer><button disabled={Boolean(operationsBusy)} onClick={() => void handleCleanupAuditLogs()} type="button">{phrase("立即清理", "Clean now")}</button><button disabled={Boolean(operationsBusy)} onClick={() => void handleSaveAuditPolicy()} type="button"><Save aria-hidden="true" size={14} />{phrase("保存策略", "Save policy")}</button></footer></div> : null}</section>
           </div>
-          <section className="p21-subpanel p21-runs"><header><strong>{phrase("最近演练记录", "Recent runs")}</strong><small>{phrase("本地演练不会覆盖生产数据；远端演练需要对应凭据。", "Local drills never overwrite production data; remote drills require provider credentials.")}</small></header><div className="p21-run-list">{operations.runs.map((run) => <div key={run.id}><span><i className={run.status}>{runStatusLabel(run.status, phrase)}</i><strong>{runKindLabel(run.kind, phrase)}</strong><small>{run.summary}</small></span><b>{run.provider ? providerLabel(run.provider, phrase) : "-"}</b><time>{formatDateTime(run.createdAt, locale)}</time></div>)}{!operations.runs.length ? <p className="p21-empty"><CircleAlert aria-hidden="true" size={15} />{phrase("还没有 P21 演练记录。", "No P21 runs yet.")}</p> : null}</div></section>
+          <section className="p21-subpanel p21-runs"><header><strong>{phrase("最近演练记录", "Recent runs")}</strong><small>{phrase("本地演练不会覆盖生产数据；远端演练需要对应凭据。", "Local drills never overwrite production data; remote drills require provider credentials.")}</small></header><div className="p21-run-list">{operations.runs.map((run) => <div key={run.id}><span><i className={run.status}>{runStatusLabel(run.status, phrase)}</i><strong>{runKindLabel(run.kind, phrase)}</strong><small>{run.summary}</small></span><b>{run.provider ? providerLabel(run.provider, phrase) : "-"}</b><time>{formatDateTime(run.createdAt, locale)}</time><button aria-label={phrase(`查看运行记录 ${run.id}`, `View run ${run.id}`)} onClick={() => setSelectedRun(run)} title={phrase("查看详情", "View details")} type="button"><Files aria-hidden="true" size={14} />{phrase("详情", "Details")}</button></div>)}{!operations.runs.length ? <p className="p21-empty"><CircleAlert aria-hidden="true" size={15} />{phrase("还没有 P21 演练记录。", "No P21 runs yet.")}</p> : null}</div></section>
         </section> : null}
 
         {backupConfiguration && backupForm ? <section className="system-status-panel backup-policy">
@@ -673,6 +687,13 @@ export default function SystemStatusPage() {
       <div className="media-backup-detail-summary"><span><small>{phrase("状态", "Status")}</small><strong className={mediaJobTone(selectedMediaJob.status)}>{mediaJobStatusLabel(selectedMediaJob.status, phrase)}</strong></span><span><small>{phrase("文件", "Files")}</small><strong>{selectedMediaJob.processedFiles} / {selectedMediaJob.totalFiles}</strong></span><span><small>{phrase("上传流量", "Upload traffic")}</small><strong>{formatBytes(selectedMediaJob.uploadedBytes)}</strong></span><span><small>{phrase("提供商", "Providers")}</small><strong>{selectedMediaJob.providers.map((provider) => providerLabel(provider, phrase)).join(" · ") || phrase("未配置", "Not configured")}</strong></span></div>
       <section><h3>{phrase("任务日志", "Job logs")}</h3><div className="media-backup-log-list">{selectedMediaJob.logs.map((log) => <article className={log.level} key={log.id}><time>{formatDateTime(log.createdAt, locale)}</time><span>{mediaBackupLogMessage(log, selectedMediaJob, locale)}</span></article>)}{!selectedMediaJob.logs.length ? <p>{phrase("暂无任务日志。", "No job logs.")}</p> : null}</div></section>
       <section><h3>{phrase("文件清单", "File manifest")}</h3><div className="media-backup-manifest-list">{selectedMediaJob.manifests.map((manifest) => <article key={manifest.id}><span><strong title={manifest.storedName}>{manifest.storedName}</strong><small>{providerLabel(manifest.provider, phrase)} · {formatBytes(manifest.sizeBytes)}</small></span><i className={mediaManifestTone(manifest.status)}>{mediaManifestStatusLabel(manifest.status, phrase)}</i></article>)}{!selectedMediaJob.manifests.length ? <p>{phrase("任务尚未生成文件清单。", "This job has not created a file manifest yet.")}</p> : null}</div></section>
+    </div></div> : null}
+    {selectedRun ? <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedRun(null); }} role="presentation"><div aria-modal="true" className="modal-panel p21-run-detail-modal" role="dialog">
+      <header><span><small>{runKindLabel(selectedRun.kind, phrase)}</small><h2>{phrase(`运行记录 #${selectedRun.id}`, `Run record #${selectedRun.id}`)}</h2></span><button aria-label={phrase("关闭运行详情", "Close run details")} onClick={() => setSelectedRun(null)} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={18} /></button></header>
+      <div className="p21-run-detail-summary"><span><small>{phrase("状态", "Status")}</small><strong className={selectedRun.status}>{runStatusLabel(selectedRun.status, phrase)}</strong></span><span><small>{phrase("提供商", "Provider")}</small><strong>{selectedRun.provider ? providerLabel(selectedRun.provider, phrase) : "-"}</strong></span><span><small>{phrase("开始时间", "Started")}</small><strong>{formatDateTime(selectedRun.startedAt, locale)}</strong></span><span><small>{phrase("完成时间", "Completed")}</small><strong>{selectedRun.completedAt ? formatDateTime(selectedRun.completedAt, locale) : phrase("执行中", "Running")}</strong></span></div>
+      <section><h3>{phrase("执行结果", "Result")}</h3><p className="p21-run-detail-summary-text">{selectedRun.summary}</p></section>
+      <section><h3>{phrase("详细信息", "Details")}</h3><pre className="p21-run-detail-json">{formatJson(selectedRun.detail, phrase)}</pre></section>
+      <section><h3>{phrase("指标", "Metrics")}</h3><pre className="p21-run-detail-json">{formatJson(selectedRun.metrics, phrase)}</pre></section>
     </div></div> : null}
   </section>;
 }
@@ -825,6 +846,28 @@ function formatBackupSource(value: "media" | "database" | null, phrase: Phrase):
   if (value === "media") return phrase("媒体文件备份", "Media backup");
   if (value === "database") return phrase("数据库备份", "Database backup");
   return phrase("等待首次成功任务", "Waiting for first successful job");
+}
+
+function mergeCreatedBackup(current: SystemStatus["backups"], created: DatabaseBackup): SystemStatus["backups"] {
+  const previous = current.items.find((item) => item.name === created.name);
+  const items = [created, ...current.items.filter((item) => item.name !== created.name)];
+  const sizeDelta = created.sizeBytes + (created.mediaSnapshotSizeBytes ?? 0) - (previous?.sizeBytes ?? 0) - (previous?.mediaSnapshotSizeBytes ?? 0);
+  return {
+    ...current,
+    totalBytes: Math.max(0, current.totalBytes + sizeDelta),
+    fileCount: previous ? current.fileCount : current.fileCount + 1,
+    latest: created,
+    items,
+  };
+}
+
+function formatJson(value: unknown, phrase: Phrase): string {
+  if (value === null || value === undefined) return phrase("暂无详细信息", "No details available");
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return phrase("详细信息无法展示", "Details could not be displayed");
+  }
 }
 
 function backupVerificationLabel(status: BackupRestorePreflight["backup"]["verification"]["status"], phrase: Phrase): string {

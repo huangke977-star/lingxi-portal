@@ -345,11 +345,23 @@ export class P21OperationsService implements OnModuleInit, OnModuleDestroy {
     return this.listAlerts({ limit: 20 });
   }
 
-  private upsertAlert(alert: { type: string; fingerprint: string; severity: string; title: string; message: string; metadata: Prisma.InputJsonValue }) {
+  private async upsertAlert(alert: { type: string; fingerprint: string; severity: string; title: string; message: string; metadata: Prisma.InputJsonValue }) {
+    const existing = await this.prisma.operationalAlert.findUnique({
+      where: { type_fingerprint: { type: alert.type, fingerprint: alert.fingerprint } },
+      select: { status: true },
+    });
     return this.prisma.operationalAlert.upsert({
       where: { type_fingerprint: { type: alert.type, fingerprint: alert.fingerprint } },
       create: alert,
-      update: { severity: alert.severity, title: alert.title, message: alert.message, metadata: alert.metadata, status: "open", occurrenceCount: { increment: 1 }, lastSeenAt: new Date(), resolvedAt: null },
+      update: {
+        severity: alert.severity,
+        title: alert.title,
+        message: alert.message,
+        metadata: alert.metadata,
+        occurrenceCount: { increment: 1 },
+        lastSeenAt: new Date(),
+        ...(existing?.status === "open" ? { status: "open", acknowledgedAt: null, resolvedAt: null } : {}),
+      },
     });
   }
 
