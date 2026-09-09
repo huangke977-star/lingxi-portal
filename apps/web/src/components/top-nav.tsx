@@ -127,7 +127,7 @@ function isMissingMessageError(error: unknown): boolean {
 export function TopNav() {
   const router = useRouter();
   const pathname = usePathname();
-  const { locale, phrase, setLocale, t } = useLanguage();
+  const { locale, phrase, t } = useLanguage();
   const navRef = useRef<HTMLElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const messagePopoverRef = useRef<HTMLDivElement | null>(null);
@@ -167,10 +167,6 @@ export function TopNav() {
 
     try {
       const currentUser = await getMe(accessToken);
-      if (locale !== "en-US" && currentUser.locale === "en-US" && !pathname.startsWith("/en")) {
-        setLocale("en-US");
-        router.replace(`${localizedPath(pathname, "en-US")}${window.location.search}${window.location.hash}`);
-      }
       const canModerate = isSiteManager(currentUser);
       const [summary, conversationResult, notificationResult, reportSummary, reportResult] = await Promise.all([
         getSocialSummary(accessToken).catch(() => emptySummary),
@@ -191,7 +187,7 @@ export function TopNav() {
     } finally {
       setIsLoading(false);
     }
-  }, [locale, pathname, router, setLocale]);
+  }, []);
 
   useEffect(() => {
     // Header badges synchronize the current authenticated browser session.
