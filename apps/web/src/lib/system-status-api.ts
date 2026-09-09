@@ -195,6 +195,7 @@ export interface P21OperationsOverview {
   runs: OperationalRun[];
   dependencyAssessment: DependencyAssessment;
   recoveryTargets: RecoveryTarget[];
+  loadTestTargets: Array<{ path: string; label: string; labelEn: string; description: string; descriptionEn: string }>;
   externalStorage: {
     ossConfigured: boolean;
     r2Configured: boolean;
@@ -741,6 +742,14 @@ export function startP21RecoveryDrill(accessToken: string, provider: "local" | "
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify({ provider }),
+  });
+}
+
+export function startP21LoadTest(accessToken: string, input: { paths: string[]; concurrency: number; durationSeconds: number }): Promise<OperationalRun> {
+  return requestJson<OperationalRun>("/admin/system/operations/load-tests", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(input),
   });
 }
 

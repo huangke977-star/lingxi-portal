@@ -70,6 +70,7 @@ export interface P21OperationsOverviewResponse {
   runs: OperationalRunResponse[];
   dependencyAssessment: DependencyAssessmentResponse;
   recoveryTargets: DisasterRecoveryTargetResponse[];
+  loadTestTargets: Array<{ path: string; label: string; labelEn: string; description: string; descriptionEn: string }>;
   externalStorage: {
     ossConfigured: boolean;
     r2Configured: boolean;

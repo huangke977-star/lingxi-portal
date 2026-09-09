@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Prisma } from "../generated/prisma/client";
@@ -8,6 +8,7 @@ import { StorageManagementService } from "./storage-management.service";
 import {
   OperationalAlertQueryDto,
   OperationalRunQueryDto,
+  StartLoadTestDto,
   StartRecoveryDrillDto,
   UpdateAuditRetentionPolicyDto,
 } from "./dto/p21-operations.dto";
@@ -33,6 +34,12 @@ const RECOVERY_TARGETS: DisasterRecoveryTargetResponse[] = [
   { name: "媒体完整性", target: "100% 哈希通过", current: "每个清单文件逐项 SHA-256 校验", status: "defined", measurement: "媒体备份清单" },
   { name: "接口降级", target: "不重复写入", current: "GET/HEAD 可重试，写请求不自动重试", status: "defined", measurement: "P20 弱网策略" },
 ];
+
+const LOAD_TEST_TARGETS = [
+  { path: "/health", label: "API 健康检查", labelEn: "API health", description: "轻量只读探活接口", descriptionEn: "Lightweight read-only health endpoint" },
+  { path: "/distribution/sitemap", label: "站点地图", labelEn: "Sitemap", description: "公开只读数据接口", descriptionEn: "Public read-only data endpoint" },
+  { path: "/distribution/feeds/site.rss", label: "站内 RSS", labelEn: "Site RSS", description: "公开只读订阅接口", descriptionEn: "Public read-only feed endpoint" },
+] as const;
 
 @Injectable()
 export class P21OperationsService implements OnModuleInit, OnModuleDestroy {
@@ -72,6 +79,7 @@ export class P21OperationsService implements OnModuleInit, OnModuleDestroy {
       runs,
       dependencyAssessment,
       recoveryTargets: RECOVERY_TARGETS,
+      loadTestTargets: [...LOAD_TEST_TARGETS],
       externalStorage: {
         ossConfigured: backupConfiguration.oss.enabled && backupConfiguration.oss.hasAccessKeyId && backupConfiguration.oss.hasSecretAccessKey,
         r2Configured: backupConfiguration.r2.enabled && backupConfiguration.r2.hasAccessKeyId && backupConfiguration.r2.hasSecretAccessKey,
@@ -156,6 +164,112 @@ export class P21OperationsService implements OnModuleInit, OnModuleDestroy {
       },
     });
     return this.toRunResponse(run);
+  }
+
+  async startLoadTest(actorId: number, dto: StartLoadTestDto): Promise<OperationalRunResponse> {
+    const allowedPaths = new Set(LOAD_TEST_TARGETS.map((target) => target.path));
+    const paths = [...new Set(dto.paths)];
+    if (!paths.length || paths.some((path) => !allowedPaths.has(path as typeof LOAD_TEST_TARGETS[number]["path"]))) {
+      throw new BadRequestException("压测接口只能从只读白名单中选择。");
+    }
+
+    const running = await this.prisma.operationalRun.findFirst({
+      where: { kind: "load_test", status: "running" },
+      select: { id: true },
+    });
+    if (running) throw new ConflictException(`压测任务 #${running.id} 正在执行，请稍后再试。`);
+
+    const startedAt = new Date();
+    const run = await this.prisma.operationalRun.create({
+      data: {
+        kind: "load_test",
+        status: "running",
+        provider: "local",
+        summary: `正在执行 ${dto.durationSeconds} 秒只读压测。`,
+        detail: {
+          readOnly: true,
+          baseUrl: this.loadTestBaseUrl(),
+          paths,
+          concurrency: dto.concurrency,
+          durationSeconds: dto.durationSeconds,
+        } as Prisma.InputJsonValue,
+        metrics: { requests: 0, succeeded: 0, failed: 0 } as Prisma.InputJsonValue,
+        actorId,
+        startedAt,
+      },
+    });
+
+    void this.executeLoadTest(run.id, startedAt, paths, dto.concurrency, dto.durationSeconds);
+    return this.toRunResponse(run);
+  }
+
+  private async executeLoadTest(runId: number, startedAt: Date, paths: string[], concurrency: number, durationSeconds: number): Promise<void> {
+    const deadline = Date.now() + durationSeconds * 1_000;
+    const durations: number[] = [];
+    const errors: Array<{ path: string; status?: number; error?: string }> = [];
+    let requests = 0;
+    let succeeded = 0;
+    const worker = async (workerId: number) => {
+      let pathIndex = workerId % paths.length;
+      while (Date.now() < deadline) {
+        const path = paths[pathIndex++ % paths.length];
+        const started = performance.now();
+        try {
+          const response = await fetch(`${this.loadTestBaseUrl()}${path}`, {
+            headers: { "Cache-Control": "no-cache" },
+            signal: AbortSignal.timeout(12_000),
+          });
+          const elapsed = Math.round((performance.now() - started) * 10) / 10;
+          requests += 1;
+          durations.push(elapsed);
+          if (response.ok) succeeded += 1;
+          else if (errors.length < 20) errors.push({ path, status: response.status });
+          await response.body?.cancel();
+        } catch (error) {
+          requests += 1;
+          if (errors.length < 20) errors.push({ path, error: this.errorMessage(error) });
+        }
+      }
+    };
+
+    try {
+      await Promise.all(Array.from({ length: concurrency }, (_, index) => worker(index)));
+      const failed = requests - succeeded;
+      const metrics = {
+        requests,
+        succeeded,
+        failed,
+        successRate: requests ? Math.round((succeeded / requests) * 10_000) / 100 : 0,
+        requestsPerSecond: Math.round((requests / durationSeconds) * 100) / 100,
+        latencyMs: {
+          p50: this.percentile(durations, 0.5),
+          p95: this.percentile(durations, 0.95),
+          max: durations.length ? Math.max(...durations) : 0,
+        },
+      };
+      await this.prisma.operationalRun.update({
+        where: { id: runId },
+        data: {
+          status: failed ? "failed" : "passed",
+          summary: failed ? `只读压测完成，但有 ${failed} 个请求失败。` : `只读压测完成，${requests} 个请求全部成功。`,
+          detail: { readOnly: true, baseUrl: this.loadTestBaseUrl(), paths, concurrency, durationSeconds, sampleErrors: errors } as Prisma.InputJsonValue,
+          metrics: metrics as Prisma.InputJsonValue,
+          startedAt,
+          completedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      await this.prisma.operationalRun.update({
+        where: { id: runId },
+        data: {
+          status: "failed",
+          summary: "只读压测执行失败。",
+          detail: { readOnly: true, paths, concurrency, durationSeconds, error: this.errorMessage(error) } as Prisma.InputJsonValue,
+          completedAt: new Date(),
+        },
+      });
+      this.logger.warn(`Load test #${runId} failed: ${this.errorMessage(error)}`);
+    }
   }
 
   async startRecoveryDrill(actorId: number, dto: StartRecoveryDrillDto): Promise<OperationalRunResponse> {
@@ -306,8 +420,8 @@ export class P21OperationsService implements OnModuleInit, OnModuleDestroy {
 
   async getDependencyAssessment(): Promise<DependencyAssessmentResponse> {
     const [api, web, compose] = await Promise.all([
-      this.readJsonManifest([join(process.cwd(), "package.json"), join(process.cwd(), "apps", "api", "package.json")]),
-      this.readJsonManifest([join(process.cwd(), "..", "web", "package.json"), join(process.cwd(), "apps", "web", "package.json")]),
+      this.readJsonManifest([join(process.cwd(), "apps", "api", "package.json"), join(process.cwd(), "package.json")]),
+      this.readJsonManifest([join(process.cwd(), "apps", "web", "package.json"), join(process.cwd(), "..", "web", "package.json")]),
       this.readText([join(process.cwd(), "docker-compose.prod.yml"), join(process.cwd(), "..", "..", "docker-compose.prod.yml")]),
     ]);
     const value = (manifest: Record<string, unknown> | null, name: string): string | null => {
@@ -391,9 +505,19 @@ export class P21OperationsService implements OnModuleInit, OnModuleDestroy {
     return { name, current: current ?? "未读取", requested, category, status: current ? (requested?.startsWith("^") || requested?.startsWith("~") ? "range" : "pinned") : "not-found", note };
   }
 
+  private percentile(values: number[], percentileValue: number): number {
+    if (!values.length) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * percentileValue))];
+  }
+
   private composeImage(content: string | null, service: string): string | null {
-    const match = content?.match(new RegExp(`${service}\\s*:\\s*[\\s\\S]*?image:\\s*([^\\s]+)`));
-    return match?.[1] ?? null;
+    const block = content?.match(new RegExp(`(?:^|\\r?\\n)  ${service}:\\r?\\n([\\s\\S]*?)(?=\\r?\\n  [A-Za-z0-9_-]+:|$)`))?.[1];
+    return block?.match(/^\s+image:\s*(\S+)/m)?.[1] ?? null;
+  }
+
+  private loadTestBaseUrl(): string {
+    return (process.env.P21_LOAD_TEST_BASE_URL ?? "http://127.0.0.1:3001").replace(/\/$/, "");
   }
 
   private async readJsonManifest(paths: string[]): Promise<Record<string, unknown> | null> {

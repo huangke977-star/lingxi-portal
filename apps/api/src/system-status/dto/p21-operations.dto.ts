@@ -1,5 +1,8 @@
 import { Type } from "class-transformer";
 import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
@@ -13,6 +16,26 @@ import {
 export class StartRecoveryDrillDto {
   @IsIn(["local", "oss", "r2"])
   provider!: "local" | "oss" | "r2";
+}
+
+export class StartLoadTestDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(3)
+  @IsString({ each: true })
+  paths!: string[];
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  concurrency = 4;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(300)
+  durationSeconds = 15;
 }
 
 export class UpdateAuditRetentionPolicyDto {

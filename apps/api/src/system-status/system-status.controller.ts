@@ -38,6 +38,7 @@ import { P21OperationsService } from "./p21-operations.service";
 import {
   OperationalAlertQueryDto,
   OperationalRunQueryDto,
+  StartLoadTestDto,
   StartRecoveryDrillDto,
   UpdateAuditRetentionPolicyDto,
 } from "./dto/p21-operations.dto";
@@ -306,6 +307,14 @@ export class SystemStatusController {
     @Body() dto: StartRecoveryDrillDto,
   ) {
     return this.p21OperationsService.startRecoveryDrill(user.id, dto);
+  }
+
+  @Post("operations/load-tests")
+  startLoadTest(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: StartLoadTestDto,
+  ) {
+    return this.p21OperationsService.startLoadTest(user.id, dto);
   }
 
   @Get("operations/alerts")

@@ -5982,8 +5982,10 @@ a.entry-item:hover {
 .system-backup-heading { justify-content: space-between; }
 .system-backup-heading > span { display: flex; align-items: center; gap: 7px; }
 .system-backup-heading-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
-.system-backup-heading-actions > button { border: 0; background: transparent; color: var(--accent-strong); cursor: pointer; font: inherit; font-size: 0.7rem; padding: 3px 0; }
-.system-backup-heading-actions > button:disabled { cursor: not-allowed; opacity: 0.45; }
+.system-backup-heading-actions > button,
+.system-backup-now-button { background: transparent; border: 0; color: var(--accent-strong); cursor: pointer; font: inherit; font-size: 0.7rem; padding: 3px 0; }
+.system-backup-heading-actions > button:disabled,
+.system-backup-now-button:disabled { cursor: not-allowed; opacity: 0.45; }
 .system-backup-select-all { align-items: center; color: var(--muted); display: inline-flex; font-size: 0.64rem; gap: 5px; white-space: nowrap; }
 .system-backup-select-all input,
 .system-backup-row-check > input { accent-color: var(--accent-strong); flex: 0 0 auto; margin: 0; }
@@ -22047,6 +22049,24 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .p21-run-list time { color: var(--muted); font-size: 0.61rem; text-align: right; white-space: nowrap; }
 .p21-run-list > div > button { align-items: center; background: transparent; border: 0; color: var(--accent-strong); cursor: pointer; display: inline-flex; font: inherit; font-size: 0.61rem; gap: 4px; padding: 3px 0; white-space: nowrap; }
 .p21-drill-panel { padding: 10px; }
+.p21-load-test-panel { padding: 10px; }
+.p21-load-test-form { align-items: end; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) 86px 96px auto; }
+.p21-load-test-form > label { display: grid; gap: 4px; min-width: 0; }
+.p21-load-test-form > label > span,
+.p21-control-label { color: var(--muted); font-size: 0.62rem; }
+.p21-load-test-form input[type="number"] { min-width: 0; }
+.p21-load-test-paths { display: flex; flex-wrap: wrap; gap: 5px 8px; min-width: 0; }
+.p21-load-test-paths > .p21-control-label { flex: 0 0 100%; }
+.p21-load-test-paths label { align-items: center; display: inline-flex; gap: 5px; min-width: 0; }
+.p21-load-test-paths input { accent-color: var(--accent-strong); flex: 0 0 auto; margin: 0; }
+.p21-load-test-paths label > span { display: grid; gap: 1px; min-width: 0; }
+.p21-load-test-paths strong { color: var(--foreground); font-size: 0.64rem; font-weight: 600; }
+.p21-load-test-paths small { color: var(--muted); font-size: 0.58rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p21-number-field { align-items: center; display: flex; gap: 5px; min-width: 0; }
+.p21-number-field input { min-width: 0; width: 100%; }
+.p21-number-field em { color: var(--muted); font-size: 0.62rem; font-style: normal; }
+.p21-load-test-submit { align-items: center; align-self: end; background: transparent; border: 0; color: var(--accent-strong); cursor: pointer; display: inline-flex; font: inherit; font-size: 0.68rem; gap: 4px; padding: 4px 0; white-space: nowrap; }
+.p21-load-test-submit:disabled { cursor: wait; opacity: 0.5; }
 .p21-drill-actions { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .p21-drill-actions button { align-items: flex-start; background: color-mix(in srgb, var(--control-surface) 62%, transparent); border: 1px solid color-mix(in srgb, var(--control-line) 58%, transparent); border-radius: 7px; color: var(--foreground); cursor: pointer; display: flex; font: inherit; gap: 8px; min-width: 0; padding: 9px; text-align: left; }
 .p21-drill-actions button:disabled { cursor: not-allowed; opacity: 0.52; }
@@ -22077,7 +22097,9 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .p21-summary-grid,
   .p21-columns,
   .p21-drill-actions,
-  .p21-run-detail-summary { grid-template-columns: 1fr; }
+  .p21-run-detail-summary,
+  .p21-load-test-form { grid-template-columns: 1fr; }
+  .p21-load-test-submit { justify-content: center; }
   .p21-heading { align-items: flex-start; flex-direction: column; }
   .p21-heading-actions { width: 100%; }
   .p21-heading-actions button { flex: 1 1 auto; justify-content: center; }

@@ -52,6 +52,7 @@ describe("P21 operational resilience endpoints (e2e)", () => {
     runAlertCheck: jest.fn(async () => ({ id: 1, kind: "alert_check", status: "passed", provider: null, summary: "ok" })),
     runDependencyReview: jest.fn(async () => ({ id: 4, kind: "dependency_review", status: "passed", provider: null, summary: "ok" })),
     startRecoveryDrill: jest.fn(async (_actorId: number, dto: { provider: string }) => ({ id: 2, kind: "recovery_drill", status: dto.provider === "local" ? "passed" : "blocked", provider: dto.provider, summary: "ok" })),
+    startLoadTest: jest.fn(async (_actorId: number, dto: { paths: string[]; concurrency: number; durationSeconds: number }) => ({ id: 5, kind: "load_test", status: "running", provider: "local", summary: "running", detail: dto, metrics: null })),
     acknowledgeAlert: jest.fn(async () => ({ id: 3, status: "acknowledged" })),
     resolveAlert: jest.fn(async () => ({ id: 3, status: "resolved" })),
     getAuditPolicy: jest.fn(async () => ({ cleanupEnabled: true, businessDays: 180, securityDays: 365, serverDays: 90, lastCleanupAt: null, lastCleanupCount: 0 })),
@@ -102,6 +103,13 @@ describe("P21 operational resilience endpoints (e2e)", () => {
     await request(app.getHttpServer()).post("/admin/system/operations/audit-cleanup").set("Authorization", `Bearer ${await tokenFor(1)}`).expect(201);
     expect(serviceMock.updateAuditPolicy).toHaveBeenCalledWith({ cleanupEnabled: true, businessDays: 200, securityDays: 400, serverDays: 90 });
     expect(serviceMock.cleanupAuditLogs).toHaveBeenCalledTimes(1);
+  });
+
+  it("restricts load tests to validated read-only targets", async () => {
+    await request(app.getHttpServer()).post("/admin/system/operations/load-tests").set("Authorization", `Bearer ${await tokenFor(1)}`).send({ paths: ["/health"], concurrency: 2, durationSeconds: 1 }).expect(201);
+    await request(app.getHttpServer()).post("/admin/system/operations/load-tests").set("Authorization", `Bearer ${await tokenFor(1)}`).send({ paths: [], concurrency: 2, durationSeconds: 1 }).expect(400);
+    expect(serviceMock.startLoadTest).toHaveBeenCalledWith(1, { paths: ["/health"], concurrency: 2, durationSeconds: 1 });
+    expect(serviceMock.startLoadTest).toHaveBeenCalledTimes(1);
   });
 
   it("validates and forwards batch backup deletion", async () => {

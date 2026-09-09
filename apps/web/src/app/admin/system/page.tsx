@@ -55,6 +55,7 @@ import {
   resolveP21Alert,
   runP21AlertCheck,
   runP21DependencyReview,
+  startP21LoadTest,
   startMediaBackup,
   startP21RecoveryDrill,
   testBackupProvider,
@@ -98,6 +99,7 @@ export default function SystemStatusPage() {
   const [operations, setOperations] = useState<P21OperationsOverview | null>(null);
   const [selectedRun, setSelectedRun] = useState<OperationalRun | null>(null);
   const [auditPolicyForm, setAuditPolicyForm] = useState<P21OperationsOverview["auditPolicy"] | null>(null);
+  const [loadTestForm, setLoadTestForm] = useState({ paths: ["/health"], concurrency: 4, durationSeconds: 15 });
   const [operationsBusy, setOperationsBusy] = useState("");
   const [mediaBusy, setMediaBusy] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -193,6 +195,12 @@ export default function SystemStatusPage() {
     }, 2_000);
     return () => window.clearInterval(timer);
   }, [accessToken, loadMediaJobs, loadStatus, mediaJobs]);
+
+  useEffect(() => {
+    if (!accessToken || !operations?.runs.some((run) => run.kind === "load_test" && run.status === "running")) return;
+    const timer = window.setInterval(() => void loadOperations(accessToken), 2_000);
+    return () => window.clearInterval(timer);
+  }, [accessToken, loadOperations, operations]);
 
   const largestStorageBytes = useMemo(
     () => Math.max(1, ...(status?.storage.items.map((item) => item.sizeBytes) ?? [1])),
@@ -410,6 +418,21 @@ export default function SystemStatusPage() {
     }
   }
 
+  async function handleLoadTest() {
+    if (!accessToken || operationsBusy || !loadTestForm.paths.length) return;
+    setOperationsBusy("load-test");
+    setError("");
+    try {
+      await startP21LoadTest(accessToken, loadTestForm);
+      await loadOperations(accessToken);
+      setNotice(phrase("压测任务已开始，完成后可在运行记录中查看结果。", "Load test started. Review the result in Recent runs when it completes."));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("压测启动失败。", "Could not start the load test."));
+    } finally {
+      setOperationsBusy("");
+    }
+  }
+
   async function handleRecoveryDrill(provider: "local" | "oss" | "r2") {
     if (!accessToken || operationsBusy) return;
     setOperationsBusy(`drill:${provider}`);
@@ -545,7 +568,7 @@ export default function SystemStatusPage() {
         </section>
 
         <section className="system-status-panel backups">
-          <header className="system-panel-heading system-backup-heading"><span><Archive aria-hidden="true" size={17} /><strong>{phrase("数据库备份", "Database backups")}</strong></span><div className="system-backup-heading-actions"><label className="system-backup-select-all"><input checked={allBackupsSelected} disabled={!backupItems.length || Boolean(backupBusy)} onChange={(event) => setSelectedBackupNames(event.target.checked ? backupItems.map((backup) => backup.name) : [])} type="checkbox" /><span>{selectedBackupNames.length ? phrase(`已选 ${selectedBackupNames.length}`, `${selectedBackupNames.length} selected`) : phrase("全选", "Select all")}</span></label><button disabled={!selectedBackupNames.length || Boolean(backupBusy)} onClick={() => void handleDeleteBackups(selectedBackupNames)} type="button">{phrase("批量删除", "Delete selected")}</button><button disabled={Boolean(backupBusy)} onClick={() => void handleCreateBackup()} type="button">{backupBusy === "create" ? phrase("备份中", "Backing up") : phrase("立即备份", "Back up now")}</button></div></header>
+          <header className="system-panel-heading system-backup-heading"><span><Archive aria-hidden="true" size={17} /><strong>{phrase("数据库备份", "Database backups")}</strong></span><div className="system-backup-heading-actions"><label className="system-backup-select-all"><input checked={allBackupsSelected} disabled={!backupItems.length || Boolean(backupBusy)} onChange={(event) => setSelectedBackupNames(event.target.checked ? backupItems.map((backup) => backup.name) : [])} type="checkbox" /><span>{selectedBackupNames.length ? phrase(`已选 ${selectedBackupNames.length}`, `${selectedBackupNames.length} selected`) : phrase("全选", "Select all")}</span></label><button disabled={!selectedBackupNames.length || Boolean(backupBusy)} onClick={() => void handleDeleteBackups(selectedBackupNames)} type="button">{phrase("批量删除", "Delete selected")}</button><button className="system-backup-now-button" disabled={Boolean(backupBusy)} onClick={() => void handleCreateBackup()} type="button">{backupBusy === "create" ? phrase("备份中", "Backing up") : phrase("立即备份", "Back up now")}</button></div></header>
           <div className="system-backup-summary">
             <span><Clock3 aria-hidden="true" size={16} /><small>{phrase("最近备份", "Latest backup")}</small><strong>{status.backups.latest ? formatDateTime(status.backups.latest.updatedAt, locale) : phrase("暂无可见备份", "No visible backups")}</strong></span>
             <span><HardDrive aria-hidden="true" size={16} /><small>{phrase("备份占用", "Backup usage")}</small><strong>{formatBytes(status.backups.totalBytes)}</strong></span>
@@ -560,7 +583,7 @@ export default function SystemStatusPage() {
         <section className="system-status-panel media-backups">
           <header className="system-panel-heading system-backup-heading">
             <span><CloudUpload aria-hidden="true" size={17} /><strong>{phrase("媒体文件备份", "Media backups")}</strong></span>
-            <button disabled={Boolean(mediaBusy) || mediaJobs.some((job) => job.status === "pending" || job.status === "running")} onClick={() => void handleStartMediaBackup()} type="button">
+            <button className="system-backup-now-button" disabled={Boolean(mediaBusy) || mediaJobs.some((job) => job.status === "pending" || job.status === "running")} onClick={() => void handleStartMediaBackup()} type="button">
               {mediaBusy === "start" ? phrase("启动中", "Starting") : mediaJobs.some((job) => job.status === "pending" || job.status === "running") ? phrase("备份中", "Backing up") : phrase("立即备份", "Back up now")}
             </button>
           </header>
@@ -625,6 +648,12 @@ export default function SystemStatusPage() {
             </div>
           </header>
           <p className="p21-intro">{phrase("集中查看恢复目标、备份告警、依赖评估和审计留存。所有演练均会记录结果；未配置 OSS/R2 时不会伪造远端成功。", "Review recovery targets, backup alerts, dependency assessment, and audit retention in one place. Every drill is recorded; missing OSS/R2 configuration never appears as remote success.")}</p>
+          <section className="p21-subpanel p21-load-test-panel"><header><strong>{phrase("只读压测", "Read-only load test")}</strong><small>{phrase("仅能选择白名单接口；单次最多 50 并发、300 秒。", "Only allowlisted endpoints are available; one run is limited to 50 workers and 300 seconds.")}</small></header><div className="p21-load-test-form">
+            <div className="p21-load-test-paths"><span className="p21-control-label">{phrase("测试接口", "Endpoints")}</span>{operations.loadTestTargets.map((target) => <label key={target.path}><input checked={loadTestForm.paths.includes(target.path)} disabled={Boolean(operationsBusy)} onChange={(event) => setLoadTestForm((current) => ({ ...current, paths: event.target.checked ? [...current.paths, target.path] : current.paths.filter((path) => path !== target.path) }))} type="checkbox" /><span><strong>{phrase(target.label, target.labelEn)}</strong><small>{target.path} · {phrase(target.description, target.descriptionEn)}</small></span></label>)}</div>
+            <label><span>{phrase("并发数", "Concurrency")}</span><input disabled={Boolean(operationsBusy)} max={50} min={1} onChange={(event) => setLoadTestForm((current) => ({ ...current, concurrency: Number(event.target.value) }))} type="number" value={loadTestForm.concurrency} /></label>
+            <label><span>{phrase("持续时间", "Duration")}</span><span className="p21-number-field"><input disabled={Boolean(operationsBusy)} max={300} min={1} onChange={(event) => setLoadTestForm((current) => ({ ...current, durationSeconds: Number(event.target.value) }))} type="number" value={loadTestForm.durationSeconds} /><em>{phrase("秒", "sec")}</em></span></label>
+            <button className="p21-load-test-submit" disabled={Boolean(operationsBusy) || !loadTestForm.paths.length} onClick={() => void handleLoadTest()} type="button"><Activity aria-hidden="true" size={15} />{operationsBusy === "load-test" ? phrase("启动中", "Starting") : phrase("开始压测", "Start load test")}</button>
+          </div></section>
           <section className="p21-subpanel p21-drill-panel"><header><strong>{phrase("恢复演练", "Recovery drills")}</strong><small>{phrase("每次执行都会生成一条可查看详情的运行记录。", "Every run creates a record with inspectable details.")}</small></header><div className="p21-drill-actions">
             <button disabled={Boolean(operationsBusy)} onClick={() => void handleRecoveryDrill("local")} type="button"><RotateCcw aria-hidden="true" size={16} /><span><strong>{operationsBusy === "drill:local" ? phrase("演练中", "Running") : phrase("本地恢复演练", "Local recovery drill")}</strong><small>{phrase("配对数据库与媒体快照，非破坏性校验", "Verify paired database and media snapshots without overwriting production")}</small></span></button>
             <button disabled={Boolean(operationsBusy) || !operations.externalStorage.ossConfigured} onClick={() => void handleRecoveryDrill("oss")} title={phrase("配置 OSS 后可执行", "Configure OSS to enable")} type="button"><Cloud aria-hidden="true" size={16} /><span><strong>{phrase("OSS 恢复演练", "OSS recovery drill")}</strong><small>{operations.externalStorage.ossConfigured ? phrase("验证远端上传与恢复结果", "Verify remote upload and restore result") : phrase("待配置 OSS 凭据", "Configure OSS credentials first")}</small></span></button>
