@@ -1,4 +1,4 @@
-import { requestJson } from "./auth-api";
+import { requestBlob, requestJson } from "./auth-api";
 
 export interface AuditLog {
   id: number;
@@ -35,6 +35,20 @@ export function listAuditLogs(
     if (value !== undefined && value !== "") params.set(key, String(value));
   });
   return requestJson(`/admin/audit?${params}`, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function downloadAuditExport(
+  accessToken: string,
+  query: { search?: string; scope?: string; result?: string },
+): Promise<Blob> {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  });
+  return requestBlob(`/admin/audit/export?${params}`, {
     cache: "no-store",
     headers: { Authorization: `Bearer ${accessToken}` },
   });

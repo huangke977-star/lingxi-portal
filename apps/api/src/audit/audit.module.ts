@@ -5,12 +5,14 @@ import { UsersModule } from "../users/users.module";
 import { AuditController } from "./audit.controller";
 import { AuditInterceptor } from "./audit.interceptor";
 import { AuditService } from "./audit.service";
+import { SuperAdminGuard } from "../auth/guards/super-admin.guard";
 
 @Module({
   imports: [JwtModule.register({}), UsersModule],
   controllers: [AuditController],
   providers: [
     AuditService,
+    SuperAdminGuard,
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
 })

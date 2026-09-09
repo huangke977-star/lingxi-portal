@@ -1,13 +1,13 @@
 "use client";
 
-import { ClipboardList, Search } from "lucide-react";
+import { ClipboardList, Download, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppToast } from "@/components/app-toast";
 import { AdminPageHeader } from "@/components/admin-page-header";
 import { GlassSelect } from "@/components/glass-select";
 import { useLanguage } from "@/components/language-provider";
-import { AuditLog, listAuditLogs } from "@/lib/audit-api";
+import { AuditLog, downloadAuditExport, listAuditLogs } from "@/lib/audit-api";
 import { AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
@@ -29,6 +29,7 @@ export default function AuditLogPage() {
   const [expandedId, setExpandedId] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { setPage(1); setSearch(searchDraft.trim()); }, 280);
@@ -70,6 +71,26 @@ export default function AuditLogPage() {
     };
   }, [locale, page, phrase, result, router, scope, search]);
 
+  async function handleExport() {
+    const token = readAccessToken();
+    if (!token || isExporting || !user?.isSuperAdmin) return;
+    setIsExporting(true);
+    setError("");
+    try {
+      const blob = await downloadAuditExport(token, { search, scope, result });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "audit-log.csv";
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : phrase("审计日志导出失败。", "Could not export audit logs."));
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   if (!isLoading && !isSiteManager(user)) {
     return <section className="page-shell admin-shell"><div className="search-page-empty"><strong>{phrase("无权访问", "Access denied")}</strong><span>{phrase("审计日志仅超级管理员和管理员可查看。", "Audit logs are available only to site administrators.")}</span></div></section>;
   }
@@ -81,6 +102,7 @@ export default function AuditLogPage() {
       <label className="admin-search-field"><Search aria-hidden="true" size={15} /><input aria-label={phrase("搜索审计日志", "Search audit logs")} onChange={(event) => setSearchDraft(event.target.value)} placeholder={phrase("操作者、路径、操作或目标", "Actor, path, action, or target")} value={searchDraft} /></label>
       {user?.isSuperAdmin ? <GlassSelect ariaLabel={phrase("操作范围", "Scope")} onChange={(value) => { setPage(1); setScope(value); }} options={[{ value: "", label: phrase("全部范围", "All scopes") }, { value: "business", label: phrase("业务操作", "Business") }, { value: "security", label: phrase("安全设置", "Security") }, { value: "server", label: phrase("服务器操作", "Server") }]} value={scope} /> : null}
       <GlassSelect ariaLabel={phrase("执行结果", "Result")} onChange={(value) => { setPage(1); setResult(value); }} options={[{ value: "", label: phrase("全部结果", "All results") }, { value: "success", label: phrase("成功", "Success") }, { value: "failed", label: phrase("失败", "Failed") }]} value={result} />
+      {user?.isSuperAdmin ? <button className="audit-export-button" disabled={isExporting} onClick={() => void handleExport()} title={phrase("导出当前筛选的脱敏审计记录", "Export redacted audit records for the current filters")} type="button"><Download aria-hidden="true" size={15} />{isExporting ? phrase("导出中", "Exporting") : phrase("导出", "Export")}</button> : null}
     </div>
 
     <div className="admin-table-wrap audit-table-wrap">

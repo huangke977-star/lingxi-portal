@@ -188,6 +188,82 @@ export interface SystemStatus {
   };
 }
 
+export interface P21OperationsOverview {
+  generatedAt: string;
+  auditPolicy: AuditRetentionPolicy;
+  alerts: OperationalAlert[];
+  runs: OperationalRun[];
+  dependencyAssessment: DependencyAssessment;
+  recoveryTargets: RecoveryTarget[];
+  externalStorage: {
+    ossConfigured: boolean;
+    r2Configured: boolean;
+    encryptionConfigured: boolean;
+    message: string;
+  };
+}
+
+export interface AuditRetentionPolicy {
+  cleanupEnabled: boolean;
+  businessDays: number;
+  securityDays: number;
+  serverDays: number;
+  lastCleanupAt: string | null;
+  lastCleanupCount: number;
+}
+
+export interface OperationalRun {
+  id: number;
+  kind: string;
+  status: string;
+  provider: string | null;
+  summary: string;
+  detail: unknown;
+  metrics: unknown;
+  actorId: number | null;
+  startedAt: string;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+export interface OperationalAlert {
+  id: number;
+  type: string;
+  fingerprint: string;
+  severity: string;
+  status: string;
+  title: string;
+  message: string;
+  metadata: unknown;
+  occurrenceCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  acknowledgedAt: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export interface DependencyAssessment {
+  generatedAt: string;
+  source: string;
+  items: Array<{
+    name: string;
+    current: string;
+    requested: string | null;
+    category: string;
+    status: string;
+    note: string;
+  }>;
+}
+
+export interface RecoveryTarget {
+  name: string;
+  target: string;
+  current: string;
+  status: string;
+  measurement: string;
+}
+
 export interface HttpMonitoringEvent {
   occurredAt: string;
   method: string;
@@ -628,5 +704,63 @@ export function restoreDatabaseBackup(accessToken: string, name: string): Promis
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify({ confirmation: name }),
+  });
+}
+
+export function getP21OperationsOverview(accessToken: string): Promise<P21OperationsOverview> {
+  return requestJson<P21OperationsOverview>("/admin/system/operations/overview", {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function runP21AlertCheck(accessToken: string): Promise<OperationalRun> {
+  return requestJson<OperationalRun>("/admin/system/operations/runs/alert-check", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function runP21DependencyReview(accessToken: string): Promise<OperationalRun> {
+  return requestJson<OperationalRun>("/admin/system/operations/runs/dependency-review", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function startP21RecoveryDrill(accessToken: string, provider: "local" | "oss" | "r2"): Promise<OperationalRun> {
+  return requestJson<OperationalRun>("/admin/system/operations/recovery-drills", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ provider }),
+  });
+}
+
+export function acknowledgeP21Alert(accessToken: string, id: number): Promise<OperationalAlert> {
+  return requestJson<OperationalAlert>(`/admin/system/operations/alerts/${id}/acknowledge`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function resolveP21Alert(accessToken: string, id: number): Promise<OperationalAlert> {
+  return requestJson<OperationalAlert>(`/admin/system/operations/alerts/${id}/resolve`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function updateP21AuditPolicy(accessToken: string, policy: Omit<AuditRetentionPolicy, "lastCleanupAt" | "lastCleanupCount">): Promise<AuditRetentionPolicy> {
+  return requestJson<AuditRetentionPolicy>("/admin/system/operations/audit-policy", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(policy),
+  });
+}
+
+export function cleanupP21AuditLogs(accessToken: string): Promise<{ deletedCount: number; policy: AuditRetentionPolicy }> {
+  return requestJson("/admin/system/operations/audit-cleanup", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
 }

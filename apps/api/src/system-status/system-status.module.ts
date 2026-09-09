@@ -15,6 +15,7 @@ import { MediaBackupService } from "./media-backup.service";
 import { LightweightMonitoringInterceptor } from "./lightweight-monitoring.interceptor";
 import { LightweightMonitoringService } from "./lightweight-monitoring.service";
 import { ReliabilityOverviewService } from "./reliability-overview.service";
+import { P21OperationsService } from "./p21-operations.service";
 
 @Module({
   imports: [JwtModule.register({}), RedisModule, UsersModule],
@@ -29,6 +30,7 @@ import { ReliabilityOverviewService } from "./reliability-overview.service";
     StorageManagementService,
     LightweightMonitoringService,
     ReliabilityOverviewService,
+    P21OperationsService,
     SystemStatusService,
     {
       provide: APP_INTERCEPTOR,

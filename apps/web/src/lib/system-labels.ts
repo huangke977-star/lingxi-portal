@@ -35,6 +35,7 @@ const auditTargets: Record<string, LocalizedPair> = {
   background: ["站点背景管理", "Site background management"],
   android_release: ["安装包管理", "Package management"],
   database_backup: ["数据库备份操作", "Database backup"],
+  operations_resilience: ["运营韧性与演练", "Operational resilience"],
 };
 
 const auditOperations: Record<string, LocalizedPair> = {

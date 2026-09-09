@@ -641,6 +641,8 @@ model User {
   profileSettings              UserProfileSettings?
   profileVisits                ProfileVisit[]                  @relation("ProfileVisitTarget")
   auditLogs                    AuditLog[]                      @relation("AuditLogActor")
+  operationalRuns              OperationalRun[]                @relation("OperationalRunActor")
+  operationalAlertsAcknowledged OperationalAlert[]             @relation("OperationalAlertAcknowledgedBy")
   moderationRulesCreated       ModerationRule[]                @relation("ModerationRuleCreatedBy")
   moderationRuleHits           ModerationRuleHit[]             @relation("ModerationRuleHitActor")
   moderationTemplatesCreated   ModerationTemplate[]            @relation("ModerationTemplateCreatedBy")
@@ -2797,6 +2799,63 @@ model AuditLog {
   @@index([actorId, createdAt])
   @@index([action, createdAt])
   @@map("audit_logs")
+}
+
+model AuditRetentionPolicy {
+  id                 Int      @id @default(1)
+  cleanupEnabled     Boolean  @default(true) @map("cleanup_enabled")
+  businessDays       Int      @default(180) @map("business_days")
+  securityDays       Int      @default(365) @map("security_days")
+  serverDays         Int      @default(90) @map("server_days")
+  lastCleanupAt      DateTime? @map("last_cleanup_at")
+  lastCleanupCount   Int      @default(0) @map("last_cleanup_count")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("audit_retention_policies")
+}
+
+model OperationalRun {
+  id          Int      @id @default(autoincrement())
+  kind        String   @db.VarChar(48)
+  status      String   @db.VarChar(24)
+  provider    String?  @db.VarChar(16)
+  summary     String   @db.VarChar(255)
+  detail      Json?
+  metrics     Json?
+  actorId     Int?     @map("actor_id")
+  actor       User?    @relation("OperationalRunActor", fields: [actorId], references: [id], onDelete: SetNull)
+  startedAt   DateTime @default(now()) @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([kind, createdAt])
+  @@index([status, createdAt])
+  @@map("operational_runs")
+}
+
+model OperationalAlert {
+  id                   Int      @id @default(autoincrement())
+  type                 String   @db.VarChar(48)
+  fingerprint          String   @db.VarChar(191)
+  severity             String   @db.VarChar(16)
+  status               String   @default("open") @db.VarChar(20)
+  title                String   @db.VarChar(160)
+  message              String   @db.VarChar(500)
+  metadata             Json?
+  occurrenceCount      Int      @default(1) @map("occurrence_count")
+  firstSeenAt          DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt           DateTime @default(now()) @map("last_seen_at")
+  acknowledgedAt       DateTime? @map("acknowledged_at")
+  acknowledgedById     Int?     @map("acknowledged_by_id")
+  acknowledgedBy       User?    @relation("OperationalAlertAcknowledgedBy", fields: [acknowledgedById], references: [id], onDelete: SetNull)
+  resolvedAt           DateTime? @map("resolved_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@unique([type, fingerprint])
+  @@index([status, severity, lastSeenAt])
+  @@map("operational_alerts")
 }
 
 model ExternalWebhookEndpoint {

@@ -33,6 +33,13 @@ import {
   UpdateStorageManagementConfigurationDto,
 } from "./dto/storage-management.dto";
 import { StorageManagementService } from "./storage-management.service";
+import { P21OperationsService } from "./p21-operations.service";
+import {
+  OperationalAlertQueryDto,
+  OperationalRunQueryDto,
+  StartRecoveryDrillDto,
+  UpdateAuditRetentionPolicyDto,
+} from "./dto/p21-operations.dto";
 import {
   ConfirmStorageIssueUnrecoverableDto,
   MediaBackupFileQueryDto,
@@ -54,6 +61,7 @@ export class SystemStatusController {
     private readonly systemStatusService: SystemStatusService,
     private readonly storageManagementService: StorageManagementService,
     private readonly mediaBackupService: MediaBackupService,
+    private readonly p21OperationsService: P21OperationsService,
   ) {}
 
   @Get("status")
@@ -264,5 +272,66 @@ export class SystemStatusController {
     @Body() dto: UpdateStorageManagementConfigurationDto,
   ) {
     return this.storageManagementService.updateConfiguration(dto);
+  }
+
+  @Get("operations/overview")
+  getOperationsOverview() {
+    return this.p21OperationsService.getOverview();
+  }
+
+  @Get("operations/runs")
+  listOperationalRuns(@Query() query: OperationalRunQueryDto) {
+    return this.p21OperationsService.listRuns(query);
+  }
+
+  @Post("operations/runs/alert-check")
+  runAlertCheck(@CurrentUser() user: AuthenticatedUser) {
+    return this.p21OperationsService.runAlertCheck(user.id);
+  }
+
+  @Post("operations/runs/dependency-review")
+  runDependencyReview(@CurrentUser() user: AuthenticatedUser) {
+    return this.p21OperationsService.runDependencyReview(user.id);
+  }
+
+  @Post("operations/recovery-drills")
+  startRecoveryDrill(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: StartRecoveryDrillDto,
+  ) {
+    return this.p21OperationsService.startRecoveryDrill(user.id, dto);
+  }
+
+  @Get("operations/alerts")
+  listOperationalAlerts(@Query() query: OperationalAlertQueryDto) {
+    return this.p21OperationsService.listAlerts(query);
+  }
+
+  @Post("operations/alerts/:id/acknowledge")
+  acknowledgeOperationalAlert(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.p21OperationsService.acknowledgeAlert(id, user.id);
+  }
+
+  @Post("operations/alerts/:id/resolve")
+  resolveOperationalAlert(@Param("id", ParseIntPipe) id: number) {
+    return this.p21OperationsService.resolveAlert(id);
+  }
+
+  @Get("operations/audit-policy")
+  getAuditRetentionPolicy() {
+    return this.p21OperationsService.getAuditPolicy();
+  }
+
+  @Post("operations/audit-policy")
+  updateAuditRetentionPolicy(@Body() dto: UpdateAuditRetentionPolicyDto) {
+    return this.p21OperationsService.updateAuditPolicy(dto);
+  }
+
+  @Post("operations/audit-cleanup")
+  cleanupAuditLogs() {
+    return this.p21OperationsService.cleanupAuditLogs();
   }
 }

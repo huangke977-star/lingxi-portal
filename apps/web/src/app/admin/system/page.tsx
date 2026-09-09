@@ -7,6 +7,7 @@ import {
   Box,
   CircleAlert,
   CircleCheck,
+  ClipboardCheck,
   Cloud,
   CloudCog,
   CloudUpload,
@@ -18,6 +19,7 @@ import {
   KeyRound,
   ListChecks,
   RefreshCcw,
+  RotateCcw,
   Save,
   Server,
   ShieldCheck,
@@ -42,19 +44,29 @@ import {
   getBackupConfiguration,
   getBackupRestorePreflight,
   getMediaBackupJob,
+  getP21OperationsOverview,
   getStorageOverview,
   getSystemStatus,
   listMediaBackupJobs,
   restoreDatabaseBackup,
+  acknowledgeP21Alert,
+  cleanupP21AuditLogs,
+  resolveP21Alert,
+  runP21AlertCheck,
+  runP21DependencyReview,
   startMediaBackup,
+  startP21RecoveryDrill,
   testBackupProvider,
   updateBackupConfiguration,
+  updateP21AuditPolicy,
   verifyDatabaseBackup,
   type BackupConfiguration,
   type BackupConfigurationUpdate,
   type BackupRestorePreflight,
   type MediaBackupJob,
   type MediaBackupJobDetail,
+  type P21OperationsOverview,
+  type OperationalAlert,
   type StorageOverview,
   type SystemStatus,
 } from "@/lib/system-status-api";
@@ -80,6 +92,9 @@ export default function SystemStatusPage() {
   const [backupForm, setBackupForm] = useState<BackupConfigurationForm | null>(null);
   const [mediaJobs, setMediaJobs] = useState<MediaBackupJob[]>([]);
   const [selectedMediaJob, setSelectedMediaJob] = useState<MediaBackupJobDetail | null>(null);
+  const [operations, setOperations] = useState<P21OperationsOverview | null>(null);
+  const [auditPolicyForm, setAuditPolicyForm] = useState<P21OperationsOverview["auditPolicy"] | null>(null);
+  const [operationsBusy, setOperationsBusy] = useState("");
   const [mediaBusy, setMediaBusy] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -126,6 +141,12 @@ export default function SystemStatusPage() {
     return result.items;
   }, []);
 
+  const loadOperations = useCallback(async (token: string) => {
+    const value = await getP21OperationsOverview(token);
+    setOperations(value);
+    setAuditPolicyForm(value.auditPolicy);
+  }, []);
+
   useEffect(() => {
     let active = true;
     const token = readAccessToken();
@@ -138,7 +159,7 @@ export default function SystemStatusPage() {
         if (!active) return;
         setAccessToken(token);
         setCurrentUser(user);
-        if (user.isSuperAdmin) await Promise.all([loadStatus(token), loadBackupConfiguration(token), loadStorageOverview(token), loadMediaJobs(token)]);
+        if (user.isSuperAdmin) await Promise.all([loadStatus(token), loadBackupConfiguration(token), loadStorageOverview(token), loadMediaJobs(token), loadOperations(token)]);
       })
       .catch((loadError: unknown) => {
         if (isAuthExpiredError(loadError)) {
@@ -152,13 +173,13 @@ export default function SystemStatusPage() {
         if (active) setIsLoading(false);
       });
     return () => { active = false; };
-  }, [loadBackupConfiguration, loadMediaJobs, loadStatus, loadStorageOverview, locale, phrase, router]);
+  }, [loadBackupConfiguration, loadMediaJobs, loadOperations, loadStatus, loadStorageOverview, locale, phrase, router]);
 
   useEffect(() => {
     if (!accessToken || !currentUser?.isSuperAdmin) return;
-    const timer = window.setInterval(() => void Promise.all([loadStatus(accessToken), loadStorageOverview(accessToken), loadMediaJobs(accessToken)]), 30_000);
+    const timer = window.setInterval(() => void Promise.all([loadStatus(accessToken), loadStorageOverview(accessToken), loadMediaJobs(accessToken), loadOperations(accessToken)]), 30_000);
     return () => window.clearInterval(timer);
-  }, [accessToken, currentUser, loadMediaJobs, loadStatus, loadStorageOverview]);
+  }, [accessToken, currentUser, loadMediaJobs, loadOperations, loadStatus, loadStorageOverview]);
 
   useEffect(() => {
     if (!accessToken || !mediaJobs.some((job) => job.status === "pending" || job.status === "running")) return;
@@ -336,6 +357,104 @@ export default function SystemStatusPage() {
     }
   }
 
+  async function handleRunAlertCheck() {
+    if (!accessToken || operationsBusy) return;
+    setOperationsBusy("alert-check");
+    setError("");
+    try {
+      const run = await runP21AlertCheck(accessToken);
+      await loadOperations(accessToken);
+      setNotice(run.status === "passed" ? phrase("告警检查完成，未发现严重异常。", "Alert check completed without critical findings.") : phrase("告警检查发现异常，请查看告警列表。", "Alert check found issues. Review the alert list."));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("告警检查失败。", "Alert check failed."));
+    } finally {
+      setOperationsBusy("");
+    }
+  }
+
+  async function handleDependencyReview() {
+    if (!accessToken || operationsBusy) return;
+    setOperationsBusy("dependency-review");
+    setError("");
+    try {
+      await runP21DependencyReview(accessToken);
+      await loadOperations(accessToken);
+      setNotice(phrase("依赖评估已记录。", "Dependency assessment recorded."));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("依赖评估失败。", "Dependency assessment failed."));
+    } finally {
+      setOperationsBusy("");
+    }
+  }
+
+  async function handleRecoveryDrill(provider: "local" | "oss" | "r2") {
+    if (!accessToken || operationsBusy) return;
+    setOperationsBusy(`drill:${provider}`);
+    setError("");
+    try {
+      const run = await startP21RecoveryDrill(accessToken, provider);
+      await loadOperations(accessToken);
+      setNotice(run.status === "passed" ? phrase("恢复演练已完成并通过校验。", "Recovery drill completed and passed verification.") : run.status === "blocked" ? phrase("恢复演练暂未执行，原因已记录。", "Recovery drill was blocked; the reason was recorded.") : phrase("恢复演练未通过，请查看记录。", "Recovery drill did not pass. Review the run record."));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("恢复演练失败。", "Recovery drill failed."));
+    } finally {
+      setOperationsBusy("");
+    }
+  }
+
+  async function handleAlertAction(alert: OperationalAlert, action: "acknowledge" | "resolve") {
+    if (!accessToken || operationsBusy) return;
+    setOperationsBusy(`${action}:${alert.id}`);
+    setError("");
+    try {
+      if (action === "acknowledge") await acknowledgeP21Alert(accessToken, alert.id);
+      else await resolveP21Alert(accessToken, alert.id);
+      await loadOperations(accessToken);
+      setNotice(action === "acknowledge" ? phrase("告警已确认。", "Alert acknowledged.") : phrase("告警已标记为已解决。", "Alert marked as resolved."));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("告警状态更新失败。", "Could not update the alert."));
+    } finally {
+      setOperationsBusy("");
+    }
+  }
+
+  async function handleSaveAuditPolicy() {
+    if (!accessToken || !auditPolicyForm || operationsBusy) return;
+    setOperationsBusy("audit-policy");
+    setError("");
+    try {
+      const policy = await updateP21AuditPolicy(accessToken, {
+        cleanupEnabled: auditPolicyForm.cleanupEnabled,
+        businessDays: auditPolicyForm.businessDays,
+        securityDays: auditPolicyForm.securityDays,
+        serverDays: auditPolicyForm.serverDays,
+      });
+      setOperations((current) => current ? { ...current, auditPolicy: policy } : current);
+      setAuditPolicyForm((current) => current ? { ...current, ...policy } : current);
+      setNotice(phrase("审计留存策略已保存。", "Audit retention policy saved."));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("审计留存策略保存失败。", "Could not save the audit retention policy."));
+    } finally {
+      setOperationsBusy("");
+    }
+  }
+
+  async function handleCleanupAuditLogs() {
+    if (!accessToken || operationsBusy) return;
+    setOperationsBusy("audit-cleanup");
+    setError("");
+    try {
+      const result = await cleanupP21AuditLogs(accessToken);
+      setOperations((current) => current ? { ...current, auditPolicy: result.policy } : current);
+      setAuditPolicyForm((current) => current ? { ...current, ...result.policy } : current);
+      setNotice(phrase(`审计日志清理完成，共删除 ${result.deletedCount} 条。`, `Audit cleanup completed; ${result.deletedCount} entries removed.`));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("审计日志清理失败。", "Audit cleanup failed."));
+    } finally {
+      setOperationsBusy("");
+    }
+  }
+
   const pageDescription = phrase("查看应用、数据库、缓存和备份运行状态。", "Monitor application, database, cache, and backup status.");
 
   if (isLoading) return <AdminPageLoading className="system-status-shell" description={pageDescription} loadingLabel={phrase("正在读取系统状态", "Loading system status")} title={phrase("系统运行概览", "System overview")} />;
@@ -465,6 +584,36 @@ export default function SystemStatusPage() {
             />
           </div>
         </section>
+
+        {operations ? <section className="system-status-panel p21-operations-panel">
+          <header className="system-panel-heading p21-heading">
+            <span><ClipboardCheck aria-hidden="true" size={17} /><strong>{phrase("P21 运营韧性", "P21 operational resilience")}</strong></span>
+            <div className="p21-heading-actions">
+              <button disabled={Boolean(operationsBusy)} onClick={() => void handleRunAlertCheck()} type="button"><RefreshCcw aria-hidden="true" size={14} />{operationsBusy === "alert-check" ? phrase("检查中", "Checking") : phrase("检查告警", "Check alerts")}</button>
+              <button disabled={Boolean(operationsBusy)} onClick={() => void handleRecoveryDrill("local")} type="button"><RotateCcw aria-hidden="true" size={14} />{operationsBusy === "drill:local" ? phrase("演练中", "Running") : phrase("本地演练", "Local drill")}</button>
+              <button disabled={Boolean(operationsBusy)} onClick={() => void handleDependencyReview()} type="button"><ClipboardCheck aria-hidden="true" size={14} />{operationsBusy === "dependency-review" ? phrase("评估中", "Reviewing") : phrase("依赖评估", "Dependencies")}</button>
+              <button disabled={Boolean(operationsBusy) || !operations.externalStorage.ossConfigured} onClick={() => void handleRecoveryDrill("oss")} title={phrase("配置 OSS 后可执行", "Configure OSS to enable")} type="button"><Cloud aria-hidden="true" size={14} />OSS</button>
+              <button disabled={Boolean(operationsBusy) || !operations.externalStorage.r2Configured} onClick={() => void handleRecoveryDrill("r2")} title={phrase("配置 R2 后可执行", "Configure R2 to enable")} type="button"><Cloud aria-hidden="true" size={14} />R2</button>
+            </div>
+          </header>
+          <p className="p21-intro">{phrase("集中查看恢复目标、备份告警、依赖评估和审计留存。所有演练均会记录结果；未配置 OSS/R2 时不会伪造远端成功。", "Review recovery targets, backup alerts, dependency assessment, and audit retention in one place. Every drill is recorded; missing OSS/R2 configuration never appears as remote success.")}</p>
+          <div className="p21-summary-grid">
+            <div><small>{phrase("远端备份", "Remote backup")}</small><strong>{operations.externalStorage.ossConfigured || operations.externalStorage.r2Configured ? phrase("已配置", "Configured") : phrase("待配置", "Not configured")}</strong><span>{operations.externalStorage.message}</span></div>
+            <div><small>{phrase("加密密钥", "Encryption key")}</small><strong>{operations.externalStorage.encryptionConfigured ? phrase("已配置", "Configured") : phrase("缺失", "Missing")}</strong><span>{phrase("远端凭据和备份对象都不会在页面明文显示。", "Remote credentials and backup objects are never shown in plain text.")}</span></div>
+            {operations.recoveryTargets.slice(0, 2).map((target) => <div key={target.name}><small>{target.name}</small><strong>{target.target}</strong><span>{target.current}</span></div>)}
+          </div>
+          <div className="p21-columns">
+            <section className="p21-subpanel"><header><strong>{phrase("待处理告警", "Open alerts")}</strong><button disabled={Boolean(operationsBusy)} onClick={() => void handleRunAlertCheck()} type="button">{phrase("刷新", "Refresh")}</button></header>
+              <div className="p21-alert-list">{operations.alerts.map((alert) => <article className={alert.severity} key={alert.id}><span><strong>{alert.title}</strong><small>{alert.message}</small><em>{phrase(`发生 ${alert.occurrenceCount} 次`, `${alert.occurrenceCount} occurrence(s)`)} · {formatDateTime(alert.lastSeenAt, locale)}</em></span><div>{alert.status === "open" ? <button disabled={Boolean(operationsBusy)} onClick={() => void handleAlertAction(alert, "acknowledge")} type="button">{phrase("确认", "Acknowledge")}</button> : null}<button disabled={Boolean(operationsBusy)} onClick={() => void handleAlertAction(alert, "resolve")} type="button">{phrase("解决", "Resolve")}</button></div></article>)}{!operations.alerts.length ? <p className="p21-empty"><CircleCheck aria-hidden="true" size={15} />{phrase("当前没有未解决告警。", "No unresolved alerts.")}</p> : null}</div>
+            </section>
+            <section className="p21-subpanel"><header><strong>{phrase("恢复目标", "Recovery targets")}</strong><small>{phrase("先定义，再用演练记录实际耗时。", "Define first, then measure with drills.")}</small></header><div className="p21-target-list">{operations.recoveryTargets.map((target) => <div key={target.name}><span><strong>{target.name}</strong><small>{target.measurement}</small></span><b>{target.target}</b><em>{target.status === "defined" ? phrase("已定义", "Defined") : phrase("待测量", "Unmeasured")}</em></div>)}</div></section>
+          </div>
+          <div className="p21-columns">
+            <section className="p21-subpanel"><header><strong>{phrase("依赖兼容性评估", "Dependency compatibility")}</strong><small>{formatDateTime(operations.dependencyAssessment.generatedAt, locale)}</small></header><div className="p21-dependency-list">{operations.dependencyAssessment.items.map((item) => <div key={item.name}><span><strong>{item.name}</strong><small>{item.note}</small></span><b>{item.current}</b><em className={item.status}>{item.status === "pinned" ? phrase("固定", "Pinned") : item.status === "range" ? phrase("范围", "Range") : phrase("未读取", "Missing")}</em></div>)}</div></section>
+            <section className="p21-subpanel"><header><strong>{phrase("审计留存", "Audit retention")}</strong><small>{operations.auditPolicy.lastCleanupAt ? phrase(`上次清理 ${formatDateTime(operations.auditPolicy.lastCleanupAt, locale)}`, `Last cleanup ${formatDateTime(operations.auditPolicy.lastCleanupAt, locale)}`) : phrase("尚未执行清理", "No cleanup yet")}</small></header>{auditPolicyForm ? <div className="p21-audit-policy"><label><input checked={auditPolicyForm.cleanupEnabled} onChange={(event) => setAuditPolicyForm({ ...auditPolicyForm, cleanupEnabled: event.target.checked })} type="checkbox" /><span>{phrase("启用自动清理", "Enable automatic cleanup")}</span></label><div><label><span>{phrase("业务", "Business")}</span><input max={3650} min={7} onChange={(event) => setAuditPolicyForm({ ...auditPolicyForm, businessDays: Number(event.target.value) })} type="number" value={auditPolicyForm.businessDays} /></label><label><span>{phrase("安全", "Security")}</span><input max={3650} min={7} onChange={(event) => setAuditPolicyForm({ ...auditPolicyForm, securityDays: Number(event.target.value) })} type="number" value={auditPolicyForm.securityDays} /></label><label><span>{phrase("服务器", "Server")}</span><input max={3650} min={7} onChange={(event) => setAuditPolicyForm({ ...auditPolicyForm, serverDays: Number(event.target.value) })} type="number" value={auditPolicyForm.serverDays} /></label></div><p>{phrase(`上次清理删除 ${operations.auditPolicy.lastCleanupCount} 条记录。`, `${operations.auditPolicy.lastCleanupCount} entries removed in the last cleanup.`)}</p><footer><button disabled={Boolean(operationsBusy)} onClick={() => void handleCleanupAuditLogs()} type="button">{phrase("立即清理", "Clean now")}</button><button disabled={Boolean(operationsBusy)} onClick={() => void handleSaveAuditPolicy()} type="button"><Save aria-hidden="true" size={14} />{phrase("保存策略", "Save policy")}</button></footer></div> : null}</section>
+          </div>
+          <section className="p21-subpanel p21-runs"><header><strong>{phrase("最近演练记录", "Recent runs")}</strong><small>{phrase("本地演练不会覆盖生产数据；远端演练需要对应凭据。", "Local drills never overwrite production data; remote drills require provider credentials.")}</small></header><div className="p21-run-list">{operations.runs.map((run) => <div key={run.id}><span><i className={run.status}>{runStatusLabel(run.status, phrase)}</i><strong>{runKindLabel(run.kind, phrase)}</strong><small>{run.summary}</small></span><b>{run.provider ? providerLabel(run.provider, phrase) : "-"}</b><time>{formatDateTime(run.createdAt, locale)}</time></div>)}{!operations.runs.length ? <p className="p21-empty"><CircleAlert aria-hidden="true" size={15} />{phrase("还没有 P21 演练记录。", "No P21 runs yet.")}</p> : null}</div></section>
+        </section> : null}
 
         {backupConfiguration && backupForm ? <section className="system-status-panel backup-policy">
           <header className="system-panel-heading backup-policy-heading">
@@ -695,8 +844,17 @@ function enabledProviderLabel(configuration: BackupConfiguration, phrase: Phrase
   return providers.length ? providers.join(" + ") : phrase("未启用", "Not enabled");
 }
 
-function providerLabel(provider: "oss" | "r2", phrase: Phrase): string {
+function providerLabel(provider: string, phrase: Phrase): string {
+  if (provider === "local") return phrase("本地", "Local");
   return provider === "oss" ? phrase("阿里云 OSS", "Alibaba Cloud OSS") : "Cloudflare R2";
+}
+
+function runStatusLabel(status: string, phrase: Phrase): string {
+  return status === "passed" ? phrase("通过", "Passed") : status === "failed" ? phrase("失败", "Failed") : status === "blocked" ? phrase("阻塞", "Blocked") : phrase("执行中", "Running");
+}
+
+function runKindLabel(kind: string, phrase: Phrase): string {
+  return kind === "recovery_drill" ? phrase("恢复演练", "Recovery drill") : kind === "alert_check" ? phrase("告警检查", "Alert check") : kind === "dependency_review" ? phrase("依赖评估", "Dependency review") : kind === "load_test" ? phrase("压测记录", "Load test") : phrase("审计清理", "Audit cleanup");
 }
 
 function mediaJobStatusLabel(status: MediaBackupJob["status"], phrase: Phrase): string {

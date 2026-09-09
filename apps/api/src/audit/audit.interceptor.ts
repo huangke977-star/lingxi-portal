@@ -88,6 +88,10 @@ export class AuditInterceptor implements NestInterceptor {
     const method = request.method.toUpperCase();
     const path = request.path;
     const isMutation = ["POST", "PATCH", "PUT", "DELETE"].includes(method);
+    if (path.startsWith("/admin/system/operations")) {
+      if (!isMutation) return null;
+      return this.entry(method, path, "server", "operations_resilience", "运营韧性与演练");
+    }
     if (path.startsWith("/admin/system")) {
       if (!isMutation && !/\/backups\/[^/]+\/download$/.test(path)) return null;
       return this.entry(method, path, "server", "database_backup", "数据库备份操作");

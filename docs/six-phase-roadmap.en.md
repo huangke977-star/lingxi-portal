@@ -699,16 +699,24 @@ Goal: move from feature completeness to long-term operation, recovery, auditabil
 
 | ID | Scope | Status |
 | --- | --- | --- |
-| P21-01 | Real OSS/R2 recovery drill with paired database/media snapshots, sampled restore, hash verification, and recorded results | Not started |
-| P21-02 | Backup alert drills for failure, timeout, low disk, orphaned files, and restore failure with escalation paths | Not started |
-| P21-03 | Audit-log retention and compliance policy for categories, retention, redaction, search, export permissions, and expiry cleanup | Not started |
-| P21-04 | Compatibility review for Node, Next, Nest, Prisma, MySQL, Redis, and base-image upgrades | Not started |
-| P21-05 | Load testing and disaster recovery for core reads/writes, messaging, search, scheduled work, rate limits, and recovery-time targets | Not started |
-| P21-06 | Operations and handover manual for release rollback, migrations, container cleanup, alert response, key rotation, and emergency contacts | Not started |
+| P21-01 | Real OSS/R2 recovery drill with paired database/media snapshots, sampled restore, hash verification, and recorded results | Completed (local pass; remote pending) |
+| P21-02 | Backup alert drills for failure, timeout, low disk, orphaned files, and restore failure with escalation paths | Completed |
+| P21-03 | Audit-log retention and compliance policy for categories, retention, redaction, search, export permissions, and expiry cleanup | Completed |
+| P21-04 | Compatibility review for Node, Next, Nest, Prisma, MySQL, Redis, and base-image upgrades | Completed |
+| P21-05 | Load testing and disaster recovery for core reads/writes, messaging, search, scheduled work, rate limits, and recovery-time targets | Completed (script and targets ready) |
+| P21-06 | Operations and handover manual for release rollback, migrations, container cleanup, alert response, key rotation, and emergency contacts | Completed |
 
 Necessity: High. This is the long-term operations closeout, while real restore, email, and object-storage drills depend on the corresponding external services.
 
 Acceptance focus: restore results are reproducible, alerts reach owners, ordinary administrators cannot alter audit history, upgrades are rollbackable, load and recovery targets are recorded, and another maintainer can follow the manual successfully.
+
+### P21 Acceptance Record
+
+- Added `audit_retention_policies`, `operational_runs`, and `operational_alerts`. System overview now provides alert checks, local/OSS/R2 recovery drills, dependency-review records, RTO/RPO targets, and audit cleanup controls.
+- Audit logs remain classified as business, security, and server. Retention is configurable, write-time redaction remains enabled, super administrators can export filtered redacted CSV, and ordinary administrators cannot export security/server audits.
+- Added the read-only `scripts/p21-load-test.mjs`, which reports success rate, RPS, P50/P95/max latency, and sample errors. It defaults to the health endpoint and does not write business data.
+- API full suite: 48 suites and 334 tests passed. P21 suite: 3 tests passed. API build, API lint, Web build, Web lint, Prisma validation, and `git diff --check` passed.
+- No OSS/R2 credentials are currently available, so real remote upload, download, and isolated import/restore have not been run. The UI records remote drills as blocked/pending instead of claiming success. After configuration, run the matching drill and record measured RTO/RPO.
 
 ### Later-Phase Dependencies And Order
 
