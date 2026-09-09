@@ -40,6 +40,7 @@ import { containerRuntimeMessage, mediaBackupLogMessage, storageCategoryLabel } 
 import {
   createDatabaseBackup,
   deleteDatabaseBackup,
+  deleteDatabaseBackups,
   downloadDatabaseBackup,
   getBackupConfiguration,
   getBackupRestorePreflight,
@@ -110,6 +111,7 @@ export default function SystemStatusPage() {
   const [restoreConfirmation, setRestoreConfirmation] = useState("");
   const [restorePreflight, setRestorePreflight] = useState<BackupRestorePreflight | null>(null);
   const [postRestoreStorageScanId, setPostRestoreStorageScanId] = useState<number | null>(null);
+  const [selectedBackupNames, setSelectedBackupNames] = useState<string[]>([]);
 
   const loadStatus = useCallback(async (token: string, refresh = false) => {
     if (refresh) setIsRefreshing(true);
@@ -298,18 +300,33 @@ export default function SystemStatusPage() {
     }
   }
 
-  async function handleDeleteBackup(name: string) {
-    if (!accessToken || backupBusy || !(await confirm(phrase(`永久删除备份 ${name} 吗？`, `Permanently delete backup ${name}?`), { danger: true }))) return;
-    setBackupBusy(`delete:${name}`);
+  async function handleDeleteBackups(names: string[]) {
+    if (!accessToken || backupBusy || !names.length) return;
+    const confirmation = names.length === 1
+      ? phrase(`永久删除备份 ${names[0]} 吗？`, `Permanently delete backup ${names[0]}?`)
+      : phrase(`永久删除选中的 ${names.length} 份备份吗？`, `Permanently delete ${names.length} selected backups?`);
+    if (!(await confirm(confirmation, { danger: true }))) return;
+    setBackupBusy(names.length === 1 ? `delete:${names[0]}` : "delete-batch");
     setError("");
     try {
-      await deleteDatabaseBackup(accessToken, name);
-      await refreshAfterBackup(phrase("备份文件已删除。", "Backup file deleted."));
+      const deletedCount = names.length === 1
+        ? (await deleteDatabaseBackup(accessToken, names[0]), 1)
+        : (await deleteDatabaseBackups(accessToken, names)).deletedCount;
+      setSelectedBackupNames((current) => current.filter((name) => !names.includes(name)));
+      await refreshAfterBackup(
+        names.length === 1
+          ? phrase("备份文件已删除。", "Backup file deleted.")
+          : phrase(`已删除 ${deletedCount} 份备份。`, `${deletedCount} backups deleted.`),
+      );
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : phrase("备份删除失败。", "Could not delete the backup."));
     } finally {
       setBackupBusy("");
     }
+  }
+
+  async function handleDeleteBackup(name: string) {
+    await handleDeleteBackups([name]);
   }
 
   async function handleVerifyBackup(name: string) {
@@ -399,7 +416,7 @@ export default function SystemStatusPage() {
     setError("");
     try {
       const run = await startP21RecoveryDrill(accessToken, provider);
-      await loadOperations(accessToken);
+      await Promise.all([loadOperations(accessToken), loadStatus(accessToken), loadBackupConfiguration(accessToken)]);
       setNotice(run.status === "passed" ? phrase("恢复演练已完成并通过校验。", "Recovery drill completed and passed verification.") : run.status === "blocked" ? phrase("恢复演练暂未执行，原因已记录。", "Recovery drill was blocked; the reason was recorded.") : phrase("恢复演练未通过，请查看记录。", "Recovery drill did not pass. Review the run record."));
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : phrase("恢复演练失败。", "Recovery drill failed."));
@@ -468,6 +485,8 @@ export default function SystemStatusPage() {
   }
 
   const pageDescription = phrase("查看应用、数据库、缓存和备份运行状态。", "Monitor application, database, cache, and backup status.");
+  const backupItems = status?.backups.items ?? [];
+  const allBackupsSelected = backupItems.length > 0 && backupItems.every((backup) => selectedBackupNames.includes(backup.name));
 
   if (isLoading) return <AdminPageLoading className="system-status-shell" description={pageDescription} loadingLabel={phrase("正在读取系统状态", "Loading system status")} title={phrase("系统运行概览", "System overview")} />;
 
@@ -526,13 +545,13 @@ export default function SystemStatusPage() {
         </section>
 
         <section className="system-status-panel backups">
-          <header className="system-panel-heading system-backup-heading"><span><Archive aria-hidden="true" size={17} /><strong>{phrase("数据库备份", "Database backups")}</strong></span><button disabled={Boolean(backupBusy)} onClick={() => void handleCreateBackup()} type="button">{backupBusy === "create" ? phrase("备份中", "Backing up") : phrase("立即备份", "Back up now")}</button></header>
+          <header className="system-panel-heading system-backup-heading"><span><Archive aria-hidden="true" size={17} /><strong>{phrase("数据库备份", "Database backups")}</strong></span><div className="system-backup-heading-actions"><label className="system-backup-select-all"><input checked={allBackupsSelected} disabled={!backupItems.length || Boolean(backupBusy)} onChange={(event) => setSelectedBackupNames(event.target.checked ? backupItems.map((backup) => backup.name) : [])} type="checkbox" /><span>{selectedBackupNames.length ? phrase(`已选 ${selectedBackupNames.length}`, `${selectedBackupNames.length} selected`) : phrase("全选", "Select all")}</span></label><button disabled={!selectedBackupNames.length || Boolean(backupBusy)} onClick={() => void handleDeleteBackups(selectedBackupNames)} type="button">{phrase("批量删除", "Delete selected")}</button><button disabled={Boolean(backupBusy)} onClick={() => void handleCreateBackup()} type="button">{backupBusy === "create" ? phrase("备份中", "Backing up") : phrase("立即备份", "Back up now")}</button></div></header>
           <div className="system-backup-summary">
             <span><Clock3 aria-hidden="true" size={16} /><small>{phrase("最近备份", "Latest backup")}</small><strong>{status.backups.latest ? formatDateTime(status.backups.latest.updatedAt, locale) : phrase("暂无可见备份", "No visible backups")}</strong></span>
             <span><HardDrive aria-hidden="true" size={16} /><small>{phrase("备份占用", "Backup usage")}</small><strong>{formatBytes(status.backups.totalBytes)}</strong></span>
           </div>
           <div className="system-backup-list">
-            {status.backups.items.map((backup) => <div className="system-backup-row" key={backup.name}><span><strong title={backup.name}>{backup.name}</strong><small>{formatDateTime(backup.updatedAt, locale)} · SQL {formatBytes(backup.sizeBytes)} · {backup.mediaSnapshotAvailable ? phrase(`媒体 ${formatBytes(backup.mediaSnapshotSizeBytes ?? 0)}`, `Media ${formatBytes(backup.mediaSnapshotSizeBytes ?? 0)}`) : phrase("仅数据库", "Database only")}</small><i className={`backup-verification ${backup.verification.status}`}>{backupVerificationLabel(backup.verification.status, phrase)}</i></span><b>{formatBytes(backup.sizeBytes + (backup.mediaSnapshotSizeBytes ?? 0))}</b><span className="system-backup-actions"><button aria-label={phrase(`下载 ${backup.name}`, `Download ${backup.name}`)} disabled={Boolean(backupBusy)} onClick={() => void handleDownloadBackup(backup.name)} title={phrase("下载", "Download")} type="button"><Download aria-hidden="true" size={15} /></button><button aria-label={phrase(`校验 ${backup.name}`, `Verify ${backup.name}`)} disabled={Boolean(backupBusy)} onClick={() => void handleVerifyBackup(backup.name)} title={phrase("校验备份", "Verify backup")} type="button"><ShieldCheck aria-hidden="true" size={15} /></button><button aria-label={phrase(`恢复 ${backup.name}`, `Restore ${backup.name}`)} disabled={Boolean(backupBusy)} onClick={() => void handleOpenRestoreBackup(backup.name)} title={phrase("恢复", "Restore")} type="button"><ArchiveRestore aria-hidden="true" size={15} /></button><button aria-label={phrase(`删除 ${backup.name}`, `Delete ${backup.name}`)} disabled={Boolean(backupBusy)} onClick={() => void handleDeleteBackup(backup.name)} title={phrase("删除", "Delete")} type="button"><Trash2 aria-hidden="true" size={15} /></button></span></div>)}
+            {status.backups.items.map((backup) => <div className="system-backup-row" key={backup.name}><label className="system-backup-row-check"><input checked={selectedBackupNames.includes(backup.name)} disabled={Boolean(backupBusy)} onChange={(event) => setSelectedBackupNames((current) => event.target.checked ? [...current, backup.name] : current.filter((name) => name !== backup.name))} type="checkbox" /><span><strong title={backup.name}>{backup.name}</strong><small>{formatDateTime(backup.updatedAt, locale)} · SQL {formatBytes(backup.sizeBytes)} · {backup.mediaSnapshotAvailable ? phrase(`媒体 ${formatBytes(backup.mediaSnapshotSizeBytes ?? 0)}`, `Media ${formatBytes(backup.mediaSnapshotSizeBytes ?? 0)}`) : phrase("仅数据库", "Database only")}</small><i className={`backup-verification ${backup.verification.status}`}>{backupVerificationLabel(backup.verification.status, phrase)}</i></span></label><b>{formatBytes(backup.sizeBytes + (backup.mediaSnapshotSizeBytes ?? 0))}</b><span className="system-backup-actions"><button aria-label={phrase(`下载 ${backup.name}`, `Download ${backup.name}`)} disabled={Boolean(backupBusy)} onClick={() => void handleDownloadBackup(backup.name)} title={phrase("下载", "Download")} type="button"><Download aria-hidden="true" size={15} /></button><button aria-label={phrase(`校验 ${backup.name}`, `Verify ${backup.name}`)} disabled={Boolean(backupBusy)} onClick={() => void handleVerifyBackup(backup.name)} title={phrase("校验备份", "Verify backup")} type="button"><ShieldCheck aria-hidden="true" size={15} /></button><button aria-label={phrase(`恢复 ${backup.name}`, `Restore ${backup.name}`)} disabled={Boolean(backupBusy)} onClick={() => void handleOpenRestoreBackup(backup.name)} title={phrase("恢复", "Restore")} type="button"><ArchiveRestore aria-hidden="true" size={15} /></button><button aria-label={phrase(`删除 ${backup.name}`, `Delete ${backup.name}`)} disabled={Boolean(backupBusy)} onClick={() => void handleDeleteBackup(backup.name)} title={phrase("删除", "Delete")} type="button"><Trash2 aria-hidden="true" size={15} /></button></span></div>)}
             {!status.backups.items.length ? <p>{status.backups.available ? phrase("备份目录中暂无 SQL 备份文件。", "No SQL backups in the backup directory.") : phrase("备份目录尚未挂载或不可读取。", "Backup directory is not mounted or cannot be read.")}</p> : null}
           </div>
           {postRestoreStorageScanId ? <p className="backup-post-restore-scan"><ShieldCheck aria-hidden="true" size={15} />{phrase("恢复后的附件扫描已启动。", "Post-restore attachment scan started.")}<Link href={localizedPath(`/admin/storage?scan=${postRestoreStorageScanId}`, locale)}>{phrase("查看扫描与修复", "View scan and repairs")}</Link></p> : null}

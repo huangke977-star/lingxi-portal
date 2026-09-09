@@ -204,6 +204,19 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async deleteBackups(rawNames: string[]): Promise<{ success: true; deletedCount: number }> {
+    return this.withBackupLock("delete", async () => {
+      const names = rawNames.map((rawName) => this.backupName(rawName));
+      await Promise.all(names.map((name) => this.backupFileStat(join(this.backupDirectory, name))));
+      await Promise.all(names.flatMap((name) => [
+        unlink(join(this.backupDirectory, name)),
+        unlink(this.mediaSnapshotPath(name)).catch(() => undefined),
+        unlink(this.verificationPath(name)).catch(() => undefined),
+      ]));
+      return { success: true, deletedCount: names.length };
+    });
+  }
+
   async verifyBackup(rawName: string): Promise<DatabaseBackupResponse> {
     return this.withBackupLock("verify", async () => {
       const name = this.backupName(rawName);

@@ -1,8 +1,12 @@
 import { Type } from "class-transformer";
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  ArrayUnique,
   IsBoolean,
   IsIn,
   IsInt,
+  IsArray,
   IsOptional,
   IsString,
   Matches,
@@ -16,6 +20,16 @@ export class RestoreBackupDto {
   @IsString()
   @MaxLength(220)
   confirmation!: string;
+}
+
+export class DeleteBackupsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @MaxLength(220, { each: true })
+  names!: string[];
 }
 
 export class UpdateBackupConfigurationDto {

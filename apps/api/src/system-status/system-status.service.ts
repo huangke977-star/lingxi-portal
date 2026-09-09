@@ -114,6 +114,10 @@ export class SystemStatusService {
     return this.backups.deleteBackup(rawName);
   }
 
+  async deleteBackups(rawNames: string[]): Promise<{ success: true; deletedCount: number }> {
+    return this.backups.deleteBackups(rawNames);
+  }
+
   getRestorePreflight(rawName: string): Promise<BackupRestorePreflightResponse> {
     return this.backups.getRestorePreflight(rawName);
   }

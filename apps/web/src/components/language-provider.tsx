@@ -1,9 +1,10 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { updateMyLocale } from "@/lib/auth-api";
 import { readAccessToken } from "@/lib/auth-storage";
-import { inlineTranslation, LOCALE_COOKIE, LOCALE_STORAGE_KEY, type Locale, supportedLocales, translate, type TranslationKey } from "@/lib/i18n";
+import { inlineTranslation, localeFromPath, LOCALE_COOKIE, LOCALE_STORAGE_KEY, type Locale, supportedLocales, translate, type TranslationKey } from "@/lib/i18n";
 
 interface LanguageContextValue {
   locale: Locale;
@@ -15,7 +16,9 @@ interface LanguageContextValue {
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ initialLocale, children }: { initialLocale: Locale; children: ReactNode }) {
+  const pathname = usePathname();
   const [locale, setLocale] = useState<Locale>(initialLocale);
+  const activeLocale = pathname ? localeFromPath(pathname) : locale;
 
   const changeLocale = useCallback((nextLocale: Locale) => {
     setLocale(nextLocale);
@@ -24,17 +27,17 @@ export function LanguageProvider({ initialLocale, children }: { initialLocale: L
   }, []);
 
   useEffect(() => {
-    document.documentElement.lang = locale;
-    window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
-    document.cookie = `${LOCALE_COOKIE}=${encodeURIComponent(locale)}; Path=/; Max-Age=31536000; SameSite=Lax`;
-  }, [locale]);
+    document.documentElement.lang = activeLocale;
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, activeLocale);
+    document.cookie = `${LOCALE_COOKIE}=${encodeURIComponent(activeLocale)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+  }, [activeLocale]);
 
   const value = useMemo<LanguageContextValue>(() => ({
-    locale,
+    locale: activeLocale,
     setLocale: changeLocale,
-    t: (key, values) => translate(locale, key, values),
-    phrase: (chinese, english) => inlineTranslation(locale, chinese, english),
-  }), [changeLocale, locale]);
+    t: (key, values) => translate(activeLocale, key, values),
+    phrase: (chinese, english) => inlineTranslation(activeLocale, chinese, english),
+  }), [activeLocale, changeLocale]);
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }

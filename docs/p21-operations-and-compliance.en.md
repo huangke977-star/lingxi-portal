@@ -8,8 +8,10 @@ P21 turns backup, storage inspection, audit, upgrades, and release work into a r
 - **Alerts and escalation**: the overview checks database/remote backup failures, disk threshold breaches, missing files, and orphan files. Alerts retain first-seen time, last-seen time, occurrence count, acknowledgement, and resolution state. The path is acknowledge, preserve the record, follow the backup/disk/storage procedure, then resolve.
 - **Audit retention**: audits are classified as business, security, or server. Defaults are 180, 365, and 90 days and can be changed by a super administrator from 7 to 3650 days. Sensitive fields are redacted at write time. Export is super-admin-only and limited to 10,000 filtered rows; CSV does not contain plaintext passwords, tokens, or secrets.
 - **Dependency assessment**: the page reads API/Web `package.json` files and production Compose image versions, marking pinned, ranged, or unreadable entries with upgrade notes. It is an assessment, not an automatic production upgrade.
+- **Recovery targets**: the page shows built-in RPO, RTO, media-integrity, and interface-degradation targets for comparison with drill results; these values are currently fixed on the server and have no admin configuration UI.
 - **Load-test script**: `scripts/p21-load-test.mjs` is read-only and defaults to `/health`. Configure `P21_BASE_URL`, `P21_LOAD_PATHS`, `P21_CONCURRENCY`, `P21_DURATION_SECONDS`, and `P21_ACCESS_TOKEN` to measure request count, success rate, RPS, P50/P95/max latency, and sample errors.
 - **Release and recovery**: release, migration, API/Web recreation, and container cleanup remain owned by Compose, GitHub Actions, 1Panel, or SSH; the Web API never receives host Docker access.
+- **Backup list maintenance**: database backups can be deleted individually or selected for batch deletion; batch deletion uses one server-side lock and also removes matching media snapshots and verification records.
 
 ## Current OSS/R2 boundary
 

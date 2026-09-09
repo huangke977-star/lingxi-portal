@@ -679,6 +679,14 @@ export function deleteDatabaseBackup(accessToken: string, name: string): Promise
   return requestJson(`/admin/system/backups/${encodeURIComponent(name)}`, { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } });
 }
 
+export function deleteDatabaseBackups(accessToken: string, names: string[]): Promise<{ success: true; deletedCount: number }> {
+  return requestJson("/admin/system/backups/batch-delete", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ names }),
+  });
+}
+
 export function getBackupRestorePreflight(accessToken: string, name: string): Promise<BackupRestorePreflight> {
   return requestJson(`/admin/system/backups/${encodeURIComponent(name)}/preflight`, {
     cache: "no-store",

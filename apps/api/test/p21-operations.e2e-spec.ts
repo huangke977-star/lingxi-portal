@@ -5,6 +5,7 @@ import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { P21OperationsService } from "../src/system-status/p21-operations.service";
+import { SystemStatusService } from "../src/system-status/system-status.service";
 
 const users = [
   { id: 1, username: "admin", nickname: "超级管理员", email: "admin@example.com", status: "active", isSuperAdmin: true, isAdministrator: false },
@@ -41,6 +42,9 @@ function prismaMock() {
 describe("P21 operational resilience endpoints (e2e)", () => {
   let app: INestApplication;
   let jwt: JwtService;
+  const systemStatusMock = {
+    deleteBackups: jest.fn(async (names: string[]) => ({ success: true, deletedCount: names.length })),
+  };
   const serviceMock = {
     getOverview: jest.fn(async () => ({ generatedAt: "2026-09-09T00:00:00.000Z", auditPolicy: { cleanupEnabled: true, businessDays: 180, securityDays: 365, serverDays: 90, lastCleanupAt: null, lastCleanupCount: 0 }, alerts: [], runs: [], dependencyAssessment: { generatedAt: "2026-09-09T00:00:00.000Z", source: "package-manifests", items: [] }, recoveryTargets: [], externalStorage: { ossConfigured: false, r2Configured: false, encryptionConfigured: false, message: "待配置" } })),
     listRuns: jest.fn(async () => []),
@@ -59,6 +63,7 @@ describe("P21 operational resilience endpoints (e2e)", () => {
     process.env.JWT_ACCESS_SECRET = "p21-test-access-secret";
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PrismaService).useValue(prismaMock())
+      .overrideProvider(SystemStatusService).useValue(systemStatusMock)
       .overrideProvider(P21OperationsService).useValue(serviceMock)
       .compile();
     app = moduleRef.createNestApplication();
@@ -97,5 +102,12 @@ describe("P21 operational resilience endpoints (e2e)", () => {
     await request(app.getHttpServer()).post("/admin/system/operations/audit-cleanup").set("Authorization", `Bearer ${await tokenFor(1)}`).expect(201);
     expect(serviceMock.updateAuditPolicy).toHaveBeenCalledWith({ cleanupEnabled: true, businessDays: 200, securityDays: 400, serverDays: 90 });
     expect(serviceMock.cleanupAuditLogs).toHaveBeenCalledTimes(1);
+  });
+
+  it("validates and forwards batch backup deletion", async () => {
+    const names = ["backup-a.sql.gz", "backup-b.sql.gz"];
+    await request(app.getHttpServer()).post("/admin/system/backups/batch-delete").set("Authorization", `Bearer ${await tokenFor(1)}`).send({ names }).expect(201).expect(({ body }) => expect(body).toEqual({ success: true, deletedCount: 2 }));
+    await request(app.getHttpServer()).post("/admin/system/backups/batch-delete").set("Authorization", `Bearer ${await tokenFor(1)}`).send({ names: [] }).expect(400);
+    expect(systemStatusMock.deleteBackups).toHaveBeenCalledWith(names);
   });
 });

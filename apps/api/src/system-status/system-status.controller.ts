@@ -23,6 +23,7 @@ import { SuperAdminGuard } from "../auth/guards/super-admin.guard";
 import { SystemStatusService } from "./system-status.service";
 import { SystemStatusResponse } from "./system-status.types";
 import {
+  DeleteBackupsDto,
   RestoreBackupDto,
   TestBackupProviderDto,
   UpdateBackupConfigurationDto,
@@ -72,6 +73,11 @@ export class SystemStatusController {
   @Post("backups")
   createBackup() {
     return this.systemStatusService.createBackup();
+  }
+
+  @Post("backups/batch-delete")
+  deleteBackups(@Body() dto: DeleteBackupsDto) {
+    return this.systemStatusService.deleteBackups(dto.names);
   }
 
   @Get("backups/:name/preflight")
