@@ -37,6 +37,7 @@ import { type AuthUser, getMe, isAuthExpiredError } from "@/lib/auth-api";
 import { clearAuthTokens, readAccessToken } from "@/lib/auth-storage";
 import { localizedPath } from "@/lib/i18n";
 import { containerRuntimeMessage, mediaBackupLogMessage, storageCategoryLabel } from "@/lib/system-labels";
+import { runP22BrowserAcceptance, type P22BrowserAcceptanceResult } from "@/lib/p22-browser-check";
 import {
   createDatabaseBackup,
   deleteDatabaseBackup,
@@ -101,6 +102,7 @@ export default function SystemStatusPage() {
   const [selectedMediaJob, setSelectedMediaJob] = useState<MediaBackupJobDetail | null>(null);
   const [operations, setOperations] = useState<P21OperationsOverview | null>(null);
   const [quality, setQuality] = useState<P22QualityOverview | null>(null);
+  const [browserRun, setBrowserRun] = useState<P22BrowserAcceptanceResult | null>(null);
   const [selectedRun, setSelectedRun] = useState<OperationalRun | null>(null);
   const [auditPolicyForm, setAuditPolicyForm] = useState<P21OperationsOverview["auditPolicy"] | null>(null);
   const [loadTestForm, setLoadTestForm] = useState({ paths: ["/health"], concurrency: 4, durationSeconds: 15 });
@@ -432,11 +434,22 @@ export default function SystemStatusPage() {
     setQualityBusy(true);
     setError("");
     try {
-      const run = await runP22QualityCheck(accessToken);
-      await loadQuality(accessToken);
-      setNotice(run.status === "passed"
-        ? phrase("P22 质量检查通过。", "P22 quality check passed.")
-        : phrase("P22 质量检查发现问题，请查看检查项。", "P22 quality check found issues. Review the checks."));
+      const [serverResult, browserResult] = await Promise.allSettled([
+        runP22QualityCheck(accessToken),
+        runP22BrowserAcceptance(),
+      ]);
+      if (browserResult.status === "fulfilled") setBrowserRun(browserResult.value);
+      if (serverResult.status === "fulfilled") await loadQuality(accessToken);
+      const serverPassed = serverResult.status === "fulfilled" && serverResult.value.status === "passed";
+      const browserPassed = browserResult.status === "fulfilled" && browserResult.value.passed;
+      const checkErrors = [
+        serverResult.status === "rejected" ? (serverResult.reason instanceof Error ? serverResult.reason.message : String(serverResult.reason)) : "",
+        browserResult.status === "rejected" ? (browserResult.reason instanceof Error ? browserResult.reason.message : String(browserResult.reason)) : "",
+      ].filter(Boolean);
+      if (checkErrors.length) setError(checkErrors.join("；"));
+      setNotice(serverPassed && browserPassed
+        ? phrase("一键验收全部通过。", "One-click acceptance passed.")
+        : phrase("验收完成，请查看具体检查项。", "Acceptance finished. Review the individual checks."));
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : phrase("P22 质量检查失败。", "P22 quality check failed."));
     } finally {
@@ -707,11 +720,12 @@ export default function SystemStatusPage() {
         {quality ? <section className="system-status-panel p22-quality-panel">
           <header className="system-panel-heading p21-heading">
             <span><ShieldCheck aria-hidden="true" size={17} /><strong>{phrase("P22 生产质量", "P22 production quality")}</strong></span>
-            <div className="p21-heading-actions"><button disabled={qualityBusy} onClick={() => void handleQualityCheck()} type="button"><ClipboardCheck aria-hidden="true" size={14} />{qualityBusy ? phrase("检查中", "Checking") : phrase("执行质量检查", "Run quality check")}</button></div>
+            <div className="p21-heading-actions"><button disabled={qualityBusy} onClick={() => void handleQualityCheck()} type="button"><ClipboardCheck aria-hidden="true" size={14} />{qualityBusy ? phrase("验收中", "Checking") : phrase("一键验收", "Run acceptance")}</button></div>
           </header>
-          <p className="p21-intro">{phrase("检查数据库、Redis、迁移、媒体完整性和远端备份前置条件。浏览器冒烟与视觉回归在仓库脚本中执行，不会把 OSS/R2 未配置伪装成通过。", "Checks database, Redis, migrations, media integrity, and remote backup prerequisites. Browser smoke and visual regression run from repository scripts; missing OSS/R2 is never reported as a false pass.")}</p>
+          <p className="p21-intro">{phrase("一键检查数据库、Redis、迁移、媒体完整性、远端备份条件和当前浏览器中的公开页面。下方命令仅供开发或流水线使用。", "One click checks the database, Redis, migrations, media integrity, remote-backup prerequisites, and public pages in this browser. Commands below are for development or CI only.")}</p>
           <div className="p22-quality-grid">{quality.checks.map((check) => <article className={`p22-quality-check ${check.status}`} key={check.id}><span><strong>{phrase(check.label, check.labelEn)}</strong><small>{phrase(check.description, check.descriptionEn)}</small></span><b>{phrase(check.detail, check.detailEn)}</b><i>{qualityStatusLabel(check.status, phrase)}</i></article>)}</div>
-          <div className="p22-browser-checks"><header><strong>{phrase("浏览器验收脚本", "Browser acceptance scripts")}</strong><small>{phrase("在本地生产构建或线上地址执行；只读，不创建业务数据。", "Run against a local production build or deployed URL; read-only and data-free.")}</small></header>{quality.browserChecks.map((check) => <div key={check.id}><span><strong>{phrase(check.label, check.labelEn)}</strong><small>{phrase(check.description, check.descriptionEn)}</small></span><code>{check.command}</code></div>)}</div>
+          {browserRun ? <BrowserAcceptanceResult result={browserRun} phrase={phrase} /> : null}
+          <div className="p22-browser-checks"><header><strong>{phrase("开发/流水线脚本", "Development / CI scripts")}</strong><small>{phrase("日常直接使用上方一键验收；视觉基线像素比较仍需在项目目录执行。", "Use one-click acceptance above for daily checks; pixel baseline comparison still runs from the project directory.")}</small></header>{quality.browserChecks.map((check) => <div key={check.id}><span><strong>{phrase(check.label, check.labelEn)}</strong><small>{phrase(check.description, check.descriptionEn)}</small></span><code>{check.command}</code></div>)}</div>
           {quality.latestRun ? <p className="p22-quality-last">{phrase("最近检查", "Latest check")}：{runStatusLabel(quality.latestRun.status, phrase)} · {formatDateTime(quality.latestRun.createdAt, locale)} · {quality.latestRun.summary}</p> : <p className="p22-quality-last">{phrase("尚未执行 P22 质量检查。", "P22 quality check has not run yet.")}</p>}
         </section> : null}
 
@@ -856,6 +870,21 @@ function ClientErrorList({ errors, locale, phrase }: {
       <span><time>{formatDateTime(error.occurredAt, locale)}</time></span>
       <p title={error.path}>{error.path}{error.buildId ? ` · ${error.buildId}` : ""}</p>
     </article>)}</div> : <p>{phrase("最近没有前端错误", "No recent client errors")}</p>}
+  </div>;
+}
+
+function BrowserAcceptanceResult({ result, phrase }: { result: P22BrowserAcceptanceResult; phrase: Phrase }) {
+  const checks = [...result.contract, ...result.pages];
+  return <div className="p22-browser-run">
+    <header>
+      <strong>{phrase("本次浏览器验收", "Browser acceptance result")}</strong>
+      <span className={result.passed ? "passed" : "failed"}>{result.passed ? phrase(`${checks.length} 项通过`, `${checks.length} checks passed`) : phrase("发现问题", "Issues found")}</span>
+    </header>
+    <div className="p22-browser-run-list">{checks.map((check) => <div className="p22-browser-run-item" key={check.id}>
+      <i className={check.status}>{check.status === "passed" ? phrase("通过", "Pass") : phrase("失败", "Fail")}</i>
+      <span><strong title={phrase(check.label, check.labelEn)}>{phrase(check.label, check.labelEn)}</strong><small title={phrase(check.detail, check.detailEn)}>{phrase(check.detail, check.detailEn)}</small></span>
+      <time>{check.latencyMs.toFixed(1)} ms</time>
+    </div>)}</div>
   </div>;
 }
 

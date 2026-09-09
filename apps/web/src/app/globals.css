@@ -22091,6 +22091,20 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .p22-browser-checks > div small { color: var(--muted); font-size: 0.58rem; }
 .p22-browser-checks code { color: var(--accent-strong); font: 0.6rem/1.35 ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; text-align: right; }
 .p22-quality-last { color: var(--muted); font-size: 0.62rem; margin: 0; }
+.p22-browser-run { background: color-mix(in srgb, var(--control-surface) 52%, transparent); border-radius: 7px; display: grid; gap: 8px; padding: 10px; }
+.p22-browser-run > header { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
+.p22-browser-run > header strong { color: var(--foreground); font-size: 0.7rem; }
+.p22-browser-run > header span { font-size: 0.6rem; }
+.p22-browser-run > header span.passed { color: #237d5b; }
+.p22-browser-run > header span.failed { color: #b4233b; }
+.p22-browser-run-list { display: grid; gap: 4px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.p22-browser-run-item { align-items: center; display: grid; gap: 8px; grid-template-columns: auto minmax(0, 1fr) auto; min-width: 0; }
+.p22-browser-run-item i { border-radius: 999px; font-size: 0.55rem; font-style: normal; padding: 2px 5px; }
+.p22-browser-run-item i.passed { background: rgba(40, 151, 105, 0.12); color: #237d5b; }
+.p22-browser-run-item i.failed { background: rgba(190, 63, 78, 0.12); color: #b4233b; }
+.p22-browser-run-item strong { color: var(--foreground); font-size: 0.61rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p22-browser-run-item small { color: var(--muted); font-size: 0.57rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p22-browser-run-item time { color: var(--muted); font-size: 0.56rem; white-space: nowrap; }
 .system-monitoring-events.client-errors article { grid-template-columns: minmax(0, 1fr) auto; }
 .system-monitoring-events.client-errors article > p { grid-column: 1 / -1; }
 
@@ -22103,6 +22117,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .p22-browser-checks > header { align-items: flex-start; flex-direction: column; }
   .p22-browser-checks > div { grid-template-columns: 1fr; }
   .p22-browser-checks code { text-align: left; }
+  .p22-browser-run-list { grid-template-columns: 1fr; }
 }
 .p21-drill-actions { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .p21-drill-actions button { align-items: flex-start; background: color-mix(in srgb, var(--control-surface) 62%, transparent); border: 1px solid color-mix(in srgb, var(--control-line) 58%, transparent); border-radius: 7px; color: var(--foreground); cursor: pointer; display: flex; font: inherit; gap: 8px; min-width: 0; padding: 9px; text-align: left; }

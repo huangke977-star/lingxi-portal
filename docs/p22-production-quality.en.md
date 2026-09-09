@@ -6,8 +6,9 @@ P22 turns release checks into repeatable contracts and keeps enough lightweight 
 
 ## Entry points
 
-- A super administrator opens `Admin -> System overview` and runs `P22 production quality -> Run quality check`.
+- A super administrator opens `Admin -> System overview` and clicks `P22 production quality -> Run acceptance`. The button runs the server quality checks and the public-page checks in the current browser, so daily verification does not require remembering commands.
 - Results are recorded in `Recent runs` as `Quality check`. Open `Details` to inspect each item and any OSS/R2 prerequisite block.
+- The current browser result appears immediately in the P22 section, covering nine release-contract checks plus desktop/mobile public-page checks. Refreshing the page still preserves the server-side result in Recent runs.
 - The `API monitoring` section shows recent client errors with source, time, page path, and build id.
 
 ## Health endpoints
@@ -18,6 +19,8 @@ P22 turns release checks into repeatable contracts and keeps enough lightweight 
 
 ## Browser and release checks
 
+For routine deployment acceptance, use `Run acceptance` in the System overview. It is read-only: it does not create articles, comments, chats, or other business data. The browser checks run in the current browser and the dependency checks run in the API.
+
 Run against a local production build or the deployed site:
 
 ```powershell
@@ -27,7 +30,7 @@ python scripts/p22-browser-smoke.py
 
 The script visits public home, English home, article, topic, and collection routes at desktop `1440px` and mobile `390px`. It checks HTTP status, console errors, page errors, failed images, and horizontal overflow. It writes screenshots to `.artifacts/p22/screenshots` and does not sign in or create data.
 
-Run the release contract:
+When a developer or CI job needs to run outside the admin page, run the release contract:
 
 ```powershell
 $env:P22_WEB_BASE_URL = "https://your-domain.example"
@@ -36,7 +39,7 @@ pnpm p22:release-check
 
 The JSON result must have `true` for every `checks[].ok`, especially `api-readiness`, both manifests, and `service-worker`.
 
-Create a visual baseline once the public pages are stable:
+Visual baseline comparison remains a development-machine operation because it reads and writes screenshot files. Use it after intentionally changing page design, not as a daily deployment step:
 
 ```powershell
 python scripts/p22-browser-smoke.py --baseline-dir scripts/p22-baselines --update-baseline
