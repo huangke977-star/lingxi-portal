@@ -22069,7 +22069,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .p21-number-field em { align-items: center; align-self: stretch; border-left: 1px solid var(--control-line); color: var(--muted); display: inline-flex; flex: 0 0 auto; font-size: 0.6rem; font-style: normal; padding: 0 6px; white-space: nowrap; }
 .p21-load-test-submit { align-items: center; align-self: end; background: transparent; border: 0; color: var(--accent-strong); cursor: pointer; display: inline-flex; font: inherit; font-size: 0.68rem; gap: 4px; padding: 4px 0; white-space: nowrap; }
 .p21-load-test-submit:disabled { cursor: wait; opacity: 0.5; }
-.p22-quality-panel { display: grid; gap: 12px; }
+.p22-quality-panel { display: grid; gap: 12px; grid-column: 1 / -1; min-width: 0; }
 .p22-quality-grid { display: grid; gap: 8px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .p22-quality-check { background: color-mix(in srgb, var(--control-surface) 58%, transparent); border-radius: 7px; display: grid; gap: 7px; min-width: 0; padding: 10px; }
 .p22-quality-check > span { display: grid; gap: 3px; min-width: 0; }
