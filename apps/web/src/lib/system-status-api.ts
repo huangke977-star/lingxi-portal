@@ -144,6 +144,7 @@ export interface SystemStatus {
     slowRequestThresholdMs: number;
     slowRequests: HttpMonitoringEvent[];
     recentErrors: HttpMonitoringEvent[];
+    recentClientErrors: ClientErrorEvent[];
     memoryTrend: Array<{
       recordedAt: string;
       rssBytes: number;
@@ -188,6 +189,15 @@ export interface SystemStatus {
   };
 }
 
+export interface ClientErrorEvent {
+  occurredAt: string;
+  source: "window-error" | "unhandled-rejection" | "manual";
+  message: string;
+  path: string;
+  stack: string | null;
+  buildId: string | null;
+}
+
 export interface P21OperationsOverview {
   generatedAt: string;
   auditPolicy: AuditRetentionPolicy;
@@ -202,6 +212,31 @@ export interface P21OperationsOverview {
     encryptionConfigured: boolean;
     message: string;
   };
+}
+
+export interface P22QualityCheck {
+  id: string;
+  label: string;
+  labelEn: string;
+  description: string;
+  descriptionEn: string;
+  status: "passed" | "warning" | "blocked" | "failed";
+  detail: string;
+  detailEn: string;
+}
+
+export interface P22QualityOverview {
+  generatedAt: string;
+  checks: P22QualityCheck[];
+  latestRun: OperationalRun | null;
+  browserChecks: Array<{
+    id: string;
+    label: string;
+    labelEn: string;
+    command: string;
+    description: string;
+    descriptionEn: string;
+  }>;
 }
 
 export interface AuditRetentionPolicy {
@@ -777,6 +812,20 @@ export function updateP21AuditPolicy(accessToken: string, policy: Omit<AuditRete
 
 export function cleanupP21AuditLogs(accessToken: string): Promise<{ deletedCount: number; policy: AuditRetentionPolicy }> {
   return requestJson("/admin/system/operations/audit-cleanup", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function getP22QualityOverview(accessToken: string): Promise<P22QualityOverview> {
+  return requestJson<P22QualityOverview>("/admin/system/quality/overview", {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function runP22QualityCheck(accessToken: string): Promise<OperationalRun> {
+  return requestJson<OperationalRun>("/admin/system/quality/release-check", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
   });

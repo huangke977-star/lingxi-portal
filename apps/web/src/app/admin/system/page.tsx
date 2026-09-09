@@ -46,6 +46,7 @@ import {
   getBackupRestorePreflight,
   getMediaBackupJob,
   getP21OperationsOverview,
+  getP22QualityOverview,
   getStorageOverview,
   getSystemStatus,
   listMediaBackupJobs,
@@ -55,6 +56,7 @@ import {
   resolveP21Alert,
   runP21AlertCheck,
   runP21DependencyReview,
+  runP22QualityCheck,
   startP21LoadTest,
   startMediaBackup,
   startP21RecoveryDrill,
@@ -71,6 +73,7 @@ import {
   type P21OperationsOverview,
   type OperationalAlert,
   type OperationalRun,
+  type P22QualityOverview,
   type StorageOverview,
   type SystemStatus,
 } from "@/lib/system-status-api";
@@ -97,10 +100,12 @@ export default function SystemStatusPage() {
   const [mediaJobs, setMediaJobs] = useState<MediaBackupJob[]>([]);
   const [selectedMediaJob, setSelectedMediaJob] = useState<MediaBackupJobDetail | null>(null);
   const [operations, setOperations] = useState<P21OperationsOverview | null>(null);
+  const [quality, setQuality] = useState<P22QualityOverview | null>(null);
   const [selectedRun, setSelectedRun] = useState<OperationalRun | null>(null);
   const [auditPolicyForm, setAuditPolicyForm] = useState<P21OperationsOverview["auditPolicy"] | null>(null);
   const [loadTestForm, setLoadTestForm] = useState({ paths: ["/health"], concurrency: 4, durationSeconds: 15 });
   const [operationsBusy, setOperationsBusy] = useState("");
+  const [qualityBusy, setQualityBusy] = useState(false);
   const [mediaBusy, setMediaBusy] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -154,6 +159,10 @@ export default function SystemStatusPage() {
     setAuditPolicyForm(value.auditPolicy);
   }, []);
 
+  const loadQuality = useCallback(async (token: string) => {
+    setQuality(await getP22QualityOverview(token));
+  }, []);
+
   useEffect(() => {
     let active = true;
     const token = readAccessToken();
@@ -166,7 +175,7 @@ export default function SystemStatusPage() {
         if (!active) return;
         setAccessToken(token);
         setCurrentUser(user);
-        if (user.isSuperAdmin) await Promise.all([loadStatus(token), loadBackupConfiguration(token), loadStorageOverview(token), loadMediaJobs(token), loadOperations(token)]);
+        if (user.isSuperAdmin) await Promise.all([loadStatus(token), loadBackupConfiguration(token), loadStorageOverview(token), loadMediaJobs(token), loadOperations(token), loadQuality(token)]);
       })
       .catch((loadError: unknown) => {
         if (isAuthExpiredError(loadError)) {
@@ -180,13 +189,13 @@ export default function SystemStatusPage() {
         if (active) setIsLoading(false);
       });
     return () => { active = false; };
-  }, [loadBackupConfiguration, loadMediaJobs, loadOperations, loadStatus, loadStorageOverview, locale, phrase, router]);
+  }, [loadBackupConfiguration, loadMediaJobs, loadOperations, loadQuality, loadStatus, loadStorageOverview, locale, phrase, router]);
 
   useEffect(() => {
     if (!accessToken || !currentUser?.isSuperAdmin) return;
-    const timer = window.setInterval(() => void Promise.all([loadStatus(accessToken), loadStorageOverview(accessToken), loadMediaJobs(accessToken), loadOperations(accessToken)]), 30_000);
+    const timer = window.setInterval(() => void Promise.all([loadStatus(accessToken), loadStorageOverview(accessToken), loadMediaJobs(accessToken), loadOperations(accessToken), loadQuality(accessToken)]), 30_000);
     return () => window.clearInterval(timer);
-  }, [accessToken, currentUser, loadMediaJobs, loadOperations, loadStatus, loadStorageOverview]);
+  }, [accessToken, currentUser, loadMediaJobs, loadOperations, loadQuality, loadStatus, loadStorageOverview]);
 
   useEffect(() => {
     if (!accessToken || !mediaJobs.some((job) => job.status === "pending" || job.status === "running")) return;
@@ -418,6 +427,23 @@ export default function SystemStatusPage() {
     }
   }
 
+  async function handleQualityCheck() {
+    if (!accessToken || qualityBusy) return;
+    setQualityBusy(true);
+    setError("");
+    try {
+      const run = await runP22QualityCheck(accessToken);
+      await loadQuality(accessToken);
+      setNotice(run.status === "passed"
+        ? phrase("P22 质量检查通过。", "P22 quality check passed.")
+        : phrase("P22 质量检查发现问题，请查看检查项。", "P22 quality check found issues. Review the checks."));
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : phrase("P22 质量检查失败。", "P22 quality check failed."));
+    } finally {
+      setQualityBusy(false);
+    }
+  }
+
   async function handleLoadTest() {
     if (!accessToken || operationsBusy || !loadTestForm.paths.length) return;
     setOperationsBusy("load-test");
@@ -613,6 +639,7 @@ export default function SystemStatusPage() {
             <header className="system-panel-heading system-monitoring-heading"><span><CircleAlert aria-hidden="true" size={17} /><strong>{phrase("接口观察", "API monitoring")}</strong></span><small>{phrase(`慢接口阈值 ${status.monitoring.slowRequestThresholdMs} ms`, `Slow request threshold ${status.monitoring.slowRequestThresholdMs} ms`)}</small></header>
             <MonitoringEventList empty={phrase("最近没有慢接口", "No recent slow requests")} events={status.monitoring.slowRequests.slice(0, 5)} title={phrase("慢接口", "Slow requests")} locale={locale} phrase={phrase} />
             <MonitoringEventList empty={phrase("最近没有 API 5xx 错误", "No recent API 5xx errors")} events={status.monitoring.recentErrors.slice(0, 5)} title={phrase("最近错误", "Recent errors")} locale={locale} phrase={phrase} />
+            <ClientErrorList errors={status.monitoring.recentClientErrors.slice(0, 5)} locale={locale} phrase={phrase} />
           </section>
         </div>
 
@@ -675,6 +702,17 @@ export default function SystemStatusPage() {
             <section className="p21-subpanel"><header><strong>{phrase("审计留存", "Audit retention")}</strong><small>{operations.auditPolicy.lastCleanupAt ? phrase(`上次清理 ${formatDateTime(operations.auditPolicy.lastCleanupAt, locale)}`, `Last cleanup ${formatDateTime(operations.auditPolicy.lastCleanupAt, locale)}`) : phrase("尚未执行清理", "No cleanup yet")}</small></header>{auditPolicyForm ? <div className="p21-audit-policy"><label><input checked={auditPolicyForm.cleanupEnabled} onChange={(event) => setAuditPolicyForm({ ...auditPolicyForm, cleanupEnabled: event.target.checked })} type="checkbox" /><span>{phrase("启用自动清理", "Enable automatic cleanup")}</span></label><div><label><span>{phrase("业务", "Business")}</span><input max={3650} min={7} onChange={(event) => setAuditPolicyForm({ ...auditPolicyForm, businessDays: Number(event.target.value) })} type="number" value={auditPolicyForm.businessDays} /></label><label><span>{phrase("安全", "Security")}</span><input max={3650} min={7} onChange={(event) => setAuditPolicyForm({ ...auditPolicyForm, securityDays: Number(event.target.value) })} type="number" value={auditPolicyForm.securityDays} /></label><label><span>{phrase("服务器", "Server")}</span><input max={3650} min={7} onChange={(event) => setAuditPolicyForm({ ...auditPolicyForm, serverDays: Number(event.target.value) })} type="number" value={auditPolicyForm.serverDays} /></label></div><p>{phrase(`上次清理删除 ${operations.auditPolicy.lastCleanupCount} 条记录。`, `${operations.auditPolicy.lastCleanupCount} entries removed in the last cleanup.`)}</p><footer><button disabled={Boolean(operationsBusy)} onClick={() => void handleCleanupAuditLogs()} type="button">{phrase("立即清理", "Clean now")}</button><button disabled={Boolean(operationsBusy)} onClick={() => void handleSaveAuditPolicy()} type="button"><Save aria-hidden="true" size={14} />{phrase("保存策略", "Save policy")}</button></footer></div> : null}</section>
           </div>
           <section className="p21-subpanel p21-runs"><header><strong>{phrase("最近演练记录", "Recent runs")}</strong><small>{phrase("本地演练不会覆盖生产数据；远端演练需要对应凭据。", "Local drills never overwrite production data; remote drills require provider credentials.")}</small></header><div className="p21-run-list">{operations.runs.map((run) => <div key={run.id}><span><i className={run.status}>{runStatusLabel(run.status, phrase)}</i><strong>{runKindLabel(run.kind, phrase)}</strong><small>{run.summary}</small></span><b>{run.provider ? providerLabel(run.provider, phrase) : "-"}</b><time>{formatDateTime(run.createdAt, locale)}</time><button aria-label={phrase(`查看运行记录 ${run.id}`, `View run ${run.id}`)} onClick={() => setSelectedRun(run)} title={phrase("查看详情", "View details")} type="button"><Files aria-hidden="true" size={14} />{phrase("详情", "Details")}</button></div>)}{!operations.runs.length ? <p className="p21-empty"><CircleAlert aria-hidden="true" size={15} />{phrase("还没有 P21 演练记录。", "No P21 runs yet.")}</p> : null}</div></section>
+        </section> : null}
+
+        {quality ? <section className="system-status-panel p22-quality-panel">
+          <header className="system-panel-heading p21-heading">
+            <span><ShieldCheck aria-hidden="true" size={17} /><strong>{phrase("P22 生产质量", "P22 production quality")}</strong></span>
+            <div className="p21-heading-actions"><button disabled={qualityBusy} onClick={() => void handleQualityCheck()} type="button"><ClipboardCheck aria-hidden="true" size={14} />{qualityBusy ? phrase("检查中", "Checking") : phrase("执行质量检查", "Run quality check")}</button></div>
+          </header>
+          <p className="p21-intro">{phrase("检查数据库、Redis、迁移、媒体完整性和远端备份前置条件。浏览器冒烟与视觉回归在仓库脚本中执行，不会把 OSS/R2 未配置伪装成通过。", "Checks database, Redis, migrations, media integrity, and remote backup prerequisites. Browser smoke and visual regression run from repository scripts; missing OSS/R2 is never reported as a false pass.")}</p>
+          <div className="p22-quality-grid">{quality.checks.map((check) => <article className={`p22-quality-check ${check.status}`} key={check.id}><span><strong>{phrase(check.label, check.labelEn)}</strong><small>{phrase(check.description, check.descriptionEn)}</small></span><b>{phrase(check.detail, check.detailEn)}</b><i>{qualityStatusLabel(check.status, phrase)}</i></article>)}</div>
+          <div className="p22-browser-checks"><header><strong>{phrase("浏览器验收脚本", "Browser acceptance scripts")}</strong><small>{phrase("在本地生产构建或线上地址执行；只读，不创建业务数据。", "Run against a local production build or deployed URL; read-only and data-free.")}</small></header>{quality.browserChecks.map((check) => <div key={check.id}><span><strong>{phrase(check.label, check.labelEn)}</strong><small>{phrase(check.description, check.descriptionEn)}</small></span><code>{check.command}</code></div>)}</div>
+          {quality.latestRun ? <p className="p22-quality-last">{phrase("最近检查", "Latest check")}：{runStatusLabel(quality.latestRun.status, phrase)} · {formatDateTime(quality.latestRun.createdAt, locale)} · {quality.latestRun.summary}</p> : <p className="p22-quality-last">{phrase("尚未执行 P22 质量检查。", "P22 quality check has not run yet.")}</p>}
         </section> : null}
 
         {backupConfiguration && backupForm ? <section className="system-status-panel backup-policy">
@@ -803,6 +841,21 @@ function MonitoringEventList({ empty, events, locale, phrase, title }: {
       <span><em>{event.statusCode}</em><em>{event.durationMs.toFixed(1)} ms</em><time>{formatDateTime(event.occurredAt, locale)}</time></span>
       {event.message ? <p title={event.message}>{event.message}</p> : null}
     </article>)}</div> : <p>{empty}</p>}
+  </div>;
+}
+
+function ClientErrorList({ errors, locale, phrase }: {
+  errors: SystemStatus["monitoring"]["recentClientErrors"];
+  locale: "zh-CN" | "en-US";
+  phrase: Phrase;
+}) {
+  return <div className="system-monitoring-events client-errors">
+    <header><strong>{phrase("前端错误", "Client errors")}</strong><span>{phrase(`${errors.length} 条`, `${errors.length} events`)}</span></header>
+    {errors.length ? <div>{errors.map((error, index) => <article key={`${error.occurredAt}-${error.message}-${index}`}>
+      <span><b>{error.source}</b><strong title={error.message}>{error.message}</strong></span>
+      <span><time>{formatDateTime(error.occurredAt, locale)}</time></span>
+      <p title={error.path}>{error.path}{error.buildId ? ` · ${error.buildId}` : ""}</p>
+    </article>)}</div> : <p>{phrase("最近没有前端错误", "No recent client errors")}</p>}
   </div>;
 }
 
@@ -945,7 +998,11 @@ function runStatusLabel(status: string, phrase: Phrase): string {
 }
 
 function runKindLabel(kind: string, phrase: Phrase): string {
-  return kind === "recovery_drill" ? phrase("恢复演练", "Recovery drill") : kind === "alert_check" ? phrase("告警检查", "Alert check") : kind === "dependency_review" ? phrase("依赖评估", "Dependency review") : kind === "load_test" ? phrase("压测记录", "Load test") : phrase("审计清理", "Audit cleanup");
+  return kind === "recovery_drill" ? phrase("恢复演练", "Recovery drill") : kind === "alert_check" ? phrase("告警检查", "Alert check") : kind === "dependency_review" ? phrase("依赖评估", "Dependency review") : kind === "load_test" ? phrase("压测记录", "Load test") : kind === "quality_check" ? phrase("质量检查", "Quality check") : phrase("审计清理", "Audit cleanup");
+}
+
+function qualityStatusLabel(status: string, phrase: Phrase): string {
+  return status === "passed" ? phrase("通过", "Passed") : status === "warning" ? phrase("预警", "Warning") : status === "blocked" ? phrase("待配置", "Blocked") : phrase("失败", "Failed");
 }
 
 function mediaJobStatusLabel(status: MediaBackupJob["status"], phrase: Phrase): string {

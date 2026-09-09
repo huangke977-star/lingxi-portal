@@ -3,7 +3,7 @@
 - Document status: Active
 - Created: 2026-08-04
 - Last updated: 2026-09-08
-- Current phase: Phase 20 completed
+- Current phase: Phase 22 completed
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -53,7 +53,8 @@ Status definitions:
 | Phase 18 | Deeper Recommendations And Resources | Recommendation explanations, recovery, redemption records, points rules, and creator earnings | Completed |
 | Phase 19 | External Integration Capability | Webhooks, read-only API tokens, external notifications, and third-party login | Completed |
 | Phase 20 | Mobile And Offline Experience | Offline PWA reading, weak-network fallback, push improvements, and native-app assessment | Completed |
-| Phase 21 | Operational Resilience And Compliance Closeout | Real recovery drills, audit retention, dependency upgrades, load testing, and DR manual | Not started |
+| Phase 21 | Operational Resilience And Compliance Closeout | Real recovery drills, audit retention, dependency upgrades, load testing, and DR manual | Completed (OSS/R2 remote drill pending configuration) |
+| Phase 22 | Production Quality And Stability | Readiness probes, client-error observability, E2E/visual regression, release contracts, and permission regression | Completed |
 
 ## 4. External Prerequisites
 
@@ -718,11 +719,34 @@ Acceptance focus: restore results are reproducible, alerts reach owners, ordinar
 - API full suite: 48 suites and 334 tests passed. P21 suite: 3 tests passed. API build, API lint, Web build, Web lint, Prisma validation, and `git diff --check` passed.
 - No OSS/R2 credentials are currently available, so real remote upload, download, and isolated import/restore have not been run. The UI records remote drills as blocked/pending instead of claiming success. After configuration, run the matching drill and record measured RTO/RPO.
 
+### Phase 22: Production Quality And Stability
+
+Goal: turn release-time manual checks into repeatable contracts and make client failures, dependency readiness, and browser regressions diagnosable.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P22-01 | Add `/health/ready` readiness probing for real MySQL and Redis checks, separate from process liveness | Completed |
+| P22-02 | Add bounded client-error intake and show recent page paths and build identifiers in System overview | Completed |
+| P22-03 | Add the P22 quality check for database, Redis, migrations, media integrity, and remote-backup prerequisites | Completed |
+| P22-04 | Add desktop/390px public-page smoke checks for console errors, failed images, and horizontal overflow | Completed |
+| P22-05 | Add optional visual baseline comparison and a release-contract script for bilingual routes, manifests, Service Worker, and read-only public APIs | Completed |
+| P22-06 | Complete bilingual operations docs, API tests, build checks, permission boundaries, and production deployment verification | Completed |
+
+Necessity: High. P22 adds no always-on monitoring platform and reuses Redis, System overview, and Playwright to keep server cost and maintenance bounded.
+
+### P22 Acceptance Record
+
+- `GET /health` reports process liveness only. `GET /health/ready` checks MySQL with `SELECT 1` and Redis with `PING`, returning `503` when either dependency is unavailable.
+- Browser errors and unhandled promise rejections are deduplicated for 30 seconds, truncated, and kept in a 100-entry Redis ring. Access tokens, cookies, and full request content are not uploaded. Super administrators can inspect recent client errors in System overview.
+- System overview now includes P22 production quality. Results are recorded in `operational_runs`; missing OSS/R2 is shown as blocked without pretending that remote recovery passed.
+- Added `scripts/p22-browser-smoke.py` and `scripts/p22-release-check.mjs`. Browser checks visit public routes only and require an explicit `--update-baseline` for first-time visual baselines.
+- Added `docs/p22-production-quality.zh-CN.md` and the English version with commands, result meanings, release checks, and failure handling.
+
 ### Later-Phase Dependencies And Order
 
-Phases 15 through 19 are complete. P17-05 requires SMTP, and manual Google sign-in acceptance for P19 requires Google Cloud OAuth configuration. Phase 20 can follow once public URLs and content-cache boundaries from Phase 17 are clear. Phase 21 should collect operational evidence continuously and run its final acceptance after the main P15-P20 work is complete.
+Phases 15 through 22 are complete. P17-05 requires SMTP, and manual Google sign-in acceptance for P19 requires Google Cloud OAuth configuration. The P21 OSS/R2 remote drill remains dependent on an external provider and does not block later work.
 
-The fixed execution order is P15 -> P16 -> P17/P18 -> P19 -> P20 -> P21. Each phase must complete code, migrations, tests, bilingual documentation, push, deployment, and production verification before its status changes to `Completed`.
+The fixed execution order is P15 -> P16 -> P17/P18 -> P19 -> P20 -> P21 -> P22. Each phase must complete code, migrations, tests, bilingual documentation, push, deployment, and production verification before its status changes to `Completed`; external blocks must remain explicitly labeled.
 
 ## 15. Resume Procedure
 

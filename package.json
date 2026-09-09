@@ -10,6 +10,8 @@
     "lint": "pnpm --filter @lingxi/api lint && pnpm --filter @lingxi/web lint",
     "test": "pnpm --filter @lingxi/api test",
     "p21:load-test": "node scripts/p21-load-test.mjs",
+    "p22:release-check": "node scripts/p22-release-check.mjs",
+    "p22:browser-smoke": "python scripts/p22-browser-smoke.py",
     "format": "pnpm --filter @lingxi/api format && pnpm --filter @lingxi/web format"
   }
 }

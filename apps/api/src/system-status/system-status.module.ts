@@ -16,6 +16,7 @@ import { LightweightMonitoringInterceptor } from "./lightweight-monitoring.inter
 import { LightweightMonitoringService } from "./lightweight-monitoring.service";
 import { ReliabilityOverviewService } from "./reliability-overview.service";
 import { P21OperationsService } from "./p21-operations.service";
+import { P22QualityService } from "./p22-quality.service";
 
 @Module({
   imports: [JwtModule.register({}), RedisModule, UsersModule],
@@ -31,11 +32,13 @@ import { P21OperationsService } from "./p21-operations.service";
     LightweightMonitoringService,
     ReliabilityOverviewService,
     P21OperationsService,
+    P22QualityService,
     SystemStatusService,
     {
       provide: APP_INTERCEPTOR,
       useClass: LightweightMonitoringInterceptor,
     },
   ],
+  exports: [LightweightMonitoringService],
 })
 export class SystemStatusModule {}

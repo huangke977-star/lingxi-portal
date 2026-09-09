@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import Script from "next/script";
 import { AuthSessionController } from "@/components/auth-session-controller";
+import { ClientErrorReporter } from "@/components/client-error-reporter";
 import { ChatDock } from "@/components/chat-dock";
 import { ConfirmDialogProvider } from "@/components/confirm-dialog";
 import { LanguageProvider } from "@/components/language-provider";
@@ -114,6 +115,7 @@ export default async function RootLayout({
         <LanguageProvider initialLocale={locale}>
           <ConfirmDialogProvider>
             <AuthSessionController />
+            <ClientErrorReporter />
             <OnboardingController />
             <PwaController />
             <ThemeController />

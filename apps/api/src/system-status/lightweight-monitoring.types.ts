@@ -7,6 +7,15 @@ export interface HttpMonitoringEvent {
   message: string | null;
 }
 
+export interface ClientErrorEvent {
+  occurredAt: string;
+  source: "window-error" | "unhandled-rejection" | "manual";
+  message: string;
+  path: string;
+  stack: string | null;
+  buildId: string | null;
+}
+
 export interface MemoryTrendPoint {
   recordedAt: string;
   rssBytes: number;
@@ -26,6 +35,7 @@ export interface LightweightMonitoringSnapshot {
   slowRequestThresholdMs: number;
   slowRequests: HttpMonitoringEvent[];
   recentErrors: HttpMonitoringEvent[];
+  recentClientErrors: ClientErrorEvent[];
   memoryTrend: MemoryTrendPoint[];
   diskTrend: DiskTrendPoint[];
 }

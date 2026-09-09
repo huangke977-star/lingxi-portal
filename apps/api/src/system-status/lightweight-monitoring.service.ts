@@ -3,6 +3,7 @@ import { statfs } from "node:fs/promises";
 import { resolve } from "node:path";
 import { RedisService } from "../redis/redis.service";
 import type {
+  ClientErrorEvent,
   DiskTrendPoint,
   HttpMonitoringEvent,
   LightweightMonitoringSnapshot,
@@ -16,6 +17,7 @@ const RESOURCE_POINT_LIMIT = RESOURCE_RETENTION_MINUTES;
 const HTTP_EVENT_LIMIT = 100;
 const SLOW_REQUEST_KEY = "ops:monitoring:slow-requests";
 const API_ERROR_KEY = "ops:monitoring:api-errors";
+const CLIENT_ERROR_KEY = "ops:monitoring:client-errors";
 const MEMORY_TREND_KEY = "ops:monitoring:memory-trend";
 const DISK_TREND_KEY = "ops:monitoring:disk-trend";
 
@@ -31,6 +33,7 @@ export class LightweightMonitoringService
   );
   private readonly slowRequests: HttpMonitoringEvent[] = [];
   private readonly recentErrors: HttpMonitoringEvent[] = [];
+  private readonly recentClientErrors: ClientErrorEvent[] = [];
   private readonly memoryTrend: MemoryTrendPoint[] = [];
   private readonly diskTrend: DiskTrendPoint[] = [];
   private sampleTimer: NodeJS.Timeout | null = null;
@@ -78,10 +81,11 @@ export class LightweightMonitoringService
 
   async getSnapshot(): Promise<LightweightMonitoringSnapshot> {
     if (!this.memoryTrend.length) await this.sampleResources();
-    const [slowRequests, recentErrors, memoryTrend, diskTrend] =
+    const [slowRequests, recentErrors, recentClientErrors, memoryTrend, diskTrend] =
       await Promise.all([
         this.readEvents(SLOW_REQUEST_KEY, this.slowRequests),
         this.readEvents(API_ERROR_KEY, this.recentErrors),
+        this.readClientErrors(),
         this.readTrend(MEMORY_TREND_KEY, this.memoryTrend),
         this.readTrend(DISK_TREND_KEY, this.diskTrend),
       ]);
@@ -90,9 +94,23 @@ export class LightweightMonitoringService
       slowRequestThresholdMs: this.slowRequestThresholdMs,
       slowRequests,
       recentErrors,
+      recentClientErrors,
       memoryTrend,
       diskTrend,
     };
+  }
+
+  recordClientError(input: Omit<ClientErrorEvent, "occurredAt">): void {
+    const event: ClientErrorEvent = {
+      occurredAt: new Date().toISOString(),
+      source: input.source,
+      message: input.message.slice(0, 500),
+      path: input.path.slice(0, 300),
+      stack: input.stack?.slice(0, 2_000) || null,
+      buildId: input.buildId?.slice(0, 120) || null,
+    };
+    this.pushMemory(this.recentClientErrors, event, HTTP_EVENT_LIMIT);
+    this.persist(CLIENT_ERROR_KEY, event, HTTP_EVENT_LIMIT);
   }
 
   async sampleResources(): Promise<void> {
@@ -150,7 +168,7 @@ export class LightweightMonitoringService
 
   private persist(
     key: string,
-    value: HttpMonitoringEvent | MemoryTrendPoint | DiskTrendPoint,
+    value: ClientErrorEvent | HttpMonitoringEvent | MemoryTrendPoint | DiskTrendPoint,
     maximumLength: number,
   ): void {
     void this.redis
@@ -171,6 +189,12 @@ export class LightweightMonitoringService
     return (
       await this.readList<HttpMonitoringEvent>(key, fallback, false)
     ).filter((event) => new Date(event.occurredAt).getTime() >= cutoff);
+  }
+
+  private async readClientErrors(): Promise<ClientErrorEvent[]> {
+    const cutoff = Date.now() - RESOURCE_RETENTION_MINUTES * 60_000;
+    return (await this.readList<ClientErrorEvent>(CLIENT_ERROR_KEY, this.recentClientErrors, false))
+      .filter((event) => new Date(event.occurredAt).getTime() >= cutoff);
   }
 
   private async readTrend<T extends MemoryTrendPoint | DiskTrendPoint>(

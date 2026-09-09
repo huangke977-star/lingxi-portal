@@ -35,6 +35,7 @@ import {
 } from "./dto/storage-management.dto";
 import { StorageManagementService } from "./storage-management.service";
 import { P21OperationsService } from "./p21-operations.service";
+import { P22QualityService } from "./p22-quality.service";
 import {
   OperationalAlertQueryDto,
   OperationalRunQueryDto,
@@ -64,6 +65,7 @@ export class SystemStatusController {
     private readonly storageManagementService: StorageManagementService,
     private readonly mediaBackupService: MediaBackupService,
     private readonly p21OperationsService: P21OperationsService,
+    private readonly p22QualityService: P22QualityService,
   ) {}
 
   @Get("status")
@@ -348,5 +350,15 @@ export class SystemStatusController {
   @Post("operations/audit-cleanup")
   cleanupAuditLogs() {
     return this.p21OperationsService.cleanupAuditLogs();
+  }
+
+  @Get("quality/overview")
+  getQualityOverview() {
+    return this.p22QualityService.getOverview();
+  }
+
+  @Post("quality/release-check")
+  runQualityCheck(@CurrentUser() user: AuthenticatedUser) {
+    return this.p22QualityService.runQualityCheck(user.id);
   }
 }
