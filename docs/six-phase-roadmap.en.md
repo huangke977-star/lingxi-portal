@@ -777,6 +777,8 @@ Outside the core scope for now: image OCR, speech-to-text, image generation, and
 
 Phases 15 through 22 and P23-01 through P23-03 are complete. P17-05 requires SMTP, and manual Google sign-in acceptance for P19 requires Google Cloud OAuth configuration. The P21 OSS/R2 remote drill remains dependent on an external provider and does not block P23-04.
 
+P23-01 through P23-03 were pushed and deployed on 2026-09-11 in commit `60efb96`. GitHub Actions run `34550803526` built both API and Web images successfully. The pre-deployment backup `backups/pre-60efb96-20260911-093422.sql.gz` was created and passed gzip validation. Production applied all 76 migrations with none pending; only API/Web were recreated, while MySQL, Redis, Caddy, TURN, and data volumes remained running. After deployment, `/api/health`, `/api/health/ready`, the Chinese homepage, and the English homepage all passed.
+
 The fixed execution order is P15 -> P16 -> P17/P18 -> P19 -> P20 -> P21 -> P22 -> P23 -> P24. Each phase must complete code, migrations, tests, bilingual documentation, push, deployment, and production verification before its status changes to `Completed`; external blocks must remain explicitly labeled.
 
 ## 15. Resume Procedure
