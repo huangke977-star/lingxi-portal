@@ -1,11 +1,11 @@
 "use client";
 
-import { CalendarClock, Check, ChevronDown, Cloud, CloudOff, Eye, FilePlus2, History, RefreshCw, RotateCcw, Save, Send, Shapes, Tags, Trash2, X } from "lucide-react";
+import { CalendarClock, Check, ChevronDown, Cloud, CloudOff, Eye, FilePlus2, History, RefreshCw, RotateCcw, Save, Send, Shapes, Sparkles, Tags, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArticleCenterNav } from "@/components/article-center-nav";
-import { ArticleRichEditor, type RichEditorAttachment } from "@/components/article-rich-editor";
+import { ArticleRichEditor, type RichEditorAttachment, type RichEditorInsertRequest } from "@/components/article-rich-editor";
 import { ArticleBody, displayArticleTaxonomy, formatArticleDate } from "@/components/article-ui";
 import { AppToast } from "@/components/app-toast";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -39,6 +39,8 @@ import { getPublicSiteSettings, type SiteSettings } from "@/lib/site-settings-ap
 import { growthLevelLabel } from "@/lib/system-labels";
 import { localizedPath } from "@/lib/i18n";
 import { compressImageForUpload } from "@/lib/media-compression";
+import { runArticleAssistant, type ArticleAssistantOperation, type ArticleAssistantResult } from "@/lib/ai-api";
+import { marked } from "marked";
 
 const MAX_ARTICLE_IMAGES = 20;
 const MAX_ARTICLE_ATTACHMENTS = 50;
@@ -63,6 +65,19 @@ const ARTICLE_TAG_OPTIONS = [
   "随笔",
   "生活",
   "公告",
+];
+
+const ARTICLE_ASSISTANT_OPERATIONS: Array<{ value: ArticleAssistantOperation; label: string; english: string }> = [
+  { value: "title", label: "生成标题", english: "Suggest title" },
+  { value: "outline", label: "生成提纲", english: "Create outline" },
+  { value: "summary", label: "生成摘要", english: "Write summary" },
+  { value: "taxonomy", label: "建议分类和标签", english: "Suggest category and tags" },
+  { value: "polish", label: "润色正文", english: "Polish body" },
+  { value: "rewrite", label: "改写正文", english: "Rewrite body" },
+  { value: "expand", label: "扩写正文", english: "Expand body" },
+  { value: "shorten", label: "缩写正文", english: "Shorten body" },
+  { value: "correct", label: "纠错正文", english: "Correct body" },
+  { value: "format", label: "整理排版", english: "Format Markdown" },
 ];
 
 interface PendingArticleAttachment {
@@ -133,6 +148,12 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   const [scheduleUnpublishAt, setScheduleUnpublishAt] = useState("");
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
   const [isScheduleSaving, setIsScheduleSaving] = useState(false);
+  const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
+  const [aiOperation, setAiOperation] = useState<ArticleAssistantOperation>("polish");
+  const [aiResult, setAiResult] = useState<ArticleAssistantResult | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiSelectedText, setAiSelectedText] = useState("");
+  const [aiInsertRequest, setAiInsertRequest] = useState<RichEditorInsertRequest | null>(null);
   const articleStatusLabel = (status: Article["status"]) => status === "draft" ? phrase("草稿", "Draft") : status === "published" ? phrase("已发布", "Published") : status === "unpublished" ? phrase("已下架", "Unpublished") : status === "blocked" ? phrase("受限", "Restricted") : phrase("已删除", "Deleted");
   const visibilityLabel = (visibility: ArticleInput["visibility"]) => visibility === "public" ? phrase("所有人可见", "Public") : visibility === "authenticated" ? phrase("仅登录用户", "Signed-in users") : visibility === "role_restricted" ? phrase("指定角色", "Specific roles") : phrase("仅自己", "Only me");
   const versionSourceLabel = (source: ArticleVersionSummary["source"]) => source === "autosave" ? phrase("自动保存", "Autosave") : source === "manual" ? phrase("手动保存", "Manual save") : source === "publish" ? phrase("发布", "Publish") : phrase("恢复版本", "Restore version");
@@ -240,7 +261,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
   function articleToDraft(loaded: Article): ArticleInput {
     return {
       title: loaded.title,
-      summary: "",
+      summary: loaded.summary,
       content: loaded.content,
       contentFormat: loaded.contentFormat,
       category: loaded.category || "随笔",
@@ -532,7 +553,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
         const contentForCreate = stripPendingAttachmentContent(draft.content, usedPendingImages);
         saved = await createArticle(token, {
           ...draft,
-          summary: "",
+          summary: draft.summary,
           content: contentForCreate || "<p></p>",
           status: "draft",
         });
@@ -553,7 +574,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
       if (!wasNewArticle || usedPendingImages.length) {
         saved = await updateArticle(token, saved.id, {
           ...draft,
-          summary: "",
+          summary: draft.summary,
           content: finalContent,
           status: wasNewArticle ? saved.status : currentEditableStatus(),
         });
@@ -726,6 +747,60 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
     }
   }
 
+  async function generateAiSuggestion() {
+    const token = readAccessToken();
+    if (!token || isAiLoading) return;
+    setIsAiLoading(true);
+    setError("");
+    try {
+      const result = await runArticleAssistant(token, {
+        operation: aiOperation,
+        title: draft.title,
+        content: draft.content,
+        selectedText: aiSelectedText,
+        category: draft.category,
+        tags: draft.tags,
+        locale,
+      });
+      setAiResult(result);
+    } catch (assistantError) {
+      if (isAuthExpiredError(assistantError)) {
+        clearAuthTokens();
+        router.replace(localizedPath("/", locale));
+        return;
+      }
+      setError(assistantError instanceof Error ? assistantError.message : phrase("AI 助手暂时不可用。", "The AI assistant is temporarily unavailable."));
+    } finally {
+      setIsAiLoading(false);
+    }
+  }
+
+  function applyAiSuggestion() {
+    if (!aiResult) return;
+    const text = aiResult.text.trim();
+    if (!text) return;
+    if (aiResult.operation === "title") {
+      setDraft((current) => ({ ...current, title: text.split(/\r?\n/, 1)[0].slice(0, 120) }));
+      setNotice(phrase("AI 标题已应用到文章。", "The AI title was applied to the article."));
+    } else if (aiResult.operation === "summary") {
+      setDraft((current) => ({ ...current, summary: text.slice(0, 300) }));
+      setNotice(phrase("AI 摘要已应用到文章。", "The AI summary was applied to the article."));
+    } else if (aiResult.operation === "taxonomy") {
+      const taxonomy = parseAiTaxonomy(text);
+      if (!taxonomy) {
+        setError(phrase("没有识别出分类和标签，请重新生成。", "The category and tags could not be recognized. Generate again."));
+        return;
+      }
+      setDraft((current) => ({ ...current, category: taxonomy.category || current.category, tags: taxonomy.tags.join(", ") }));
+      setNotice(phrase("AI 分类和标签已应用到文章。", "The AI category and tags were applied to the article."));
+    } else {
+      setAiInsertRequest({ id: `${Date.now()}-${Math.random()}`, content: String(marked.parse(text, { breaks: true, gfm: true, async: false })) });
+      setNotice(phrase("AI 内容已插入编辑器，请检查后保存。", "AI content was inserted into the editor. Review it before saving."));
+    }
+    setAiResult(null);
+    setIsAiDialogOpen(false);
+  }
+
   return (
     <section className="page-shell articles-page article-editor-page">
       <ArticleCenterNav active="mine" isLoggedIn user={user} showWrite={false} />
@@ -827,7 +902,7 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
               </div>
               {draft.visibility === "role_restricted" ? <div aria-label={phrase("可见角色", "Visible roles")} className="article-role-options" role="group">{roles.map((role) => <label key={role.code}><input checked={draft.roleCodes.includes(role.code)} onChange={() => toggleVisibleRole(role.code)} type="checkbox" /><span>{growthLevelLabel(role.code, locale, role.name)}</span></label>)}</div> : null}
             </div>
-              <ArticleRichEditor format={draft.contentFormat} onChange={(content, contentFormat) => setDraft((current) => ({ ...current, content, contentFormat }))} onAttachmentFiles={addAttachments} onError={setError} value={draft.content} />
+              <ArticleRichEditor aiInsertRequest={aiInsertRequest} format={draft.contentFormat} onAiAssistant={(selectedText) => { setAiResult(null); setAiSelectedText(selectedText); setIsAiDialogOpen(true); }} onAiInsertHandled={() => setAiInsertRequest(null)} onChange={(content, contentFormat) => setDraft((current) => ({ ...current, content, contentFormat }))} onAttachmentFiles={addAttachments} onError={setError} value={draft.content} />
             <div className="article-editor-upload"><span>{pendingImages.length ? phrase(`待上传 ${pendingImages.length} 个附件，保存时才会上传`, `${pendingImages.length} attachment(s) pending upload and will upload when saved`) : phrase(`支持图片、音频、视频和常用文件，单个附件不超过 50MB`, `Images, audio, video, and common files are supported, up to 50MB each`)}</span></div>
             {pendingImages.length ? <div className="article-pending-images">{pendingImages.map((image) => <span key={image.id}>{image.file.name}<button aria-label={phrase(`移除 ${image.file.name}`, `Remove ${image.file.name}`)} onClick={() => removePendingImage(image)} title={phrase("移除附件", "Remove attachment")} type="button"><X aria-hidden="true" size={14} /></button></span>)}</div> : null}
              <div className="article-editor-actions"><button className="button secondary" disabled={isSaving || autosaveState === "saving"} onClick={() => void saveArticle(false)} type="button"><Save aria-hidden="true" size={16} />{isSaving ? phrase("保存中", "Saving") : article ? phrase("保存修改", "Save changes") : phrase("保存草稿", "Save draft")}</button><button className="button" disabled={isSaving || autosaveState === "saving" || article?.status === "blocked"} onClick={() => void saveArticle(true)} type="button"><Send aria-hidden="true" size={16} />{phrase("发布文章", "Publish article")}</button><button aria-label={phrase("定时发布", "Schedule publication")} className="button secondary article-schedule-action" disabled={isSaving || autosaveState === "saving" || article?.status === "blocked"} onClick={() => setIsScheduleDialogOpen(true)} title={phrase("定时发布", "Schedule publication")} type="button"><CalendarClock aria-hidden="true" size={16} />{phrase("定时发布", "Schedule publication")}</button>{article?.status === "published" ? <button className="text-action" disabled={isSaving} onClick={() => void takeOffline()} type="button">{phrase("下架", "Unpublish")}</button> : null}{article ? <button className="text-danger-action" disabled={isSaving} onClick={() => void moveToTrash()} type="button"><Trash2 aria-hidden="true" size={16} />{phrase("删除", "Delete")}</button> : null}</div>
@@ -863,6 +938,15 @@ export function ArticleEditor({ articleId }: { articleId?: number }) {
         </div>,
         document.body,
       ) : null}
+      {isAiDialogOpen && typeof document !== "undefined" ? createPortal(
+        <div className="modal-backdrop article-ai-dialog-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setIsAiDialogOpen(false); }}>
+          <section aria-label={phrase("AI 文章助手", "AI writing assistant")} aria-modal="true" className="announcement-editor article-ai-dialog" role="dialog">
+            <header><span><Sparkles aria-hidden="true" size={17} /><strong>{phrase("AI 文章助手", "AI writing assistant")}</strong></span><button aria-label={phrase("关闭", "Close")} onClick={() => setIsAiDialogOpen(false)} title={phrase("关闭", "Close")} type="button"><X size={17} /></button></header>
+            <div className="announcement-editor-body article-ai-dialog-body"><p className="wide">{phrase("选择一个操作，生成结果后先预览；只有点击应用才会写入文章。", "Choose an action and preview its result first. Nothing is written to the article until you apply it.")}</p><label><span>{phrase("助手操作", "Assistant action")}</span><GlassSelect ariaLabel={phrase("助手操作", "Assistant action")} leadingIcon={<Sparkles size={14} />} onChange={(value) => { setAiOperation(value as ArticleAssistantOperation); setAiResult(null); }} options={ARTICLE_ASSISTANT_OPERATIONS.map((item) => ({ value: item.value, label: phrase(item.label, item.english) }))} value={aiOperation} /></label>{aiResult ? <div className="article-ai-result"><div className="article-ai-result-meta"><span>{phrase("生成预览", "Generated preview")}</span><small>{aiResult.model} · {aiResult.durationMs} ms</small></div>{aiResult.operation === "title" || aiResult.operation === "summary" || aiResult.operation === "taxonomy" ? <pre>{aiResult.text}</pre> : <ArticleBody content={aiResult.text} contentFormat="markdown" />}</div> : <p className="article-ai-empty">{aiSelectedText ? phrase("已选择一段正文；正文类操作会优先处理该段内容。", "A passage is selected. Body actions will prioritize that selection.") : phrase("当前文章标题和正文会作为上下文发送给已配置的 AI。", "The current article title and body will be sent as context to the configured AI.")}</p>}</div>
+            <footer><button aria-label={phrase("取消", "Cancel")} className="article-template-icon-button" onClick={() => setIsAiDialogOpen(false)} title={phrase("取消", "Cancel")} type="button"><X size={17} /></button><button aria-label={phrase("生成预览", "Generate preview")} className="article-template-icon-button primary" disabled={isAiLoading} onClick={() => void generateAiSuggestion()} title={phrase("生成预览", "Generate preview")} type="button"><Sparkles className={isAiLoading ? "spin" : undefined} size={17} /></button>{aiResult ? <button aria-label={phrase("应用结果", "Apply result")} className="article-template-icon-button primary" onClick={applyAiSuggestion} title={phrase("应用结果", "Apply result")} type="button"><Check size={17} /></button> : null}</footer>
+          </section>
+        </div>, document.body,
+      ) : null}
       {isVersionsOpen && typeof document !== "undefined" ? createPortal(<div className="article-versions-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setIsVersionsOpen(false); }}><section aria-label={phrase("文章历史版本", "Article version history")} aria-modal="true" className="article-versions-dialog" role="dialog"><header><span><History aria-hidden="true" size={17} /><strong>{phrase("历史版本", "Version history")}</strong></span><button aria-label={phrase("关闭历史版本", "Close version history")} onClick={() => setIsVersionsOpen(false)} title={phrase("关闭", "Close")} type="button"><X aria-hidden="true" size={18} /></button></header><div className="article-versions-layout"><nav>{isLoadingVersions && !versions.length ? <span className="article-version-empty">{phrase("正在读取版本。", "Loading versions.")}</span> : versions.map((version) => <button className={selectedVersion?.id === version.id ? "active" : undefined} key={version.id} onClick={() => void selectVersion(version.id)} type="button"><span><strong>{phrase(`版本 ${version.versionNumber}`, `Version ${version.versionNumber}`)}</strong><em>{versionSourceLabel(version.source)}</em></span><small>{formatVersionTime(version.createdAt, locale)}</small><small>{version.changedFields.map((field) => versionFieldLabel(field)).join(locale === "en-US" ? ", " : "、") || phrase("内容未变化", "No content changes")}</small></button>)}</nav><div className="article-version-detail">{selectedVersion ? <><div><span><strong>{phrase(`版本 ${selectedVersion.versionNumber}`, `Version ${selectedVersion.versionNumber}`)}</strong><small>{versionSourceLabel(selectedVersion.source)} · {formatVersionTime(selectedVersion.createdAt, locale)}</small></span><button className="button secondary" disabled={isSaving} onClick={() => void restoreSelectedVersion()} type="button"><RotateCcw aria-hidden="true" size={15} />{phrase("恢复此版本", "Restore this version")}</button></div><h2>{selectedVersion.title || phrase("未命名文章", "Untitled article")}</h2><div className="article-version-taxonomy"><span>{selectedVersion.category ? displayArticleTaxonomy(selectedVersion.category, locale) : phrase("随笔", "Essay")}</span>{selectedVersion.tags.map((tag) => <span key={tag}>#{displayArticleTaxonomy(tag, locale)}</span>)}</div><ArticleBody content={selectedVersion.content || phrase("此版本没有正文内容。", "This version has no article content.")} /></> : <span className="article-version-empty">{phrase("选择左侧版本查看完整内容。", "Choose a version on the left to view its full content.")}</span>}</div></div></section></div>, document.body) : null}
       {isScheduleDialogOpen && typeof document !== "undefined" ? createPortal(<div className="announcement-editor-backdrop article-schedule-backdrop"><form aria-label={phrase("设置发布计划", "Set publication schedule")} aria-modal="true" className="announcement-editor article-schedule-dialog" onSubmit={(event) => { event.preventDefault(); void saveSchedule(); }} role="dialog"><header><span><CalendarClock aria-hidden="true" size={17} /><strong>{phrase("设置发布计划", "Set publication schedule")}</strong></span></header><div className="announcement-editor-body article-schedule-body"><p className="wide">{phrase("设置发布时间和可选的自动下线时间；清空已有时间并确定可以取消计划。", "Set a publication time and optional automatic unpublish time. Clear existing times to cancel a schedule.")}</p><label><span>{phrase("发布时间", "Publish time")}</span><input aria-label={phrase("发布时间", "Publish time")} onChange={(event) => setSchedulePublishAt(event.target.value)} type="datetime-local" value={schedulePublishAt} /></label><label><span>{phrase("下线时间", "Unpublish time")}</span><input aria-label={phrase("下线时间", "Unpublish time")} onChange={(event) => setScheduleUnpublishAt(event.target.value)} type="datetime-local" value={scheduleUnpublishAt} /></label></div><footer><button aria-label={phrase("取消", "Cancel")} onClick={() => setIsScheduleDialogOpen(false)} title={phrase("取消", "Cancel")} type="button"><X aria-hidden="true" size={17} /></button><button aria-label={phrase("确定", "Confirm")} disabled={isScheduleSaving} title={phrase("确定", "Confirm")} type="submit"><Check aria-hidden="true" size={17} /></button></footer></form></div>, document.body) : null}
       <AppToast duration={notice ? 2600 : 4200} message={error || notice} onDismiss={() => { setError(""); setNotice(""); }} tone={error ? "error" : "success"} />
@@ -876,6 +960,14 @@ function sanitizeImageAlt(value: string, locale: "zh-CN" | "en-US"): string {
 
 function parseArticleTags(value: string): string[] {
   return Array.from(new Set(value.split(",").map((tag) => tag.trim()).filter(Boolean)));
+}
+
+function parseAiTaxonomy(value: string): { category: string; tags: string[] } | null {
+  const categoryMatch = value.match(/(?:分类|category)\s*[:：]\s*(.+)/i);
+  const tagsMatch = value.match(/(?:标签|tags?)\s*[:：]\s*(.+)/i);
+  const category = categoryMatch?.[1]?.trim() ?? "";
+  const tags = tagsMatch ? parseArticleTags(tagsMatch[1].replace(/[，、]/g, ",")) : [];
+  return category || tags.length ? { category, tags: tags.slice(0, MAX_SELECTED_TAGS) } : null;
 }
 
 function escapeRegExp(value: string): string {

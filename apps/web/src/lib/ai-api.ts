@@ -93,3 +93,32 @@ export function testAiAdminConnection(token: string) {
 export function getAiAdminInvocations(token: string) {
   return requestJson<AiInvocationOverview>("/ai/admin/invocations?limit=30", { headers: authHeaders(token), cache: "no-store" });
 }
+
+export type ArticleAssistantOperation = "title" | "outline" | "summary" | "taxonomy" | "polish" | "rewrite" | "expand" | "shorten" | "correct" | "format";
+
+export interface ArticleAssistantInput {
+  operation: ArticleAssistantOperation;
+  title?: string;
+  content?: string;
+  selectedText?: string;
+  category?: string;
+  tags?: string;
+  locale?: "zh-CN" | "en-US";
+}
+
+export interface ArticleAssistantResult {
+  text: string;
+  operation: ArticleAssistantOperation;
+  provider: AiProvider;
+  model: string;
+  durationMs: number;
+  usage: { promptTokens: number | null; completionTokens: number | null; totalTokens: number | null };
+}
+
+export function runArticleAssistant(accessToken: string, input: ArticleAssistantInput) {
+  return requestJson<ArticleAssistantResult>("/ai/article-assistant", {
+    method: "POST",
+    headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}

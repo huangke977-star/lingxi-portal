@@ -11,7 +11,7 @@ import { AiConfiguration } from "../generated/prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
 import { SecretCryptoService } from "../security/secret-crypto.service";
-import { AiProvider, UpdateAiConfigurationDto } from "./dto/ai.dto";
+import { AiArticleOperation, AiProvider, ArticleAssistantDto, UpdateAiConfigurationDto } from "./dto/ai.dto";
 import {
   AiChatMessage,
   AiProviderClientError,
@@ -119,6 +119,44 @@ export class AiService {
 
   async complete(options: AiCompletionOptions) {
     return this.execute(options);
+  }
+
+  async articleAssistant(userId: number, dto: ArticleAssistantDto) {
+    const title = dto.title?.trim() ?? "";
+    const content = dto.content?.trim() ?? "";
+    const selectedText = dto.selectedText?.trim() ?? "";
+    if (!title && !content && !selectedText) {
+      throw new BadRequestException("请先填写标题或正文，再使用文章助手。\nAdd a title or article content before using the writing assistant.");
+    }
+
+    const locale = dto.locale === "en-US" ? "en-US" : "zh-CN";
+    const bodyOperations: AiArticleOperation[] = ["polish", "rewrite", "expand", "shorten", "correct", "format"];
+    // A selected passage is the complete source for body edits, so avoid sending the full article twice.
+    const useSelectedText = Boolean(selectedText) && bodyOperations.includes(dto.operation);
+    const result = await this.complete({
+      userId,
+      operation: `article_assistant_${dto.operation}`,
+      messages: [
+        {
+          role: "system",
+          content: locale === "en-US"
+            ? "You are a careful article writing assistant. Preserve facts from the supplied material, do not invent sources or claims, and return only the requested result without commentary or code fences."
+            : "你是一个谨慎的文章创作助手。必须保留用户材料中的事实，不得编造来源或结论，只返回请求的结果，不要加解释，也不要使用代码围栏。",
+        },
+        {
+          role: "user",
+          content: this.buildArticleAssistantPrompt(dto.operation, { title, content: useSelectedText ? "" : content, selectedText: useSelectedText ? selectedText : "", category: dto.category?.trim() ?? "", tags: dto.tags?.trim() ?? "" }, locale),
+        },
+      ],
+    });
+    return {
+      text: result.text.trim(),
+      operation: dto.operation,
+      provider: result.provider,
+      model: result.model,
+      durationMs: result.durationMs,
+      usage: result.usage,
+    };
   }
 
   async getAdminInvocationOverview(limit = 30) {
@@ -239,6 +277,48 @@ export class AiService {
       if (userAcquired) await this.releaseCounterSafely(userKey);
       if (globalAcquired) await this.releaseCounterSafely(globalKey);
     }
+  }
+
+  private buildArticleAssistantPrompt(
+    operation: AiArticleOperation,
+    input: { title: string; content: string; selectedText: string; category: string; tags: string },
+    locale: "zh-CN" | "en-US",
+  ): string {
+    const material = [
+      `TITLE:\n${input.title || "(empty)"}`,
+      `CATEGORY:\n${input.category || "(empty)"}`,
+      `TAGS:\n${input.tags || "(empty)"}`,
+      `SELECTED TEXT:\n${input.selectedText || "(none)"}`,
+      `ARTICLE BODY:\n${input.content || "(empty)"}`,
+    ].join("\n\n");
+    const instructions: Record<AiArticleOperation, string> = locale === "en-US"
+      ? {
+        title: "Suggest one concise, accurate article title. Return one line only.",
+        outline: "Create a practical outline for this article. Use Markdown headings and bullet points.",
+        summary: "Write a concise summary in 2 to 4 sentences.",
+        taxonomy: "Suggest one category and up to six short tags. Return exactly two lines: Category: ... and Tags: tag1, tag2.",
+        polish: "Polish the selected text if present, otherwise the article body. Keep the meaning and return the complete revised text.",
+        rewrite: "Rewrite the selected text if present, otherwise the article body, with clearer structure and natural language. Keep the meaning.",
+        expand: "Expand the selected text if present, otherwise the article body, with useful detail. Do not add unsupported facts.",
+        shorten: "Shorten the selected text if present, otherwise the article body, while preserving the key meaning.",
+        correct: "Correct grammar, spelling, punctuation, and Markdown structure in the selected text if present, otherwise the article body.",
+        format: "Improve the Markdown structure of the article. Return Markdown only, using headings, lists, quotes, and code blocks where appropriate.",
+      }
+      : {
+        title: "为文章拟定一个准确、简洁的标题，只返回一行。",
+        outline: "为文章整理实用的提纲，使用 Markdown 标题和项目符号。",
+        summary: "写一段 2 到 4 句的简洁摘要。",
+        taxonomy: "建议一个分类和最多六个简短标签。严格只返回两行：分类：... 和 标签：标签1, 标签2。",
+        polish: "如果有选中文字就润色选中文字，否则润色全文。保持原意，返回完整的修改后文本。",
+        rewrite: "如果有选中文字就改写选中文字，否则改写全文，让结构更清晰、语言更自然，并保持原意。",
+        expand: "如果有选中文字就扩写选中文字，否则扩写全文，补充有用细节，不得添加材料中没有依据的事实。",
+        shorten: "如果有选中文字就缩写选中文字，否则缩写全文，保留关键含义。",
+        correct: "如果有选中文字就纠正选中文字，否则纠正全文的语法、错别字、标点和 Markdown 结构。",
+        format: "优化文章的 Markdown 结构，只返回 Markdown；恰当使用标题、列表、引用和代码块。",
+      };
+    return locale === "en-US"
+      ? `${instructions[operation]}\n\nUse only the following material:\n${material}`
+      : `${instructions[operation]}\n\n请仅根据以下材料处理：\n${material}`;
   }
 
   private async releaseCounterSafely(key: string): Promise<void> {

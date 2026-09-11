@@ -4,7 +4,7 @@ import { SuperAdminGuard } from "../auth/guards/super-admin.guard";
 import { UserManagementGuard } from "../auth/guards/user-management.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
-import { UpdateAiConfigurationDto } from "./dto/ai.dto";
+import { ArticleAssistantDto, UpdateAiConfigurationDto } from "./dto/ai.dto";
 import { AiService } from "./ai.service";
 
 @Controller("ai/admin")
@@ -30,5 +30,16 @@ export class AiController {
   @Get("invocations")
   getInvocations(@Query("limit", new DefaultValuePipe(30), ParseIntPipe) limit: number) {
     return this.ai.getAdminInvocationOverview(limit);
+  }
+}
+
+@Controller("ai")
+@UseGuards(JwtAuthGuard)
+export class ArticleAiController {
+  constructor(private readonly ai: AiService) {}
+
+  @Post("article-assistant")
+  articleAssistant(@CurrentUser() user: AuthenticatedUser, @Body() dto: ArticleAssistantDto) {
+    return this.ai.articleAssistant(user.id, dto);
   }
 }

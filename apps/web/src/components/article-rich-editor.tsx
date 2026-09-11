@@ -10,7 +10,7 @@ import { FontSize, TextStyle } from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import { EditorContent, NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type NodeViewProps } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Bold, Coins, Code2, FileUp, Italic, Link2, List, ListChecks, ListOrdered, Minus, Quote, Redo2, RemoveFormatting, Strikethrough, Undo2, Unlink, X } from "lucide-react";
+import { Bold, Coins, Code2, FileUp, Italic, Link2, List, ListChecks, ListOrdered, Minus, Quote, Redo2, RemoveFormatting, Sparkles, Strikethrough, Undo2, Unlink, X } from "lucide-react";
 import { marked } from "marked";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -35,7 +35,15 @@ interface ArticleRichEditorProps {
   format: "markdown" | "html";
   onChange: (value: string, format: "html") => void;
   onAttachmentFiles?: (files: File[]) => Promise<RichEditorAttachment[]>;
+  onAiAssistant?: (selectedText: string) => void;
+  aiInsertRequest?: RichEditorInsertRequest | null;
+  onAiInsertHandled?: () => void;
   onError?: (message: string) => void;
+}
+
+export interface RichEditorInsertRequest {
+  id: string;
+  content: string;
 }
 
 const ResourceBlock = Node.create({
@@ -74,7 +82,7 @@ function ResourceBlockView({ node }: NodeViewProps) {
   );
 }
 
-export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, onError }: ArticleRichEditorProps) {
+export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, onAiAssistant, aiInsertRequest, onAiInsertHandled, onError }: ArticleRichEditorProps) {
   const { phrase } = useLanguage();
   const [isResourceDialogOpen, setIsResourceDialogOpen] = useState(false);
   const [resourcePoints, setResourcePoints] = useState("10");
@@ -153,6 +161,12 @@ export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, 
     }
   }, [editor, format, value]);
 
+  useEffect(() => {
+    if (!editor || !aiInsertRequest) return;
+    editor.chain().focus(undefined, { scrollIntoView: false }).insertContent(aiInsertRequest.content).run();
+    onAiInsertHandled?.();
+  }, [aiInsertRequest, editor, onAiInsertHandled]);
+
   const insertAttachments = useCallback(async (files: File[]) => {
     if (!attachmentHandlerRef.current) return;
     const attachments = await attachmentHandlerRef.current(files);
@@ -215,6 +229,12 @@ export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, 
     setIsLinkDialogOpen(true);
   }
 
+  function openAiAssistant() {
+    if (!editor || !onAiAssistant) return;
+    const { from, to } = editor.state.selection;
+    onAiAssistant(from === to ? "" : editor.state.doc.textBetween(from, to, "\n"));
+  }
+
   function applyLink() {
     if (!editor) return;
     const valueToApply = linkUrl.trim();
@@ -273,6 +293,7 @@ export function ArticleRichEditor({ value, format, onChange, onAttachmentFiles, 
         {toolbarButton(phrase("取消链接", "Remove link"), <Unlink size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).unsetLink().run(), false, !editor.isActive("link"))}
         {onAttachmentFiles ? <button aria-label={phrase("上传图片或文件", "Upload images or files")} onMouseDown={(event) => event.preventDefault()} onClick={() => attachmentInputRef.current?.click()} title={phrase("上传图片或文件", "Upload images or files")} type="button"><FileUp size={15} /></button> : null}
         <button aria-label={phrase("插入积分资源", "Insert point resource")} className={editor.isActive("resourceBlock") ? "active" : undefined} onMouseDown={(event) => event.preventDefault()} onClick={openResourceDialog} title={phrase("插入积分资源", "Insert point resource")} type="button"><Coins size={15} /></button>
+        {onAiAssistant ? <button aria-label={phrase("AI 文章助手", "AI writing assistant")} onMouseDown={(event) => event.preventDefault()} onClick={openAiAssistant} title={phrase("AI 文章助手", "AI writing assistant")} type="button"><Sparkles size={15} /></button> : null}
         {onAttachmentFiles ? <input hidden multiple onChange={(event) => { void insertAttachments(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} ref={attachmentInputRef} type="file" /> : null}
         <span className="article-rich-toolbar-spacer" />
         {toolbarButton(phrase("清除格式", "Clear formatting"), <RemoveFormatting size={15} />, () => editor.chain().focus(undefined, { scrollIntoView: false }).clearNodes().unsetAllMarks().run())}

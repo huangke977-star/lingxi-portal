@@ -4,6 +4,20 @@ import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } fro
 export const AI_PROVIDERS = ["openai-compatible", "anthropic", "google"] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
 
+export const AI_ARTICLE_OPERATIONS = [
+  "title",
+  "outline",
+  "summary",
+  "taxonomy",
+  "polish",
+  "rewrite",
+  "expand",
+  "shorten",
+  "correct",
+  "format",
+] as const;
+export type AiArticleOperation = (typeof AI_ARTICLE_OPERATIONS)[number];
+
 export class UpdateAiConfigurationDto {
   @IsBoolean()
   enabled!: boolean;
@@ -74,4 +88,38 @@ export class UpdateAiConfigurationDto {
   @Min(0)
   @Max(1000000000)
   outputCostPerMillionMicros!: number;
+}
+
+export class ArticleAssistantDto {
+  @IsIn(AI_ARTICLE_OPERATIONS)
+  operation!: AiArticleOperation;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(59000)
+  content?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30000)
+  selectedText?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  tags?: string;
+
+  @IsOptional()
+  @IsIn(["zh-CN", "en-US"])
+  locale?: "zh-CN" | "en-US";
 }

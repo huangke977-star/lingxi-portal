@@ -188,4 +188,78 @@ describe("P23 AI configuration", () => {
     expect(harness.prisma.aiInvocationLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "rejected" }) }));
     expect(harness.redis.releaseCounter).toHaveBeenCalledTimes(2);
   });
+
+  it("generates an article assistant result through the protected gateway", async () => {
+    const harness = createHarness();
+    harness.prisma.aiConfiguration.upsert.mockResolvedValue({
+      id: 1,
+      enabled: true,
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com/v1",
+      model: "example-model",
+      apiKeyEncrypted: "encrypted:secret-key",
+      globalConcurrency: 2,
+      userConcurrency: 1,
+      maxOutputTokens: 2000,
+      requestTimeoutSeconds: 60,
+      dailyRequestLimit: 0,
+      billingCurrency: "USD",
+      inputCostPerMillionMicros: 0,
+      outputCostPerMillionMicros: 0,
+      updatedAt: new Date("2026-09-10T00:00:00.000Z"),
+    });
+    jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: "一篇更清晰的文章标题" } }] }),
+    } as Response);
+
+    const result = await harness.service.articleAssistant(9, {
+      operation: "title",
+      title: "原始标题",
+      content: "文章正文",
+      locale: "zh-CN",
+    });
+
+    expect(result).toMatchObject({ operation: "title", text: "一篇更清晰的文章标题" });
+    expect(harness.prisma.aiInvocationLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ operation: "article_assistant_title", status: "success" }),
+    }));
+  });
+
+  it("uses selected text for body edits without duplicating the full article", async () => {
+    const harness = createHarness();
+    harness.prisma.aiConfiguration.upsert.mockResolvedValue({
+      id: 1,
+      enabled: true,
+      provider: "openai-compatible",
+      baseUrl: "https://api.example.com/v1",
+      model: "example-model",
+      apiKeyEncrypted: "encrypted:secret-key",
+      globalConcurrency: 2,
+      userConcurrency: 1,
+      maxOutputTokens: 2000,
+      requestTimeoutSeconds: 60,
+      dailyRequestLimit: 0,
+      billingCurrency: "USD",
+      inputCostPerMillionMicros: 0,
+      outputCostPerMillionMicros: 0,
+      updatedAt: new Date("2026-09-10T00:00:00.000Z"),
+    });
+    const fetchSpy = jest.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: "润色后的段落" } }] }),
+    } as Response);
+
+    await harness.service.articleAssistant(9, {
+      operation: "polish",
+      title: "文章标题",
+      content: "整篇正文不应该再次进入正文材料",
+      selectedText: "当前选中的段落",
+      locale: "zh-CN",
+    });
+
+    const requestBody = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body));
+    expect(requestBody.messages[1].content).toContain("当前选中的段落");
+    expect(requestBody.messages[1].content).not.toContain("整篇正文不应该再次进入正文材料");
+  });
 });

@@ -754,7 +754,7 @@ Goal: connect external model APIs and make credentials, models, and resource con
 | P23-01 | AI gateway and secure configuration: provider, base URL, model, server-side key, enabled state, global/per-user concurrency, output limit, timeout, and daily request limit | Completed |
 | P23-02 | Calculate recommended concurrency from CPU, total memory, and free memory; default to global 2 and per-user 1 on the current server, with enforced protection limits | Completed |
 | P23-03 | Add request logs, error records, usage/cost statistics, and failure degradation without logging or returning secrets | Completed |
-| P23-04 | Writing assistant for titles, outlines, summaries, category/tag suggestions, polishing, rewriting, expansion, shortening, correction, and Markdown/HTML formatting; preview before insertion | Not started |
+| P23-04 | Writing assistant for titles, outlines, summaries, category/tag suggestions, polishing, rewriting, expansion, shortening, correction, and Markdown/HTML formatting; preview before insertion | Completed |
 
 Necessity: High. Keep AI configuration separate from security and external integrations so external models can be used without OSS/R2. The production server has 2 vCPUs, about 1.6 GiB RAM, and no GPU, so it should not run Ollama, Qwen, DeepSeek, or another local model.
 
@@ -777,7 +777,7 @@ Outside the core scope for now: image OCR, speech-to-text, image generation, and
 
 Phases 15 through 22 and P23-01 through P23-03 are complete. P17-05 requires SMTP, and manual Google sign-in acceptance for P19 requires Google Cloud OAuth configuration. The P21 OSS/R2 remote drill remains dependent on an external provider and does not block P23-04.
 
-P23-01 through P23-03 were pushed and deployed on 2026-09-11 in commit `60efb96`. GitHub Actions run `34550803526` built both API and Web images successfully. The pre-deployment backup `backups/pre-60efb96-20260911-093422.sql.gz` was created and passed gzip validation. Production applied all 76 migrations with none pending; only API/Web were recreated, while MySQL, Redis, Caddy, TURN, and data volumes remained running. After deployment, `/api/health`, `/api/health/ready`, the Chinese homepage, and the English homepage all passed.
+P23-01 through P23-03 were pushed and deployed on 2026-09-11 in commit `60efb96`. P23-04 now includes the article assistant API, editor preview, and apply flow, and passed the local API suite, both production builds, and lint. GitHub Actions run `34550803526` built both API and Web images successfully. The pre-deployment backup `backups/pre-60efb96-20260911-093422.sql.gz` was created and passed gzip validation. Production applied all 76 migrations with none pending; only API/Web were recreated, while MySQL, Redis, Caddy, TURN, and data volumes remained running. After deployment, `/api/health`, `/api/health/ready`, the Chinese homepage, and the English homepage all passed.
 
 The fixed execution order is P15 -> P16 -> P17/P18 -> P19 -> P20 -> P21 -> P22 -> P23 -> P24. Each phase must complete code, migrations, tests, bilingual documentation, push, deployment, and production verification before its status changes to `Completed`; external blocks must remain explicitly labeled.
 
