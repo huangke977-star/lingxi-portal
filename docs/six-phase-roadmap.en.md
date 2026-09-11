@@ -2,8 +2,8 @@
 
 - Document status: Active
 - Created: 2026-08-04
-- Last updated: 2026-09-08
-- Current phase: Phase 22 completed
+- Last updated: 2026-09-11
+- Current phase: Phase 23 implementation
 - Chinese version: `docs/six-phase-roadmap.zh-CN.md`
 
 ## 1. Purpose
@@ -55,6 +55,8 @@ Status definitions:
 | Phase 20 | Mobile And Offline Experience | Offline PWA reading, weak-network fallback, push improvements, and native-app assessment | Completed |
 | Phase 21 | Operational Resilience And Compliance Closeout | Real recovery drills, audit retention, dependency upgrades, load testing, and DR manual | Completed (OSS/R2 remote drill pending configuration) |
 | Phase 22 | Production Quality And Stability | Readiness probes, client-error observability, E2E/visual regression, release contracts, and permission regression | Completed |
+| Phase 23 | AI Foundation And Writing Assistant | External model access, admin configuration, resource protection, and writing assistance | In progress |
+| Phase 24 | Knowledge And Intelligent Tools | Permission-aware Q&A, controlled tool calls, and knowledge retrieval | Planned |
 
 ## 4. External Prerequisites
 
@@ -67,6 +69,7 @@ These are required only before their corresponding phase starts:
 | Cloudflare Turnstile site and secret keys | Phase 2 | Used for registration and high-risk operations |
 | Group member limit | Phase 5 | Recommended default is 100 members |
 | Google OAuth Client ID, Client Secret, and Redirect URI | Phase 19 | Optional; configure in Google Cloud Console to enable Google sign-in, using an HTTPS callback in production |
+| External AI provider API key and terms-of-service confirmation | Phase 23 | Optional; configure only when enabling AI, store the key encrypted on the server, and follow the selected provider's pricing |
 
 ## 5. Phase 1: Reliability Foundation
 
@@ -742,11 +745,39 @@ Necessity: High. P22 adds no always-on monitoring platform and reuses Redis, Sys
 - Added `scripts/p22-browser-smoke.py` and `scripts/p22-release-check.mjs`. Browser checks visit public routes only and require an explicit `--update-baseline` for first-time visual baselines.
 - Added `docs/p22-production-quality.zh-CN.md` and the English version with commands, result meanings, release checks, and failure handling.
 
+### Phase 23: AI Foundation And Writing Assistant (In Progress)
+
+Goal: connect external model APIs and make credentials, models, and resource consumption manageable from the admin console without running a local model or adding always-on AI infrastructure.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P23-01 | AI gateway and secure configuration: provider, base URL, model, server-side key, enabled state, global/per-user concurrency, output limit, timeout, and daily request limit | Completed |
+| P23-02 | Calculate recommended concurrency from CPU, total memory, and free memory; default to global 2 and per-user 1 on the current server, with enforced protection limits | Completed |
+| P23-03 | Add request logs, error records, usage/cost statistics, and failure degradation without logging or returning secrets | Completed |
+| P23-04 | Writing assistant for titles, outlines, summaries, category/tag suggestions, polishing, rewriting, expansion, shortening, correction, and Markdown/HTML formatting; preview before insertion | Not started |
+
+Necessity: High. Keep AI configuration separate from security and external integrations so external models can be used without OSS/R2. The production server has 2 vCPUs, about 1.6 GiB RAM, and no GPU, so it should not run Ollama, Qwen, DeepSeek, or another local model.
+
+Resource defaults: global concurrency 2, per-user concurrency 1, 60-second timeout, and about 2,000 output tokens. Administrators may tune the values but cannot exceed the runtime protection limit. Model API keys are encrypted server-side. P23-03 provides unified adapters for OpenAI-compatible, Anthropic, and Google providers, connection testing, Redis-backed global/per-user concurrency protection, a global daily quota, redacted invocation logs, and optional unit-price estimates; prompts, response bodies, and keys never enter the invocation log. See `docs/p23-ai-gateway.en.md` and the Chinese version for operating instructions.
+
+### Phase 24: Knowledge And Intelligent Tools (Planned)
+
+Goal: add permission-bounded site Q&A and low-risk tool calls after the AI foundation is stable.
+
+| ID | Scope | Status |
+| --- | --- | --- |
+| P24-01 | Permission-aware Q&A for the current article, topic/collection summaries, and visible site articles; filter access before sending context to the model | Not started |
+| P24-02 | Controlled AI tools for a user’s own points, earnings, subscriptions, article status, draft generation, task organization, and admin-data explanations | Not started |
+| P24-03 | Tool permissions, audit, and human confirmation; read-only by default, with confirmation required for publishing, deletion, point changes, and configuration changes | Not started |
+| P24-04 | Evaluate lightweight vector retrieval/RAG only after enough content exists; do not pre-install Elasticsearch, a vector database, or another always-on heavy service | Not started |
+
+Outside the core scope for now: image OCR, speech-to-text, image generation, and a local server-side model. Reassess them after real usage and resource measurements.
+
 ### Later-Phase Dependencies And Order
 
-Phases 15 through 22 are complete. P17-05 requires SMTP, and manual Google sign-in acceptance for P19 requires Google Cloud OAuth configuration. The P21 OSS/R2 remote drill remains dependent on an external provider and does not block later work.
+Phases 15 through 22 and P23-01 through P23-03 are complete. P17-05 requires SMTP, and manual Google sign-in acceptance for P19 requires Google Cloud OAuth configuration. The P21 OSS/R2 remote drill remains dependent on an external provider and does not block P23-04.
 
-The fixed execution order is P15 -> P16 -> P17/P18 -> P19 -> P20 -> P21 -> P22. Each phase must complete code, migrations, tests, bilingual documentation, push, deployment, and production verification before its status changes to `Completed`; external blocks must remain explicitly labeled.
+The fixed execution order is P15 -> P16 -> P17/P18 -> P19 -> P20 -> P21 -> P22 -> P23 -> P24. Each phase must complete code, migrations, tests, bilingual documentation, push, deployment, and production verification before its status changes to `Completed`; external blocks must remain explicitly labeled.
 
 ## 15. Resume Procedure
 

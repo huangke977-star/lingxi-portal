@@ -660,6 +660,7 @@ model User {
   readOnlyApiTokens            ReadOnlyApiToken[]
   externalAuthIdentities       ExternalAuthIdentity[]
   externalNotificationChannels ExternalNotificationChannel[]
+  aiInvocationLogs             AiInvocationLog[]               @relation("AiInvocationLogUser")
   subscriptionEmailDeliveries  SubscriptionEmailDelivery[]
   searchHistory                SearchHistory[]
   announcementsCreated         Announcement[]                  @relation("AnnouncementCreatedBy")
@@ -2549,6 +2550,49 @@ model SecurityConfiguration {
   updatedAt                               DateTime @updatedAt @map("updated_at")
 
   @@map("security_configurations")
+}
+
+model AiConfiguration {
+  id                    Int      @id @default(1)
+  enabled               Boolean  @default(false)
+  provider              String   @default("openai-compatible") @db.VarChar(32)
+  baseUrl               String?  @map("base_url") @db.VarChar(512)
+  model                 String?  @db.VarChar(160)
+  apiKeyEncrypted       String?  @map("api_key_encrypted") @db.Text
+  globalConcurrency     Int      @default(2) @map("global_concurrency")
+  userConcurrency       Int      @default(1) @map("user_concurrency")
+  maxOutputTokens       Int      @default(2000) @map("max_output_tokens")
+  requestTimeoutSeconds Int      @default(60) @map("request_timeout_seconds")
+  dailyRequestLimit     Int      @default(0) @map("daily_request_limit")
+  billingCurrency       String   @default("USD") @map("billing_currency") @db.VarChar(8)
+  inputCostPerMillionMicros Int  @default(0) @map("input_cost_per_million_micros")
+  outputCostPerMillionMicros Int @default(0) @map("output_cost_per_million_micros")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_configurations")
+}
+
+model AiInvocationLog {
+  id                Int      @id @default(autoincrement())
+  userId            Int?     @map("user_id")
+  user              User?    @relation("AiInvocationLogUser", fields: [userId], references: [id], onDelete: SetNull)
+  operation         String   @db.VarChar(64)
+  provider          String   @db.VarChar(32)
+  model             String   @db.VarChar(160)
+  status            String   @db.VarChar(24)
+  promptTokens      Int?     @map("prompt_tokens")
+  completionTokens  Int?     @map("completion_tokens")
+  totalTokens       Int?     @map("total_tokens")
+  durationMs        Int      @map("duration_ms")
+  estimatedCostMicros Int?   @map("estimated_cost_micros")
+  errorSummary      String?  @map("error_summary") @db.VarChar(255)
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("ai_invocation_logs")
 }
 
 model UserSecurityPreference {

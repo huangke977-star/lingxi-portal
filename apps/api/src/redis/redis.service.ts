@@ -182,6 +182,29 @@ export class RedisService implements OnModuleDestroy {
     return this.client.incr(key);
   }
 
+  async tryAcquireCounter(
+    key: string,
+    limit: number,
+    expiresInSeconds: number,
+  ): Promise<boolean> {
+    const result = await this.client.eval(
+      "local value = redis.call('INCR', KEYS[1]); redis.call('EXPIRE', KEYS[1], ARGV[2]); if value > tonumber(ARGV[1]) then redis.call('DECR', KEYS[1]); return 0; end; return 1;",
+      1,
+      key,
+      String(limit),
+      String(expiresInSeconds),
+    );
+    return Number(result) === 1;
+  }
+
+  async releaseCounter(key: string): Promise<void> {
+    await this.client.eval(
+      "local value = redis.call('DECR', KEYS[1]); if value <= 0 then redis.call('DEL', KEYS[1]); end; return value;",
+      1,
+      key,
+    );
+  }
+
   async expire(key: string, seconds: number): Promise<number> {
     return this.client.expire(key, seconds);
   }

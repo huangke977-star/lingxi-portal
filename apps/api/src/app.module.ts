@@ -25,8 +25,9 @@ import { AccountPrivacyModule } from './account-privacy/account-privacy.module';
 import { DistributionModule } from './distribution/distribution.module';
 import { ResourcesModule } from './resources/resources.module';
 import { IntegrationsModule } from './integrations/integrations.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
-  imports: [PrismaModule, HealthModule, RolesModule, SiteSettingsModule, AuthModule, AuditModule, SearchModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, SystemStatusModule, PortalModule, ReputationModule, ArticlesModule, SocialModule, AnalyticsModule, DiscoveryModule, AnnouncementsModule, SuggestionsModule, AnonymousTopicsModule, FeedbackModule, ModerationModule, AccountPrivacyModule, DistributionModule, ResourcesModule, IntegrationsModule],
+  imports: [PrismaModule, HealthModule, RolesModule, SiteSettingsModule, AuthModule, AuditModule, SearchModule, BackgroundsModule, AndroidReleasesModule, CacheAdminModule, SystemStatusModule, PortalModule, ReputationModule, ArticlesModule, SocialModule, AnalyticsModule, DiscoveryModule, AnnouncementsModule, SuggestionsModule, AnonymousTopicsModule, FeedbackModule, ModerationModule, AccountPrivacyModule, DistributionModule, ResourcesModule, IntegrationsModule, AiModule],
 })
 export class AppModule {}
