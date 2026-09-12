@@ -22191,6 +22191,150 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   .p22-browser-checks code { text-align: left; }
   .p22-browser-run-list { grid-template-columns: 1fr; }
 }
+
+/* Keep article controls on one baseline and task items inline with their text. */
+.article-rich-toolbar .article-rich-heading-select,
+.article-rich-toolbar .article-rich-font-size-select {
+  display: flex;
+  height: 30px;
+  min-height: 30px;
+  align-items: center;
+}
+.article-rich-heading-select .announcement-editor-select-trigger,
+.article-rich-font-size-select .announcement-editor-select-trigger {
+  height: 30px;
+  min-height: 30px;
+  align-items: center;
+  line-height: 1;
+}
+.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+}
+.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > label {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  white-space: nowrap;
+}
+.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > label > input[type="checkbox"] {
+  display: block;
+  width: 15px !important;
+  min-width: 15px !important;
+  height: 15px !important;
+  min-height: 15px !important;
+  flex: 0 0 15px;
+  margin: 0;
+}
+.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > div {
+  display: block;
+  min-width: 0;
+  margin: 0;
+}
+.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > div > p {
+  min-height: 0;
+}
+
+/* The AI dialog uses a single vertical flow; the help text is available on hover. */
+.article-ai-dialog-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  min-height: 220px;
+  gap: 9px;
+}
+.article-ai-help {
+  position: relative;
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: help;
+  padding: 0;
+}
+.article-ai-help:hover,
+.article-ai-help:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  outline: 0;
+}
+.article-ai-help::after {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 30;
+  width: min(320px, calc(100vw - 42px));
+  border: 1px solid color-mix(in srgb, var(--control-line) 54%, transparent);
+  border-radius: 7px;
+  background: var(--chat-conversation-background);
+  box-shadow: var(--shadow-hover);
+  color: var(--foreground);
+  content: attr(data-tooltip);
+  font: inherit;
+  font-size: .68rem;
+  line-height: 1.45;
+  opacity: 0;
+  padding: 8px 9px;
+  pointer-events: none;
+  text-align: left;
+  transform: translateY(-3px);
+  transition: opacity 150ms ease, transform 150ms ease;
+  white-space: normal;
+}
+.article-ai-help:hover::after,
+.article-ai-help:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+.article-ai-operation,
+.article-ai-dialog-body > .article-ai-result,
+.article-ai-dialog-body > .article-ai-empty {
+  grid-column: 1;
+}
+.article-ai-dialog-body > .article-ai-operation {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted-strong);
+  font-size: .7rem;
+}
+.article-ai-dialog-body > .article-ai-operation > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.article-ai-dialog-body .article-ai-operation .announcement-editor-select,
+.article-ai-dialog-body .article-ai-operation .announcement-editor-select-trigger {
+  width: 100%;
+  min-width: 0;
+}
+.article-ai-dialog-body > .article-ai-result {
+  min-height: 170px;
+  max-height: min(52vh, 480px);
+}
+.article-ai-empty {
+  min-height: 42px;
+}
+
+@media (max-width: 760px) {
+  .article-rich-heading-select .announcement-editor-select-trigger,
+  .article-rich-font-size-select .announcement-editor-select-trigger {
+    height: 30px;
+    min-height: 30px;
+  }
+  .article-ai-dialog-body { min-height: 180px; }
+}
 .p21-drill-actions { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .p21-drill-actions button { align-items: flex-start; background: color-mix(in srgb, var(--control-surface) 62%, transparent); border: 1px solid color-mix(in srgb, var(--control-line) 58%, transparent); border-radius: 7px; color: var(--foreground); cursor: pointer; display: flex; font: inherit; gap: 8px; min-width: 0; padding: 9px; text-align: left; }
 .p21-drill-actions button:disabled { cursor: not-allowed; opacity: 0.52; }
