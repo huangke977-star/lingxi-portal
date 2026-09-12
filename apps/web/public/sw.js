@@ -1,4 +1,4 @@
-const VERSION = "hlovet-pwa-v9";
+const VERSION = "hlovet-pwa-v10";
 const SHELL_CACHE = `${VERSION}-shell`;
 const OFFLINE_ROUTE_CACHE = "hlovet-offline-routes-v1";
 const PUSH_IDENTITY_CACHE = `${VERSION}-identity`;

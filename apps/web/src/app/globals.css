@@ -22336,21 +22336,23 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   margin: .24em 0;
   padding-left: 0 !important;
 }
-.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] {
-  display: grid !important;
-  grid-template-columns: 14px minmax(0, 1fr);
+.article-rich-editor .article-rich-editor-content :is(li[data-type="taskItem"], li.article-task-item) {
+  position: relative !important;
+  display: block !important;
   min-width: 0;
   width: 100%;
-  align-items: start;
-  gap: 6px;
   list-style: none !important;
   margin: .16em 0;
-  padding: 0;
+  padding: 0 0 0 20px !important;
 }
-.article-rich-editor .article-rich-editor-content li[data-type="taskItem"]::marker {
+.article-rich-editor .article-rich-editor-content :is(li[data-type="taskItem"], li.article-task-item)::marker {
   content: none;
 }
-.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > label {
+.article-rich-editor .article-rich-editor-content :is(li[data-type="taskItem"], li.article-task-item) > label {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  z-index: 1;
   display: flex !important;
   width: 14px !important;
   height: 1.5em !important;
@@ -22361,14 +22363,14 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   padding: 0;
   white-space: nowrap;
 }
-.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > label > input[type="checkbox"] {
+.article-rich-editor .article-rich-editor-content :is(li[data-type="taskItem"], li.article-task-item) > label > input[type="checkbox"] {
   box-sizing: border-box !important;
   display: block;
   width: 14px !important;
   min-width: 14px !important;
   height: 14px !important;
   min-height: 14px !important;
-  margin: .12em 0 0;
+  margin: .12em 0 0 !important;
   appearance: none !important;
   -webkit-appearance: none !important;
   border: 1px solid var(--control-line) !important;
@@ -22377,7 +22379,7 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   background-image: none;
   cursor: pointer;
 }
-.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > label > input[type="checkbox"]:checked {
+.article-rich-editor .article-rich-editor-content :is(li[data-type="taskItem"], li.article-task-item) > label > input[type="checkbox"]:checked {
   border-color: var(--accent) !important;
   background-color: var(--accent) !important;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m3.5 8 3 3 6-6'/%3E%3C/svg%3E");
@@ -22385,19 +22387,19 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   background-repeat: no-repeat;
   background-size: 80%;
 }
-.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > div {
+.article-rich-editor .article-rich-editor-content :is(li[data-type="taskItem"], li.article-task-item) > div {
   display: block;
   min-width: 0;
   width: 100%;
   max-width: 100%;
-  margin: 0;
+  margin: 0 !important;
 }
-.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > div > p {
+.article-rich-editor .article-rich-editor-content :is(li[data-type="taskItem"], li.article-task-item) > div > p {
   display: block;
   width: 100%;
   min-width: 0;
   min-height: 0;
-  margin: 0;
+  margin: 0 !important;
   line-height: inherit;
 }
 .p21-drill-actions { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
