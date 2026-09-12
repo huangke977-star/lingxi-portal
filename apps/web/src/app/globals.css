@@ -22335,6 +22335,115 @@ textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
   }
   .article-ai-dialog-body { min-height: 180px; }
 }
+
+/* Final article-assistant and task-list overrides. Keep these above the
+   editor's generated markup so the popup and checkbox cannot be clipped by
+   the announcement dialog defaults. */
+.article-ai-dialog {
+  min-height: min(315px, calc(100dvh - 32px));
+  max-height: min(720px, calc(100dvh - 32px));
+  overflow: visible;
+}
+.article-ai-dialog > header {
+  position: relative;
+  z-index: 5;
+  overflow: visible;
+}
+.article-ai-help::after {
+  top: 50%;
+  right: auto;
+  left: calc(100% + 8px);
+  z-index: 100;
+  transform: translateY(-50%);
+}
+.article-ai-help:hover::after,
+.article-ai-help:focus-visible::after {
+  transform: translateY(-50%);
+}
+.announcement-editor-select-menu-portal.article-ai-operation-menu {
+  z-index: 22000 !important;
+  min-width: min(420px, calc(100vw - 32px));
+}
+.announcement-editor-select-menu-portal.article-ai-operation-menu button {
+  min-height: 30px;
+  font-size: .72rem;
+}
+.ai-config-fields .ai-currency-field .announcement-editor-select-trigger {
+  font-size: .68rem;
+}
+.announcement-editor-select-menu-portal.ai-currency-menu {
+  min-width: 132px;
+}
+.announcement-editor-select-menu-portal.ai-currency-menu button {
+  min-height: 28px;
+  font-size: .68rem;
+}
+
+.article-rich-editor .article-rich-editor-content ul[data-type="taskList"],
+.article-rich-editor .article-rich-editor-content ul.task-list {
+  list-style: none !important;
+  margin: .24em 0;
+  padding-left: 0 !important;
+}
+.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] {
+  display: flex !important;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 6px;
+  list-style: none !important;
+  margin: .16em 0;
+}
+.article-rich-editor .article-rich-editor-content li[data-type="taskItem"]::marker {
+  content: none;
+}
+.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > label {
+  display: inline-flex !important;
+  width: 14px !important;
+  height: 1.25em !important;
+  min-width: 14px !important;
+  flex: 0 0 14px;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  white-space: nowrap;
+}
+.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > label > input[type="checkbox"] {
+  box-sizing: border-box !important;
+  display: block;
+  width: 14px !important;
+  min-width: 14px !important;
+  height: 14px !important;
+  min-height: 14px !important;
+  flex: 0 0 14px;
+  margin: 0;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  border: 1px solid var(--control-line) !important;
+  border-radius: 3px !important;
+  background-color: transparent !important;
+  background-image: none;
+  cursor: pointer;
+}
+.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > label > input[type="checkbox"]:checked {
+  border-color: var(--accent) !important;
+  background-color: var(--accent) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m3.5 8 3 3 6-6'/%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 80%;
+}
+.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > div {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+}
+.article-rich-editor .article-rich-editor-content li[data-type="taskItem"] > div > p {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+}
 .p21-drill-actions { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .p21-drill-actions button { align-items: flex-start; background: color-mix(in srgb, var(--control-surface) 62%, transparent); border: 1px solid color-mix(in srgb, var(--control-line) 58%, transparent); border-radius: 7px; color: var(--foreground); cursor: pointer; display: flex; font: inherit; gap: 8px; min-width: 0; padding: 9px; text-align: left; }
 .p21-drill-actions button:disabled { cursor: not-allowed; opacity: 0.52; }
